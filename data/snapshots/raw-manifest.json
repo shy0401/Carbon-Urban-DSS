@@ -1,0 +1,157 @@
+[
+  {
+    "file": "raw/energy-definition.html",
+    "sha256": "37362bb9544fd54b9077f483968ecb32d1643a27a93ca2d303f4270825b4724c",
+    "bytes": 213185
+  },
+  {
+    "file": "raw/energy-full-probe.xml.error.txt",
+    "sha256": "ab8e98fc9f0ae2dfbbe76fa113bc3668e55be6ad87fd62e9a36115f740fed388",
+    "bytes": 294
+  },
+  {
+    "file": "raw/energy-swagger.json",
+    "sha256": "b277dcdd3817f48293c7ec1e9f6d10b52394af23c76f040d6513f2432b9a0b6b",
+    "bytes": 35053
+  },
+  {
+    "file": "raw/greentogether-2025.html",
+    "sha256": "ba3f9bcab324ed87a581b5287f51451b56f3c9700ad979515276aa2846924d41",
+    "bytes": 1406
+  },
+  {
+    "file": "raw/greentogether.html",
+    "sha256": "248ca509dae5575ef8456a6059fe91f8da4e162ce55057db5898a0073c4da497",
+    "bytes": 32844
+  },
+  {
+    "file": "raw/legal-dong.zip",
+    "sha256": "7b4b544a6302d26c4f4c89d2c1355beae82e958c786bad8cc8572db0d2e2eb33",
+    "bytes": 413346
+  },
+  {
+    "file": "raw/osm-boundary.geojson",
+    "sha256": "1dddec50408976ec3a5a386c244de3278e35975219f619ce2bc1da465759dfb5",
+    "bytes": 20525
+  },
+  {
+    "file": "raw/osm-jeonju.json",
+    "sha256": "80018fada9eab18639306632536e8084a0dd1b3b400ec3ad7a9e280dfb015bdf",
+    "bytes": 1993212
+  },
+  {
+    "file": "raw/region-page.html",
+    "sha256": "1faafbf4b1a430b4830549e3f2e212eada3d5f4d47de34f8226940afa824dca5",
+    "bytes": 41565
+  },
+  {
+    "file": "raw/research/emission_factor_selection.json",
+    "sha256": "ed89563099cd80a2f86b1dc986dd52bcb04697786913dbc7aa2d3439d07ed12c",
+    "bytes": 1964
+  },
+  {
+    "file": "raw/research/gir_2024_approved_electricity_factors.pdf",
+    "sha256": "56fedb7db3b46434fe13a09d9b1dd249c84795e983a0c04a3448ce702596757f",
+    "bytes": 63929
+  },
+  {
+    "file": "raw/research/gir_2024_approved_electricity_factors.txt",
+    "sha256": "67c23eeda46d5758f0126cb7b45cab4698ff64962dcae61d3bc40920b1ee6bcc",
+    "bytes": 1889
+  },
+  {
+    "file": "raw/research/jeonju_apartment_board.html",
+    "sha256": "f58a25bb11b19d6711417f4fff33f693c0461609946c5232a7e6026b26915ace",
+    "bytes": 242762
+  },
+  {
+    "file": "raw/research/jeonju_apartment_status_2025_12.xls",
+    "sha256": "c28057e1f43bf36df72c61dbb68eada183bb480de4d5dbc2185d7377018400e1",
+    "bytes": 312832
+  },
+  {
+    "file": "raw/research/jeonju_apartment_status_2025_12_page.html",
+    "sha256": "f9c5abdc326fb9a2ca364f3fe4f218dd13fe2d9c2977ba9323c5ed12a125fd83",
+    "bytes": 226233
+  },
+  {
+    "file": "raw/research/kapt_detail_A56121101.json",
+    "sha256": "5012d0db09b7229fab4211bd15c7dd875629cc57994d3ccf08645b4851c7e61c",
+    "bytes": 6944
+  },
+  {
+    "file": "raw/research/kapt_detail_A56121102.json",
+    "sha256": "6aaa76470a88e10c8dc0ff69e04e72613b71368ba15e3185733c0caa3055b048",
+    "bytes": 8567
+  },
+  {
+    "file": "raw/research/kapt_detail_A56121103.json",
+    "sha256": "d94fe7614453ea322e6a66d23081605decc0435d0dd766c53e9fbf904cc589e4",
+    "bytes": 7769
+  },
+  {
+    "file": "raw/research/kapt_detail_A56121104.json",
+    "sha256": "c2f29c4accdbdf271f99afcc389b4940910d2a18e41849a1559879c38efe063e",
+    "bytes": 7207
+  },
+  {
+    "file": "raw/research/kapt_detail_A56121105.json",
+    "sha256": "348c5aeb546483eea5dd74503b8bc0fab9dfdfc8ec332a41a85b1b9d4890de8e",
+    "bytes": 8046
+  },
+  {
+    "file": "raw/research/kapt_detail_A56121107.json",
+    "sha256": "10d94e3773aa284901595c6136132f2f7b4440c17c756c6033cc28c1d3bbd280",
+    "bytes": 8297
+  },
+  {
+    "file": "raw/research/kapt_detail_A56121109.json",
+    "sha256": "323a874c2d2477314d38c37d1e03628c2d4fb2bc7cab5340faeed1278bbde49a",
+    "bytes": 7921
+  },
+  {
+    "file": "raw/research/kapt_detail_A56121110.json",
+    "sha256": "c3e20e574adfcc01170d28efc216d04514432d0370a449409a8842727d9db09a",
+    "bytes": 7682
+  },
+  {
+    "file": "raw/research/kapt_jeonju_52111_202512.json",
+    "sha256": "64f0a796c1fc607715c618b8ba26adf6ef8b63192b861d44b09f831d8c29fc0e",
+    "bytes": 68824
+  },
+  {
+    "file": "raw/research/kapt_jeonju_52113_202512.json",
+    "sha256": "aaa47ef2332789544c666c8c6f94b4e4bbabe6aca01b420460ecaafd1fd91000",
+    "bytes": 61076
+  },
+  {
+    "file": "raw/research/kapt_jeonju_detail_candidates.csv",
+    "sha256": "5a70a7754f1dd52f12353f61dc31e47890f7abcc5e0284bdbb3d3d6dea9d1cd3",
+    "bytes": 4680
+  },
+  {
+    "file": "raw/research/kapt_jeonju_summary.csv",
+    "sha256": "300092eb5614753ab466f741c7f9355a339baa253b662405fd08516f6ffff084",
+    "bytes": 122680
+  },
+  {
+    "file": "raw/research/kapt_provenance.json",
+    "sha256": "15e39e4dc72f40a19c0d58d2ccae460d19ec6517a40e057eee71f7debd998fc1",
+    "bytes": 1170
+  },
+  {
+    "file": "raw/research/kea_energy_emission_factors.html",
+    "sha256": "094cbfd4d8eaebe8cdfeb7a1f5571d90bf735d545facdfb4c4931b35881ef144",
+    "bytes": 139060
+  },
+  {
+    "file": "raw/research/official_emission_factor_components.csv",
+    "sha256": "aceddeb2765094efa770e52bb685855cd79246763bc2928857c9a6ed6d1bd382",
+    "bytes": 3010
+  },
+  {
+    "file": "raw/weather-2025.json",
+    "sha256": "a71ac8ebeb4b8df65df01cf5f706d329ca5aecbe13f83739b7b4217aca23a542",
+    "bytes": 12190
+  }
+]

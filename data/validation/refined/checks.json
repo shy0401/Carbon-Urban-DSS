@@ -1,0 +1,14 @@
+{
+  "checks": [
+    "dashboard_eight_metrics",
+    "year_switch_missing_weather",
+    "map_render_and_selection",
+    "scenario_calculation_and_report_link",
+    "report_same_scope_comparison",
+    "report_markdown_download",
+    "print_layout",
+    "five_mobile_routes_no_horizontal_overflow",
+    "server_error_is_visible"
+  ],
+  "pageErrors": []
+}

@@ -1,0 +1,41 @@
+{
+  "checks": [
+    {
+      "route": "/",
+      "status": "PASS"
+    },
+    {
+      "route": "/data",
+      "status": "PASS"
+    },
+    {
+      "route": "/data/sources/weather",
+      "status": "PASS"
+    },
+    {
+      "route": "/map",
+      "status": "PASS"
+    },
+    {
+      "route": "/model",
+      "status": "PASS"
+    },
+    {
+      "route": "/simulation",
+      "status": "PASS"
+    },
+    {
+      "name": "scenario30_floor_calculation",
+      "status": "PASS"
+    },
+    {
+      "name": "optimization_request",
+      "status": "PASS"
+    },
+    {
+      "name": "offline_map_renders_real_features_without_external_requests",
+      "status": "PASS"
+    }
+  ],
+  "pageErrors": []
+}

@@ -1,0 +1,68 @@
+name: carbon-urban-dss
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_DB: carbon
+      POSTGRES_USER: carbon
+      POSTGRES_PASSWORD: carbon_local
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U carbon -d carbon]
+      interval: 5s
+      retries: 20
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 5s
+      retries: 20
+  api:
+    build: ./backend
+    env_file: .env
+    environment: &backend_env
+      DATABASE_URL: postgresql+psycopg://carbon:carbon_local@postgres:5432/carbon
+      REDIS_URL: redis://redis:6379/0
+      DATA_DIR: /data
+      OLLAMA_URL: http://ollama:11434
+      OLLAMA_MODEL: qwen2.5:1.5b
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - ./data:/data
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 10s
+      retries: 30
+  worker:
+    build: ./backend
+    env_file: .env
+    environment: *backend_env
+    command: celery -A app.tasks.celery_app worker --loglevel=WARNING --concurrency=1
+    volumes:
+      - ./data:/data
+    depends_on:
+      api: {condition: service_healthy}
+  frontend:
+    build: ./frontend
+    ports:
+      - "127.0.0.1:5173:80"
+    depends_on:
+      api: {condition: service_healthy}
+  ollama:
+    image: ollama/ollama:0.11.10
+    profiles: [local-ai]
+    volumes:
+      - ollama_data:/root/.ollama
+    mem_limit: 4g
+volumes:
+  ollama_data:
+  postgres_data:
+  redis_data:

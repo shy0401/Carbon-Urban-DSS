@@ -1,0 +1,12 @@
+services:
+  api:
+    ports: !override
+      - "127.0.0.1:8010:8000"
+    environment:
+      DEMO_OFFLINE_MODE: "true"
+  worker:
+    environment:
+      DEMO_OFFLINE_MODE: "true"
+  frontend:
+    ports: !override
+      - "127.0.0.1:5190:80"

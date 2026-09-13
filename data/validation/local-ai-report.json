@@ -1,0 +1,397 @@
+{
+  "id": "3032a825-c97d-47ad-984f-b93850a87d07",
+  "version": 1,
+  "year": 2025,
+  "grid_id": "cell_968500_1762000",
+  "title": "도시계획 의사결정 검토 보고서",
+  "created_at": "2026-09-14T06:43:23.095643+09:00",
+  "sector": {
+    "id": "prototype",
+    "grid_id": "cell_968500_1762000",
+    "name": "LG동아 아파트",
+    "area_m2": 250000.0,
+    "reason": "OSM 아파트 건물 49개, 알려진 층수 기반 추정 연면적 318619m² / 에너지 확인 후 후보 재평가",
+    "candidates": [
+      {
+        "grid_id": "cell_968500_1762000",
+        "name": "LG동아 아파트",
+        "reason": "OSM 아파트 건물 49개, 알려진 층수 기반 추정 연면적 318619m²",
+        "building_count": 49,
+        "floor_area_m2": 318618.96
+      },
+      {
+        "grid_id": "cell_966000_1755500",
+        "name": "이안전주삼천아파트",
+        "reason": "OSM 아파트 건물 48개, 알려진 층수 기반 추정 연면적 359345m²",
+        "building_count": 48,
+        "floor_area_m2": 359345.32
+      },
+      {
+        "grid_id": "cell_966500_1763000",
+        "name": "송천 진흥 더블파크 1단지 아파트",
+        "reason": "OSM 아파트 건물 46개, 알려진 층수 기반 추정 연면적 359679m²",
+        "building_count": 46,
+        "floor_area_m2": 359679.39
+      },
+      {
+        "grid_id": "cell_966000_1759000",
+        "name": "서신아이파크e편한세상아파트",
+        "reason": "OSM 아파트 건물 39개, 알려진 층수 기반 추정 연면적 324088m²",
+        "building_count": 39,
+        "floor_area_m2": 324088.3
+      },
+      {
+        "grid_id": "cell_965000_1759500",
+        "name": "서신동아아파트",
+        "reason": "OSM 아파트 건물 37개, 알려진 층수 기반 추정 연면적 427775m²",
+        "building_count": 37,
+        "floor_area_m2": 427775.24
+      },
+      {
+        "grid_id": "cell_966500_1756000",
+        "name": "효자금호타운 아파트",
+        "reason": "OSM 아파트 건물 37개, 알려진 층수 기반 추정 연면적 216026m²",
+        "building_count": 37,
+        "floor_area_m2": 216025.51
+      },
+      {
+        "grid_id": "cell_968500_1760000",
+        "name": "한신휴플러스아파트",
+        "reason": "OSM 아파트 건물 35개, 알려진 층수 기반 추정 연면적 372929m²",
+        "building_count": 35,
+        "floor_area_m2": 372929.06
+      },
+      {
+        "grid_id": "cell_964500_1760500",
+        "name": "부영하가사랑으로아파트",
+        "reason": "OSM 아파트 건물 34개, 알려진 층수 기반 추정 연면적 226704m²",
+        "building_count": 34,
+        "floor_area_m2": 226704.14
+      }
+    ],
+    "metadata_json": {
+      "selection_status": "SPATIAL_ONLY",
+      "baseline_floor_area_m2": null
+    }
+  },
+  "facts": [
+    {
+      "id": "scope",
+      "text": "2025년 LG동아 아파트의 500m 분석 격자를 기준으로 작성했습니다."
+    },
+    {
+      "id": "missing",
+      "text": "기준 자료 또는 배출계수가 부족하여 연간 전체 운영탄소와 탄소 감축률을 확정할 수 없습니다."
+    },
+    {
+      "id": "coverage",
+      "text": "월별 전력 0/12개월, 가스 0/12개월이 확보되어 있습니다."
+    },
+    {
+      "id": "boundary",
+      "text": "격자에 매칭된 관측 지번의 합계이며 전체 건물 소비량을 의미하지 않습니다."
+    },
+    {
+      "id": "legal",
+      "text": "시나리오는 운영 단계의 1차 추정이며 법적 인허가 적합성이나 사업 전체 넷제로 달성을 판정하지 않습니다."
+    }
+  ],
+  "sources": [
+    {
+      "id": "zoning",
+      "name": "VWorld 용도지역 지구도",
+      "source_url": "https://www.vworld.kr/dev/v4dv_2ddataguide2_s002.do",
+      "reference_period": "2025-01 ~ 2025-12",
+      "collected_at": null,
+      "status": "NEEDS_API_KEY",
+      "source_type": "OFFICIAL",
+      "normalized_row_count": 0,
+      "limitation": "VWORLD_API_KEY 필요. OSM residential은 법정 용도지역으로 대체하지 않습니다."
+    },
+    {
+      "id": "population",
+      "name": "SGIS 500m 인구격자",
+      "source_url": "https://sgis.kostat.go.kr/developer/html/newOpenApi/api/dataApi/census.html",
+      "reference_period": "2025-01 ~ 2025-12",
+      "collected_at": null,
+      "status": "NEEDS_API_KEY",
+      "source_type": "OFFICIAL",
+      "normalized_row_count": 0,
+      "limitation": "SGIS consumer key/secret 또는 승인 다운로드 필요. 격자 인구를 임의 배분하지 않습니다."
+    },
+    {
+      "id": "building_official",
+      "name": "건축HUB 건축물대장",
+      "source_url": "https://www.data.go.kr/data/15134735/openapi.do",
+      "reference_period": "2025-01 ~ 2025-12",
+      "collected_at": null,
+      "status": "NEEDS_API_KEY",
+      "source_type": "OFFICIAL",
+      "normalized_row_count": 0,
+      "limitation": "별도 서비스 활용 승인 필요. 공식 연면적·용적률이 없으면 현재 FAR를 표시하지 않습니다."
+    },
+    {
+      "id": "regions",
+      "name": "법정동 코드 전체자료 — 전주시 현행 코드",
+      "source_url": "https://www.code.go.kr/stdcode/regCodeL.do",
+      "reference_period": "수집 시점 현행 코드",
+      "collected_at": "2026-09-12T10:07:45.910385+09:00",
+      "status": "COLLECTED",
+      "source_type": "OFFICIAL",
+      "normalized_row_count": 86,
+      "limitation": "현재 존재하는 전주시 법정동. 코드 파일 SHA256을 버전으로 보존합니다."
+    },
+    {
+      "id": "buildings",
+      "name": "OSM 공동주택 건물 윤곽 및 층수",
+      "source_url": "https://www.openstreetmap.org/copyright",
+      "reference_period": "2025-01 ~ 2025-12",
+      "collected_at": "2026-09-12T10:07:51.509285+09:00",
+      "status": "PARTIAL",
+      "source_type": "FALLBACK",
+      "normalized_row_count": 2171,
+      "limitation": "커뮤니티 매핑 자료. 공식 건축물대장·지적 경계가 아닙니다. 층수 누락 시 연면적을 추정하지 않습니다."
+    },
+    {
+      "id": "grid",
+      "name": "EPSG:5179 정렬 500m 분석 격자",
+      "source_url": "https://epsg.io/5179",
+      "reference_period": "2025-01 ~ 2025-12",
+      "collected_at": "2026-09-12T10:07:51.512318+09:00",
+      "status": "COLLECTED",
+      "source_type": "DERIVED",
+      "normalized_row_count": 916,
+      "limitation": "정확히 500×500m로 생성한 프로토타입 격자. NGII 공식 격자 ID가 아닙니다."
+    },
+    {
+      "id": "boundary",
+      "name": "전주시 행정경계",
+      "source_url": "https://www.openstreetmap.org/copyright",
+      "reference_period": "수집 시점 OSM",
+      "collected_at": "2026-09-12T10:07:51.515383+09:00",
+      "status": "COLLECTED",
+      "source_type": "FALLBACK",
+      "normalized_row_count": 1,
+      "limitation": "공식 지적경계가 아닌 공개 지도 경계입니다."
+    },
+    {
+      "id": "energy",
+      "name": "건축HUB 지번별 월간 전기·가스 사용량",
+      "source_url": "https://www.data.go.kr/data/15135963/openapi.do",
+      "reference_period": "2025-01 ~ 2025-12",
+      "collected_at": null,
+      "status": "NEEDS_API_KEY",
+      "source_type": "OFFICIAL",
+      "normalized_row_count": 0,
+      "limitation": "단독주택·200세대 미만 공동주택 제외. 지번별 자료이며 격자 전체 소비량이 아닙니다."
+    },
+    {
+      "id": "weather",
+      "name": "ERA5-Land 2025 일별 기상 → 월별 집계",
+      "source_url": "https://open-meteo.com/en/docs/historical-weather-api",
+      "reference_period": "2025-01 ~ 2025-12",
+      "collected_at": "2026-09-12T10:07:57.506336+09:00",
+      "status": "COLLECTED",
+      "source_type": "FALLBACK",
+      "normalized_row_count": 12,
+      "limitation": "약 0.1도 재분석 격자. KMA 관측소 실측이 아닙니다. HDD/CDD 기준 18°C."
+    },
+    {
+      "id": "weather_kma",
+      "name": "ASOS 전주146 일별 관측",
+      "source_url": "https://www.data.go.kr/data/15059093/openapi.do",
+      "reference_period": "2025-01 ~ 2025-12",
+      "collected_at": null,
+      "status": "NEEDS_API_APPROVAL",
+      "source_type": "OFFICIAL",
+      "normalized_row_count": 0,
+      "limitation": "별도 ASOS 활용 승인 필요. 일별 자료가 완전한 월만 ERA5-Land 월 집계를 대체합니다."
+    },
+    {
+      "id": "kapt",
+      "name": "K-apt 공동주택 단지 정보",
+      "source_url": "https://www.data.go.kr/data/15096285/standard.do",
+      "reference_period": "202512",
+      "collected_at": "2026-09-12T10:09:25.510219+09:00",
+      "status": "PARTIAL",
+      "source_type": "OFFICIAL",
+      "normalized_row_count": 364,
+      "limitation": "상세 미수집 단지는 건축물대장 연면적·세대수 없음"
+    },
+    {
+      "id": "jeonju_apartments",
+      "name": "전주시 공동주택 현황(2025.12월)",
+      "source_url": "https://www.jeonju.go.kr/planweb/board/view.9is?dataUid=9be517a89b212afa019b734df7f35e34&boardUid=ff8080818bad9295018bb25702581197",
+      "reference_period": "2025-12-31",
+      "collected_at": "2026-09-12T18:23:32.17073+09:00",
+      "status": "COLLECTED",
+      "source_type": "OFFICIAL",
+      "normalized_row_count": 609,
+      "limitation": "행정동·지번 제공, 좌표 및 법정동 코드는 미제공"
+    },
+    {
+      "id": "factors",
+      "name": "한국 공식 에너지 배출계수",
+      "source_url": "https://www.gir.go.kr/home/board/read.do?boardId=82&boardMasterId=2&menuId=36",
+      "reference_period": "2024 승인 / 2025-03-31 공표",
+      "collected_at": "2026-09-14T06:42:37.22864+09:00",
+      "status": "PARTIAL",
+      "source_type": "OFFICIAL",
+      "normalized_row_count": 1,
+      "limitation": "전기 소비단 0.4541 kgCO2eq/kWh. 가스는 원자료 kWh의 열량 기준·CO2eq GWP 적용 검증 전 미계산. 전체 운영탄소는 두 에너지원과 계수 모두 확보된 경우에만 표시."
+    }
+  ],
+  "scenarios": [],
+  "monthly": [
+    {
+      "use_ym": "202501",
+      "electricity_kwh": null,
+      "electricity_records": 0,
+      "gas_kwh": null,
+      "gas_records": 0,
+      "electricity_carbon_kg": null,
+      "gas_carbon_kg": null,
+      "carbon_kg": null
+    },
+    {
+      "use_ym": "202502",
+      "electricity_kwh": null,
+      "electricity_records": 0,
+      "gas_kwh": null,
+      "gas_records": 0,
+      "electricity_carbon_kg": null,
+      "gas_carbon_kg": null,
+      "carbon_kg": null
+    },
+    {
+      "use_ym": "202503",
+      "electricity_kwh": null,
+      "electricity_records": 0,
+      "gas_kwh": null,
+      "gas_records": 0,
+      "electricity_carbon_kg": null,
+      "gas_carbon_kg": null,
+      "carbon_kg": null
+    },
+    {
+      "use_ym": "202504",
+      "electricity_kwh": null,
+      "electricity_records": 0,
+      "gas_kwh": null,
+      "gas_records": 0,
+      "electricity_carbon_kg": null,
+      "gas_carbon_kg": null,
+      "carbon_kg": null
+    },
+    {
+      "use_ym": "202505",
+      "electricity_kwh": null,
+      "electricity_records": 0,
+      "gas_kwh": null,
+      "gas_records": 0,
+      "electricity_carbon_kg": null,
+      "gas_carbon_kg": null,
+      "carbon_kg": null
+    },
+    {
+      "use_ym": "202506",
+      "electricity_kwh": null,
+      "electricity_records": 0,
+      "gas_kwh": null,
+      "gas_records": 0,
+      "electricity_carbon_kg": null,
+      "gas_carbon_kg": null,
+      "carbon_kg": null
+    },
+    {
+      "use_ym": "202507",
+      "electricity_kwh": null,
+      "electricity_records": 0,
+      "gas_kwh": null,
+      "gas_records": 0,
+      "electricity_carbon_kg": null,
+      "gas_carbon_kg": null,
+      "carbon_kg": null
+    },
+    {
+      "use_ym": "202508",
+      "electricity_kwh": null,
+      "electricity_records": 0,
+      "gas_kwh": null,
+      "gas_records": 0,
+      "electricity_carbon_kg": null,
+      "gas_carbon_kg": null,
+      "carbon_kg": null
+    },
+    {
+      "use_ym": "202509",
+      "electricity_kwh": null,
+      "electricity_records": 0,
+      "gas_kwh": null,
+      "gas_records": 0,
+      "electricity_carbon_kg": null,
+      "gas_carbon_kg": null,
+      "carbon_kg": null
+    },
+    {
+      "use_ym": "202510",
+      "electricity_kwh": null,
+      "electricity_records": 0,
+      "gas_kwh": null,
+      "gas_records": 0,
+      "electricity_carbon_kg": null,
+      "gas_carbon_kg": null,
+      "carbon_kg": null
+    },
+    {
+      "use_ym": "202511",
+      "electricity_kwh": null,
+      "electricity_records": 0,
+      "gas_kwh": null,
+      "gas_records": 0,
+      "electricity_carbon_kg": null,
+      "gas_carbon_kg": null,
+      "carbon_kg": null
+    },
+    {
+      "use_ym": "202512",
+      "electricity_kwh": null,
+      "electricity_records": 0,
+      "gas_kwh": null,
+      "gas_records": 0,
+      "electricity_carbon_kg": null,
+      "gas_carbon_kg": null,
+      "carbon_kg": null
+    }
+  ],
+  "coverage": {
+    "electricity_months": 0,
+    "gas_months": 0,
+    "total_months": 12,
+    "energy_records": 0,
+    "matched_records": 0
+  },
+  "annual_complete": {
+    "electricity": false,
+    "gas": false
+  },
+  "totals": {
+    "electricity_kwh": null,
+    "gas_kwh": null,
+    "carbon_kg": null
+  },
+  "scope": "격자에 좌표 매칭된 관측 지번 합계. 격자 전체 건물의 총소비를 의미하지 않습니다.",
+  "evidence_hash": "7be5847e4b77ab347f457e95deda6776852537cbdc9a1d33c352d9a2752935f3",
+  "summary": {
+    "mode": "LOCAL_SLM",
+    "paragraphs": [
+      "월별 전력 0/12개월, 가스 0/12개월이 확보되어 있습니다.",
+      "2025년 LG동아 아파트의 500m 분석 격자를 기준으로 작성했습니다.",
+      "격자에 매칭된 관측 지번의 합계이며 전체 건물 소비량을 의미하지 않습니다.",
+      "기준 자료 또는 배출계수가 부족하여 연간 전체 운영탄소와 탄소 감축률을 확정할 수 없습니다.",
+      "시나리오는 운영 단계의 1차 추정이며 법적 인허가 적합성이나 사업 전체 넷제로 달성을 판정하지 않습니다."
+    ],
+    "model": "qwen2.5:1.5b",
+    "validation": "근거 ID와 원문 일치 검증 통과"
+  }
+}
