@@ -1,4 +1,9 @@
 .env
+.secrets/
+.worktrees/
+data/offline.flag
+data/backups/
+data/deployment/
 .env.*
 !.env.example
 data/raw/
