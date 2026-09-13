@@ -384,8 +384,10 @@ def _register_kapt(db: Any, raw_dir: Path, summaries: list[dict[str, Any]], deta
     source.normalized_row_count = len(summaries)
     source.missing_count = len(summaries) - len(details)
     source.quality = f"전주시 단지 {len(summaries)}건 DB 정규화 / 상세 {len(details)}건"
-    source.limitation = "상세 미수집 단지는 건축물대장 연면적·세대수 없음"
-    source.collected_at = max(_file_time(raw_dir / f"kapt_jeonju_{code}_{search_month}.json") for code in JEONJU_DISTRICTS)
+    source.limitation = "목록은 조회 기준월, 상세는 수집 시점 현황입니다. 과거 연도 건축 상태와 동일하다고 단정하지 않습니다. 일부 단지는 연면적·세대수가 누락될 수 있습니다."
+    evidence_paths = [raw_dir / f"kapt_jeonju_{code}_{search_month}.json" for code in JEONJU_DISTRICTS]
+    evidence_paths += [raw_dir / f"kapt_detail_{row['kapt_code']}.json" for row, _ in details]
+    source.collected_at = max(_file_time(path) for path in evidence_paths)
     db.add(source)
     db.flush()
     _record_asset(db, "kapt", raw_dir / "kapt_jeonju_summary.csv", len(summaries), KAPT_LIST_URL, search_month)
@@ -402,8 +404,10 @@ def _detail_codes(summaries: list[dict[str, Any]], raw_dir: Path, limit: int = 8
     return (cached_near if len(cached_near) >= limit else [row["kapt_code"] for row in ranked])[:limit]
 
 
-def collect_kapt(db: Any | None = None, raw_dir: str | Path | None = None, search_month: str = "202512", detail_codes: Iterable[str] | None = None, refresh: bool = False) -> dict[str, Any]:
+def collect_kapt(db: Any | None = None, raw_dir: str | Path | None = None, search_month: str = "202512", detail_codes: Iterable[str] | None = None, refresh: bool = False, max_details: int = 8) -> dict[str, Any]:
     """Materialize and, when ``db`` is supplied, upsert 364 complexes."""
+    if not 1 <= max_details <= 500:
+        raise ValueError('max_details must be between 1 and 500')
     target = _raw_dir(raw_dir)
     list_paths = {code: target / f"kapt_jeonju_{code}_{search_month}.json" for code in JEONJU_DISTRICTS}
     client = _client(target)
@@ -416,8 +420,11 @@ def collect_kapt(db: Any | None = None, raw_dir: str | Path | None = None, searc
             districts = {code: json.loads(path.read_text(encoding="utf-8"))["resultList"] for code, path in list_paths.items()}
         summaries = [normalize_summary(row, code, search_month) for code, rows in districts.items() for row in rows]
         selected = list(detail_codes) if detail_codes is not None else _detail_codes(summaries, target)
+        known = {row['kapt_code'] for row in summaries}
+        cached = [p.stem.removeprefix('kapt_detail_') for p in target.glob('kapt_detail_*.json') if p.stem.removeprefix('kapt_detail_') in known]
+        selected = list(dict.fromkeys([code for code in selected[:max_details] if code in known] + sorted(cached)))
         details = []
-        for kapt_code in selected[:8]:
+        for kapt_code in selected:
             path = target / f"kapt_detail_{kapt_code}.json"
             if refresh or not path.exists() or _has_decoding_damage(path):
                 payload = fetch_complex_detail(client, kapt_code)
@@ -432,7 +439,7 @@ def collect_kapt(db: Any | None = None, raw_dir: str | Path | None = None, searc
     _write_csv(target / "kapt_jeonju_detail_candidates.csv", normalized_details)
     provenance = {
         "provider": "국토교통부 / 한국부동산원 K-apt", "collected_at": max(_file_time(path) for path in list_paths.values()).isoformat(),
-        "snapshot_query_month": search_month, "summary_rows": len(summaries), "detail_rows": len(details), "detail_codes": selected[:8],
+        "snapshot_query_month": search_month, "summary_rows": len(summaries), "detail_rows": len(details), "detail_codes": selected,
         "districts": JEONJU_DISTRICTS, "list_endpoint": KAPT_LIST_URL,
         "detail_endpoint_template": f"{KAPT_DETAIL_URL}?kaptCode={{kaptCode}}", "monthly_energy_endpoint": KAPT_ENERGY_URL,
         "monthly_energy_units": ENERGY_QUANTITY_UNITS, "monthly_energy_requires_registered_data_go_kr_key": True,
@@ -441,7 +448,7 @@ def collect_kapt(db: Any | None = None, raw_dir: str | Path | None = None, searc
     (target / "kapt_provenance.json").write_text(json.dumps(provenance, ensure_ascii=False, indent=2), encoding="utf-8")
     if db is not None:
         _register_kapt(db, target, summaries, details, search_month)
-    return {"summary_rows": len(summaries), "detail_rows": len(details), "raw_dir": str(target), "detail_codes": selected[:8]}
+    return {"summary_rows": len(summaries), "detail_rows": len(details), "raw_dir": str(target), "detail_codes": selected}
 
 
 def _number(value: Any, integer: bool = False) -> float | int | None:

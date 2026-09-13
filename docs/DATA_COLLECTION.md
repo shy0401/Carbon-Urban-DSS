@@ -32,3 +32,7 @@ docker compose exec api python -m app.cli enrich
 |ASOS 일자료|https://www.data.go.kr/data/15059093/openapi.do|개별 API 승인|자동 어댑터|
 
 포털에서 로그인·신청이 요구되는 다운로드는 자동 성공으로 표시하지 않는다.
+
+## 재설정 상세 안내
+
+인증키 신청, 원본 다운로드, 필수 필드와 현재 직접 수집 결과는 [DATA_SETUP_GUIDE.md](DATA_SETUP_GUIDE.md)를 확인하세요. K-apt 상세정보는 364개 단지로 확장했으며 부분 재수집 시 기존 상세자료를 보존합니다.

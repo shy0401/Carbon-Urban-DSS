@@ -65,7 +65,9 @@ def test_collect_kapt_uses_cached_raw_files_in_offline_mode(tmp_path, monkeypatc
     monkeypatch.setattr("app.kapt._client", lambda target: CachedClient(tmp_path / "cache", httpx.Client(transport=httpx.MockTransport(handler)), min_interval=0))
     result = collect_kapt(raw_dir=tmp_path)
     assert result["summary_rows"] == 364
-    assert result["detail_rows"] == 8
+    assert result["detail_rows"] == len(list(tmp_path.glob("kapt_detail_*.json")))
+    retained = collect_kapt(raw_dir=tmp_path, detail_codes=result['detail_codes'][:1])
+    assert retained['detail_rows'] == result['detail_rows']
     assert calls == []
 
 

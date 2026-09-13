@@ -30,7 +30,7 @@ if ($Action -eq 'Start') {
         @{username='prototype';password=$password} | ConvertTo-Json | Set-Content -LiteralPath $credentialFile -Encoding utf8
     }
     $credentials = Get-Content -Raw -LiteralPath $credentialFile | ConvertFrom-Json
-    if ($credentials.username -ne 'prototype' -or $credentials.password -notmatch '^[A-Za-z0-9_-]{32}$') { throw 'Invalid local credential file.' }
+    if ($credentials.username -ne 'prototype' -or $credentials.password -notmatch '^[A-Za-z0-9_-]{8,128}$') { throw 'Invalid local credential file.' }
     # Pass the password through stdin, never command arguments or logs.
     $hashCommand = 'import subprocess,sys; print(subprocess.check_output(["openssl","passwd","-6","-stdin"],input=sys.stdin.buffer.read().rstrip(b"\r\n")).decode().strip())'
     $hash = $credentials.password | & docker @composeArgs exec -T api python -c $hashCommand
@@ -42,6 +42,8 @@ if ($Action -eq 'Start') {
     $system = Invoke-RestMethod 'http://127.0.0.1:8000/api/system'
     if ($system.offline_mode) { throw 'DEMO_OFFLINE_MODE forces offline. Remove it from .env and recreate api/worker before starting public access.' }
     Invoke-Compose up -d --wait gateway
+    Invoke-Compose exec -T gateway nginx -t
+    Invoke-Compose exec -T gateway nginx -s reload
     Invoke-Compose up -d tunnel
 }
 

@@ -65,6 +65,8 @@ npm run build
 
 ## 계획서 기반 최신 보완
 
+지도 배경 타일의 출처 헤더 차단을 수정하고 타일 장애 시 분석 도형을 유지하도록 보완했습니다. K-apt 상세정보 364개 단지를 확보했으며, 추가 자료의 신청·설정 절차는 [데이터 재설정·수집 안내](docs/DATA_SETUP_GUIDE.md)를 확인하세요.
+
 무료 HTTPS 시연 배포를 추가했습니다. Docker Desktop 실행 후 `powershell -ExecutionPolicy Bypass -File scripts/prototype.ps1 Start`로 시작합니다. 현재 주소·비밀번호는 로컬 `.secrets/prototype-access.md`에 저장됩니다. PC가 켜진 동안 DB·수집 작업·로컬 AI까지 연결되며 접속에는 비밀번호가 필요합니다. [배포와 중지 방법](docs/DEPLOYMENT.md)을 확인하세요.
 
 2026-09-14 보완: 분석 범위 공유, 지도·모바일 UI, 동일 범위 계획안 비교, 한국어 보고서 저장·출력, 선택형 로컬 AI를 추가했습니다. [구현 결과와 남은 작업](docs/IMPLEMENTATION_UPDATE.md)에서 최신 검증과 실행법을 확인하세요. 웹 메뉴의 **검토 보고서**에서 사용할 수 있습니다.
