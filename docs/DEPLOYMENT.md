@@ -44,9 +44,12 @@ Node와 Playwright가 있는 환경에서:
 ```powershell
 node scripts/verify-gateway.cjs
 node scripts/e2e-public.cjs
+node scripts/verify-public-upload.cjs
 ```
 
 첫 명령은 미인증·오인증 거부, 정상 인증의 DB 연결, 교차 출처 쓰기 거부를 검사한다. 두 번째는 실제 공개 주소로 지도·시나리오·보고서·AI·기상 작업 큐·모바일을 검사하고 `data/deployment/checks.json`에 저장한다. 계정 정보는 출력하지 않는다.
+
+2026-09-14 실제 검증: 공개 gateway 8개, 공개 브라우저·API 10개 통과, 브라우저 실행 오류 0건, 기상 수집 작업 `SUCCESS`. 2MB 원본 미리보기 업로드도 통과했다. 업로드 테스트는 기존 경계 JSON에 공백을 덧붙여 전송 크기를 검사하며 정규화 자료로 가져오지 않는다. API의 25MiB 파일 제한을 유지하면서 두 Nginx 계층에 multipart 여유분을 포함한 26MiB 요청 제한을 적용했다. 배포 전 DB 백업은 로컬 `data/backups/carbon-before-public-2026-09-14.dump`에 보존했다.
 
 ## 무료 서비스 제한과 향후 전환
 

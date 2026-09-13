@@ -4,6 +4,7 @@
 data/offline.flag
 data/backups/
 data/deployment/
+data/uploads/
 .env.*
 !.env.example
 data/raw/

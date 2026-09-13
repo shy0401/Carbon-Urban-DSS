@@ -9,3 +9,5 @@ Updated 2026-09-14 Asia/Seoul. Latest user request: implement missing planned fe
 - Energy key remains invalid placeholder (HTTP403/code30). Never print credentials or retry unchanged key. User must replace locally and verify individual service approval.
 - Still needed: official energy/buildings/zoning/population; enterprise 100m carbon adapter; gas basis/GWP; expanded trained features; physical PV/green models; production authentication/migrations/performance.
 - Heartbeat remains paused to conserve usage. Do not reactivate without a new scheduling request.
+
+2026-09-14 deployment: user selected free PC-hosted prototype. Authenticated Cloudflare Quick Tunnel deployed; credentials only .secrets/prototype-access.md, current URL only data/deployment/public-url.txt. Public auth checks 8, functional checks 10, 2MB upload passed, worker weather SUCCESS. compose.demo.yaml preserves volumes, scripts/prototype.ps1 manages Start/Stop/Status. All services run on this PC; no always-on cloud server provisioned. Do not upload credentials, URL logs, uploads or DB backups. Energy-key blocker unchanged.

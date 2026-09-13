@@ -43,7 +43,7 @@ const out = path.resolve('data/deployment');
       if(completed&&!['PENDING','QUEUED','RUNNING','STARTED'].includes(completed.status)) break;
       await new Promise(resolve=>setTimeout(resolve,1000));
     }
-    assert.equal(completed?.status,'COMPLETED'); checks.push('public_collection_worker_completed');
+    assert.equal(completed?.status,'SUCCESS'); checks.push('public_collection_worker_completed');
     await page.setViewportSize({width:390,height:844}); await page.goto(base+'/reports'); await page.locator('.page-header').waitFor();
     assert(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1)); checks.push('public_mobile');
     assert.deepEqual(errors,[]);
