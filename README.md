@@ -58,6 +58,7 @@ npm run build
 
 ## 구현 안내
 
+- [현재 구현·미구현·API 키 연동 현황](docs/PROJECT_IMPLEMENTATION_STATUS.md)
 - [요구사항](docs/SRS.md), [구조](docs/ARCHITECTURE.md), [데이터 사전](docs/DATA_DICTIONARY.md)
 - [수집 및 수동 업로드](docs/DATA_COLLECTION.md), [후보 선정](docs/TESTBED_SELECTION.md)
 - [탄소 계산](docs/CARBON_METHOD.md), [모델 검증](docs/MODEL_VALIDATION.md), [시뮬레이션](docs/SIMULATION_METHOD.md)
