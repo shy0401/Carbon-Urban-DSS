@@ -22,18 +22,12 @@ if ($Action -eq 'Start') {
     Invoke-Compose up -d --build --wait postgres redis api worker frontend ollama
     New-Item -ItemType Directory -Force -Path '.secrets' | Out-Null
     $credentialFile = '.secrets/prototype-credentials.json'
-    if (!(Test-Path -LiteralPath $credentialFile)) {
-        $randomBytes = New-Object byte[] 24
-        $rng = [Security.Cryptography.RandomNumberGenerator]::Create()
-        try { $rng.GetBytes($randomBytes) } finally { $rng.Dispose() }
-        $password = [Convert]::ToBase64String($randomBytes).TrimEnd('=').Replace('+','-').Replace('/','_')
-        @{username='prototype';password=$password} | ConvertTo-Json | Set-Content -LiteralPath $credentialFile -Encoding utf8
-    }
+    # Deliberately fixed for the requested temporary capstone demonstration account.
+    @{username='prototype';password='prototype'} | ConvertTo-Json | Set-Content -LiteralPath $credentialFile -Encoding utf8
     $credentials = Get-Content -Raw -LiteralPath $credentialFile | ConvertFrom-Json
     if ($credentials.username -ne 'prototype' -or $credentials.password -notmatch '^[A-Za-z0-9_-]{8,128}$') { throw 'Invalid local credential file.' }
     # Pass the password through stdin, never command arguments or logs.
-    $hashCommand = 'import subprocess,sys; print(subprocess.check_output(["openssl","passwd","-6","-stdin"],input=sys.stdin.buffer.read().rstrip(b"\r\n")).decode().strip())'
-    $hash = $credentials.password | & docker @composeArgs exec -T api python -c $hashCommand
+    $hash = $credentials.password | & docker @composeArgs exec -T api sh -c "tr -d '\r\n' | openssl passwd -6 -stdin"
     if ($LASTEXITCODE -ne 0 -or $hash -notmatch '^\$6\$') { throw 'Password hash generation failed.' }
     'prototype:' + $hash.Trim() | Set-Content -LiteralPath '.secrets/gateway.htpasswd' -Encoding ascii
     & docker @composeArgs exec -T ollama ollama show qwen2.5:1.5b *> $null

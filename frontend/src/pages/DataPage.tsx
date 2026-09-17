@@ -10,6 +10,15 @@ import { asRows, formatDate, formatMetric, qualityTone } from '../lib/format';
 import type { CollectionJob, DataSource, SourceDetail } from '../types';
 
 type ListResponse<T> = T[] | { items?: T[]; data?: T[]; jobs?: T[]; sources?: T[] };
+const collectionDatasets = [
+  ['kapt_energy', 'K-apt 에너지', '단지별 월 사용량 · 먼저 1단지 1개월 검증'],
+  ['kma_asos', 'KMA ASOS', '전주 146 공식 일자료 · 완전한 월만 우선'],
+  ['sgis', 'SGIS 인구·가구', '행정구역 통계 · 500m 격자와 분리'],
+  ['vworld_zoning', 'VWorld 용도지역', '공식 LT_C_UQ111 레이어'],
+  ['vworld_cadastral', 'VWorld 연속지적', '공식 LP_PA_CBND_BUBUN 레이어'],
+  ['energy', '건축HUB 에너지', '지번별 전력·가스 사용량'],
+  ['weather', 'ERA5-Land 기상', '재분석 대체 자료'],
+] as const;
 
 export function DataPage() {
   const navigate = useNavigate();
@@ -19,7 +28,7 @@ export function DataPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | number | null>(null);
-  const [form, setForm] = useState({ datasets: ['energy', 'weather'], start_month: '2025-01', end_month: '2025-12' });
+  const [form, setForm] = useState({ datasets: ['kapt_energy'], start_month: '2025-01', end_month: '2025-12', scope: 'smoke' });
   useEffect(()=>setForm(old=>({...old,start_month:`${year}-01`,end_month:`${year}-12`})),[year]);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -70,11 +79,12 @@ export function DataPage() {
     <div className="data-layout">
       <form className="panel collection-form" onSubmit={submit}>
         <div className="panel-title"><div><span>NEW COLLECTION</span><h3>데이터 수집 요청</h3></div><CloudDownload size={20} /></div>
-        <fieldset><legend>데이터셋</legend>{[['energy', '에너지'], ['weather', '기상']].map(([value, label]) => <label className="dataset-check" key={value}><input type="checkbox" checked={form.datasets.includes(value)} onChange={(event) => setForm((old) => ({ ...old, datasets: event.target.checked ? [...old.datasets, value] : old.datasets.filter((item) => item !== value) }))} /><span><CheckCircle2 size={17} /><strong>{label}</strong><small>{value === 'energy' ? '공식 건축물 에너지 관측' : '기상 관측 및 대체 자료'}</small></span></label>)}</fieldset>
+        <fieldset><legend>데이터셋</legend>{collectionDatasets.map(([value, label, description]) => <label className="dataset-check" key={value}><input type="checkbox" checked={form.datasets.includes(value)} onChange={(event) => setForm((old) => ({ ...old, datasets: event.target.checked ? [...old.datasets, value] : old.datasets.filter((item) => item !== value) }))} /><span><CheckCircle2 size={17} /><strong>{label}</strong><small>{description}</small></span></label>)}</fieldset>
+        <label><span>수집 범위</span><select aria-label="수집 범위" value={form.scope} onChange={(event) => setForm((old) => ({ ...old, scope: event.target.value }))}><option value="smoke">SMOKE · 최소 1건 검증</option><option value="limited">LIMITED · 제한 범위</option><option value="full">FULL · 전체 범위</option></select></label>
         <div className="month-fields"><label><span>시작 월</span><input type="month" value={form.start_month} onChange={(event) => setForm((old) => ({ ...old, start_month: event.target.value }))} /></label><label><span>종료 월</span><input type="month" value={form.end_month} onChange={(event) => setForm((old) => ({ ...old, end_month: event.target.value }))} /></label></div>
         {formError && <p className="form-error"><AlertTriangle size={15} />{formError}</p>}
         <button className="button primary full" disabled={submitting}><CloudDownload size={16} />{submitting ? '요청 중…' : '수집 작업 시작'}</button>
-        <p className="form-caption">수집은 백그라운드에서 실행되며 아래 작업 이력이 자동 갱신됩니다.</p>
+        <p className="form-caption">수집은 백그라운드에서 실행됩니다. K-apt와 VWorld의 FULL은 같은 연도·출처의 SMOKE 성공 후에만 시작됩니다.</p>
       </form>
       <section className="panel jobs-panel"><div className="panel-title"><div><span>COLLECTION JOBS</span><h3>작업 이력</h3></div><CalendarDays size={20} /></div>
         {jobs.length ? <div className="job-list">{jobs.map((job) => <article key={job.id}><div className={`job-state ${qualityTone(job.status)}`}><span>{statusLabel(job.status)}</span><small>#{job.id}</small></div><div className="job-body"><strong>{job.dataset ?? job.datasets?.join(', ') ?? '데이터 수집'}</strong><small>{formatDate(job.updated_at ?? job.created_at)}</small>{job.message && <p>{job.message}</p>}{job.error && <p className="error-text">{job.error}</p>}{typeof job.progress === 'number' && <div className="progress"><span style={{ width: `${Math.max(0, Math.min(100, job.progress))}%` }} /></div>}</div></article>)}</div> : <EmptyState title="수집 작업 이력이 없습니다" />}

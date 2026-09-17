@@ -32,3 +32,21 @@ def test_failure_does_not_become_empty_success_and_is_cached(tmp_path):
         with pytest.raises(ExternalError,match='인증'):
             client.get('molit','electricity','https://example.org/api',{'serviceKey':'secret'})
     assert len(calls)==1
+
+def test_all_provider_credentials_are_removed_from_cached_metadata_and_body(tmp_path):
+    secrets={
+        'serviceKey':'public-data-secret',
+        'consumer_secret':'sgis-consumer-secret',
+        'accessToken':'sgis-access-token',
+        'key':'vworld-secret',
+    }
+    def send(request):
+        echoed='&'.join(f'{name}={value}' for name,value in secrets.items())
+        return httpx.Response(200,content=echoed.encode())
+    client=CachedClient(tmp_path,httpx.Client(transport=httpx.MockTransport(send)),min_interval=0)
+    result=client.get('provider','operation','https://example.org/api',{**secrets,'year':'2025'})
+    files=b'\n'.join(path.read_bytes() for path in tmp_path.rglob('*') if path.is_file())
+    for secret in secrets.values():
+        assert secret.encode() not in files
+        assert secret.encode() not in result['body']
+    assert result['params']=={'year':'2025'}

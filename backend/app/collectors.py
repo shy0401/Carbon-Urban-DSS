@@ -83,8 +83,18 @@ def collect_weather(db,start='2025-01',end='2025-12'):
     params=dict(latitude=35.8242,longitude=127.1480,start_date=start+'-01',end_date=end+f'-{last}',daily='temperature_2m_mean,temperature_2m_min,temperature_2m_max,precipitation_sum',timezone='Asia/Seoul',models='era5_land')
     result=downloaded(db,'weather',f'weather-{start[:4]}.json','https://archive-api.open-meteo.com/v1/archive',params) if start=='2025-01' and end=='2025-12' else client.get('weather','archive','https://archive-api.open-meteo.com/v1/archive',params)
     payload=json.loads(result['body']);rows=monthly_weather(payload)
+    from .kma_asos import WeatherMonthlyObservation,refresh_effective_weather
     for row in rows:
-        db.merge(WeatherMonthly(**row,provider='Open-Meteo / ERA5-Land',source_type='FALLBACK',latitude=payload.get('latitude',35.8242),longitude=payload.get('longitude',127.1480)))
+        db.merge(WeatherMonthlyObservation(
+            id=f"Open-Meteo / ERA5-Land:{row['use_ym']}",use_ym=row['use_ym'],station_id='ERA5-Land-grid',
+            provider='Open-Meteo / ERA5-Land',source_type='FALLBACK',
+            mean_temperature_c=row['mean_temperature'],min_temperature_c=row['min_temperature'],
+            max_temperature_c=row['max_temperature'],precipitation_sum_mm=row['precipitation'],
+            hdd=row['hdd'],cdd=row['cdd'],valid_day_count=row['days_observed'],expected_day_count=row['expected_days'],
+            completeness_ratio=row['days_observed']/row['expected_days'] if row['expected_days'] else 0,
+            official_asos_complete=False,
+        ))
+    db.flush();refresh_effective_weather(db,[row['use_ym'] for row in rows])
     record_asset(db,'weather',result,len(payload['daily']['time']),start+' ~ '+end)
     db.flush();count=db.scalar(select(func.count()).select_from(WeatherMonthly))
     allrows=db.scalars(select(WeatherMonthly)).all();missing=sum(max(r.expected_days-r.days_observed,0) for r in allrows)

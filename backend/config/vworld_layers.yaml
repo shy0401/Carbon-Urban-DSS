@@ -1,0 +1,14 @@
+zoning:
+  api_type: data
+  dataset_id: LT_C_UQ111
+  description: 도시지역 용도지역 세분 속성
+  source_crs: EPSG:5179
+  verified_reference: https://www.vworld.kr/dev/v4dv_2ddataguide2_s002.do?svcIde=uq111&apiVer=2
+  verified_at: 2026-09-18
+cadastral:
+  api_type: data
+  dataset_id: LP_PA_CBND_BUBUN
+  description: 연속지적도
+  source_crs: EPSG:5179
+  verified_reference: https://www.vworld.kr/dev/v4dv_2ddataguide2_s002.do
+  verified_at: 2026-09-18

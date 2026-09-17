@@ -3,6 +3,14 @@ import hashlib,json,time,os
 from pathlib import Path
 import httpx
 
+SECRET_PARAM_NAMES={
+    'servicekey','apikey','key','authkey','consumer_key','consumer_secret',
+    'accesstoken','access_token','token',
+}
+
+def _is_secret(name):
+    return str(name).replace('-','_').casefold() in SECRET_PARAM_NAMES
+
 class ExternalError(RuntimeError):
     def __init__(self,message,asset=None):
         super().__init__(message);self.asset=asset
@@ -15,14 +23,15 @@ class CachedClient:
 
     def get(self,provider,operation,url,params=None):
         params=params or {}
-        public={k:v for k,v in params.items() if k.lower() not in ('servicekey','apikey','key','authkey')}
+        public={k:v for k,v in params.items() if not _is_secret(k)}
         identity=dict(provider=provider,operation=operation,url=url,params=public)
         digest=hashlib.sha256(json.dumps(identity,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
         meta_path=self.root/(digest+'.json');body_path=self.root/(digest+'.body')
         # Error cache is tied to a non-reversible credential digest; replacing a key permits a fresh probe.
-        auth_hash=hashlib.sha256(str(params.get('serviceKey','')).encode()).hexdigest()
+        credential_fingerprint='|'.join(str(value) for key,value in sorted(params.items()) if _is_secret(key))
+        auth_hash=hashlib.sha256(credential_fingerprint.encode()).hexdigest()
         if meta_path.exists() and body_path.exists():
-            meta=json.loads(meta_path.read_text())
+            meta=json.loads(meta_path.read_text(encoding='utf-8'))
             if not meta.get('error') or (time.time()-meta['timestamp']<3600 and meta.get('auth_hash')==auth_hash):
                 result=dict(meta,body=body_path.read_bytes(),cached=True,path=str(body_path),id=digest)
                 if meta.get('error'): raise ExternalError(meta['error'],result)
@@ -37,7 +46,7 @@ class CachedClient:
                 response=self.client.get(url,params=params)
                 body=response.content
                 for k,v in params.items():
-                    if k.lower() in ('servicekey','apikey','key','authkey') and v:
+                    if _is_secret(k) and v:
                         body=body.replace(str(v).encode(),b'[REDACTED]')
                 status=response.status_code
                 error=None

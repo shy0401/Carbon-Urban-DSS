@@ -66,28 +66,5 @@ def collect_register(db,parcels=None):
     return count
 
 def collect_kma(db,year=2025):
-    sid='weather_kma'
-    if not db.get(DataSource,sid):
-        db.add(DataSource(id=sid,category='기타 수집 데이터',name='ASOS 전주146 일별 관측',organization='기상청',source_url='https://www.data.go.kr/data/15059093/openapi.do',status='NEEDS_API_APPROVAL',limitation='별도 ASOS 활용 승인 필요. 일별 자료가 완전한 월만 ERA5-Land 월 집계를 대체합니다.'));db.commit()
-    spec=official_spec('15059093','kma-asos');url=verified_operation(spec,'getWthrDataList')
-    key=unquote(os.getenv('DATA_GO_KR_SERVICE_KEY','').strip())
-    params=dict(serviceKey=key,dataType='JSON',dataCd='ASOS',dateCd='DAY',startDt=f'{year}0101',endDt=f'{year}1231',stnIds='146',numOfRows=1,pageNo=1)
-    try:
-        result=client.get('KMA','ASOS_daily',url,params);rows,total=parse_energy(result['body']);record_asset(db,sid,result,len(rows),str(year))
-        if total>1:
-            result=client.get('KMA','ASOS_daily',url,dict(params,numOfRows=999));rows,total=parse_energy(result['body']);record_asset(db,sid,result,len(rows),str(year))
-        def num(value):
-            try:return float(value) if value not in (None,'') else None
-            except ValueError:return None
-        daily={'time':[r['tm'] for r in rows]}
-        for output,field in [('temperature_2m_mean','avgTa'),('temperature_2m_min','minTa'),('temperature_2m_max','maxTa'),('precipitation_sum','sumRn')]:daily[output]=[num(r.get(field)) for r in rows]
-        normalized=monthly_weather({'daily':daily})
-        replaced=0
-        for row in normalized:
-            if row['days_observed']==row['expected_days'] and row['precipitation'] is not None:
-                db.merge(WeatherMonthly(**row,provider='KMA ASOS station146',source_type='OFFICIAL',latitude=35.84092,longitude=127.11718));replaced+=1
-        update_source(db,sid,len(rows),status='COLLECTED' if len(rows)>=365 else 'PARTIAL',quality=f'{replaced}개 완전한 월을 공식 관측으로 대체')
-        return replaced
-    except ExternalError as exc:
-        if exc.asset:record_asset(db,sid,exc.asset,0,str(year),'FAILED',str(exc))
-        s=db.get(DataSource,sid);s.status='NEEDS_API_APPROVAL' if '인증' in str(exc) else 'FAILED';s.quality=str(exc);db.commit();raise
+    from .kma_asos import collect_asos
+    return collect_asos(db,year,'full')['complete_months']

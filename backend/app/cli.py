@@ -8,7 +8,7 @@ from .catalog import seed_sources
 from .settings import DATA_DIR,DEFAULT_YEAR
 
 def init_tables():
-    from . import official,kapt
+    from . import official,kapt,kapt_energy,kma_asos,sgis,vworld
     try:from . import imports
     except ImportError:pass
     with engine.begin() as c:c.execute(text('CREATE EXTENSION IF NOT EXISTS postgis'))
@@ -16,6 +16,8 @@ def init_tables():
 
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('command',choices=['demo','online','status','enrich','collect','validate-models','snapshot']);parser.add_argument('--year',type=int,default=DEFAULT_YEAR)
+    parser.add_argument('--source',choices=['energy','weather','kapt-energy','kma','sgis','vworld-zoning','vworld-cadastral'])
+    parser.add_argument('--scope',choices=['smoke','limited','full'],default='smoke')
     args=parser.parse_args();init_tables()
     with Session() as db:
         seed_sources(db)
@@ -51,7 +53,9 @@ def main():
             print('Factors',collect_factors(db))
         elif args.command=='collect':
             from .tasks import queue_collection
-            job=queue_collection(db,['energy','weather'],f'{args.year}-01',f'{args.year}-12');print('job',job.id,job.status)
+            aliases={'kapt-energy':'kapt_energy','kma':'kma_asos','vworld-zoning':'vworld_zoning','vworld-cadastral':'vworld_cadastral'}
+            datasets=[aliases.get(args.source,args.source)] if args.source else ['energy','weather']
+            job=queue_collection(db,datasets,f'{args.year}-01',f'{args.year}-12',args.scope);print('job',job.id,job.status)
         elif args.command=='validate-models':
             from .model_service import model_status
             print(json.dumps(model_status(db,args.year,train=True),ensure_ascii=False,indent=2))

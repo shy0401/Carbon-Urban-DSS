@@ -17,7 +17,6 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
-from urllib.parse import unquote
 
 import httpx
 from pyproj import Transformer
@@ -256,7 +255,7 @@ def fetch_monthly_energy(
     ``request_month`` is YYYYMM. The function omits monetary fields even though
     the upstream response contains them.
     """
-    key = unquote((service_key or os.getenv("DATA_GO_KR_SERVICE_KEY", "")).strip())
+    key = (service_key or os.getenv("DATA_GO_KR_SERVICE_KEY", "")).strip()
     if not key:
         raise RuntimeError("K-apt monthly energy API requires DATA_GO_KR_SERVICE_KEY")
     session = client or _client()
@@ -275,8 +274,10 @@ def fetch_monthly_energy(
         if result_code not in {"00", "0"}:
             raise RuntimeError(f"K-apt monthly energy API rejected the request: resultCode={result_code}")
         body = payload.get("response", {}).get("body", {})
-        item_container = body.get("items") or {}
-        items = item_container.get("item", []) if isinstance(item_container, dict) else []
+        items = body.get("item")
+        if items is None:
+            item_container = body.get("items") or {}
+            items = item_container.get("item", []) if isinstance(item_container, dict) else []
         if isinstance(items, dict):
             items = [items]
     else:

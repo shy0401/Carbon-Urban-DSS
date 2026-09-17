@@ -13,7 +13,7 @@ from .service import serialize,dashboard,factors_for
 from .domain import scenario_calculation,month_range
 from .tasks import queue_collection
 from .settings import DEFAULT_YEAR,offline_mode
-from . import official,kapt
+from . import official,kapt,kapt_energy,kma_asos,sgis,vworld
 from .imports import router as uploads_router
 from .reporting import router as reports_router
 
@@ -23,6 +23,7 @@ async def lifespan(app):
     Base.metadata.create_all(engine)
     with Session() as db:
         seed_sources(db)
+        kma_asos.backfill_weather_observations(db)
         # Import durable real raw assets on first startup; subsequent boots reuse normalized data.
         for source,model,collector in [('regions',Region,collect_regions),('buildings',Building,collect_spatial),('weather',WeatherMonthly,collect_weather)]:
             if db.scalar(select(func.count()).select_from(model))==0:
@@ -63,7 +64,7 @@ def get_dashboard(year:int=Query(DEFAULT_YEAR,ge=2000,le=2100),grid_id:str|None=
 def sources(year:int=Query(DEFAULT_YEAR,ge=2000,le=2100)):
     with Session() as db:return dashboard(db,year=year)['sources']
 
-PREVIEW_MODELS={'energy':EnergyMonthly,'weather':WeatherMonthly,'buildings':Building,'regions':Region,'grid':Grid,'factors':EmissionFactor,'zoning':ZoningArea,'population':PopulationGrid}
+PREVIEW_MODELS={'energy':EnergyMonthly,'kapt_energy':kapt_energy.ApartmentEnergyMonthly,'weather':WeatherMonthly,'weather_kma':kma_asos.WeatherDailyObservation,'sgis_admin':sgis.SgisPopulationAdmin,'vworld_zoning':vworld.VworldZoningArea,'vworld_cadastral':vworld.CadastralParcel,'buildings':Building,'regions':Region,'grid':Grid,'factors':EmissionFactor,'zoning':ZoningArea,'population':PopulationGrid}
 
 def raw_preview(asset):
     try:
@@ -126,10 +127,11 @@ def source_detail(source_id:str):
         return dict(source=details,raw_preview=raw_preview(assets[0]) if assets else [],normalized_preview=preview,jobs=jobs,assets=asset_rows,errors=[a.error for a in assets if a.error]+[e for j in jobs for e in j['errors']],coverage={'period':source.reference_period,'geography':source.geographic_coverage,'raw_rows':source.raw_row_count,'normalized_rows':source.normalized_row_count,'missing':source.missing_count},fields=list(preview[0]) if preview else [],quality_scores=details.get('quality_scores'),license='ODbL' if source.source_type=='FALLBACK' and source_id in ('buildings','boundary') else '공급기관 원문 이용조건 참조',manual_import={'formats':['CSV','XLSX','GeoJSON','ZIP(SHP+SHX+DBF+PRJ)'],'upload_location':'수집 데이터 → 파일 업로드','source_url':source.source_url})
 
 class CollectionInput(BaseModel):
-    datasets:list[Literal['energy','weather']]=Field(min_length=1,max_length=2)
+    datasets:list[Literal['energy','weather','kapt_energy','kma_asos','sgis','vworld_zoning','vworld_cadastral']]=Field(min_length=1,max_length=7)
     start_month:str=Field(default='2025-01',pattern=r'^20\d{2}-(0[1-9]|1[0-2])$')
     end_month:str=Field(default='2025-12',pattern=r'^20\d{2}-(0[1-9]|1[0-2])$')
     region:str='전주시'
+    scope:Literal['smoke','limited','full']='smoke'
     @model_validator(mode='after')
     def validate_period(self):
         if self.region not in ('전주시','Jeonju','52110'):raise ValueError('현재 자동 수집 범위는 전주시입니다')
@@ -140,7 +142,7 @@ class CollectionInput(BaseModel):
 @app.post('/api/collections',status_code=202)
 def create_collection(request:CollectionInput):
     if offline_mode():raise HTTPException(409,'오프라인 모드에서는 외부 수집을 시작하지 않습니다')
-    with Session() as db:return serialize(queue_collection(db,request.datasets,request.start_month,request.end_month))
+    with Session() as db:return serialize(queue_collection(db,request.datasets,request.start_month,request.end_month,request.scope))
 
 @app.get('/api/collections')
 @app.get('/api/v1/collection-jobs')
@@ -155,14 +157,15 @@ def collection_detail(job_id:str):
         return serialize(job)
 
 class JobInput(BaseModel):
-    source:Literal['energy','weather']
+    source:Literal['energy','weather','kapt_energy','kma_asos','sgis','vworld_zoning','vworld_cadastral']
     start_month:str='2025-01'
     end_month:str='2025-12'
     region:str='전주시'
+    scope:Literal['smoke','limited','full']='smoke'
 
 @app.post('/api/v1/collection-jobs',status_code=202)
 def create_v1_job(request:JobInput):
-    try:validated=CollectionInput(datasets=[request.source],start_month=request.start_month,end_month=request.end_month,region=request.region)
+    try:validated=CollectionInput(datasets=[request.source],start_month=request.start_month,end_month=request.end_month,region=request.region,scope=request.scope)
     except ValueError:raise HTTPException(422,'수집 기간 또는 지역 형식이 올바르지 않습니다') from None
     return create_collection(validated)
 

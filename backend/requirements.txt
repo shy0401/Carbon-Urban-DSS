@@ -15,3 +15,4 @@ openpyxl==3.1.5
 xlrd==2.0.1
 python-multipart==0.0.20
 scikit-learn==1.6.1
+PyYAML==6.0.3

@@ -37,6 +37,11 @@ class CollectionJob(Base):
     created_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),default=now)
     finished_at:Mapped[datetime|None]=mapped_column(DateTime(timezone=True),nullable=True)
 
+class CollectionJobConfig(Base):
+    __tablename__='collection_job_configs'
+    job_id:Mapped[str]=mapped_column(ForeignKey('collection_jobs.id'),primary_key=True)
+    scope:Mapped[str]=mapped_column(String,default='limited')
+
 class RawDataAsset(Base):
     __tablename__='raw_data_assets'
     id:Mapped[str]=mapped_column(String,primary_key=True)

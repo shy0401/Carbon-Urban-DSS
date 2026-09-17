@@ -1,6 +1,6 @@
 # 데이터 재설정·수집 안내
 
-확인일: 2026-09-14. 기본 분석 범위는 전주시, 2025년 1~12월, EPSG:5179의 500m 격자다. 현재 관측이 없는 전력·가스·인구는 지도에서 ‘자료 없음’으로 표시한다. 배경지도 403과 데이터 미확보는 서로 다른 문제다.
+확인일: 2026-09-18. 기본 분석 범위는 전주시, 2025년 1~12월, EPSG:5179의 500m 격자다. 현재 관측이 없는 전력·가스·인구는 지도에서 ‘자료 없음’으로 표시한다. 배경지도 403과 데이터 미확보는 서로 다른 문제다.
 
 ## 이번에 직접 처리한 자료
 
@@ -13,9 +13,28 @@
 | 전력 배출계수 | GIR 원문과 증빙 재검증, **0.4541 kgCO₂eq/kWh** 1건 유지 | 2024 승인 소비단 계수를 2025 비교에 동일 적용하는 프로젝트 선택 |
 | 공간자료 | 기존 **916개 격자·2,171개 OSM 건물·행정경계** 보존 | 자체 생성 분석격자와 OSM 도형. 공식 지적·법정 용도지역을 대체하지 않음 |
 
-K-apt를 일부 단지만 다시 수집할 때 기존 상세정보가 지워지던 문제도 수정했다. 이미 받은 정상 원본은 재사용한다. 에너지키는 기존 미등록 상태이며 같은 키로 실패 요청을 반복하지 않았다. VWorld·SGIS 인증정보는 설정돼 있지 않다.
+K-apt를 일부 단지만 다시 수집할 때 기존 상세정보가 지워지던 문제도 수정했다. 이미 받은 정상 원본은 재사용한다. 현재 공공데이터포털 값은 K-apt와 KMA 실제 호출에서 오류 30/20으로 거부됐고, VWorld·SGIS 인증정보는 설정돼 있지 않다.
 
-## 1. 가장 먼저: 월별 전력·가스
+## 1. 가장 먼저: K-apt 월별 공동주택 에너지
+
+공식 자료: [K-apt 공동주택 에너지 사용정보](https://www.data.go.kr/data/15012964/openapi.do).
+
+1. 공공데이터포털에서 이 서비스를 별도로 활용신청하고 승인 상태를 확인한다.
+2. `.env`의 `DATA_GO_KR_SERVICE_KEY`에 포털의 일반 인증키를 설정한다. 사용하는 HTTP 클라이언트가 파라미터를 인코딩하므로 Decoding 키를 사용한다.
+3. API와 worker를 재생성하고 온라인 모드를 확인한다.
+4. 반드시 SMOKE 1단지×1개월을 먼저 실행한다. 성공하면 LIMITED 3단지×12개월, 그다음 FULL 364단지×12개월 순서로 확대한다.
+
+```powershell
+docker compose up -d --force-recreate api worker
+docker compose exec -T api python -m app.cli online
+docker compose exec -T api python -m app.cli collect --year 2025 --source kapt-energy --scope smoke
+docker compose exec -T api python -m app.cli collect --year 2025 --source kapt-energy --scope limited
+docker compose exec -T api python -m app.cli collect --year 2025 --source kapt-energy --scope full
+```
+
+수집기는 `serviceKey`, `kaptCode`, `reqDate`만 전송한다. 전기 `helect`는 kWh, 가스 `hgas`는 m³, 난방 `hheat`는 Mcal, 급탕 `hwaterHot`은 tonne, 수도 `hwaterCool`은 m³로 각각 저장하며 비용 필드와 혼합하지 않는다. 전기만 검증된 0.4541 kgCO₂eq/kWh 계수에 연결한다. FULL 최초 상한은 약 4,368회지만 성공 월은 재호출하지 않으므로 SMOKE/LIMITED 성공분을 건너뛴다.
+
+## 2. 건축HUB 월별 전력·가스
 
 공식 자료: [국토교통부 건축HUB 건물에너지정보](https://www.data.go.kr/data/15135963/openapi.do).
 
@@ -37,7 +56,7 @@ docker compose exec -T api python -m app.cli online
 
 인증 오류 30은 키 미등록, 20은 권한·키 관련 오류를 확인해야 한다. 같은 포털키여도 해당 서비스 활용신청이 필요하다. 오류 22/23이면 요청 한도를 확인한다. 승인 상태와 최신 에러 설명은 서비스 상세 페이지를 기준으로 확인한다.
 
-## 2. 공식 건축물대장
+## 3. 공식 건축물대장
 
 공식 자료: [건축HUB 건축물대장정보](https://www.data.go.kr/data/15134735/openapi.do).
 
@@ -51,18 +70,28 @@ docker compose exec -T api python -m app.cli enrich --year 2025
 
 현재 어댑터는 후보 범위를 제한해서 수집한다. 법정 허용 용적률·건폐율은 현재 건물의 실적 용적률·건폐율과 다른 자료다. 지적·용도지역·관련 조례의 검토 없이 인허가 가능 여부를 계산하지 않는다.
 
-## 3. 공식 기상 관측
+## 4. 공식 기상 관측
 
 공식 자료: [ASOS 일자료 API](https://www.data.go.kr/data/15059093/openapi.do), [기상자료개방포털 다운로드](https://data.kma.go.kr/data/grnd/selectAsosRltmList.do?pgmNo=36).
 
-- API 경로: ASOS 서비스를 별도 활용신청하고 승인 후 위 `enrich --year 2025` 실행.
+- API 경로: ASOS 서비스를 별도 활용신청하고 승인 후 `docker compose exec -T api python -m app.cli collect --year 2025 --source kma --scope smoke`로 1월을 확인하고, 성공 시 `--scope full`로 확대한다.
 - 파일 경로: 기상자료개방포털 로그인 → 지상관측 → 종관기상관측(ASOS) → **일자료**, 지점 **전주 146**, 기간 **2025-01-01 ~ 2025-12-31** → CSV 다운로드. 메뉴와 선택 가능한 기간은 포털 현행 화면에 따른다.
 - 필요한 열: 날짜 `tm`, 평균·최저·최고기온 `avgTa/minTa/maxTa`, 일강수량 `sumRn`, 지점번호. 2025년 365일 확보 여부와 결측·품질 표식을 함께 확인한다.
-- API 어댑터는 완전한 월만 공식 관측으로 대체한다. 파일 CSV를 현재 일반 업로드에 넣는 KMA 전용 경로는 없으므로 원본을 보관하고 별도 변환·검증해야 한다. 현재 ERA5 자료는 사용할 수 있다.
+- API 어댑터는 습도·일조·일사·풍속도 별도 필드로 보존하고 완전한 월만 공식 관측으로 우선한다. ERA5-Land 원본과 월자료는 삭제하지 않는다. 파일 CSV를 현재 일반 업로드에 넣는 KMA 전용 경로는 없으므로 API 사용이 불가능하면 원본을 보관하고 별도 변환·검증해야 한다.
 
-## 4. 공식 500m 인구·가구와 격자 경계
+## 5. SGIS 행정통계와 공식 500m 격자
 
 공식 자료: [SGIS 자료제공](https://sgis.kostat.go.kr/view/pss/openDataIntrcn).
+
+행정구역 인구·가구 API는 구현되어 있다. SGIS 개발자 사이트에서 consumer key/secret을 발급받아 `.env`의 `SGIS_CONSUMER_KEY`, `SGIS_CONSUMER_SECRET`에 넣는다. 문서에서 확인된 제공연도에 맞춰 `SGIS_BASE_YEAR`를 설정하며 기본값은 2020이다. 토큰은 만료 전까지 메모리/Redis에서 재사용하고 DB·원본 메타데이터에 기록하지 않는다.
+
+```powershell
+docker compose up -d --force-recreate api worker
+docker compose exec -T api python -m app.cli collect --year 2020 --source sgis --scope smoke
+docker compose exec -T api python -m app.cli collect --year 2020 --source sgis --scope limited
+```
+
+API 결과는 행정구역 통계이므로 500m 격자로 임의 분배하지 않는다. 공식 500m 자료는 다음 절차로 별도 확보한다.
 
 1. SGIS 로그인 → **자료제공 → 자료신청**에서 소지역 통계·격자통계 항목을 확인한다.
 2. 지역은 전북특별자치도 전주시, 격자 크기는 **500m**, 자료는 **인구·가구와 동일 기준 격자 경계·코드집**을 신청한다.
@@ -72,11 +101,23 @@ docker compose exec -T api python -m app.cli enrich --year 2025
 
 공식 격자와 현재 자체 500m 격자는 ID나 원점이 같다고 가정할 수 없다. 같은 경계끼리 ID 대응을 확인하거나 공간 중첩 규칙을 검증해야 한다. SGIS 공개 자료에는 비밀보호 처리가 있을 수 있으므로 숫자 0과 결측·비공개를 임의로 통합하지 않는다. 일반 API의 행정동 인구만으로 500m 인구를 임의 분배하지 않는다.
 
-현재 일반 업로드는 경계·인구의 검증과 정규화를 지원하지만 VWorld/SGIS 자격정보를 넣는 것만으로 전체 수집·지도 지표 연결이 자동 완성되는 것은 아니다. 실제 원본에 맞춘 통합 검증이 남아 있다.
+현재 일반 업로드는 경계·인구의 검증과 정규화를 지원한다. 공식 격자 ID와 현재 자체 격자의 대응은 실제 경계 중첩으로 검증해야 한다.
 
-## 5. 용도지역·지적·공식 건물 도형
+## 6. VWorld 용도지역·지적과 공식 건물 도형
 
-공식 진입점: [VWorld](https://www.vworld.kr/). 이번 환경에서는 일부 개발자 안내 페이지를 직접 열지 못해 세부 메뉴명은 현행 포털에서 확인해야 한다.
+공식 진입점: [VWorld](https://www.vworld.kr/), [2D Data API 안내](https://www.vworld.kr/dev/v4dv_2ddataguide2_s001.do).
+
+API 수집기는 용도지역 `LT_C_UQ111`과 연속지적 `LP_PA_CBND_BUBUN`을 설정 파일에서 사용한다. VWorld 키와 등록 도메인을 `.env`의 `VWORLD_API_KEY`, `VWORLD_DOMAIN`에 설정한다. 한 분석격자에서 SMOKE를 성공한 뒤 FULL을 실행한다.
+
+```powershell
+docker compose up -d --force-recreate api worker
+docker compose exec -T api python -m app.cli collect --source vworld-zoning --scope smoke
+docker compose exec -T api python -m app.cli collect --source vworld-cadastral --scope smoke
+docker compose exec -T api python -m app.cli collect --source vworld-zoning --scope full
+docker compose exec -T api python -m app.cli collect --source vworld-cadastral --scope full
+```
+
+수집기는 분석격자별 2km² 이하 bbox, 페이지네이션, geometry 검증·보정, EPSG:5179 저장과 격자별 다중 용도지역 교차를 처리한다. 키 등록 도메인이 Quick Tunnel의 임시 URL과 다르면 VWorld 요청이 거부될 수 있으므로 발급 화면의 등록값과 `VWORLD_DOMAIN`을 같게 유지한다.
 
 포털 로그인 후 데이터 다운로드에서 **연속주제도(국토계획 용도지역·용도지구)**, **연속지적도**, **GIS 건물통합정보**를 검색하고 전주시 범위의 원본을 신청·다운로드한다. API를 이용한다면 개발자 인증키와 등록 서비스 URL 조건을 확인한다. 임시 시연 도메인은 바뀔 수 있어 키의 도메인 제한도 함께 확인해야 한다.
 
@@ -89,7 +130,7 @@ docker compose exec -T api python -m app.cli enrich --year 2025
 
 다운로드한 SHP는 구성파일을 묶은 ZIP으로 보관한다. 좌표계가 EPSG:5179와 다르면 원본 CRS를 정확히 지정하고 변환한다. 파일을 확보하면 사이트 **수집 데이터 → 파일 업로드 → 용도지역/건축물/격자 → 미리보기 → 필드 매핑**으로 검증한다. 출처 URL·기준기간·기관명을 함께 기록한다. 등록만으로 법적 적합성을 판정하지 않는다.
 
-## 6. 가스 배출계수와 기업 탄소격자
+## 7. 가스 배출계수와 기업 탄소격자
 
 전력 근거: [GIR 국가 온실가스 배출계수](https://www.gir.go.kr/home/board/read.do?boardId=82&boardMasterId=2&menuId=36).
 

@@ -51,6 +51,14 @@ def test_monthly_energy_xml_fallback():
     assert rows[0]["hgas"] is None
 
 
+def test_monthly_energy_accepts_official_direct_item_and_preserves_key_encoding():
+    body = json.dumps({"response": {"header": {"resultCode": "00"}, "body": {"item": {"kaptCode": "A1", "reqDate": "202501", "helect": "10"}}}}).encode()
+    cache = StubCache(body)
+    rows = fetch_monthly_energy("A1", "202501", "abc%2Bdef", cache)
+    assert rows[0]["helect"] == "10"
+    assert cache.params["serviceKey"] == "abc%2Bdef"
+
+
 def test_collect_kapt_uses_cached_raw_files_in_offline_mode(tmp_path, monkeypatch):
     source = Path(__file__).parents[2] / "data" / "raw" / "research"
     for path in list(source.glob("kapt_jeonju_*_202512.json")) + list(source.glob("kapt_detail_*.json")):
