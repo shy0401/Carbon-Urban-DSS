@@ -44,8 +44,17 @@ try {
     $url = (Get-Content -Raw -LiteralPath $urlFile).Trim()
     $credentials = Get-Content -Raw -LiteralPath $credentialFile | ConvertFrom-Json
     $token = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("$($credentials.username):$($credentials.password)"))
-    $health = Invoke-RestMethod -Uri "$url/api/health" -Headers @{Authorization = "Basic $token"} -TimeoutSec 30
-    if ($health.status -ne 'ok') { throw '외부 HTTPS 상태 점검에 실패했습니다.' }
+    $healthy = $false
+    for ($attempt = 0; $attempt -lt 10; $attempt++) {
+        try {
+            $health = Invoke-RestMethod -Uri "$url/api/health" -Headers @{Authorization = "Basic $token"} -TimeoutSec 15
+            if ($health.status -eq 'ok') { $healthy = $true; break }
+        }
+        catch {
+            Start-Sleep -Seconds 2
+        }
+    }
+    if (!$healthy) { throw '외부 HTTPS 상태 점검에 실패했습니다.' }
 
     Write-Host ''
     Write-Host 'Carbon Urban DSS 외부 테스트 서버가 준비되었습니다.' -ForegroundColor Green

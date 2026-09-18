@@ -8,7 +8,19 @@
 
 ## 실행
 
-Docker Desktop이 실행된 Windows에서 프로젝트 루트 기준:
+가장 간단한 실행 방법은 바탕화면의 `Carbon Urban DSS 서버 실행.cmd`를 더블클릭하는 것이다. 저장소 안에서는 다음 명령과 같다.
+
+```powershell
+scripts\start-prototype.cmd
+```
+
+새 PC나 저장소 위치를 옮긴 뒤에는 바탕화면 실행기를 다시 만든다.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/install-desktop-launcher.ps1
+```
+
+실행기는 Docker Desktop이 꺼져 있으면 직접 시작하고, 엔진을 기다린 뒤 전체 서비스·로컬 LLM·외부 터널을 준비하고 외부 상태를 확인해 브라우저를 연다. Docker Desktop이 이미 실행된 Windows에서는 프로젝트 루트에서 세부 명령을 직접 사용할 수도 있다.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/prototype.ps1 Start
@@ -16,7 +28,7 @@ powershell -ExecutionPolicy Bypass -File scripts/prototype.ps1 Status
 powershell -ExecutionPolicy Bypass -File scripts/prototype.ps1 Stop
 ```
 
-`Start`는 컨테이너를 준비하고, 무작위 접속 비밀번호를 생성하고, 로컬 AI 모델을 확인한 뒤 온라인 모드를 켜고 터널을 실행한다. 모델이 없으면 최초 다운로드 약 1GB가 필요하다. `Stop`은 공개 접속용 gateway/tunnel만 멈추며 운영 DB와 로컬 사이트를 보존한다. 기존 API 서비스키를 새 파일로 덮어쓰지 않는다.
+`Start`는 컨테이너를 준비하고, 요청된 시연 계정 `prototype / prototype`의 로컬 인증 파일을 생성하고, 로컬 AI 모델을 확인한 뒤 온라인 모드를 켜고 터널을 실행한다. 모델이 없으면 최초 다운로드 약 1GB가 필요하다. `Stop`은 공개 접속용 gateway/tunnel만 멈추며 운영 DB와 로컬 사이트를 보존한다. 기존 API 서비스키를 새 파일로 덮어쓰지 않는다.
 
 - 주소: `data/deployment/public-url.txt`
 - 접속 계정·비밀번호: `.secrets/prototype-access.md`
@@ -29,7 +41,15 @@ powershell -ExecutionPolicy Bypass -File scripts/prototype.ps1 Stop
 
 기존 named volume과 `data/`를 그대로 사용한다. `docker compose down -v`를 실행하지 않는다. GitHub 저장소만 새로 복제하면 기존 DB·원본·키·AI 모델이 함께 복제되는 것은 아니다. 새로운 PC는 승인된 원본의 이전 또는 재수집이 필요하다.
 
-`.env`, `.secrets`, 백업, 실제 배포 결과는 GitHub에 올리지 않는다. 최초 비밀번호는 무작위로 생성하며 사용자가 정한 8~128자 영문·숫자·하이픈·밑줄 비밀번호도 로컬 설정으로 유지할 수 있다. 인증 파일은 SHA-512 crypt 해시이며 실제 값은 로컬 인계 파일에만 기록한다. 공개 요청의 인증 헤더는 내부 애플리케이션으로 전달하지 않는다. 교차 출처 브라우저 쓰기 요청을 거부한다. 접속 계정은 시연용 공용 계정이며 개인별 권한·감사 시스템은 아니다.
+`.env`, `.secrets`, 백업, 실제 배포 결과는 GitHub에 올리지 않는다. 현재 `prototype / prototype`은 사용자가 요청한 공개 시연용 공용 계정이며 민감 자료를 올리는 운영 계정으로 사용하지 않는다. 인증 파일은 SHA-512 crypt 해시이며 실제 값은 로컬 인계 파일에만 기록한다. 공개 요청의 인증 헤더는 내부 애플리케이션으로 전달하지 않는다. 교차 출처 브라우저 쓰기 요청을 거부한다. 개인별 권한·감사 시스템은 고정 운영 배포 전에 추가해야 한다.
+
+## 로컬 LLM만 준비하기
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/setup-local-llm.ps1
+```
+
+이 명령은 Ollama 컨테이너와 `qwen2.5:1.5b`를 준비하고 실제 설치 상태를 확인한다. 모델은 Docker 내부 네트워크에서만 접근하며 검증된 보고서 근거 선택과 한국어 요약에만 사용한다. 탄소 수치 계산, 새 사실 생성, 법적 판단은 계산 엔진과 검증 규칙의 영역이다.
 
 OSM 배경지도에는 실제 출처 헤더가 필요하다. gateway와 로컬 웹은 `Referrer-Policy: strict-origin-when-cross-origin`을 사용한다. 이를 `same-origin`/`no-referrer`로 바꾸면 외부 지도 타일이 403 또는 차단 이미지로 응답할 수 있다. 출처 표시는 지도 아래 항상 유지한다. 배경지도 토글과 장애 대체는 수집 모드와 독립적이다.
 
@@ -52,6 +72,8 @@ node scripts/verify-public-upload.cjs
 첫 명령은 미인증·오인증 거부, 정상 인증의 DB 연결, 교차 출처 쓰기 거부를 검사한다. 두 번째는 실제 공개 주소로 지도·시나리오·보고서·AI·기상 작업 큐·모바일을 검사하고 `data/deployment/checks.json`에 저장한다. 계정 정보는 출력하지 않는다.
 
 2026-09-14 실제 검증: 공개 gateway 8개, 공개 브라우저·API 10개 통과, 브라우저 실행 오류 0건, 기상 수집 작업 `SUCCESS`. 2MB 원본 미리보기 업로드도 통과했다. 업로드 테스트는 기존 경계 JSON에 공백을 덧붙여 전송 크기를 검사하며 정규화 자료로 가져오지 않는다. API의 25MiB 파일 제한을 유지하면서 두 Nginx 계층에 multipart 여유분을 포함한 26MiB 요청 제한을 적용했다. 배포 전 DB 백업은 로컬 `data/backups/carbon-before-public-2026-09-14.dump`에 보존했다.
+
+2026-09-18 원클릭 실행기 설치 후 다시 검증했다. 외부 HTTPS 상태 응답, gateway 8개 보안 흐름, 공개 브라우저·API 10개 흐름과 기상 수집 작업 `SUCCESS`가 통과했고 브라우저 실행 오류는 0건이었다.
 
 ## 무료 서비스 제한과 향후 전환
 

@@ -14,6 +14,12 @@ docker compose up --build -d
 - API 문서: [http://localhost:8000/docs](http://localhost:8000/docs)
 - 상태: [http://localhost:8000/api/health](http://localhost:8000/api/health)
 
+외부 시연까지 한 번에 시작하려면 바탕화면의 **Carbon Urban DSS 서버 실행.cmd** 또는 다음 파일을 실행합니다. Docker Desktop이 꺼져 있어도 실행기가 시작·대기하고, 로컬 LLM과 외부 HTTPS 주소까지 검사한 뒤 브라우저를 엽니다.
+
+```powershell
+scripts\start-prototype.cmd
+```
+
 첫 실행은 로컬 `data/raw`를 정규화합니다. 파일이 없으면 사용 가능한 공개 소스를 수집하며, 필요한 인증이 없으면 해당 소스의 실패만 기록합니다. 공공데이터 서비스키는 **백엔드 환경변수 `DATA_GO_KR_SERVICE_KEY`**에만 둡니다. `.env`를 Git이나 채팅에 공유하지 마세요.
 
 키를 변경했다면 다음 명령으로 API·worker의 환경을 갱신한 뒤 수집 데이터 화면에서 다시 수집합니다.
@@ -58,6 +64,7 @@ npm run build
 
 ## 구현 안내
 
+- [운영 준비 및 최종 Goal 로드맵](docs/FINAL_GOAL_ROADMAP_2026-09-18.md)
 - [현재 구현·미구현·API 키 연동 현황](docs/PROJECT_IMPLEMENTATION_STATUS.md)
 - [요구사항](docs/SRS.md), [구조](docs/ARCHITECTURE.md), [데이터 사전](docs/DATA_DICTIONARY.md)
 - [수집 및 수동 업로드](docs/DATA_COLLECTION.md), [후보 선정](docs/TESTBED_SELECTION.md)

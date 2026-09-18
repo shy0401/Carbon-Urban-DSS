@@ -4,9 +4,9 @@
 
 | 검증 | 최종 결과 |
 |---|---|
-| Python 단위·GIS·PostGIS API·업로드·모델·외부 수집·캐시 | 78 통과, 0 실패 |
+| Python 단위·GIS·PostGIS API·업로드·모델·외부 수집·캐시 | 81 통과, 0 실패 |
 | React/Vitest | 11파일, 19 통과, 0 실패 |
-| Chromium E2E | 9 검증 통과, pageerror 0 |
+| Chromium E2E | 10 검증 통과, pageerror 0 |
 | TypeScript/Vite 운영 빌드 | 성공 |
 | npm 보안 검사 | 검사 시점 알려진 취약점 0 |
 | 별도 신규 DB/Redis 볼륨 초기화 | 보존 실데이터 복원 성공 |
@@ -51,4 +51,4 @@ docker compose -p carbon-urban-dss-validation -f compose.yaml -f compose.validat
 
 최신 보완 내역과 미구현 항목은 [IMPLEMENTATION_UPDATE.md](IMPLEMENTATION_UPDATE.md)를 따른다. 이번 결과는 백엔드 63개, 프런트엔드 17개, 기존 E2E 9개와 보완 E2E 9개 통과이며 브라우저 실행 오류는 0건이다. 실제 로컬 Qwen 모델의 근거 선정 및 원문 검증도 통과했다. 이전 날짜의 신규 DB 복원 결과와 구분한다.
 
-추가 E2E: `node scripts/e2e-refined.cjs`. 기본 웹 주소는 127.0.0.1:5173이며 결과는 `data/validation/refined/`에 저장한다. 보고서의 비교·다운로드·인쇄, 모바일 및 오류 상태를 포함한다. 실제 에너지 관측·탄소 감축·예측 성능 검증은 자료 확보 후 수행해야 한다.
+추가 E2E: `node scripts/e2e-refined.cjs`. 기본 웹 주소는 127.0.0.1:5173이며 결과는 `data/validation/refined/`에 저장한다. 보고서의 비교·다운로드·인쇄, 데이터 준비 계보·로컬 AI 표시, 모바일 및 오류 상태를 포함한다. 실제 에너지 관측·탄소 감축·예측 성능 검증은 자료 확보 후 수행해야 한다.
