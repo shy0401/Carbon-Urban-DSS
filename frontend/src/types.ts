@@ -99,6 +99,46 @@ export interface CollectionJob {
   error?: string | null;
 }
 
+export interface ReadinessSource {
+  id: string;
+  name: string;
+  organization: string | null;
+  source_url: string | null;
+  status: string;
+  state: string;
+  acquisition: string;
+  collection_dataset: string | null;
+  collectable_now: boolean;
+  credentials: Array<{ name: string; configured: boolean }>;
+  scopes: Record<string, string>;
+  products: string[];
+  uses: string[];
+  raw_rows: number | null;
+  normalized_rows: number | null;
+  reference_period?: string | null;
+  limitation?: string | null;
+  blocker?: string | null;
+}
+
+export interface ReadinessData {
+  generated_at: string;
+  offline_mode: boolean;
+  summary: { total_sources: number; collectable_now: number; states: Record<string, number> };
+  pipeline: Array<{ id: string; label: string; value: number; detail: string }>;
+  sources: ReadinessSource[];
+  truth_rules: string[];
+}
+
+export interface LocalEngineStatus {
+  status: string;
+  model: string | null;
+  provider: string;
+  privacy: string;
+  allowed_tasks: string[];
+  prohibited_tasks: string;
+  setup?: string;
+}
+
 export interface ScenarioInput {
   site_area: number;
   building_count: number;

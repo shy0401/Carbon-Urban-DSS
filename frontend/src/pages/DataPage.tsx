@@ -1,4 +1,4 @@
-import { AlertTriangle, CalendarDays, CheckCircle2, ChevronRight, CloudDownload, Database, ExternalLink, FileUp, RefreshCw, X } from 'lucide-react';
+import { AlertTriangle, ArrowRight, BrainCircuit, Calculator, CalendarDays, CheckCircle2, ChevronRight, CloudDownload, Database, ExternalLink, FileArchive, FileText, FileUp, KeyRound, Map, RefreshCw, ShieldCheck, X } from 'lucide-react';
 import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PageHeader } from '../components/PageHeader';
@@ -7,7 +7,7 @@ import { EmptyState, ErrorState, LoadingState } from '../components/Status';
 import { useAnalysisScope } from '../hooks/useAnalysisScope';
 import { api } from '../lib/api';
 import { asRows, formatDate, formatMetric, qualityTone } from '../lib/format';
-import type { CollectionJob, DataSource, SourceDetail } from '../types';
+import type { CollectionJob, DataSource, LocalEngineStatus, ReadinessData, ReadinessSource, SourceDetail } from '../types';
 
 type ListResponse<T> = T[] | { items?: T[]; data?: T[]; jobs?: T[]; sources?: T[] };
 const collectionDatasets = [
@@ -25,6 +25,8 @@ export function DataPage() {
   const {year}=useAnalysisScope();
   const [sources, setSources] = useState<DataSource[]>([]);
   const [jobs, setJobs] = useState<CollectionJob[]>([]);
+  const [readiness, setReadiness] = useState<ReadinessData | null>(null);
+  const [engine, setEngine] = useState<LocalEngineStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | number | null>(null);
@@ -40,10 +42,12 @@ export function DataPage() {
     requestRef.current = request;
     if (!quiet) setLoading(true);
     try {
-      const [sourceResponse, jobResponse] = await Promise.all([api<ListResponse<DataSource>>(`/sources?year=${year}`, {signal: request.signal}), api<ListResponse<CollectionJob>>('/collections', {signal: request.signal})]);
+      const [sourceResponse, jobResponse, readinessResponse, engineResponse] = await Promise.all([api<ListResponse<DataSource>>(`/sources?year=${year}`, {signal: request.signal}), api<ListResponse<CollectionJob>>('/collections', {signal: request.signal}), api<ReadinessData>('/readiness', {signal: request.signal}), api<LocalEngineStatus>('/reports/engine', {signal: request.signal})]);
       if (request.signal.aborted) return;
       setSources(listFrom(sourceResponse, 'sources'));
       setJobs(listFrom(jobResponse, 'jobs'));
+      setReadiness(readinessResponse);
+      setEngine(engineResponse);
       setError(null);
     } catch (reason) { if (!request.signal.aborted && !quiet) setError(reason instanceof Error ? reason.message : '데이터를 불러오지 못했습니다.'); }
     finally { if (!request.signal.aborted && !quiet) setLoading(false); }
@@ -76,6 +80,8 @@ export function DataPage() {
     <PageHeader eyebrow="DATA OPERATIONS" title="수집 데이터" description="공식·대체 출처의 수집 범위와 원본에서 정규화까지의 이력을 확인합니다." action={<button className="button secondary" onClick={() => void load()}><RefreshCw size={15} />새로고침</button>} />
     <p className="panel-description"><a href="https://github.com/shy0401/Carbon-Urban-DSS/blob/main/docs/DATA_SETUP_GUIDE.md" target="_blank" rel="noopener noreferrer">자료별 인증키 신청 · 다운로드 · 필드 매핑 안내</a></p>
     <section className="data-summary">{sourceSummary.map(([label, value, tone]) => <article className={tone} key={label}><span>{label}</span><strong>{value}</strong></article>)}<article><span>마지막 수집</span><strong>{latestCollection(sources)}</strong></article></section>
+    {readiness && <ReadinessOverview data={readiness} />}
+    {engine && <LocalAiFlow engine={engine} />}
     <div className="data-layout">
       <form className="panel collection-form" onSubmit={submit}>
         <div className="panel-title"><div><span>NEW COLLECTION</span><h3>데이터 수집 요청</h3></div><CloudDownload size={20} /></div>
@@ -96,6 +102,56 @@ export function DataPage() {
     <ManualUpload onImported={() => void load(true)} />
     {selected !== null && <SourceModal sourceId={selected} onClose={() => setSelected(null)} />}
   </div>;
+}
+
+function ReadinessOverview({ data }: { data: ReadinessData }) {
+  const summary = [
+    ['수집·연결 완료', (data.summary.states.COLLECTED ?? 0) + (data.summary.states.PARTIAL ?? 0), 'good'],
+    ['지금 자동 실행 가능', data.summary.collectable_now, 'good'],
+    ['키·승인·오류 확인', (data.summary.states.CREDENTIAL_REQUIRED ?? 0) + (data.summary.states.APPROVAL_OR_FIX_REQUIRED ?? 0), 'warn'],
+    ['공식 파일 직접 필요', data.summary.states.MANUAL_REQUIRED ?? 0, 'manual'],
+  ] as const;
+  return <>
+    <section className="panel readiness-panel">
+      <div className="panel-title"><div><span>DATA READINESS</span><h3>현재 수집 가능성과 차단 요인</h3></div><ShieldCheck size={21} /></div>
+      <div className="readiness-summary">{summary.map(([label, value, tone]) => <article className={tone} key={label}><strong>{value}</strong><span>{label}</span></article>)}</div>
+      <div className="truth-rules">{data.truth_rules.map((rule) => <span key={rule}><CheckCircle2 size={14} />{rule}</span>)}</div>
+    </section>
+    <section className="panel pipeline-panel">
+      <div className="panel-title"><div><span>DATA LINEAGE</span><h3>데이터가 의사결정으로 연결되는 과정</h3></div><Database size={21} /></div>
+      <div className="pipeline-flow">{data.pipeline.map((step, index) => <div className="pipeline-segment" key={step.id}><article><span>{String(index + 1).padStart(2, '0')}</span><strong>{step.label}</strong><b>{formatMetric(step.value, step.id === 'spatial' || step.id === 'analyze' ? '행' : '건')}</b><small>{step.detail}</small></article>{index < data.pipeline.length - 1 && <ArrowRight aria-hidden="true" size={18} />}</div>)}</div>
+    </section>
+    <section className="panel readiness-catalog">
+      <div className="panel-title"><div><span>SOURCE TO USE</span><h3>수집 정보와 실제 활용처</h3></div><Map size={21} /></div>
+      <div className="readiness-source-grid">{data.sources.map((source) => <ReadinessCard key={source.id} source={source} />)}</div>
+    </section>
+  </>;
+}
+
+function ReadinessCard({ source }: { source: ReadinessSource }) {
+  const tone = readinessTone(source.state);
+  return <article className={`readiness-source ${tone}`}>
+    <header><div><span>{acquisitionLabel(source.acquisition)}</span><h4>{source.name}</h4><small>{source.organization ?? '프로젝트 내부 산출'}</small></div><b>{readinessLabel(source.state)}</b></header>
+    <div className="row-counts"><span>원본 <strong>{formatMetric(source.raw_rows, '건')}</strong></span><ArrowRight size={14} /><span>정규화 <strong>{formatMetric(source.normalized_rows, '행')}</strong></span></div>
+    {source.credentials.length > 0 && <div className="credential-list">{source.credentials.map((credential) => <span className={credential.configured ? 'configured' : 'missing'} key={credential.name}><KeyRound size={12} />{credential.name}<b>{credential.configured ? '설정됨' : '필요'}</b></span>)}</div>}
+    <div className="source-use-flow"><div><small>수집 정보</small>{source.products.length ? source.products.map((item) => <span key={item}>{item}</span>) : <span>카탈로그 정보</span>}</div><ArrowRight size={17} /><div><small>활용 화면·분석</small>{source.uses.length ? source.uses.map((item) => <span key={item}>{item}</span>) : <span>출처 현황 표시</span>}</div></div>
+    {source.scopes.smoke && <p className="scope-line"><strong>첫 검증</strong>{source.scopes.smoke}</p>}
+    {source.blocker && <p className="source-blocker"><AlertTriangle size={13} />{source.blocker}</p>}
+  </article>;
+}
+
+function LocalAiFlow({ engine }: { engine: LocalEngineStatus }) {
+  const steps = [
+    { icon: FileArchive, label: '검증된 DB·원본', detail: '출처와 계산 결과 고정' },
+    { icon: Calculator, label: '결정론적 계산', detail: '탄소·시나리오 수치 생성' },
+    { icon: BrainCircuit, label: '로컬 Ollama', detail: '허용된 근거 ID만 선택' },
+    { icon: FileText, label: '한국어 보고서', detail: '근거 해시와 출처 보존' },
+  ];
+  return <section className="panel ai-flow-panel">
+    <div className="panel-title"><div><span>LOCAL AI</span><h3>로컬 LLM 운영 구조</h3></div><span className={`badge ${engine.status === 'READY' ? 'good' : 'warn'}`}>{engine.status === 'READY' ? '사용 가능' : '설치·연결 필요'}</span></div>
+    <div className="ai-flow">{steps.map(({ icon: Icon, label, detail }, index) => <div className="ai-flow-step" key={label}><article><Icon size={20} /><strong>{label}</strong><small>{detail}</small></article>{index < steps.length - 1 && <ArrowRight size={18} />}</div>)}</div>
+    <div className="ai-contract"><span><b>모델</b>{engine.model ?? '설치 전'} · {engine.provider}</span><span><b>허용</b>{engine.allowed_tasks.join(' · ')}</span><span><b>금지</b>{engine.prohibited_tasks}</span><span><b>처리 위치</b>{engine.privacy}</span></div>
+  </section>;
 }
 
 function SourceModal({ sourceId, onClose }: { sourceId: string | number; onClose: () => void }) {
@@ -127,6 +183,9 @@ function History({ detail }: { detail: SourceDetail }) {
 function listFrom<T>(response: ListResponse<T>, key: string): T[] { if (Array.isArray(response)) return response; const record = response as Record<string, unknown>; const value = record[key] ?? record.items ?? record.data; return Array.isArray(value) ? value as T[] : []; }
 function renderCell(value: unknown): string { if (value === null || value === undefined) return '자료 없음'; if (typeof value === 'object') return JSON.stringify(value); return String(value); }
 function statusLabel(status: string | null | undefined) { const value = status?.toUpperCase(); return ({ NOT_COLLECTED: '미수집', COLLECTED: '수집 완료', PARTIAL: '부분 수집', NEEDS_API_KEY: '인증키 필요', NEEDS_API_APPROVAL: '활용 승인 필요', MANUAL_DOWNLOAD_REQUIRED: '수동 자료 필요', COMPLETED: '완료', SUCCESS: '완료', RUNNING: '수집 중', STARTED: '수집 중', PENDING: '대기', QUEUED: '대기', FAILED: '실패', ERROR: '오류', ACTIVE: '활성' } as Record<string, string>)[value ?? ''] ?? status ?? '상태 없음'; }
+function readinessLabel(state: string) { return ({ COLLECTED: '수집 완료', PARTIAL: '부분 확보', AVAILABLE: '수집 가능', CREDENTIAL_REQUIRED: '키 설정 필요', APPROVAL_OR_FIX_REQUIRED: '승인·오류 확인', MANUAL_REQUIRED: '직접 수집 필요', REPLACED: '대체 출처 사용', NOT_COLLECTED: '미수집' } as Record<string, string>)[state] ?? state; }
+function readinessTone(state: string) { if (state === 'COLLECTED' || state === 'AVAILABLE') return 'ready'; if (state === 'PARTIAL') return 'partial'; if (state === 'MANUAL_REQUIRED') return 'manual'; return 'blocked'; }
+function acquisitionLabel(value: string) { return ({ API_KEY: '인증 API', MANUAL_DOWNLOAD: '공식 파일', OPEN_API: '공개 API', OPEN_FILE: '공개 파일', OPEN_WEB: '공개 웹', DERIVED: '프로젝트 파생', CATALOG: '카탈로그' } as Record<string, string>)[value] ?? value; }
 
 interface UploadPreview { id: string; columns: string[]; rows: Array<Record<string, unknown>>; detected_crs?: string | null; encoding?: string | null; required_fields?: string[]; suggested_mapping?: Record<string, string>; warnings?: string[]; filename?: string; }
 
