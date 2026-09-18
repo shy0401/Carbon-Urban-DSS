@@ -30,8 +30,8 @@ if ($Action -eq 'Start') {
     $hash = $credentials.password | & docker @composeArgs exec -T api sh -c "tr -d '\r\n' | openssl passwd -6 -stdin"
     if ($LASTEXITCODE -ne 0 -or $hash -notmatch '^\$6\$') { throw 'Password hash generation failed.' }
     'prototype:' + $hash.Trim() | Set-Content -LiteralPath '.secrets/gateway.htpasswd' -Encoding ascii
-    & docker @composeArgs exec -T ollama ollama show qwen2.5:1.5b *> $null
-    if ($LASTEXITCODE -ne 0) { Invoke-Compose exec -T ollama ollama pull qwen2.5:1.5b }
+    & "$PSScriptRoot\setup-local-llm.ps1" -Model 'qwen2.5:1.5b' -SkipContainerStart
+    if ($LASTEXITCODE -ne 0) { throw 'Local LLM setup failed.' }
     Invoke-Compose exec -T api python -m app.cli online
     $system = Invoke-RestMethod 'http://127.0.0.1:8000/api/system'
     if ($system.offline_mode) { throw 'DEMO_OFFLINE_MODE forces offline. Remove it from .env and recreate api/worker before starting public access.' }
