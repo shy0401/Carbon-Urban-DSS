@@ -16,6 +16,7 @@ from .settings import DEFAULT_YEAR,offline_mode
 from . import official,kapt,kapt_energy,kma_asos,sgis,vworld
 from .imports import router as uploads_router
 from .reporting import router as reports_router
+from .readiness import build_readiness
 
 @asynccontextmanager
 async def lifespan(app):
@@ -63,6 +64,10 @@ def get_dashboard(year:int=Query(DEFAULT_YEAR,ge=2000,le=2100),grid_id:str|None=
 @app.get('/api/sources')
 def sources(year:int=Query(DEFAULT_YEAR,ge=2000,le=2100)):
     with Session() as db:return dashboard(db,year=year)['sources']
+
+@app.get('/api/readiness')
+def readiness():
+    with Session() as db:return build_readiness(db)
 
 PREVIEW_MODELS={'energy':EnergyMonthly,'kapt_energy':kapt_energy.ApartmentEnergyMonthly,'weather':WeatherMonthly,'weather_kma':kma_asos.WeatherDailyObservation,'sgis_admin':sgis.SgisPopulationAdmin,'vworld_zoning':vworld.VworldZoningArea,'vworld_cadastral':vworld.CadastralParcel,'buildings':Building,'regions':Region,'grid':Grid,'factors':EmissionFactor,'zoning':ZoningArea,'population':PopulationGrid}
 

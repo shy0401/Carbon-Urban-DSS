@@ -99,12 +99,13 @@ class ReportInput(BaseModel):
 
 @router.get('/engine')
 def engine_status():
+    common={'provider':'Ollama local container','privacy':'로컬 Docker 네트워크 내부 처리','allowed_tasks':['검증된 근거 ID 선택','한국어 보고서 요약'],'prohibited_tasks':'수치 계산·새로운 사실 생성·법적 판정','setup':'scripts/setup-local-llm.ps1'}
     try:
         base,model=local_config()
         with httpx.Client(timeout=2,trust_env=False) as c:
             response=c.get(base+'/api/tags');response.raise_for_status();names=[m['name'] for m in response.json().get('models',[])]
-        return {'status':'READY' if model in names else 'MODEL_NOT_INSTALLED','model':model,'method':'검증된 근거 문장 선택형 요약'}
-    except (httpx.HTTPError,ValueError,KeyError,TypeError):return {'status':'UNAVAILABLE','model':None,'method':'검증된 서식 보고서 사용 가능'}
+        return dict(common,status='READY' if model in names else 'MODEL_NOT_INSTALLED',model=model,method='검증된 근거 문장 선택형 요약')
+    except (httpx.HTTPError,ValueError,KeyError,TypeError,OSError,RuntimeError):return dict(common,status='UNAVAILABLE',model=None,method='검증된 서식 보고서 사용 가능')
 
 @router.post('',status_code=201)
 def create_report(request:ReportInput):
