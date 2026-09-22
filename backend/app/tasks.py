@@ -4,6 +4,7 @@ from sqlalchemy import select
 from .db import Session
 from .models import CollectionJob,CollectionJobConfig,DataSource,now
 from .collectors import collect_energy,collect_weather
+from .collection_preflight import ensure_collection_ready
 
 celery_app=Celery('carbon',broker=os.getenv('REDIS_URL','redis://redis:6379/0'))
 celery_app.conf.update(task_serializer='json',accept_content=['json'],result_serializer='json',task_ignore_result=True,broker_connection_retry_on_startup=True,worker_prefetch_multiplier=1,task_acks_late=True,task_reject_on_worker_lost=True)
@@ -56,6 +57,7 @@ def run_collection(job_id):
         job.errors=errors;job.finished_at=now();job.message='수집 완료' if not errors else '일부 자료 수집 불가 — 오류 내역 확인';db.commit()
 
 def queue_collection(db,datasets,start,end,scope='limited'):
+    ensure_collection_ready(datasets)
     # Serialize collection requests across API processes. Historical disk cache remains reusable.
     import redis
     connection=redis.Redis.from_url(os.getenv('REDIS_URL','redis://redis:6379/0'))

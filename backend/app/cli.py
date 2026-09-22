@@ -54,7 +54,7 @@ def main():
         elif args.command=='collect':
             from .tasks import queue_collection
             aliases={'kapt-energy':'kapt_energy','kma':'kma_asos','vworld-zoning':'vworld_zoning','vworld-cadastral':'vworld_cadastral'}
-            datasets=[aliases.get(args.source,args.source)] if args.source else ['energy','weather']
+            datasets=[aliases.get(args.source,args.source)] if args.source else ['weather']
             job=queue_collection(db,datasets,f'{args.year}-01',f'{args.year}-12',args.scope);print('job',job.id,job.status)
         elif args.command=='validate-models':
             from .model_service import model_status

@@ -1,6 +1,6 @@
 import httpx
 import pytest
-from app.cache import CachedClient,ExternalError
+from app.cache import CachedClient,ExternalError,parse_cached_response,recent_credential_error
 
 @pytest.fixture(autouse=True)
 def isolated_online_cache(monkeypatch,tmp_path):
@@ -50,3 +50,29 @@ def test_all_provider_credentials_are_removed_from_cached_metadata_and_body(tmp_
         assert secret.encode() not in files
         assert secret.encode() not in result['body']
     assert result['params']=={'year':'2025'}
+
+def test_success_cache_is_bound_to_the_credential_that_created_it(tmp_path):
+    calls=[]
+    def send(request):
+        calls.append(request)
+        return httpx.Response(200,content=f'response-{len(calls)}'.encode())
+    client=CachedClient(tmp_path,httpx.Client(transport=httpx.MockTransport(send)),min_interval=0)
+    first=client.get('provider','operation','https://example.org/api',{'key':'old-key'})
+    second=client.get('provider','operation','https://example.org/api',{'key':'new-key'})
+    assert first['body']==b'response-1'
+    assert second['body']==b'response-2'
+    assert len(calls)==2
+
+def test_http_200_provider_auth_error_is_recorded_for_preflight(tmp_path):
+    calls=[]
+    def send(request):
+        calls.append(request)
+        return httpx.Response(200,content=b'{"response":{"status":"ERROR.INVALID_KEY"}}')
+    client=CachedClient(tmp_path,httpx.Client(transport=httpx.MockTransport(send)),min_interval=0)
+    result=client.get('VWorld','zoning','https://example.org/api',{'key':'bad-key'})
+    with pytest.raises(ExternalError,match='인증'):
+        parse_cached_response(client,result,lambda body: (_ for _ in ()).throw(ExternalError('VWorld 인증 실패: provider_code=INVALID_KEY')))
+    assert recent_credential_error(tmp_path,'bad-key')=='VWorld 인증 실패: provider_code=INVALID_KEY'
+    with pytest.raises(ExternalError,match='인증'):
+        client.get('VWorld','zoning','https://example.org/api',{'key':'bad-key'})
+    assert len(calls)==1

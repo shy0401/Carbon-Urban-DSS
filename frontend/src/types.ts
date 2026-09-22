@@ -97,6 +97,7 @@ export interface CollectionJob {
   updated_at?: string | null;
   message?: string | null;
   error?: string | null;
+  errors?: Array<{ dataset?: string | null; message?: string | null } | string>;
 }
 
 export interface ReadinessSource {

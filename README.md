@@ -65,6 +65,7 @@ npm run build
 ## 구현 안내
 
 - [운영 준비 및 최종 Goal 로드맵](docs/FINAL_GOAL_ROADMAP_2026-09-18.md)
+- [수집 실패 원인 조사 및 조치](docs/COLLECTION_FAILURE_AUDIT_2026-09-18.md)
 - [현재 구현·미구현·API 키 연동 현황](docs/PROJECT_IMPLEMENTATION_STATUS.md)
 - [요구사항](docs/SRS.md), [구조](docs/ARCHITECTURE.md), [데이터 사전](docs/DATA_DICTIONARY.md)
 - [수집 및 수동 업로드](docs/DATA_COLLECTION.md), [후보 선정](docs/TESTBED_SELECTION.md)

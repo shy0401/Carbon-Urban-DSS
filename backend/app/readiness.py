@@ -10,6 +10,7 @@ from sqlalchemy import func, select
 
 from .models import DataSource, EnergyMonthly, Grid, RawDataAsset
 from .settings import offline_mode
+from .collection_preflight import collection_blockers
 
 
 REGISTRY: dict[str, dict[str, Any]] = {
@@ -61,6 +62,8 @@ def build_readiness(db: Any) -> dict[str, Any]:
     source_ids = list(REGISTRY) + sorted(set(stored) - set(REGISTRY))
     rows = []
     is_offline = offline_mode()
+    collection_datasets = [meta["collection_dataset"] for meta in REGISTRY.values() if meta["collection_dataset"]]
+    blocker_by_dataset = {item["dataset"]: item["message"] for item in collection_blockers(collection_datasets)}
     for source_id in source_ids:
         source = stored.get(source_id)
         meta = REGISTRY.get(source_id, dict(label=source.name if source else source_id, acquisition="CATALOG", collection_dataset=None, credentials=[], scopes={}, products=[], uses=[]))
@@ -68,13 +71,17 @@ def build_readiness(db: Any) -> dict[str, Any]:
         state = _state(source, meta, credentials)
         status = source.status if source else "NOT_COLLECTED"
         blocker = None
-        if state == "CREDENTIAL_REQUIRED":
-            blocker = "환경변수 미설정: " + ", ".join(item["name"] for item in credentials if not item["configured"])
+        dataset_blocker = blocker_by_dataset.get(meta["collection_dataset"])
+        if dataset_blocker:
+            blocker = dataset_blocker
+        elif state == "APPROVAL_OR_FIX_REQUIRED" and meta["collection_dataset"]:
+            state = "RETRY_AVAILABLE"
+            blocker = "기존 실패 이력이 있습니다. 키 교체 또는 공급기관 승인 후 다시 검증할 수 있습니다."
         elif state == "APPROVAL_OR_FIX_REQUIRED":
             blocker = source.quality if source and source.quality not in {"자료 없음", ""} else "서비스 활용 승인 또는 최근 오류 확인 필요"
         elif state == "MANUAL_REQUIRED":
             blocker = "공식 포털에서 원본 파일을 내려받아 업로드해야 합니다."
-        collectable = bool(meta["collection_dataset"] and not is_offline and state in {"AVAILABLE", "PARTIAL", "COLLECTED", "NOT_COLLECTED"})
+        collectable = bool(meta["collection_dataset"] and not is_offline and not dataset_blocker)
         rows.append({
             "id": source_id, "name": source.name if source else meta["label"],
             "organization": source.organization if source else None,

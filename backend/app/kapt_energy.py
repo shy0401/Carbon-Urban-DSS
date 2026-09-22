@@ -12,7 +12,7 @@ from typing import Any
 from sqlalchemy import JSON, DateTime, Float, String, Text, UniqueConstraint, func, select
 from sqlalchemy.orm import Mapped, mapped_column
 
-from .cache import CachedClient, ExternalError
+from .cache import CachedClient, ExternalError, parse_cached_response
 from .db import Base
 from .models import DataSource, EnergyMonthly, RawDataAsset
 
@@ -242,7 +242,7 @@ def collect_kapt_energy(
             raw_dir.mkdir(parents=True, exist_ok=True)
             raw_path = raw_dir / f"{month}.json"
             raw_path.write_bytes(result["body"])
-            parsed = parse_kapt_energy_response(result["body"])
+            parsed = parse_cached_response(session, result, parse_kapt_energy_response)
             row_data = next((row for row in parsed["rows"] if not row["complex_code"] or row["complex_code"] == complex_row.kapt_code), None)
             asset_id = _record_raw(db, source, raw_path, result, complex_row.kapt_code, month, len(parsed["rows"]), "COLLECTED")
             row = existing or ApartmentEnergyMonthly(id=ident, complex_code=complex_row.kapt_code, year_month=month, source="K-apt")

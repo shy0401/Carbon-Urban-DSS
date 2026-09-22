@@ -19,6 +19,7 @@ try {
     if (!(Test-DockerEngine)) {
         $desktopCandidates = @(
             "$env:ProgramFiles\Docker\Docker\Docker Desktop.exe",
+            "$env:LOCALAPPDATA\Programs\DockerDesktop\Docker Desktop.exe",
             "$env:LOCALAPPDATA\Docker\Docker Desktop.exe"
         )
         $desktop = $desktopCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1

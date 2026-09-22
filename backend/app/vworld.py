@@ -17,7 +17,7 @@ from shapely.validation import make_valid
 from sqlalchemy import DateTime, Float, JSON, String, delete, func, select
 from sqlalchemy.orm import Mapped, mapped_column
 
-from .cache import CachedClient, ExternalError
+from .cache import CachedClient, ExternalError, parse_cached_response
 from .db import Base
 from .models import DataSource, Grid, RawDataAsset
 
@@ -208,7 +208,7 @@ def collect_vworld(db: Any, dataset: str, scope: str = "smoke", *, client: Cache
             params={"service":"data","version":"2.0","request":"GetFeature","key":key,"format":"json","size":1000,"page":page,"data":layer["dataset_id"],"geomFilter":bbox_filter(grid["geometry"].bounds),"geometry":"true","attribute":"true","crs":layer["source_crs"],"domain":domain_value}
             result=session.get("VWorld",f"{dataset}-{grid['id']}-{page}",url,params);requested+=1
             raw_path=raw_root/f"{grid['id']}-page-{page}.json";raw_path.write_bytes(result["body"])
-            parsed=parse_vworld_response(result["body"]);empty+=parsed["status"]=="EMPTY_VALID"
+            parsed=parse_cached_response(session,result,parse_vworld_response);empty+=parsed["status"]=="EMPTY_VALID"
             digest=hashlib.sha256(result["body"]+f"{dataset}:{grid['id']}:{page}".encode()).hexdigest()
             asset=db.get(RawDataAsset,digest) or RawDataAsset(id=digest,source_id=source.id,provider=source.organization,source_url=layer["verified_reference"],reference_period="수집 시점",storage_location=str(raw_path),collection_status=parsed["status"])
             asset.row_count=len(parsed["features"]);asset.request_parameters={key_:value for key_,value in params.items() if key_ not in {"key","domain"}};db.add(asset)

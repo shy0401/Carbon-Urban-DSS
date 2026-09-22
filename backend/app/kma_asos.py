@@ -15,7 +15,7 @@ from typing import Any
 from sqlalchemy import Boolean, DateTime, Float, Integer, JSON, String, func, select
 from sqlalchemy.orm import Mapped, mapped_column
 
-from .cache import CachedClient, ExternalError
+from .cache import CachedClient, ExternalError, parse_cached_response
 from .db import Base
 from .models import DataSource, RawDataAsset, WeatherMonthly
 
@@ -221,7 +221,7 @@ def collect_asos(db: Any, year: int, scope: str = "smoke", *, client: CachedClie
         params = {"serviceKey": key, "pageNo": page, "numOfRows": 999, "dataType": "JSON", "dataCd": "ASOS", "dateCd": "DAY", "startDt": start, "endDt": end, "stnIds": "146"}
         result = session.get("KMA", f"ASOS-{year}-{scope}-{page}", f"{base}/getWthrDataList", params)
         raw_path = raw_root / f"{scope}-page-{page}.json";raw_path.write_bytes(result["body"])
-        parsed = parse_asos_response(result["body"]);total = parsed["total_count"]
+        parsed = parse_cached_response(session, result, parse_asos_response);total = parsed["total_count"]
         safe_params = {key_: value for key_, value in params.items() if key_.casefold() != "servicekey"}
         digest = hashlib.sha256(result["body"] + f":{page}".encode()).hexdigest()
         asset = db.get(RawDataAsset, digest) or RawDataAsset(id=digest, source_id=source.id, provider=source.organization, source_url=KMA_CATALOG_URL, reference_period=f"{start}~{end}", storage_location=str(raw_path), collection_status="COLLECTED")

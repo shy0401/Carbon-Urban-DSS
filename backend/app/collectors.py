@@ -9,7 +9,7 @@ from shapely.ops import transform
 from pyproj import Transformer
 from geoalchemy2.shape import from_shape
 from .models import *
-from .cache import CachedClient,ExternalError
+from .cache import CachedClient,ExternalError,parse_cached_response
 from .domain import parse_energy,monthly_weather,month_range
 
 DATA=Path(os.getenv('DATA_DIR','data'));RAW=DATA/'raw';RAW.mkdir(parents=True,exist_ok=True)
@@ -137,7 +137,7 @@ def collect_energy(db,start='2025-01',end='2025-12',progress=None):
                 if done==0:
                     try:
                         response=client.get('molit',operation,'https://apis.data.go.kr/1613000/BldEngyHubService/'+operation,probe)
-                        rows,total=parse_energy(response['body'])
+                        rows,total=parse_cached_response(client,response,parse_energy)
                         record_asset(db,'energy',response,len(rows),ym)
                         if total==0:
                             done+=1;continue
@@ -149,7 +149,7 @@ def collect_energy(db,start='2025-01',end='2025-12',progress=None):
                     params['pageNo']=page
                     try:
                         response=client.get('molit',operation,'https://apis.data.go.kr/1613000/BldEngyHubService/'+operation,params)
-                        rows,total=parse_energy(response['body'])
+                        rows,total=parse_cached_response(client,response,parse_energy)
                         record_asset(db,'energy',response,len(rows),ym)
                     except ExternalError as exc:
                         if exc.asset: record_asset(db,'energy',exc.asset,0,ym,'FAILED',str(exc))

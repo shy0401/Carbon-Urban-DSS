@@ -67,7 +67,7 @@ Ollama는 Docker 내부 네트워크에서만 작동한다. 계산 엔진이 만
 
 | 검증 | 결과 |
 |---|---|
-| 백엔드 단위·GIS·PostGIS·외부 수집·캐시 | 81개 통과, 0개 실패 |
+| 백엔드 단위·GIS·PostGIS·외부 수집·캐시 | 91개 통과, 0개 실패 |
 | React/Vitest | 11파일 19개 통과, 0개 실패 |
 | TypeScript/Vite 운영 빌드 | 성공 |
 | Chromium 사용자 흐름 | 10개 통과, page error 0개 |

@@ -4,7 +4,7 @@
 
 | 검증 | 최종 결과 |
 |---|---|
-| Python 단위·GIS·PostGIS API·업로드·모델·외부 수집·캐시 | 81 통과, 0 실패 |
+| Python 단위·GIS·PostGIS API·업로드·모델·외부 수집·캐시 | 91 통과, 0 실패 |
 | React/Vitest | 11파일, 19 통과, 0 실패 |
 | Chromium E2E | 10 검증 통과, pageerror 0 |
 | TypeScript/Vite 운영 빌드 | 성공 |

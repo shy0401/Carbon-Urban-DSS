@@ -17,6 +17,7 @@ from . import official,kapt,kapt_energy,kma_asos,sgis,vworld
 from .imports import router as uploads_router
 from .reporting import router as reports_router
 from .readiness import build_readiness
+from .collection_preflight import CollectionBlockedError,available_collection_datasets
 
 @asynccontextmanager
 async def lifespan(app):
@@ -42,7 +43,8 @@ async def lifespan(app):
             except Exception:
                 db.rollback()
         if not offline_mode() and not db.scalar(select(CollectionJob.id).limit(1)):
-            queue_collection(db,['energy','weather'],f'{DEFAULT_YEAR}-01',f'{DEFAULT_YEAR}-12')
+            startup_datasets=available_collection_datasets(['energy','weather'])
+            if startup_datasets:queue_collection(db,startup_datasets,f'{DEFAULT_YEAR}-01',f'{DEFAULT_YEAR}-12')
     yield
 
 app=FastAPI(title='Carbon Urban DSS',version='0.1.0',lifespan=lifespan)
@@ -147,7 +149,10 @@ class CollectionInput(BaseModel):
 @app.post('/api/collections',status_code=202)
 def create_collection(request:CollectionInput):
     if offline_mode():raise HTTPException(409,'오프라인 모드에서는 외부 수집을 시작하지 않습니다')
-    with Session() as db:return serialize(queue_collection(db,request.datasets,request.start_month,request.end_month,request.scope))
+    try:
+        with Session() as db:return serialize(queue_collection(db,request.datasets,request.start_month,request.end_month,request.scope))
+    except CollectionBlockedError as exc:
+        raise HTTPException(409,str(exc)) from None
 
 @app.get('/api/collections')
 @app.get('/api/v1/collection-jobs')

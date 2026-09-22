@@ -13,7 +13,7 @@ import httpx
 from sqlalchemy import DateTime, Float, JSON, String, func, select
 from sqlalchemy.orm import Mapped, mapped_column
 
-from .cache import CachedClient, ExternalError
+from .cache import CachedClient, ExternalError, clear_credential_error, parse_cached_response, record_credential_error
 from .db import Base
 from .models import DataSource, RawDataAsset
 
@@ -161,12 +161,16 @@ def collect_sgis_admin(db: Any, year: int = 2020, scope: str = "smoke", *, token
     if scope not in {"smoke", "limited", "full"}:
         raise ValueError("scope must be smoke, limited, or full")
     source = _source(db);db.commit()
+    root=Path(data_dir or os.getenv("DATA_DIR","data"))
     manager = token_manager or SgisTokenManager(os.getenv("SGIS_CONSUMER_KEY", "").strip(), os.getenv("SGIS_CONSUMER_SECRET", "").strip())
+    credential_fingerprint=f"{manager.consumer_key}|{manager.consumer_secret}"
     try:
         token = manager.get_token()
-    except ExternalError:
+        clear_credential_error(root/"cache"/"sgis-auth",credential_fingerprint)
+    except ExternalError as exc:
+        record_credential_error(root/"cache"/"sgis-auth",credential_fingerprint,str(exc))
         source.status="NEEDS_API_APPROVAL";db.commit();raise
-    root=Path(data_dir or os.getenv("DATA_DIR","data"));raw_root=root/"raw"/"sgis"/str(year);raw_root.mkdir(parents=True,exist_ok=True)
+    raw_root=root/"raw"/"sgis"/str(year);raw_root.mkdir(parents=True,exist_ok=True)
     session=client or CachedClient(root/"cache"/"sgis")
     base=os.getenv("SGIS_BASE_URL",SGIS_BASE_URL).rstrip("/")
     province=os.getenv("SGIS_JEONBUK_ADM_CD","35")
@@ -177,7 +181,12 @@ def collect_sgis_admin(db: Any, year: int = 2020, scope: str = "smoke", *, token
         params={"accessToken":token,"year":str(year),"adm_cd":province,"low_search":"1"}
         result=session.get("SGIS",f"{kind}-{year}-{province}",f"{base}/stats/{endpoint}",params)
         raw_path=raw_root/f"{kind}-{province}.json";raw_path.write_bytes(result["body"])
-        parsed=parse_sgis_statistics(result["body"],kind)
+        try:
+            parsed=parse_cached_response(session,result,lambda body:parse_sgis_statistics(body,kind))
+        except ExternalError as exc:
+            if "인증 실패" in str(exc):
+                record_credential_error(root/"cache"/"sgis-auth",credential_fingerprint,str(exc))
+            raise
         selected=[row for row in parsed["rows"] if "전주" in str(row.get("adm_name") or "")]
         digest=hashlib.sha256(result["body"]+kind.encode()).hexdigest()
         asset=db.get(RawDataAsset,digest) or RawDataAsset(id=digest,source_id=source.id,provider=source.organization,source_url=SGIS_GUIDE_URL,reference_period=str(year),storage_location=str(raw_path),collection_status=parsed["status"])

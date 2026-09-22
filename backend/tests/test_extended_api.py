@@ -58,3 +58,14 @@ def test_offline_recollection_blocked_without_job_creation(monkeypatch,tmp_path)
     assert c.get('/api/system').json()['offline_mode'] is True
     assert c.post('/api/collections',json={'datasets':['weather'],'start_month':'2025-01','end_month':'2025-12'}).status_code==409
     assert len(c.get('/api/collections').json())==before
+
+def test_missing_provider_credentials_are_blocked_before_job_creation(monkeypatch):
+    monkeypatch.setenv('DEMO_OFFLINE_MODE','false')
+    monkeypatch.delenv('SGIS_CONSUMER_KEY',raising=False)
+    monkeypatch.delenv('SGIS_CONSUMER_SECRET',raising=False)
+    c=TestClient(app)
+    before=len(c.get('/api/collections').json())
+    response=c.post('/api/collections',json={'datasets':['sgis'],'start_month':'2025-01','end_month':'2025-08'})
+    assert response.status_code==409
+    assert 'SGIS_CONSUMER_KEY' in response.json()['detail']
+    assert len(c.get('/api/collections').json())==before

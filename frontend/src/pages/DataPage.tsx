@@ -30,7 +30,8 @@ export function DataPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | number | null>(null);
-  const [form, setForm] = useState({ datasets: ['kapt_energy'], start_month: '2025-01', end_month: '2025-12', scope: 'smoke' });
+  const [form, setForm] = useState({ datasets: [] as string[], start_month: '2025-01', end_month: '2025-12', scope: 'smoke' });
+  const selectionInitialized = useRef(false);
   useEffect(()=>setForm(old=>({...old,start_month:`${year}-01`,end_month:`${year}-12`})),[year]);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -55,6 +56,17 @@ export function DataPage() {
 
   useEffect(() => { void load(); return () => requestRef.current?.abort(); }, [load]);
   useEffect(() => {
+    if (!readiness) return;
+    const available = new Set(readiness.sources.filter((source) => source.collection_dataset && source.collectable_now).map((source) => source.collection_dataset as string));
+    const firstRun = !selectionInitialized.current;
+    selectionInitialized.current = true;
+    setForm((old) => {
+      const retained = old.datasets.filter((dataset) => available.has(dataset));
+      if (firstRun) return { ...old, datasets: retained.length ? retained : [...available].slice(0, 1) };
+      return retained.length === old.datasets.length ? old : { ...old, datasets: retained };
+    });
+  }, [readiness]);
+  useEffect(() => {
     const active = jobs.some((job) => ['PENDING', 'QUEUED', 'RUNNING', 'STARTED'].includes(job.status.toUpperCase()));
     if (!active) return;
     const timer = window.setInterval(() => void load(true), 3000);
@@ -76,6 +88,7 @@ export function DataPage() {
   if (loading) return <div className="page"><LoadingState label="출처와 수집 이력을 불러오는 중입니다" /></div>;
   if (error) return <div className="page"><ErrorState message={error} onRetry={() => void load()} /></div>;
   const sourceSummary = summarizeSources(sources);
+  const readinessByDataset = new globalThis.Map(readiness?.sources.filter((source) => source.collection_dataset).map((source) => [source.collection_dataset as string, source]));
   return <div className="page">
     <PageHeader eyebrow="DATA OPERATIONS" title="수집 데이터" description="공식·대체 출처의 수집 범위와 원본에서 정규화까지의 이력을 확인합니다." action={<button className="button secondary" onClick={() => void load()}><RefreshCw size={15} />새로고침</button>} />
     <p className="panel-description"><a href="https://github.com/shy0401/Carbon-Urban-DSS/blob/main/docs/DATA_SETUP_GUIDE.md" target="_blank" rel="noopener noreferrer">자료별 인증키 신청 · 다운로드 · 필드 매핑 안내</a></p>
@@ -85,7 +98,7 @@ export function DataPage() {
     <div className="data-layout">
       <form className="panel collection-form" onSubmit={submit}>
         <div className="panel-title"><div><span>NEW COLLECTION</span><h3>데이터 수집 요청</h3></div><CloudDownload size={20} /></div>
-        <fieldset><legend>데이터셋</legend>{collectionDatasets.map(([value, label, description]) => <label className="dataset-check" key={value}><input type="checkbox" checked={form.datasets.includes(value)} onChange={(event) => setForm((old) => ({ ...old, datasets: event.target.checked ? [...old.datasets, value] : old.datasets.filter((item) => item !== value) }))} /><span><CheckCircle2 size={17} /><strong>{label}</strong><small>{description}</small></span></label>)}</fieldset>
+        <fieldset><legend>데이터셋</legend>{collectionDatasets.map(([value, label, description]) => { const source = readinessByDataset.get(value); const blocked = Boolean(source && !source.collectable_now); return <label className={`dataset-check${blocked ? ' disabled' : ''}`} key={value}><input type="checkbox" disabled={blocked} checked={form.datasets.includes(value)} onChange={(event) => setForm((old) => ({ ...old, datasets: event.target.checked ? [...old.datasets, value] : old.datasets.filter((item) => item !== value) }))} /><span><CheckCircle2 size={17} /><strong>{label}</strong><small>{blocked ? source?.blocker ?? '현재 수집할 수 없습니다.' : description}</small></span></label>; })}</fieldset>
         <label><span>수집 범위</span><select aria-label="수집 범위" value={form.scope} onChange={(event) => setForm((old) => ({ ...old, scope: event.target.value }))}><option value="smoke">SMOKE · 최소 1건 검증</option><option value="limited">LIMITED · 제한 범위</option><option value="full">FULL · 전체 범위</option></select></label>
         <div className="month-fields"><label><span>시작 월</span><input type="month" value={form.start_month} onChange={(event) => setForm((old) => ({ ...old, start_month: event.target.value }))} /></label><label><span>종료 월</span><input type="month" value={form.end_month} onChange={(event) => setForm((old) => ({ ...old, end_month: event.target.value }))} /></label></div>
         {formError && <p className="form-error"><AlertTriangle size={15} />{formError}</p>}
@@ -93,7 +106,7 @@ export function DataPage() {
         <p className="form-caption">수집은 백그라운드에서 실행됩니다. K-apt와 VWorld의 FULL은 같은 연도·출처의 SMOKE 성공 후에만 시작됩니다.</p>
       </form>
       <section className="panel jobs-panel"><div className="panel-title"><div><span>COLLECTION JOBS</span><h3>작업 이력</h3></div><CalendarDays size={20} /></div>
-        {jobs.length ? <div className="job-list">{jobs.map((job) => <article key={job.id}><div className={`job-state ${qualityTone(job.status)}`}><span>{statusLabel(job.status)}</span><small>#{job.id}</small></div><div className="job-body"><strong>{job.dataset ?? job.datasets?.join(', ') ?? '데이터 수집'}</strong><small>{formatDate(job.updated_at ?? job.created_at)}</small>{job.message && <p>{job.message}</p>}{job.error && <p className="error-text">{job.error}</p>}{typeof job.progress === 'number' && <div className="progress"><span style={{ width: `${Math.max(0, Math.min(100, job.progress))}%` }} /></div>}</div></article>)}</div> : <EmptyState title="수집 작업 이력이 없습니다" />}
+        {jobs.length ? <div className="job-list">{jobs.map((job) => <article key={job.id}><div className={`job-state ${qualityTone(job.status)}`}><span>{statusLabel(job.status)}</span><small>#{job.id}</small></div><div className="job-body"><strong>{job.dataset ?? job.datasets?.join(', ') ?? '데이터 수집'}</strong><small>{formatDate(job.updated_at ?? job.created_at)}</small>{job.message && <p>{job.message}</p>}{job.error && <p className="error-text">{job.error}</p>}{job.errors?.map((item, index) => <p className="error-text" key={`${typeof item === 'string' ? 'error' : item.dataset ?? 'error'}-${index}`}><b>{typeof item !== 'string' && item.dataset ? `${item.dataset}: ` : ''}</b>{typeof item === 'string' ? item : item.message ?? '수집 오류'}</p>)}{typeof job.progress === 'number' && <div className="progress"><span style={{ width: `${Math.max(0, Math.min(100, job.progress))}%` }} /></div>}</div></article>)}</div> : <EmptyState title="수집 작업 이력이 없습니다" />}
       </section>
     </div>
     <section className="panel source-catalog"><div className="panel-title"><div><span>DATA CATALOG</span><h3>연결된 데이터 출처</h3></div><Database size={20} /></div>
@@ -183,8 +196,8 @@ function History({ detail }: { detail: SourceDetail }) {
 function listFrom<T>(response: ListResponse<T>, key: string): T[] { if (Array.isArray(response)) return response; const record = response as Record<string, unknown>; const value = record[key] ?? record.items ?? record.data; return Array.isArray(value) ? value as T[] : []; }
 function renderCell(value: unknown): string { if (value === null || value === undefined) return '자료 없음'; if (typeof value === 'object') return JSON.stringify(value); return String(value); }
 function statusLabel(status: string | null | undefined) { const value = status?.toUpperCase(); return ({ NOT_COLLECTED: '미수집', COLLECTED: '수집 완료', PARTIAL: '부분 수집', NEEDS_API_KEY: '인증키 필요', NEEDS_API_APPROVAL: '활용 승인 필요', MANUAL_DOWNLOAD_REQUIRED: '수동 자료 필요', COMPLETED: '완료', SUCCESS: '완료', RUNNING: '수집 중', STARTED: '수집 중', PENDING: '대기', QUEUED: '대기', FAILED: '실패', ERROR: '오류', ACTIVE: '활성' } as Record<string, string>)[value ?? ''] ?? status ?? '상태 없음'; }
-function readinessLabel(state: string) { return ({ COLLECTED: '수집 완료', PARTIAL: '부분 확보', AVAILABLE: '수집 가능', CREDENTIAL_REQUIRED: '키 설정 필요', APPROVAL_OR_FIX_REQUIRED: '승인·오류 확인', MANUAL_REQUIRED: '직접 수집 필요', REPLACED: '대체 출처 사용', NOT_COLLECTED: '미수집' } as Record<string, string>)[state] ?? state; }
-function readinessTone(state: string) { if (state === 'COLLECTED' || state === 'AVAILABLE') return 'ready'; if (state === 'PARTIAL') return 'partial'; if (state === 'MANUAL_REQUIRED') return 'manual'; return 'blocked'; }
+function readinessLabel(state: string) { return ({ COLLECTED: '수집 완료', PARTIAL: '부분 확보', AVAILABLE: '수집 가능', RETRY_AVAILABLE: '재검증 가능', CREDENTIAL_REQUIRED: '키 설정 필요', APPROVAL_OR_FIX_REQUIRED: '승인·오류 확인', MANUAL_REQUIRED: '직접 수집 필요', REPLACED: '대체 출처 사용', NOT_COLLECTED: '미수집' } as Record<string, string>)[state] ?? state; }
+function readinessTone(state: string) { if (state === 'COLLECTED' || state === 'AVAILABLE' || state === 'RETRY_AVAILABLE') return 'ready'; if (state === 'PARTIAL') return 'partial'; if (state === 'MANUAL_REQUIRED') return 'manual'; return 'blocked'; }
 function acquisitionLabel(value: string) { return ({ API_KEY: '인증 API', MANUAL_DOWNLOAD: '공식 파일', OPEN_API: '공개 API', OPEN_FILE: '공개 파일', OPEN_WEB: '공개 웹', DERIVED: '프로젝트 파생', CATALOG: '카탈로그' } as Record<string, string>)[value] ?? value; }
 
 interface UploadPreview { id: string; columns: string[]; rows: Array<Record<string, unknown>>; detected_crs?: string | null; encoding?: string | null; required_fields?: string[]; suggested_mapping?: Record<string, string>; warnings?: string[]; filename?: string; }

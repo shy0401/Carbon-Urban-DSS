@@ -8,8 +8,42 @@ SECRET_PARAM_NAMES={
     'accesstoken','access_token','token',
 }
 
+ERROR_CACHE_SECONDS = 3600
+
 def _is_secret(name):
     return str(name).replace('-','_').casefold() in SECRET_PARAM_NAMES
+
+def recent_credential_error(root, credential, max_age=ERROR_CACHE_SECONDS):
+    """Return a sanitized recent error recorded for this exact credential."""
+    if not credential:
+        return None
+    auth_hash=hashlib.sha256(str(credential).encode()).hexdigest()
+    for meta_path in Path(root).glob('*.json'):
+        try:
+            meta=json.loads(meta_path.read_text(encoding='utf-8'))
+            if (meta.get('error') and meta.get('auth_hash')==auth_hash
+                    and time.time()-float(meta.get('timestamp',0))<max_age):
+                return str(meta['error'])
+        except (OSError,ValueError,TypeError,json.JSONDecodeError):
+            continue
+    return None
+
+def record_credential_error(root, credential, message):
+    """Persist only a credential digest and sanitized error for short cooldowns."""
+    target=Path(root);target.mkdir(parents=True,exist_ok=True)
+    meta={
+        'timestamp':time.time(),
+        'error':str(message),
+        'auth_hash':hashlib.sha256(str(credential).encode()).hexdigest(),
+    }
+    (target/'credential-error.json').write_text(json.dumps(meta,ensure_ascii=False),encoding='utf-8')
+
+def clear_credential_error(root, credential):
+    target=Path(root)/'credential-error.json'
+    if not target.exists():return
+    try:meta=json.loads(target.read_text(encoding='utf-8'))
+    except (OSError,ValueError,TypeError,json.JSONDecodeError):return
+    if meta.get('auth_hash')==hashlib.sha256(str(credential).encode()).hexdigest():target.unlink(missing_ok=True)
 
 class ExternalError(RuntimeError):
     def __init__(self,message,asset=None):
@@ -28,11 +62,13 @@ class CachedClient:
         digest=hashlib.sha256(json.dumps(identity,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
         meta_path=self.root/(digest+'.json');body_path=self.root/(digest+'.body')
         # Error cache is tied to a non-reversible credential digest; replacing a key permits a fresh probe.
-        credential_fingerprint='|'.join(str(value) for key,value in sorted(params.items()) if _is_secret(key))
+        credential_values=[str(value) for key,value in sorted(params.items()) if _is_secret(key)]
+        credential_fingerprint='|'.join(credential_values)
         auth_hash=hashlib.sha256(credential_fingerprint.encode()).hexdigest()
         if meta_path.exists() and body_path.exists():
             meta=json.loads(meta_path.read_text(encoding='utf-8'))
-            if not meta.get('error') or (time.time()-meta['timestamp']<3600 and meta.get('auth_hash')==auth_hash):
+            same_credential=not credential_values or meta.get('auth_hash')==auth_hash
+            if same_credential and (not meta.get('error') or time.time()-meta['timestamp']<ERROR_CACHE_SECONDS):
                 result=dict(meta,body=body_path.read_bytes(),cached=True,path=str(body_path),id=digest)
                 if meta.get('error'): raise ExternalError(meta['error'],result)
                 return result
@@ -64,3 +100,20 @@ class CachedClient:
             except httpx.RequestError:
                 if attempt<2: time.sleep(2**(attempt+1));continue
                 raise ExternalError('외부 서비스 연결 실패 또는 시간 초과') from None
+
+    def record_error(self,result,message):
+        ident=result.get('id') if isinstance(result,dict) else None
+        if not ident:return
+        meta_path=self.root/(str(ident)+'.json')
+        if not meta_path.exists():return
+        try:meta=json.loads(meta_path.read_text(encoding='utf-8'))
+        except (OSError,ValueError,TypeError,json.JSONDecodeError):return
+        meta['timestamp']=time.time();meta['error']=str(message)
+        meta_path.write_text(json.dumps(meta,ensure_ascii=False),encoding='utf-8')
+
+def parse_cached_response(client,result,parser):
+    try:return parser(result['body'])
+    except (ExternalError,ValueError) as exc:
+        recorder=getattr(client,'record_error',None)
+        if recorder:recorder(result,str(exc))
+        raise

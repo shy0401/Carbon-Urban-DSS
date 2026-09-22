@@ -6,7 +6,7 @@ from sqlalchemy.orm import Mapped,mapped_column
 from .db import Base
 from .models import DataSource,Region,WeatherMonthly,now
 from .collectors import client,RAW,record_asset,update_source
-from .cache import ExternalError
+from .cache import ExternalError,parse_cached_response
 from .domain import parse_energy,monthly_weather,number
 
 class BuildingRegister(Base):
@@ -49,10 +49,10 @@ def collect_register(db,parcels=None):
     for parcel in parcels[:8]:
         params=dict(parcel,serviceKey=key,numOfRows=1,pageNo=1)
         try:
-            result=client.get('MOLIT','getBrTitleInfo',url,params);rows,total=parse_energy(result['body'])
+            result=client.get('MOLIT','getBrTitleInfo',url,params);rows,total=parse_cached_response(client,result,parse_energy)
             record_asset(db,sid,result,len(rows),'수집 시점 건축물대장')
             if total>1:
-                result=client.get('MOLIT','getBrTitleInfo',url,dict(params,numOfRows=1000));rows,total=parse_energy(result['body']);record_asset(db,sid,result,len(rows),'수집 시점 건축물대장')
+                result=client.get('MOLIT','getBrTitleInfo',url,dict(params,numOfRows=1000));rows,total=parse_cached_response(client,result,parse_energy);record_asset(db,sid,result,len(rows),'수집 시점 건축물대장')
             for raw in rows:
                 raw.pop('usage_kwh',None)
                 pnu=(raw.get('sigunguCd') or parcel['sigunguCd'])+(raw.get('bjdongCd') or parcel['bjdongCd'])+str(raw.get('platGbCd') or '0')+str(raw.get('bun') or '').zfill(4)+str(raw.get('ji') or '').zfill(4)
