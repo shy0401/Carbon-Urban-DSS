@@ -20,7 +20,7 @@ docker compose up --build -d
 scripts\start-prototype.cmd
 ```
 
-첫 실행은 로컬 `data/raw`를 정규화합니다. 파일이 없으면 사용 가능한 공개 소스를 수집하며, 필요한 인증이 없으면 해당 소스의 실패만 기록합니다. 공공데이터 서비스키는 **백엔드 환경변수 `DATA_GO_KR_SERVICE_KEY`**에만 둡니다. `.env`를 Git이나 채팅에 공유하지 마세요.
+첫 실행은 로컬 `data/raw`를 정규화합니다. 파일이 없으면 현재 수집 가능한 공개 소스만 요청합니다. 인증정보가 없거나 최근 공급기관에서 거절된 소스는 수집 작업을 만들기 전에 차단 사유를 표시합니다. 공공데이터 서비스키는 **백엔드 환경변수 `DATA_GO_KR_SERVICE_KEY`**에만 둡니다. `.env`를 Git이나 채팅에 공유하지 마세요.
 
 키를 변경했다면 다음 명령으로 API·worker의 환경을 갱신한 뒤 수집 데이터 화면에서 다시 수집합니다.
 
@@ -64,6 +64,7 @@ npm run build
 
 ## 구현 안내
 
+- [Claude 인수인계서](docs/CLAUDE_HANDOFF_2026-09-23.md) · [Claude 시작 프롬프트](docs/CLAUDE_START_PROMPT_2026-09-23.md)
 - [운영 준비 및 최종 Goal 로드맵](docs/FINAL_GOAL_ROADMAP_2026-09-18.md)
 - [수집 실패 원인 조사 및 조치](docs/COLLECTION_FAILURE_AUDIT_2026-09-18.md)
 - [현재 구현·미구현·API 키 연동 현황](docs/PROJECT_IMPLEMENTATION_STATUS.md)
