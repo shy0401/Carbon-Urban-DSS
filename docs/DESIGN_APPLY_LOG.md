@@ -124,3 +124,12 @@
 5. 대시보드 지표 8개, 기상 차트 결측 해치 띠, 나머지 화면, 계획안 3색.
 6. 보고서 표제란 + 근거 해시, A4 인쇄 CSS.
 7. 하드코딩 색 정리, 미사용 스타일 제거.
+
+## 1. 토큰과 서체
+
+- 추가: `frontend/src/styles/tokens.css`(DESIGN.md 2.1–2.6 값 그대로 + 적용 중 추가분), `frontend/src/theme/palette.ts`(같은 키·값, 램프·용도지역 이름 매핑), `frontend/src/theme/palette.test.ts`(키·값 일치, 램프 단조성, 글자 대비, 용도지역 매핑), `frontend/src/styles/base.css`(도면지 바탕, 먹 글자, `tabular-nums`, `keep-all`, 포커스 링, reduced-motion).
+- 서체: Pretendard Variable 1.3.9 dynamic subset(woff2 92개, 3.1MB, 화면에 쓰인 글자 범위만 내려받음)을 `frontend/public/fonts/pretendard/`에 넣고 `index.html`에서 로컬 경로로 연결. CDN 없음. SIL OFL 1.1 사본(`LICENSE.txt`)과 출처(`SOURCE.txt`) 동봉. npm 의존성을 추가하지 않았으므로 JS 번들 변화 없음(폰트 CSS는 `public/`에서 별도 요청).
+- `main.tsx`: `tokens.css` → `base.css` → 화면 CSS 순서로 한 번 import.
+- `styles.css`: 유리 효과 토큰 구역을 지우고, 남은 규칙이 새 토큰을 쓰도록 임시 별칭을 둠(정리 단계에서 제거).
+- DESIGN.md 개정(사유는 DESIGN.md 11): 중립 순차 램프 `--seq-*`, 건물 용도 색, 에너지원 계열 색, 대비 규칙 3가지.
+- 대비 계산 결과: `--ink-3`은 흰 바탕 4.83, 도면지 4.34, 표 머리 4.04, 결측 바탕 4.23 → 흰 바탕 전용으로 제한. 결측 배지 글자 4.23 → `--ink-2`(5.9)로 대체. `--line-strong` 테두리 1.94 → 입력칸 테두리는 `--ink-3`(4.83).

@@ -1,95 +1,20 @@
-/* Carbon Urban DSS — design system (2026-09 refresh).
-   Glass surfaces over a soft aurora background, one type scale, and data-class colors that
-   are used for meaning only (관측·계산·추정·시나리오·대체). No external fonts: offline mode
-   must not request anything outside the app. */
-
-/* 1. Tokens ------------------------------------------------------------------------------- */
+/* 이전(유리 효과) 화면 규칙. D안 적용 단계마다 해당 구역을 src/styles/의 새 파일로 옮기고 여기서 지운다.
+   아래 별칭은 남은 규칙이 D안 토큰을 쓰게 하는 임시 연결이며 마지막 정리 단계에서 없앤다. */
 :root {
-  color-scheme: light;
-  --font: 'Pretendard Variable', 'Pretendard', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans KR', system-ui, sans-serif;
-  --mono: 'JetBrains Mono', 'D2Coding', Consolas, 'SFMono-Regular', monospace;
-
-  --bg: #edf2f7;
-  --ink-1: #0e1a2b;
-  --ink-2: #3c4b61;
-  --ink-3: #64738a;
-  --ink-4: #93a0b3;
-  --line: rgba(14, 26, 43, .08);
-  --line-2: rgba(14, 26, 43, .14);
-
-  --brand: #0d8a78;
-  --brand-strong: #0a6c5f;
-  --brand-bright: #19c3a8;
-  --brand-soft: rgba(25, 195, 168, .13);
-  --accent: #f97316;
-
-  --glass: linear-gradient(180deg, rgba(255, 255, 255, .80), rgba(255, 255, 255, .60));
-  --glass-flat: rgba(255, 255, 255, .66);
-  --glass-strong: rgba(255, 255, 255, .86);
-  --glass-border: rgba(255, 255, 255, .78);
-  --glass-shadow: 0 1px 0 rgba(255, 255, 255, .95) inset, 0 22px 44px -26px rgba(16, 34, 60, .34), 0 1px 3px rgba(16, 34, 60, .06);
-  --glass-blur: blur(20px) saturate(170%);
-  --inset: rgba(14, 26, 43, .035);
-
-  --r-xl: 22px;
-  --r-lg: 18px;
-  --r: 14px;
-  --r-sm: 10px;
-  --r-xs: 7px;
-
-  /* Data classes (meaning only). */
-  --obs: #0d8a78;   --obs-bg: rgba(13, 138, 120, .11);
-  --calc: #2563c9;  --calc-bg: rgba(37, 99, 201, .10);
-  --est: #b26a00;   --est-bg: rgba(237, 161, 0, .15);
-  --scen: #6d4bd0;  --scen-bg: rgba(109, 75, 208, .11);
-  --fb: #7a6a55;    --fb-bg: rgba(122, 106, 85, .12);
-  --miss: #7b8798;  --miss-bg: rgba(123, 135, 152, .12);
-
-  /* Status (reserved; always with a label). */
-  --good: #0f7a3d;  --good-bg: rgba(12, 163, 12, .11);
-  --warn: #9a5b00;  --warn-bg: rgba(250, 178, 25, .18);
-  --bad: #b42323;   --bad-bg: rgba(208, 59, 59, .11);
-
-  /* Series (dataviz reference palette, fixed order). */
-  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
-
-  font-family: var(--font);
-  color: var(--ink-1);
-  background: var(--bg);
-  font-synthesis: none;
-  -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
+  --bg: var(--canvas); --ink-1: var(--ink); --ink-4: var(--ink-3); --line-2: var(--line-strong);
+  --brand: var(--primary); --brand-strong: var(--primary-hover); --brand-bright: var(--primary); --brand-soft: var(--prov-observed-bg); --accent: var(--select-line);
+  --glass: var(--surface); --glass-flat: var(--surface); --glass-strong: var(--surface); --glass-border: var(--line); --glass-shadow: none; --glass-blur: none; --inset: var(--surface-sunk);
+  --r-xl: var(--r-panel); --r-lg: var(--r-panel); --r: var(--r-panel); --r-sm: var(--r-control); --r-xs: var(--r-map);
+  --obs: var(--prov-observed); --obs-bg: var(--prov-observed-bg); --calc: var(--prov-computed); --calc-bg: var(--prov-computed-bg);
+  --est: var(--prov-estimated); --est-bg: var(--prov-estimated-bg); --scen: var(--prov-scenario); --scen-bg: var(--prov-scenario-bg);
+  --fb: var(--prov-estimated); --fb-bg: var(--prov-estimated-bg); --miss: var(--prov-missing); --miss-bg: var(--prov-missing-bg);
+  --good: var(--success); --good-bg: var(--success-bg); --warn: var(--warning); --warn-bg: var(--warning-bg); --bad: var(--danger); --bad-bg: var(--danger-bg);
+  --s1: var(--series-electricity); --s2: var(--series-gas); --s3: var(--primary); --s4: var(--plan-b);
 }
 
-* { box-sizing: border-box; }
-html { background: var(--bg); }
-body {
-  margin: 0; min-width: 320px; min-height: 100vh; font-size: 14px; line-height: 1.5;
-  background:
-    radial-gradient(1100px 620px at 12% -8%, rgba(25, 195, 168, .20), transparent 62%),
-    radial-gradient(900px 560px at 92% -4%, rgba(99, 102, 241, .15), transparent 60%),
-    radial-gradient(900px 700px at 70% 105%, rgba(56, 189, 248, .14), transparent 62%),
-    radial-gradient(700px 500px at 0% 90%, rgba(250, 178, 25, .08), transparent 60%),
-    var(--bg);
-  background-attachment: fixed;
-}
-button, input, select, textarea { font: inherit; color: inherit; }
-button, a { -webkit-tap-highlight-color: transparent; }
-button { cursor: pointer; }
-button, a, input, select { touch-action: manipulation; }
-button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focus-visible { outline: 3px solid rgba(25, 195, 168, .55); outline-offset: 2px; }
-a { color: var(--brand); }
-h1, h2, h3, h4 { letter-spacing: -.02em; }
-.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
-.num, .table-wrap td, .compact-list dd { font-variant-numeric: tabular-nums; }
-
-/* Glass primitives */
 .glass, .panel, .floating-panel, .metric-card, .sector-banner, .state-panel, .data-summary article, .source-card, .model-principles article, .analysis-scope-bar {
-  background: var(--glass);
-  border: 1px solid var(--glass-border);
-  box-shadow: var(--glass-shadow);
-  -webkit-backdrop-filter: var(--glass-blur);
-  backdrop-filter: var(--glass-blur);
+  background: var(--surface);
+  border: 1px solid var(--line);
 }
 
 /* 2. App shell -------------------------------------------------------------------------- */

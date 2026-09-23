@@ -1,0 +1,94 @@
+/* Carbon Urban DSS — D안 「도시계획 도면」 토큰 (docs/DESIGN.md).
+   색 값은 이 파일과 src/theme/palette.ts에만 둔다. 두 파일의 키는 palette.test.ts가 비교한다. */
+
+:root {
+  color-scheme: light;
+
+  /* 2.1 바탕과 먹 */
+  --canvas: #F3F3EE;
+  --surface: #FFFFFF;
+  --surface-sunk: #ECEBE4;
+  --line: #D9D7CE;
+  --line-strong: #BDBAAE;
+
+  --ink: #1C2622;
+  --ink-2: #505B55;
+  --ink-3: #6B746E;
+
+  --primary: #2F5D50;
+  --primary-hover: #264C42;
+  --on-primary: #FFFFFF;
+
+  --nav-bg: #1F3A33;
+  --nav-ink: #E6EEEA;
+  --nav-ink-2: #9FB5AB;
+  --nav-active: #2F5D50;
+
+  --focus: #2E5A87;
+  --select-line: #111A16;
+  --select-halo: #FFFFFF;
+
+  /* 2.2 시스템 상태 (UI 메시지 전용) */
+  --danger: #B42318;  --danger-bg: #FCEBE9;
+  --warning: #8A5A00; --warning-bg: #FBF1DC;
+  --success: #2F6B45; --success-bg: #E6F1E8;
+  --info: #2E5A87;    --info-bg: #E6EDF5;
+
+  /* 2.3 근거 유형 */
+  --prov-observed: #1F5E4A;  --prov-observed-bg: #E2EEE8;
+  --prov-computed: #2E5A87;  --prov-computed-bg: #E5ECF4;
+  --prov-estimated: #7A5418; --prov-estimated-bg: #F4EBDA;
+  --prov-scenario: #4A5568;  --prov-scenario-bg: #E8EBF0;
+  --prov-missing: #6B746E;   --prov-missing-bg: #F1F0EA;
+  --hatch: #CFCBBF;
+
+  /* 2.4 지표 램프 (부하·편익·증감) + 중립 순차(방향성 없는 도시 형태·인구 지표) */
+  --load-1: #F1EAD9; --load-2: #E2C58F; --load-3: #CC9350; --load-4: #A65B2B; --load-5: #6A2E17;
+  --gain-1: #E6EFE2; --gain-2: #BCD6B1; --gain-3: #88B783; --gain-4: #568F60; --gain-5: #2C6343;
+  --diff-neg-2: #2C6343; --diff-neg-1: #9CC495; --diff-zero: #F3F1EA; --diff-pos-1: #D9A56A; --diff-pos-2: #8A3F1E;
+  --seq-1: #E8EBF0; --seq-2: #C3CAD6; --seq-3: #97A3B6; --seq-4: #6B7A92; --seq-5: #4A5568;
+
+  /* 2.5 용도지역 */
+  --zone-r1e: #FFF4B8; --zone-r2e: #FFEC99; --zone-r1: #FBE07A; --zone-r2: #F6CF5A; --zone-r3: #EDB940; --zone-rq: #E39B3A;
+  --zone-cn: #F2B8C0; --zone-cg: #E8848F; --zone-cc: #D65A68; --zone-cd: #B8577A;
+  --zone-iq: #CFC3EA; --zone-ig: #A898D8; --zone-ie: #7F6CC0;
+  --zone-gn: #CFE6B8; --zone-gp: #B5D99A; --zone-gc: #93C47D;
+  --zone-m: #E4DEC3; --zone-ag: #D5DDB8; --zone-ne: #8FB88A;
+  /* 건물 용도 중 용도지역 색상군이 없는 공공·기타 (2.5.1) */
+  --use-public: #9DB4CF; --use-other: #BDBAAE;
+
+  /* 2.6 계획안 비교 */
+  --plan-a: #2F5D50; --plan-b: #B8862B; --plan-c: #6E5C99;
+
+  /* 차트 계열 (에너지원 구분, 2.4 부하 램프 4단 재사용) */
+  --series-electricity: #2F5D50; --series-gas: #A65B2B;
+
+  /* 층 구분: 그림자 대신 선. 드롭다운·팝오버만 그림자 */
+  --shadow-popover: 0 4px 16px rgba(28, 38, 34, .12);
+  --scrim: rgba(28, 38, 34, .45);
+  --line-on-basemap: rgba(255, 255, 255, .6);
+
+  /* 3. 타이포그래피 */
+  --font: "Pretendard Variable", Pretendard, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  --mono: ui-monospace, "SFMono-Regular", Consolas, "D2Coding", monospace;
+  --fs-caption: 12px;
+  --fs-label: 13px;
+  --fs-body: 14px;
+  --fs-panel: 16px;
+  --fs-title: 20px;
+  --fs-figure: 28px;
+
+  /* 4.5 간격·모서리 */
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px; --sp-6: 32px;
+  --r-map: 2px;
+  --r-control: 6px;
+  --r-panel: 8px;
+
+  --sidebar-w: 220px;
+  --content-max: 1440px;
+}
+
+.is-missing {
+  background-color: var(--prov-missing-bg);
+  background-image: repeating-linear-gradient(45deg, var(--hatch) 0 1px, transparent 1px 6px);
+}
