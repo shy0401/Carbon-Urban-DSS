@@ -7,6 +7,7 @@ import './styles/shell.css';
 import './styles/components.css';
 import './styles/map.css';
 import './styles/pages.css';
+import './styles/report.css';
 import App from './App';
 import './styles.css';
 

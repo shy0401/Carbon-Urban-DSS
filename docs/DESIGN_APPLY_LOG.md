@@ -213,3 +213,12 @@
 - 수집 데이터(`DataPage.tsx`)·출처 상세(`SourceDetailPage.tsx`): 영문 눈썹 라벨 제거, 유리·그라데이션 제거, 표 결측 셀 "—"(`title="자료 미확보"`), 월 선택기의 선택 불가 달은 해치. 수집 범위 SMOKE/LIMITED/FULL 라디오·체크박스 역할과 이름은 그대로.
 - CSS: `styles/pages.css`(신규). `styles.css`에는 보고서 규칙만 남김(6단계에서 이동).
 - 검증: `bun test` 54건 통과, E2E(미리보기 서버) `e2e.cjs` 9, `e2e-refined.cjs` 10(8개 카드, 연도 전환, 지도 선택, 시나리오→보고서, 내려받기, 인쇄 시 사이드바 숨김, 390px 5개 화면 가로 넘침 0, 503 오류 표시), `e2e-overlays.cjs` 7 모두 통과. 미리보기 서버가 `Content-Disposition`을 넘기지 않아 내려받기 검사가 멈추던 문제는 미리보기 서버 쪽을 고쳐 해결(앱 코드 변경 아님).
+
+## 6. 검토 보고서와 인쇄
+
+- `ReportsPage.tsx`: 보고서 첫 장 머리에 표제란(분석연도 | 격자 | 선택 격자 | 최근 수집일 | 작성 방식 | 생성 시각) + 근거 해시(SHA256 전체) 칸. 영문 대문자 머리말(`CARBON URBAN DSS · …`)을 한글 캡션으로 바꾸고, 기존 `report-meta` 목록은 표제란으로 합침(같은 값).
+- 계획안 비교: 선택 순서대로 계획안 A·B·C(`--plan-a/b/c`) — 선택 목록에 색 띠와 "계획안 A" 칩, 보고서 표의 열 머리에 색 띠 + "대안 N" + "계획안 A" + 시나리오 배지(`result.data_class`). 서버가 선택 순서를 보존함(`reporting.py`의 `dict.fromkeys`)을 확인. E2E가 보는 "대안 1" 문구는 별도 요소로 유지.
+- 화면당 주 버튼 1개: "보고서 작성"만 주 버튼, "인쇄 · PDF 저장"과 "문서 내려받기"는 보조 버튼.
+- `styles/report.css`(신규): A4 세로 여백 18mm, 흰 바탕, 사이드바·표제란 머리·버튼 숨김(`.no-print`, 셸 인쇄 규칙), 표제란·표·행 `break-inside: avoid`, 표 머리 반복, 배지·해치·계획안 색은 `print-color-adjust: exact`.
+- `styles.css`에는 임시 별칭만 남음(7단계에서 삭제).
+- 검증: `e2e-refined.cjs`의 보고서 작성·내려받기(근거 SHA256 포함)·인쇄 미리보기(사이드바 숨김) 통과. 인쇄 캡처 `after/reports-print.png`, Chromium A4 PDF `after/reports-print.pdf`.

@@ -1,0 +1,81 @@
+/* 검토 보고서와 인쇄 (DESIGN.md 4.2, 7): 첫 장 표제란 + 근거 해시 + 생성 시각, A4 세로 18mm. */
+
+.report-builder .panel-title { align-items: center; }
+.scenario-picker { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-2); max-height: 280px; overflow: auto; margin: var(--sp-3) 0; }
+.scenario-picker label { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); border: 1px solid var(--line-strong); border-left: 4px solid var(--line-strong); border-radius: var(--r-control); cursor: pointer; }
+.scenario-picker label.chosen { border-color: var(--ink-3); }
+.scenario-picker label.plan-a { border-left-color: var(--plan-a); }
+.scenario-picker label.plan-b { border-left-color: var(--plan-b); }
+.scenario-picker label.plan-c { border-left-color: var(--plan-c); }
+.scenario-picker input { accent-color: var(--primary); }
+.scenario-picker span { min-width: 0; }
+.scenario-picker strong { font-size: var(--fs-body); }
+.scenario-picker small { display: block; margin-top: 2px; color: var(--ink-3); overflow-wrap: anywhere; }
+.scenario-picker b { margin-left: auto; font-size: var(--fs-label); font-weight: 500; white-space: nowrap; }
+.plan-chip { padding: 0 6px; border: 1px dotted var(--prov-scenario); border-radius: var(--r-map); background: var(--prov-scenario-bg); color: var(--prov-scenario); font-size: var(--fs-caption); font-style: normal; font-weight: 500; white-space: nowrap; }
+.report-actions { display: flex; justify-content: space-between; align-items: center; gap: var(--sp-4); flex-wrap: wrap; margin: var(--sp-3) 0 var(--sp-2); }
+.ai-option { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: var(--fs-label); }
+.ai-option input { accent-color: var(--primary); }
+.ai-option small { color: var(--ink-3); }
+.report-history { margin: var(--sp-4) 0; min-width: 0; }
+.report-history label { display: flex; align-items: center; gap: var(--sp-3); max-width: 100%; min-width: 0; font-size: var(--fs-label); color: var(--ink-2); }
+.report-history .select-wrap { flex: 1; min-width: 0; }
+.report-history select { width: 100%; min-width: 0; }
+.report-export { display: flex; justify-content: flex-end; align-items: center; gap: var(--sp-2); flex-wrap: wrap; margin: var(--sp-4) 0; }
+.report-export > span { margin-right: auto; }
+
+.report-paper { max-width: 980px; padding: 48px 56px; border: 1px solid var(--line-strong); border-radius: var(--r-map); background: var(--surface); color: var(--ink); }
+.report-kicker { font-size: var(--fs-caption); color: var(--ink-2); }
+.report-paper h1 { margin: var(--sp-1) 0; font-size: 24px; font-weight: 600; line-height: 1.35; }
+.report-subtitle { color: var(--ink-2); }
+.report-title-block { display: grid; grid-template-columns: repeat(6, minmax(0, auto)); margin: var(--sp-4) 0 var(--sp-5); border: 1px solid var(--ink); border-radius: var(--r-map); }
+.report-title-block > div { min-width: 0; padding: 6px var(--sp-3); border-left: 1px solid var(--line-strong); }
+.report-title-block > div:first-child, .report-title-block > .tb-hash { border-left: 0; }
+.report-title-block .tb-hash { grid-column: 1 / -1; border-top: 1px solid var(--ink); }
+.report-title-block dt { font-size: var(--fs-caption); color: var(--ink-3); }
+.report-title-block dd { margin: 0; font-size: var(--fs-label); font-weight: 500; overflow-wrap: anywhere; }
+.report-title-block code { font-family: var(--mono); font-size: var(--fs-caption); }
+.report-section + .report-section { margin-top: var(--sp-5); }
+.report-paper h2 { margin-bottom: var(--sp-2); padding-bottom: var(--sp-1); border-bottom: 1px solid var(--line-strong); font-size: var(--fs-panel); }
+.report-paper p { font-size: var(--fs-body); line-height: 1.8; overflow-wrap: anywhere; }
+.report-paper p + p { margin-top: var(--sp-2); }
+.report-table table { min-width: 0; }
+.report-table td, .report-table th { white-space: normal; }
+.report-table tbody th { font-weight: 500; text-align: left; color: var(--ink-2); padding: var(--sp-2) var(--sp-3); border-bottom: 1px solid var(--line); background: var(--surface); }
+.report-table td small { display: block; margin-top: 2px; color: var(--ink-3); }
+.plan-col { border-top: 4px solid var(--plan-a) !important; vertical-align: top; }
+.plan-col.plan-b { border-top-color: var(--plan-b) !important; }
+.plan-col.plan-c { border-top-color: var(--plan-c) !important; }
+.plan-col > span, .plan-col > small { display: block; }
+.plan-col > small { font-weight: 400; color: var(--ink-3); }
+.plan-col .prov-badge { margin-top: var(--sp-1); }
+.plan-swatch { display: none; }
+.hash-line { font-family: var(--mono); font-size: var(--fs-caption) !important; color: var(--ink-2); overflow-wrap: anywhere; }
+
+@media (max-width: 760px) {
+  .scenario-picker { grid-template-columns: 1fr; }
+  .report-actions { flex-direction: column; align-items: stretch; }
+  .report-paper { padding: var(--sp-5) var(--sp-4); }
+  .report-paper h1 { font-size: var(--fs-title); }
+  .report-title-block { grid-template-columns: 1fr 1fr; }
+  .report-title-block > div { border-left: 0; border-top: 1px solid var(--line-strong); }
+  .report-title-block > div:nth-child(-n + 2) { border-top: 0; }
+  .report-title-block > div:nth-child(even) { border-left: 1px solid var(--line-strong); }
+  .report-table table { min-width: 440px; }
+}
+
+@media print {
+  @page { size: A4 portrait; margin: 18mm; }
+  html, body, .app-shell, .main-shell { background: var(--surface) !important; }
+  .no-print, .report-export { display: none !important; }
+  .reports-page { padding: 0 !important; }
+  .report-paper { max-width: none; margin: 0; padding: 0; border: 0; border-radius: 0; }
+  .report-paper h2 { break-after: avoid; }
+  .report-section { break-inside: auto; }
+  .report-table, .report-title-block, .report-paper table, .report-paper tr, figure { break-inside: avoid; }
+  .report-paper thead { display: table-header-group; }
+  .report-paper p { orphans: 3; widows: 3; }
+  .report-paper .table-wrap { overflow: visible; border-radius: 0; }
+  .report-title-block, .plan-col, .prov-badge, .is-missing, .missing-value, .table-wrap th { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  a { color: inherit; text-decoration: none; }
+}
