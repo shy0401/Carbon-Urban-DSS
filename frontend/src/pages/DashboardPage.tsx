@@ -26,7 +26,7 @@ export function DashboardPage() {
   const chartOption = useMemo<EChartsOption>(() => baseChart({
     xAxis: { ...(baseChart().xAxis as object), data: monthly.map((row) => `${Number(String(row.use_ym).slice(-2))}월`) },
     yAxis: { ...(baseChart().yAxis as object), name: 'kWh', axisLabel: { color: '#64738a', fontSize: 12, formatter: compactAxis } },
-    series: [lineSeries('전력', monthly.map((row) => row.electricity_kwh), SERIES.electricity, true), lineSeries('가스 (kWh 환산)', monthly.map((row) => row.gas_kwh), SERIES.gas)],
+    series: [lineSeries('전력', monthly.map((row) => row.electricity_kwh), SERIES.electricity), lineSeries('가스 (kWh 환산)', monthly.map((row) => row.gas_kwh), SERIES.gas)],
   }), [monthly]);
 
   if (loading) return <div className="page"><LoadingState /></div>;

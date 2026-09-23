@@ -54,6 +54,7 @@ export type TokenName = keyof typeof TOKENS;
 
 /** Non-hex tokens used by the map (same strings as tokens.css). */
 export const LINE_ON_BASEMAP = 'rgba(255, 255, 255, .6)';
+export const POPOVER_SHADOW = '0 4px 16px rgba(28, 38, 34, .12)';
 export const FONT_STACK = '"Pretendard Variable", Pretendard, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif';
 
 const t = TOKENS;

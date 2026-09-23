@@ -1,4 +1,5 @@
 import type { GridProps } from '../types';
+import { RAMPS, TOKENS, USE_GROUP_COLOR, type RampName } from '../theme/palette';
 import { formatMetric } from './format';
 
 /** One map indicator: what it is, how it is computed, and the basis for a given grid. */
@@ -8,6 +9,8 @@ export interface MetricDef {
   unit: string;
   group: string;
   digits: number;
+  /** 램프 (DESIGN.md 2.4): load = 높을수록 나쁨, gain = 높을수록 좋음, seq = 방향성 없음. */
+  ramp: RampName;
   value: (p: GridProps) => number | null;
   definition: string;
   formula: string;
@@ -27,7 +30,7 @@ export const METRIC_GROUPS = ['에너지 관측', '에너지 원단위', '탄소
 
 export const METRICS: MetricDef[] = [
   {
-    key: 'electricity_kwh_annual', label: '연간 전력 사용량', unit: 'kWh/년', group: '에너지 관측', digits: 0,
+    key: 'electricity_kwh_annual', label: '연간 전력 사용량', unit: 'kWh/년', group: '에너지 관측', ramp: 'load', digits: 0,
     value: (p) => n(p.electricity_kwh_annual),
     definition: '격자 안에서 12개월 모두 관측된 지번(공동주택 단지)의 전력 사용량 합계입니다. 격자 안 모든 건물의 합이 아닙니다.',
     formula: 'Σ 월별 전력(kWh), 12개월 관측 지번만',
@@ -35,7 +38,7 @@ export const METRICS: MetricDef[] = [
     source: '건축HUB 건물에너지 · K-apt 월별 에너지',
   },
   {
-    key: 'gas_kwh_annual', label: '연간 가스 사용량', unit: 'kWh/년', group: '에너지 관측', digits: 0,
+    key: 'gas_kwh_annual', label: '연간 가스 사용량', unit: 'kWh/년', group: '에너지 관측', ramp: 'load', digits: 0,
     value: (p) => n(p.gas_kwh_annual),
     definition: '12개월 모두 관측된 지번의 도시가스 사용량(건축HUB kWh 환산값) 합계입니다.',
     formula: 'Σ 월별 가스(kWh), 12개월 관측 지번만',
@@ -43,7 +46,7 @@ export const METRICS: MetricDef[] = [
     source: '건축HUB 건물에너지',
   },
   {
-    key: 'electricity_kwh_per_m2', label: '전력 원단위', unit: 'kWh/m²·년', group: '에너지 원단위', digits: 1,
+    key: 'electricity_kwh_per_m2', label: '전력 원단위', unit: 'kWh/m²·년', group: '에너지 원단위', ramp: 'load', digits: 1,
     value: (p) => n(p.electricity_kwh_per_m2),
     definition: '연면적 1m²당 연간 전력 사용량입니다. 연면적은 K-apt 공표값이며 비현실적인 값(세대당 20~400m² 밖)은 제외합니다.',
     formula: 'Σ 연간 전력 ÷ Σ 연면적 (같은 지번 집합)',
@@ -51,7 +54,7 @@ export const METRICS: MetricDef[] = [
     source: '에너지 관측 ÷ K-apt 연면적',
   },
   {
-    key: 'electricity_kwh_per_household', label: '세대당 전력', unit: 'kWh/세대·년', group: '에너지 원단위', digits: 0,
+    key: 'electricity_kwh_per_household', label: '세대당 전력', unit: 'kWh/세대·년', group: '에너지 원단위', ramp: 'load', digits: 0,
     value: (p) => n(p.electricity_kwh_per_household),
     definition: '공동주택 1세대당 연간 전력 사용량(공용 포함)입니다. 월평균은 이 값 ÷ 12입니다.',
     formula: 'Σ 연간 전력 ÷ Σ 세대수 (같은 지번 집합)',
@@ -59,7 +62,7 @@ export const METRICS: MetricDef[] = [
     source: '에너지 관측 ÷ K-apt 세대수',
   },
   {
-    key: 'gas_kwh_per_m2', label: '가스 원단위', unit: 'kWh/m²·년', group: '에너지 원단위', digits: 1,
+    key: 'gas_kwh_per_m2', label: '가스 원단위', unit: 'kWh/m²·년', group: '에너지 원단위', ramp: 'load', digits: 1,
     value: (p) => n(p.gas_kwh_per_m2),
     definition: '연면적 1m²당 연간 가스 사용량(kWh 환산)입니다.',
     formula: 'Σ 연간 가스 ÷ Σ 연면적 (같은 지번 집합)',
@@ -67,7 +70,7 @@ export const METRICS: MetricDef[] = [
     source: '건축HUB ÷ K-apt 연면적',
   },
   {
-    key: 'electricity_carbon_t', label: '전력 탄소배출량', unit: 'tCO₂eq/년', group: '탄소', digits: 1,
+    key: 'electricity_carbon_t', label: '전력 탄소배출량', unit: 'tCO₂eq/년', group: '탄소', ramp: 'load', digits: 1,
     value: (p) => { const kg = n(p.electricity_carbon_kg_annual); return kg === null ? null : kg / 1000; },
     definition: '연간 전력 사용량에 국가 승인 전력 배출계수를 곱한 운영탄소입니다. 가스 탄소는 계수 확정 전이라 포함하지 않습니다.',
     formula: '연간 전력(kWh) × 0.4541 kgCO₂eq/kWh ÷ 1,000',
@@ -75,7 +78,7 @@ export const METRICS: MetricDef[] = [
     source: 'GIR 2024 승인 국가 온실가스 배출계수',
   },
   {
-    key: 'electricity_carbon_kg_per_m2', label: '전력 탄소 원단위', unit: 'kgCO₂eq/m²·년', group: '탄소', digits: 1,
+    key: 'electricity_carbon_kg_per_m2', label: '전력 탄소 원단위', unit: 'kgCO₂eq/m²·년', group: '탄소', ramp: 'load', digits: 1,
     value: (p) => n(p.electricity_carbon_kg_per_m2),
     definition: '연면적 1m²당 연간 전력 탄소배출량입니다.',
     formula: '전력 원단위(kWh/m²) × 0.4541',
@@ -83,7 +86,7 @@ export const METRICS: MetricDef[] = [
     source: '전력 원단위 × GIR 계수',
   },
   {
-    key: 'building_count', label: '건물 수', unit: '동', group: '도시 형태', digits: 0,
+    key: 'building_count', label: '건물 수', unit: '동', group: '도시 형태', ramp: 'seq', digits: 0,
     value: (p) => n(p.building_count),
     definition: '대표점이 격자 안에 있는 건물 수입니다. 공식 도로명주소 건물(VWorld)이 없으면 OSM 공동주택 윤곽으로 대체합니다.',
     formula: '격자 안 건물 대표점 개수',
@@ -91,7 +94,7 @@ export const METRICS: MetricDef[] = [
     source: 'VWorld LT_C_SPBD (대체: OSM)',
   },
   {
-    key: 'coverage_pct', label: '건폐율 근사', unit: '%', group: '도시 형태', digits: 1,
+    key: 'coverage_pct', label: '건폐율 근사', unit: '%', group: '도시 형태', ramp: 'seq', digits: 1,
     value: (p) => n(p.coverage_pct), breaks: [5, 10, 20, 30],
     definition: '격자 면적 중 건물이 덮은 면적의 비율입니다. 필지 대지면적 기준의 법정 건폐율과는 다릅니다.',
     formula: `Σ 건축면적 ÷ ${GRID} × 100`,
@@ -99,7 +102,7 @@ export const METRICS: MetricDef[] = [
     source: 'VWorld 건물 윤곽 면적',
   },
   {
-    key: 'far_est_pct', label: '추정 용적률', unit: '%', group: '도시 형태', digits: 1,
+    key: 'far_est_pct', label: '추정 용적률', unit: '%', group: '도시 형태', ramp: 'seq', digits: 1,
     value: (p) => n(p.far_est_pct), breaks: [25, 50, 100, 200],
     definition: '건축면적 × 지상층수로 추정한 연면적을 격자 면적으로 나눈 값입니다. 층수가 없는 건물은 빠지며 법정 용적률이 아닙니다.',
     formula: `Σ(건축면적 × 지상층수) ÷ ${GRID} × 100`,
@@ -107,7 +110,7 @@ export const METRICS: MetricDef[] = [
     source: 'VWorld 건물 윤곽 × 지상층수',
   },
   {
-    key: 'avg_floors', label: '평균 지상층수', unit: '층', group: '도시 형태', digits: 1,
+    key: 'avg_floors', label: '평균 지상층수', unit: '층', group: '도시 형태', ramp: 'seq', digits: 1,
     value: (p) => n(p.avg_floors), breaks: [2, 4, 8, 15],
     definition: '층수가 기록된 건물의 지상층수 평균입니다.',
     formula: 'Σ 지상층수 ÷ 층수 확인 건물 수',
@@ -115,7 +118,7 @@ export const METRICS: MetricDef[] = [
     source: 'VWorld 건물 지상층수',
   },
   {
-    key: 'complex_households', label: '공동주택 세대수', unit: '세대', group: '도시 형태', digits: 0,
+    key: 'complex_households', label: '공동주택 세대수', unit: '세대', group: '도시 형태', ramp: 'seq', digits: 0,
     value: (p) => n(p.complex_households),
     definition: '위치가 격자 안에 있는 K-apt 의무관리 공동주택 단지의 세대수 합계입니다.',
     formula: 'Σ 단지 세대수',
@@ -123,7 +126,7 @@ export const METRICS: MetricDef[] = [
     source: 'K-apt 공동주택 기본정보',
   },
   {
-    key: 'residential_zone_ratio', label: '주거지역 비율', unit: '%', group: '토지이용', digits: 1,
+    key: 'residential_zone_ratio', label: '주거지역 비율', unit: '%', group: '토지이용', ramp: 'seq', digits: 1,
     value: (p) => n(p.residential_zone_ratio), breaks: PERCENT_BREAKS,
     definition: '격자 면적 중 법정 주거지역(제1·2·3종 일반주거 등) 도형과 겹치는 면적의 비율입니다.',
     formula: `주거지역 ∩ 격자 면적 ÷ ${GRID} × 100`,
@@ -131,7 +134,7 @@ export const METRICS: MetricDef[] = [
     source: 'VWorld LT_C_UQ111 용도지역',
   },
   {
-    key: 'residential_building_share', label: '주거용 건물 비중', unit: '%', group: '토지이용', digits: 1,
+    key: 'residential_building_share', label: '주거용 건물 비중', unit: '%', group: '토지이용', ramp: 'seq', digits: 1,
     value: (p) => n(p.residential_building_share), breaks: PERCENT_BREAKS,
     definition: '격자 안 건물 건축면적 중 주거용(단독·공동주택) 건물의 비율입니다.',
     formula: '주거용 건축면적 ÷ 전체 건축면적 × 100',
@@ -139,7 +142,7 @@ export const METRICS: MetricDef[] = [
     source: 'VWorld 건물용도코드',
   },
   {
-    key: 'completeness', label: '에너지 관측 완전성', unit: '%', group: '데이터 품질', digits: 0,
+    key: 'completeness', label: '에너지 관측 완전성', unit: '%', group: '데이터 품질', ramp: 'gain', digits: 0,
     value: (p) => (p.electricity_months || p.gas_months ? n(p.completeness) : null), breaks: [25, 50, 75, 100],
     definition: '전력 12개월과 가스 12개월 중 관측이 있는 달의 비율입니다. 관측이 전혀 없는 격자는 결측(회색)으로 둡니다.',
     formula: '(전력 관측 월 + 가스 관측 월) ÷ 24 × 100',
@@ -150,17 +153,18 @@ export const METRICS: MetricDef[] = [
 
 export const ZONE_NAME: Record<string, string> = { RESIDENTIAL: '주거', COMMERCIAL: '상업', INDUSTRIAL: '공업', GREEN: '녹지', OTHER: '기타', UNKNOWN: '이름 없음' };
 export const USE_NAME: Record<string, string> = { RESIDENTIAL: '주거', COMMERCIAL: '상업·업무', INDUSTRIAL: '공업·창고', PUBLIC: '공공·교육·의료', OTHER: '기타', UNKNOWN: '용도 미상' };
-export const USE_COLORS: Array<[string, string]> = [['RESIDENTIAL', '#f2b705'], ['COMMERCIAL', '#e4572e'], ['INDUSTRIAL', '#8d6cab'], ['PUBLIC', '#2a78d6'], ['OTHER', '#64748b'], ['UNKNOWN', '#b8c2c0']];
+/** 건물 용도 대분류 색 (DESIGN.md 2.5.1). 용도 미상은 null = 해치. */
+export const USE_ORDER = ['RESIDENTIAL', 'COMMERCIAL', 'INDUSTRIAL', 'PUBLIC', 'OTHER', 'UNKNOWN'] as const;
+export const USE_COLORS: Array<[string, string | null]> = USE_ORDER.map((key) => [key, USE_GROUP_COLOR[key] ?? null]);
 
-/** Sequential single-hue ramp (light → dark), dataviz reference blue. */
-export const RAMP = ['#b7d3f6', '#86b6ef', '#5598e7', '#2a78d6', '#184f95'];
-export const MISSING_COLOR = '#cbd5d1';
+/** 결측 격자의 바탕색. 그 위에 해치 패턴 레이어를 겹친다(램프 최저색과 구분). */
+export const MISSING_FILL = TOKENS['prov-missing-bg'];
 
 export interface MetricClass { color: string; from: number; to: number; count: number }
 export interface Classification { classes: MetricClass[]; lowerBounds: number[]; valued: number; missing: number; min: number | null; max: number | null }
 
 /** Lower bounds for classes 2..k from quantiles of the values (distinct, increasing). */
-export function quantileBounds(values: number[], classes = RAMP.length): number[] {
+export function quantileBounds(values: number[], classes = 5): number[] {
   const sorted = [...values].sort((a, b) => a - b);
   if (sorted.length < 2) return [];
   const bounds: number[] = [];
@@ -177,13 +181,13 @@ function nice(value: number): number {
 }
 
 /** Classes for the legend and the map. Values equal to a lower bound fall in the upper class. */
-export function classify(values: Array<number | null>, fixed?: number[]): Classification {
+export function classify(values: Array<number | null>, fixed?: number[], ramp: RampName = 'seq'): Classification {
   const valid = values.filter((v): v is number => v !== null && Number.isFinite(v));
   const missing = values.length - valid.length;
   if (!valid.length) return { classes: [], lowerBounds: [], valued: 0, missing, min: null, max: null };
   const min = Math.min(...valid), max = Math.max(...valid);
   const lowerBounds = (fixed ?? quantileBounds(valid)).filter((b) => b > min || fixed !== undefined);
-  const colors = pickColors(lowerBounds.length + 1);
+  const colors = pickColors(lowerBounds.length + 1, RAMPS[ramp]);
   const edges = [min, ...lowerBounds];
   const classes = edges.map((from, i) => ({ color: colors[i], from: i === 0 ? min : from, to: i < lowerBounds.length ? lowerBounds[i] : max, count: 0 }));
   for (const value of valid) classes[classIndex(value, lowerBounds)].count += 1;
@@ -196,20 +200,20 @@ export function classIndex(value: number, lowerBounds: number[]): number {
   return index;
 }
 
-function pickColors(count: number): string[] {
-  if (count >= RAMP.length) return RAMP.slice(0, count);
-  if (count === 1) return [RAMP[3]];
-  const step = (RAMP.length - 1) / (count - 1);
-  return Array.from({ length: count }, (_, i) => RAMP[Math.round(i * step)]);
+function pickColors(count: number, ramp: string[]): string[] {
+  if (count >= ramp.length) return ramp.slice(0, count);
+  if (count === 1) return [ramp[3]];
+  const step = (ramp.length - 1) / (count - 1);
+  return Array.from({ length: count }, (_, i) => ramp[Math.round(i * step)]);
 }
 
-/** MapLibre fill color: explicit gray for missing, then a step ramp on the class bounds. */
+/** MapLibre fill color: explicit missing branch (hatch layer drawn on top), then a step ramp on the class bounds. */
 export function stepColor(property: string, classification: Classification): unknown[] {
   const colors = classification.classes.map((c) => c.color);
-  if (!colors.length) return ['case', ['==', ['get', property], null], MISSING_COLOR, MISSING_COLOR];
+  if (!colors.length) return ['case', ['==', ['get', property], null], MISSING_FILL, MISSING_FILL];
   const step: unknown[] = ['step', ['to-number', ['get', property]], colors[0]];
   classification.lowerBounds.forEach((bound, i) => step.push(bound, colors[i + 1]));
-  return ['case', ['==', ['get', property], null], MISSING_COLOR, step];
+  return ['case', ['==', ['get', property], null], MISSING_FILL, step];
 }
 
 /** Features with derived metric values stored under their metric key (e.g. tCO₂eq). */

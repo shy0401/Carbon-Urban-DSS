@@ -113,3 +113,23 @@
 .icon-link { display: grid; place-items: center; width: 34px; height: 34px; border: 1px solid var(--line-strong); border-radius: var(--r-control); background: var(--surface); color: var(--ink-2); }
 .icon-link:hover { border-color: var(--ink-3); color: var(--ink); }
 .score-track.is-missing { background-color: var(--prov-missing-bg); background-image: var(--hatch-image); }
+
+/* 월별 관측 띠: 관측 월은 실측 바탕, 없는 달은 해치(0으로 칠하지 않음). */
+.month-strip-row { display: grid; grid-template-columns: 40px 1fr 40px; align-items: center; gap: var(--sp-2); font-size: var(--fs-caption); color: var(--ink-2); }
+.month-strip-row + .month-strip-row { margin-top: var(--sp-1); }
+.month-strip-row b { text-align: right; font-weight: 500; color: var(--ink); }
+.month-strip { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 2px; }
+.month-strip span { display: grid; place-items: center; height: 20px; border: 1px solid var(--hatch); border-radius: var(--r-map); font-size: 11px; color: var(--ink-2); print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+.month-strip span.on { border-color: var(--prov-observed); background: var(--prov-observed-bg); color: var(--prov-observed); font-weight: 500; }
+.month-strip span.is-missing { background-color: var(--prov-missing-bg); background-image: var(--hatch-image); }
+
+/* 구성비 막대 (용도지역·건물 용도): 조각 사이 2px, 미분류·나머지는 해치. */
+.share-bar { margin-top: var(--sp-2); }
+.share-title { margin-bottom: var(--sp-1); font-size: var(--fs-caption); color: var(--ink-2); }
+.share-track { display: flex; gap: 2px; height: 14px; }
+.share-track span { min-width: 2px; height: 100%; border-radius: 1px; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+.share-legend { display: flex; flex-wrap: wrap; gap: var(--sp-1) var(--sp-3); margin: var(--sp-2) 0 0; padding: 0; list-style: none; font-size: var(--fs-caption); color: var(--ink); }
+.share-legend li { display: inline-flex; align-items: center; gap: 6px; }
+.share-legend i { width: 12px !important; height: 12px !important; }
+.share-legend b { font-weight: 500; }
+.share-legend small { color: var(--ink-3); }

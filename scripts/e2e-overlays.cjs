@@ -28,8 +28,11 @@ fs.mkdirSync(out, { recursive: true });
     ]) {
       const box = page.getByRole('checkbox', { name: label });
       if (!count) {
-        if (!(await box.isDisabled())) throw new Error(`${key}: empty overlay must be disabled`);
-        checks.push({ name: key, status: 'SKIP', reason: 'not collected' });
+        // DESIGN.md 2.5: the toggle stays available and, when switched on, says the data is not secured yet.
+        await box.check();
+        await page.locator('.overlay-missing').filter({ hasText: '자료 미확보' }).first().waitFor();
+        await box.uncheck();
+        checks.push({ name: key, status: 'SKIP', reason: 'not collected (자료 미확보 notice shown)' });
         continue;
       }
       await box.check();

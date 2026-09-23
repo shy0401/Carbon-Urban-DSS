@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { TOKENS } from '../theme/palette';
 import { isBasemapError, metricColor, selectedFilter } from './MapPage';
 
 describe('MapPage expressions', () => {
@@ -13,9 +14,10 @@ describe('MapPage expressions', () => {
     expect(JSON.stringify(selectedFilter('g-1'))).toContain('grid_id');
   });
 
-  it('결측 지도값에 명시적인 회색 분기를 둔다', () => {
+  it('결측 지도값에 명시적인 결측 분기를 둔다(램프 최저색이 아님)', () => {
     expect(metricColor('carbon_kg')[0]).toBe('case');
-    expect(JSON.stringify(metricColor('carbon_kg'))).toContain('#cbd5d1');
+    expect(JSON.stringify(metricColor('carbon_kg'))).toContain(TOKENS['prov-missing-bg']);
+    expect(JSON.stringify((metricColor('carbon_kg') as unknown[])[3])).not.toContain(TOKENS['prov-missing-bg']);
   });
 });
 
@@ -26,9 +28,17 @@ describe('MapPage overlays', () => {
     expect(expression).toContain('RESIDENTIAL');
     expect(expression).toContain(ZONE_LEGEND[4][2]);
   });
+  it('용도지역 외곽선은 세부 명칭별 토큰 색을 쓴다', async () => {
+    const { zoneLineColor } = await import('./MapPage');
+    const expression = JSON.stringify(zoneLineColor());
+    expect(expression).toContain('제2종일반주거');
+    expect(expression).toContain(TOKENS['zone-r2']);
+    expect(expression).toContain(TOKENS['zone-gc']);
+  });
   it('행정동 인구밀도 결측은 회색으로 두고 최대값으로 색 범위를 정한다', async () => {
     const { densityColor, maxOf } = await import('./MapPage');
-    expect(JSON.stringify(densityColor(1000))).toContain('#d7d3de');
+    expect(JSON.stringify(densityColor(1000))).toContain(TOKENS['prov-missing-bg']);
+    expect(JSON.stringify(densityColor(1000))).toContain(TOKENS['seq-5']);
     const fc = { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: null, properties: { population_density: 12 } }, { type: 'Feature', geometry: null, properties: { population_density: null } }] } as unknown as GeoJSON.FeatureCollection;
     expect(maxOf(fc, 'population_density')).toBe(12);
     expect(maxOf(undefined, 'population_density')).toBe(0);

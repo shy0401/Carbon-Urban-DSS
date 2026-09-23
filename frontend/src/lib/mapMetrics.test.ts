@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { TOKENS } from '../theme/palette';
 import { classIndex, classify, METRICS, quantileBounds, rangeLabel, stepColor, withMetricValues } from './mapMetrics';
 import type { GridProps } from '../types';
 
@@ -25,11 +26,20 @@ describe('map classification', () => {
     expect(result.classes).toHaveLength(5);
     expect(rangeLabel(result.classes[4], 0, true)).toBe('80 이상');
   });
-  it('builds a MapLibre expression with an explicit missing color', () => {
+  it('builds a MapLibre expression with an explicit missing branch (hatch layer on top), not the lowest ramp color', () => {
     const expression = stepColor('coverage_pct', classify([1, 50, 100], [20, 40]));
     expect(expression[0]).toBe('case');
-    expect(JSON.stringify(expression)).toContain('#cbd5d1');
+    expect(JSON.stringify(expression)).toContain(TOKENS['prov-missing-bg']);
     expect(JSON.stringify(expression)).toContain('step');
+  });
+  it('uses the load ramp for burdens, gain for benefits and a neutral ramp otherwise', () => {
+    expect(classify([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], undefined, 'load').classes.at(-1)?.color).toBe(TOKENS['load-5']);
+    expect(classify([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], undefined, 'gain').classes.at(-1)?.color).toBe(TOKENS['gain-5']);
+    expect(classify([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]).classes[0].color).toBe(TOKENS['seq-1']);
+    const byKey = Object.fromEntries(METRICS.map((m) => [m.key, m.ramp]));
+    expect(byKey.electricity_carbon_t).toBe('load');
+    expect(byKey.completeness).toBe('gain');
+    expect(byKey.far_est_pct).toBe('seq');
   });
   it('derives tCO₂eq from kg and never invents values for missing inputs', () => {
     const props = { electricity_carbon_kg_annual: 2411111.6, completeness: 0, electricity_months: 0, gas_months: 0 } as unknown as GridProps;
