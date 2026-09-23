@@ -47,6 +47,15 @@ fs.mkdirSync(out, { recursive: true });
       checks.push({ name, status: 'PASS' });
     }
     await page.screenshot({ path: path.join(out, 'analysis-official.png'), fullPage: true });
+    // Report: official context section is generated from DB values (no AI numbers).
+    const created = await page.request.post(base + '/api/reports', { data: { year: 2025 } });
+    if (created.status() !== 201) throw new Error('report creation failed: ' + created.status());
+    const report = await created.json();
+    const contextFacts = (report.context && report.context.facts) || [];
+    if (!contextFacts.length) throw new Error('report has no official context facts');
+    const markdown = await (await page.request.get(base + `/api/reports/${report.id}/markdown`)).text();
+    if (!markdown.includes('대상지 공식 현황')) throw new Error('markdown export lacks the official context section');
+    checks.push({ name: 'report_official_context', status: 'PASS', facts: contextFacts.map((fact) => fact.id) });
     if (errors.length) throw new Error('page errors: ' + errors.join(' | '));
     fs.writeFileSync(path.join(out, 'overlays.json'), JSON.stringify({ checks, meta, pageErrors: errors }, null, 2));
     console.log(JSON.stringify({ overlays: checks.map((c) => `${c.name}:${c.status}`), passed: checks.filter((c) => c.status === 'PASS').length }));

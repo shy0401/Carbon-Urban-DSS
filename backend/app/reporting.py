@@ -60,6 +60,10 @@ def create_snapshot(db,year,grid_id,scenario_ids):
         facts.insert(1,{'id':'missing','text':'기준 자료 또는 배출계수가 부족하여 연간 전체 운영탄소와 탄소 감축률을 확정할 수 없습니다.'})
     else:
         facts.insert(1,{'id':'annual','text':f'동일 관측 범위의 연간 운영탄소는 {data["carbon_kg"]:,.1f} kgCO2eq입니다.'})
+    intensity=(data.get('normalized') or {}).get('electricity_kwh_per_m2')
+    if intensity is not None:
+        area=data['normalized']['electricity_matched_floor_area_m2']
+        facts.insert(2,{'id':'electricity_intensity','text':f'연면적이 매칭된 관측 단지(연면적 {area:,.0f}m²) 기준 {year}년 전력 원단위는 {intensity:,.1f} kWh/m²이고, 전력 운영탄소는 {data["electricity_carbon_kg"]:,.0f} kgCO2eq입니다.' if data.get('electricity_carbon_kg') is not None else f'연면적이 매칭된 관측 단지(연면적 {area:,.0f}m²) 기준 {year}년 전력 원단위는 {intensity:,.1f} kWh/m²입니다.'})
     facts.append({'id':'legal','text':'시나리오는 운영 단계의 1차 추정이며 법적 인허가 적합성이나 사업 전체 넷제로 달성을 판정하지 않습니다.'})
     scenarios=[]
     for sid in dict.fromkeys(scenario_ids):
@@ -74,14 +78,19 @@ def create_snapshot(db,year,grid_id,scenario_ids):
         change=r.result.get('annual',{}).get('difference',{}).get('carbon_kg')
         if carbon is not None and change is not None:
             facts.append({'id':'carbon_'+str(len(scenarios)),'text':f'비교안 {len(scenarios)}의 연간 운영탄소는 {carbon:,.1f} kgCO2eq이며 기준 대비 변화는 {change:+,.1f} kgCO2eq입니다.'})
+    from .overlays import context_facts,grid_context
+    context=grid_context(db,actual_grid);context['facts']=context_facts(context)
     sources=[{k:s.get(k) for k in ['id','name','source_url','reference_period','collected_at','status','source_type','normalized_row_count','limitation']} for s in data['sources']]
-    snapshot={'version':1,'year':year,'grid_id':actual_grid,'title':'도시계획 의사결정 검토 보고서','created_at':now().isoformat(),'sector':sector,'facts':facts,'sources':sources,'scenarios':scenarios,'monthly':data['monthly'],'coverage':data['coverage'],'annual_complete':data['annual_complete'],'totals':{k:data[k] for k in ['electricity_kwh','gas_kwh','carbon_kg']},'scope':data['scope']}
+    snapshot={'version':1,'year':year,'grid_id':actual_grid,'title':'도시계획 의사결정 검토 보고서','created_at':now().isoformat(),'sector':sector,'facts':facts,'sources':sources,'scenarios':scenarios,'context':context,'monthly':data['monthly'],'coverage':data['coverage'],'annual_complete':data['annual_complete'],'totals':{k:data[k] for k in ['electricity_kwh','gas_kwh','carbon_kg']},'scope':data['scope']}
     snapshot['evidence_hash']=hashlib.sha256(json.dumps(snapshot,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
     return snapshot
 
 def report_markdown(s):
     lines=['# '+s['title'],f'기준연도: {s["year"]} | 격자: {s["grid_id"]}',f'작성시각: {s["created_at"]}','## 검토 요약']
     lines+=s.get('summary',{}).get('paragraphs',[f['text'] for f in s['facts']])
+    context=s.get('context') or {}
+    if context.get('facts'):
+        lines+=['## 대상지 공식 현황']+[f['text'] for f in context['facts']]
     lines+=['## 기준 자료 및 해석 범위',s['scope'],'부분 관측 합계는 연간 전체 값으로 해석하지 않습니다.','## 시나리오 비교']
     for i,sc in enumerate(s['scenarios'],1):
         r=sc['result'];lines.append(f'대안 {i}: {sc["inputs"]["floors"]}층 / {sc["inputs"]["building_count"]}동 / 연면적 {r["gross_floor_area"]:,.0f}m² / 용적률 {r["far"]:.1f}% / 건폐율 {r["bcr"]:.1f}%')

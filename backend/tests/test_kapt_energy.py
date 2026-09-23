@@ -113,3 +113,20 @@ def test_collection_api_accepts_kapt_energy_with_explicit_scope():
     )
     assert request.datasets == ['kapt_energy']
     assert request.scope == 'smoke'
+
+
+def test_provider_success_000_and_nodata_03_are_not_errors():
+    ok = json.dumps({'response': {'header': {'resultCode': '000', 'resultMsg': 'OK'}, 'body': {'item': {'kaptCode': 'A1', 'reqDate': '202501', 'helect': '100'}}}}).encode()
+    assert parse_kapt_energy_response(ok)['rows'][0]['electricity_quantity'] == 100.0
+    nodata = json.dumps({'response': {'header': {'resultCode': '03', 'resultMsg': 'NODATA_ERROR'}, 'body': {}}}).encode()
+    assert parse_kapt_energy_response(nodata)['rows'] == []
+
+
+def test_rate_limit_and_auth_codes_have_distinct_messages():
+    from app.cache import ExternalError
+    limit = json.dumps({'response': {'header': {'resultCode': '22'}, 'body': {}}}).encode()
+    with pytest.raises(ExternalError, match='호출 한도'):
+        parse_kapt_energy_response(limit)
+    auth = json.dumps({'response': {'header': {'resultCode': '30'}, 'body': {}}}).encode()
+    with pytest.raises(ExternalError, match='인증 실패'):
+        parse_kapt_energy_response(auth)

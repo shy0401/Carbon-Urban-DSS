@@ -26,3 +26,28 @@ def test_zoning_summary_separates_missing_empty_and_caps_overlaps():
     assert summary['g2']['residential_zone_ratio'] == 0.0 and summary['g2']['zoning_status'] == 'EMPTY_VALID'
     assert summary['g2']['dominant_zone'] is None
     assert summary['g3']['residential_zone_ratio'] == 100.0
+
+
+def test_context_facts_keep_admin_totals_separate_from_grid_values():
+    from app.overlays import context_facts
+    facts = {f['id']: f['text'] for f in context_facts({
+        'zoning': {'status': 'SUCCESS', 'shares_pct': {'RESIDENTIAL': 62.5, 'GREEN': 20.0}, 'residential_pct': 62.5, 'dominant': 'RESIDENTIAL'},
+        'admin': [
+            {'adm_name': '전북특별자치도 전주시 덕진구 송천1동', 'reference_year': 2024, 'grid_share_pct': 70.0, 'population': 12345.0, 'population_status': 'OBSERVED'},
+            {'adm_name': '전북특별자치도 전주시 덕진구 호성동', 'reference_year': 2024, 'grid_share_pct': 30.0, 'population': None, 'population_status': 'SUPPRESSED'},
+            {'adm_name': '가장자리동', 'reference_year': 2024, 'grid_share_pct': 0.2, 'population': 1.0, 'population_status': 'OBSERVED'},
+        ],
+        'complexes': {'count': 3, 'households': 1200.0, 'gross_floor_area_m2': 150000.0, 'with_floor_area': 2},
+    })}
+    assert '주거 62.5%' in facts['context_zoning'] and '녹지 20.0%' in facts['context_zoning']
+    assert '송천1동(격자의 70%, 인구 12,345명)' in facts['context_admin']
+    assert '호성동(격자의 30%, 인구 비공개)' in facts['context_admin']
+    assert '가장자리동' not in facts['context_admin']
+    assert '격자 인구가 아닙니다' in facts['context_admin']
+    assert '3개 단지' in facts['context_complexes'] and '2/3개 단지 기준' in facts['context_complexes']
+
+
+def test_context_facts_report_missing_zoning_honestly():
+    from app.overlays import context_facts
+    facts = context_facts({'zoning': None, 'admin': [], 'complexes': None})
+    assert facts == [{'id': 'context_zoning', 'text': '대상 격자의 용도지역은 아직 수집되지 않았습니다.'}]

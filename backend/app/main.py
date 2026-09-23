@@ -163,7 +163,19 @@ def create_collection(request:CollectionInput):
 @app.get('/api/collections')
 @app.get('/api/v1/collection-jobs')
 def collections():
-    with Session() as db:return [serialize(r) for r in db.scalars(select(CollectionJob).order_by(CollectionJob.created_at.desc()).limit(40))]
+    with Session() as db:return mark_resolved_failures([serialize(r) for r in db.scalars(select(CollectionJob).order_by(CollectionJob.created_at.desc()).limit(40))])
+
+def mark_resolved_failures(jobs):
+    """Flag failed datasets that a later job collected successfully (history stays unchanged)."""
+    ordered=sorted(jobs,key=lambda job:job.get('created_at') or '')
+    for index,job in enumerate(ordered):
+        if job.get('status') not in ('FAILED','PARTIAL'):continue
+        failed={e.get('dataset') for e in job.get('errors') or [] if isinstance(e,dict) and e.get('dataset')} or set(job.get('datasets') or [])
+        later=[j for j in ordered[index+1:] if j.get('status')=='SUCCESS']
+        resolved={d for d in failed if any(d in (j.get('datasets') or []) for j in later)}
+        job['resolved_datasets']=sorted(resolved)
+        job['resolved']=bool(failed) and resolved==failed
+    return jobs
 
 @app.get('/api/v1/collection-jobs/{job_id}')
 def collection_detail(job_id:str):

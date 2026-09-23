@@ -69,3 +69,16 @@ def test_missing_provider_credentials_are_blocked_before_job_creation(monkeypatc
     assert response.status_code==409
     assert 'SGIS_CONSUMER_KEY' in response.json()['detail']
     assert len(c.get('/api/collections').json())==before
+
+
+def test_failed_collection_is_marked_resolved_when_a_later_job_succeeds():
+    from app.main import mark_resolved_failures
+    jobs = [
+        {'id': 'b', 'status': 'SUCCESS', 'datasets': ['vworld_zoning'], 'created_at': '2026-09-23T04:20:00', 'errors': []},
+        {'id': 'a', 'status': 'FAILED', 'datasets': ['vworld_zoning', 'kapt_energy'], 'created_at': '2026-09-23T04:04:00',
+         'errors': [{'dataset': 'vworld_zoning', 'message': 'INVALID_RANGE'}, {'dataset': 'kapt_energy', 'message': '형식 오류'}]},
+    ]
+    marked = {job['id']: job for job in mark_resolved_failures(jobs)}
+    assert marked['a']['resolved_datasets'] == ['vworld_zoning']
+    assert marked['a']['resolved'] is False
+    assert 'resolved' not in marked['b']

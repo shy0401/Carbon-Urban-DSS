@@ -6,7 +6,9 @@ from .modeling import fit_candidates,model_eligibility
 def model_rows(db,year,typ):
     """Use only documented energy-matched floor area, not every OSM polygon in a cell."""
     from .scope import matched_areas
-    observed=db.scalars(select(EnergyMonthly).where(EnergyMonthly.use_ym.between(f'{year}01',f'{year}12'))).all()
+    # Floor area is matched per energy type: K-apt electricity covers every complex in a grid while
+    # 건축HUB gas may cover one parcel, so a shared complex set across types would drop every grid.
+    observed=db.scalars(select(EnergyMonthly).where(EnergyMonthly.use_ym.between(f'{year}01',f'{year}12'),EnergyMonthly.energy_type==typ)).all()
     areas=matched_areas(observed)
     # Kapt collector may save comparable exact parcel-area groups in additional sector records.
     weather={r.use_ym:r for r in db.scalars(select(WeatherMonthly).where(WeatherMonthly.use_ym.between(f'{year}01',f'{year}12')))}

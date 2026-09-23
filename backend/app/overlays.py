@@ -162,3 +162,78 @@ def overlays(year: int = Query(DEFAULT_YEAR, ge=2000, le=2100)) -> dict[str, Any
                 ],
             },
         }
+
+
+def grid_context(db: Any, grid_id: str | None) -> dict[str, Any]:
+    """Official context for one analysis grid, kept separate from observed energy.
+
+    * zoning: VWorld zoning shares inside the grid (CALCULATED from official polygons)
+    * admin: SGIS 행정동 that overlap the grid, with the overlap share of the grid.
+      Their population/households are administrative totals, never grid values.
+    * complexes: K-apt complexes whose point lies in the grid (households, floor area)
+    """
+    context: dict[str, Any] = {"grid_id": grid_id, "zoning": None, "admin": [], "complexes": None}
+    if not grid_id:
+        return context
+    zoning = grid_zoning_summary(db).get(grid_id)
+    if zoning:
+        context["zoning"] = {"status": zoning["zoning_status"], "shares_pct": zoning["shares"], "residential_pct": zoning["residential_zone_ratio"], "dominant": zoning["dominant_zone"], "source": "VWorld LT_C_UQ111"}
+    if _table_exists(db, "sgis_admin_boundaries"):
+        rows = db.execute(text(
+            "SELECT b.adm_code, b.adm_name, b.reference_year, "
+            "ST_Area(ST_Intersection(b.geom, g.geom)) / NULLIF(ST_Area(g.geom), 0) AS grid_share "
+            "FROM sgis_admin_boundaries b JOIN grid_500m g ON g.id = :grid "
+            "WHERE ST_Intersects(b.geom, g.geom) ORDER BY grid_share DESC"
+        ), {"grid": grid_id}).mappings()
+        from .sgis import SgisHouseholdAdmin, SgisPopulationAdmin
+        for row in rows:
+            key = f"{row['reference_year']}:{row['adm_code']}"
+            pop = db.get(SgisPopulationAdmin, key)
+            house = db.get(SgisHouseholdAdmin, key)
+            context["admin"].append({
+                "adm_code": row["adm_code"], "adm_name": row["adm_name"], "reference_year": row["reference_year"],
+                "grid_share_pct": round(float(row["grid_share"] or 0) * 100, 1),
+                "population": pop.population_count if pop else None, "population_status": pop.value_status if pop else "NOT_COLLECTED",
+                "households": house.household_count if house else None,
+            })
+    from .kapt import ApartmentComplex
+    complexes = list(db.scalars(select(ApartmentComplex).where(ApartmentComplex.grid_id == grid_id)))
+    if complexes:
+        def total(field: str) -> float | None:
+            values = [getattr(row, field) for row in complexes if getattr(row, field) is not None]
+            return float(sum(values)) if values else None
+        context["complexes"] = {
+            "count": len(complexes), "households": total("households"), "gross_floor_area_m2": total("gross_floor_area_m2"),
+            "with_floor_area": sum(1 for row in complexes if row.gross_floor_area_m2 is not None),
+            "names": [row.name for row in complexes][:10], "source": "K-apt 공동주택 기본정보",
+        }
+    return context
+
+
+ZONE_LABEL = {"RESIDENTIAL": "주거", "COMMERCIAL": "상업", "INDUSTRIAL": "공업", "GREEN": "녹지", "OTHER": "기타", "UNKNOWN": "이름 없음"}
+
+
+def context_facts(context: dict[str, Any]) -> list[dict[str, str]]:
+    """Deterministic Korean sentences for the report (numbers come from the DB, not from AI)."""
+    facts: list[dict[str, str]] = []
+    zoning = context.get("zoning")
+    if zoning and zoning.get("shares_pct"):
+        parts = ", ".join(f"{ZONE_LABEL.get(k, k)} {v:.1f}%" for k, v in sorted(zoning["shares_pct"].items(), key=lambda item: -item[1]))
+        facts.append({"id": "context_zoning", "text": f"대상 격자의 공식 용도지역 면적 구성은 {parts}입니다(VWorld LT_C_UQ111, 법적 허용 상한 판정 아님)."})
+    elif zoning:
+        facts.append({"id": "context_zoning", "text": "대상 격자는 VWorld에 조회했으나 도시지역 용도지역 도형이 없습니다."})
+    else:
+        facts.append({"id": "context_zoning", "text": "대상 격자의 용도지역은 아직 수집되지 않았습니다."})
+    admin = [row for row in context.get("admin") or [] if row["grid_share_pct"] >= 1]
+    if admin:
+        parts = ", ".join(
+            f"{row['adm_name'].split()[-1]}(격자의 {row['grid_share_pct']:.0f}%, 인구 {row['population']:,.0f}명)" if row["population"] is not None
+            else f"{row['adm_name'].split()[-1]}(격자의 {row['grid_share_pct']:.0f}%, 인구 {'비공개' if row['population_status'] == 'SUPPRESSED' else '자료 없음'})"
+            for row in admin[:4])
+        facts.append({"id": "context_admin", "text": f"대상 격자는 행정동 {parts}에 걸쳐 있습니다. SGIS {admin[0]['reference_year']} 행정동 전체 통계이며 격자 인구가 아닙니다."})
+    complexes = context.get("complexes")
+    if complexes:
+        households = f"{complexes['households']:,.0f}세대" if complexes["households"] is not None else "세대수 자료 없음"
+        area = f"연면적 {complexes['gross_floor_area_m2']:,.0f}m²({complexes['with_floor_area']}/{complexes['count']}개 단지 기준)" if complexes["gross_floor_area_m2"] is not None else "연면적 자료 없음"
+        facts.append({"id": "context_complexes", "text": f"격자 안 K-apt 공동주택은 {complexes['count']}개 단지, {households}, {area}입니다."})
+    return facts

@@ -418,7 +418,12 @@ function Invoke-Collect {
             $script:Summary.results.vworld_domain = [ordered]@{ configured = $probe.Json.configured_domain; working = $null; action = 'Check the VWorld key service URL / API usage approval' }
         }
     } catch { Write-Log "    VWorld probe failed: $($_.Exception.Message)" }
-    foreach ($dataset in @('sgis', 'vworld_zoning', 'vworld_cadastral', 'kapt_energy', 'kma_asos', 'energy')) {
+    try {
+        $dg = Invoke-Ops @('probe', 'datagokr') 'probe-datagokr-collect.json'
+        foreach ($step in @($dg.Json.steps)) { Write-Log "    data.go.kr $($step.step): http=$($step.http) code=$($step.result_code) items=$($step.items) $($step.result_msg)" }
+    } catch { Write-Log "    data.go.kr probe failed: $($_.Exception.Message)" }
+    # Cheap and cached sources first; K-apt FULL (up to ~4,400 calls) last.
+    foreach ($dataset in @('sgis', 'vworld_zoning', 'vworld_cadastral', 'kma_asos', 'energy', 'kapt_energy')) {
         $execEnv = if ($dataset -like 'vworld_*') { $vworldEnv } else { @{} }
         $ops = Invoke-Ops @('staged', '--dataset', $dataset) "collect-$dataset.json" $execEnv
         $steps = @($ops.Json.steps)
@@ -428,6 +433,11 @@ function Invoke-Collect {
         Write-Log "    $dataset -> $($ops.Json.final_status) @ $($ops.Json.reached_scope): $message"
     }
     $script:Summary.results.collect = $results
+    try {
+        $models = Invoke-Ops @('models') 'models.json'
+        $script:Summary.results.models = [ordered]@{ status = $models.Json.status; models = @($models.Json.models | ForEach-Object { "$($_.energy_type): $($_.status) obs=$($_.observations) grids=$($_.grid_count) blocks=$($_.spatial_blocks) months=$($_.months)" }) }
+        Write-Log "    model validation: $($models.Json.status)"
+    } catch { Write-Log "    model validation failed: $($_.Exception.Message)" }
     Save-Summary
     return (($results.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value.final)" }) -join ', ')
 }
@@ -561,7 +571,8 @@ if ($Action -notin @('Doctor', 'All')) {
 }
 if ($selected -in @('Status', 'Probe', 'Collect')) {
     # app.ops runs inside the api image; make sure it contains the current code first.
-    if (-not (Invoke-Step 'Services up to date' { Assert-Native (Compose-Main @('up', '-d', '--build', '--wait', 'postgres', 'redis', 'api', 'worker')) 'compose up --build'; 'api/worker current' })) { $selected = 'Skip'; $ok = $false }
+    # --force-recreate: containers must pick up .env changes (new API keys) as well as new code.
+    if (-not (Invoke-Step 'Services up to date' { Assert-Native (Compose-Main @('up', '-d', '--build', '--force-recreate', '--wait', 'api', 'worker')) 'compose up --build'; 'api/worker rebuilt with current code and .env' })) { $selected = 'Skip'; $ok = $false }
 }
 switch ($selected) {
     'Doctor' { $ok = Invoke-Step 'Doctor' { Invoke-Doctor } }
@@ -569,6 +580,7 @@ switch ($selected) {
     'Backup' { $ok = Invoke-Step 'Backup' { Invoke-Backup 'manual' } }
     'Rebuild' { $ok = Invoke-Step 'Rebuild services' { Assert-Native (Compose-Main @('up', '-d', '--build', '--wait', 'postgres', 'redis', 'api', 'worker', 'frontend')) 'compose up --build'; 'api/worker/frontend rebuilt' } }
     'Probe' {
+        Invoke-Step 'Probe data.go.kr' { $p = Invoke-Ops @('probe', 'datagokr') 'probe-datagokr.json'; ($p.Json.steps | ForEach-Object { "$($_.step):$($_.result_code) items=$($_.items)" }) -join ' ' } | Out-Null
         $ok = Invoke-Step 'Probe SGIS' { $p = Invoke-Ops @('probe', 'sgis') 'probe-sgis.json'; ($p.Json.steps | ForEach-Object { "$($_.step):$($_.errCd)$($_.ok)" }) -join ' ' }
         $ok = (Invoke-Step 'Probe VWorld' { $p = Invoke-Ops @('probe', 'vworld') 'probe-vworld.json'; "working_domain=$($p.Json.working_domain); " + (($p.Json.steps | ForEach-Object { "$($_.step)[$($_.domain)]:$($_.status) $($_.error.code) features=$($_.features)" }) -join ' ') }) -and $ok
     }
@@ -592,10 +604,11 @@ switch ($selected) {
         if ($ok) {
             $ok = Invoke-Step 'Backup before changes' { Invoke-Backup 'before' }
             if ($ok) {
-                $ok = Invoke-Step 'Rebuild services' { Assert-Native (Compose-Main @('up', '-d', '--build', '--wait', 'postgres', 'redis', 'api', 'worker', 'frontend')) 'compose up --build'; 'api/worker/frontend rebuilt' }
+                $ok = Invoke-Step 'Rebuild services' { Assert-Native (Compose-Main @('up', '-d', '--build', '--wait', 'postgres', 'redis', 'frontend')) 'compose up --build'; Assert-Native (Compose-Main @('up', '-d', '--build', '--force-recreate', '--wait', 'api', 'worker')) 'recreate api/worker'; 'api/worker (recreated with current .env)/frontend rebuilt' }
             }
             if ($ok) {
                 Invoke-Step 'Status before collection' { $s = Invoke-Ops @('status') 'status-before.json'; "tables=$(@($s.Json.table_counts.PSObject.Properties).Count), raw=$($s.Json.raw.files)" } | Out-Null
+                Invoke-Step 'Probe data.go.kr' { $p = Invoke-Ops @('probe', 'datagokr') 'probe-datagokr.json'; ($p.Json.steps | ForEach-Object { "$($_.step):$($_.result_code) items=$($_.items)" }) -join ' ' } | Out-Null
                 Invoke-Step 'Probe SGIS' { $p = Invoke-Ops @('probe', 'sgis') 'probe-sgis.json'; ($p.Json.steps | ForEach-Object { "$($_.step):$($_.errCd)$($_.ok)" }) -join ' ' } | Out-Null
                 Invoke-Step 'Probe VWorld' { $p = Invoke-Ops @('probe', 'vworld') 'probe-vworld.json'; "working_domain=$($p.Json.working_domain); " + (($p.Json.steps | ForEach-Object { "$($_.step)[$($_.domain)]:$($_.status) $($_.error.code) features=$($_.features)" }) -join ' ') } | Out-Null
                 if (-not $SkipCollect) { Invoke-Step 'Staged collection' { Invoke-Collect } | Out-Null }

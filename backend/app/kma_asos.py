@@ -92,9 +92,16 @@ def parse_asos_response(body: bytes) -> dict[str, Any]:
             total = int(root.findtext(".//totalCount") or len(items))
         except (ET.ParseError, ValueError) as exc:
             raise ExternalError("KMA ASOS 응답 파싱 실패") from exc
-    if code not in {"0", "00"}:
-        if code in {"20", "30", "01", "02"}:
+    code = code.strip()
+    if code == "03":
+        # NODATA_ERROR: no observation in the requested period (valid, not zero weather).
+        items, total = [], 0
+    elif not code or code.strip("0") != "":
+        # 01/02 are provider application/DB errors, not credential problems; only 20/21/30/31/32 are.
+        if code in {"20", "21", "30", "31", "32"}:
             raise ExternalError("KMA ASOS API 인증 실패: 서비스 활용 승인과 인증키를 확인하세요")
+        if code == "22":
+            raise ExternalError("KMA ASOS API 일일 호출 한도 초과(22)")
         raise ExternalError(f"KMA ASOS API 오류: provider_code={code or 'UNKNOWN'}")
     if isinstance(items, dict):
         items = [items]

@@ -91,3 +91,15 @@ def test_collection_preserves_fallback_and_promotes_complete_asos_month(tmp_path
     assert result == {'daily_rows': 31, 'monthly_rows': 1, 'complete_months': 1}
     assert effective.provider == 'KMA ASOS station146'
     assert {row.source_type for row in observations} == {'FALLBACK', 'OFFICIAL'}
+
+
+def test_asos_nodata_is_empty_and_db_error_is_not_reported_as_auth_failure():
+    import pytest
+    from app.cache import ExternalError
+    from app.kma_asos import parse_asos_response
+    nodata = json.dumps({'response': {'header': {'resultCode': '03', 'resultMsg': 'NO_DATA'}, 'body': {}}}).encode()
+    assert parse_asos_response(nodata)['rows'] == []
+    db_error = json.dumps({'response': {'header': {'resultCode': '02', 'resultMsg': 'DB_ERROR'}, 'body': {}}}).encode()
+    with pytest.raises(ExternalError) as raised:
+        parse_asos_response(db_error)
+    assert '인증' not in str(raised.value)

@@ -114,6 +114,8 @@ export interface CollectionJob {
   message?: string | null;
   error?: string | null;
   errors?: Array<{ dataset?: string | null; message?: string | null } | string>;
+  resolved?: boolean;
+  resolved_datasets?: string[];
 }
 
 export interface ReadinessSource {

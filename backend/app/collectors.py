@@ -158,7 +158,12 @@ def collect_energy(db,start='2025-01',end='2025-12',progress=None):
                         values=dict(source='국토교통부 건축HUB',sigungu_code=raw.get('sigunguCd') or region['sigunguCd'],bjdong_code=raw.get('bjdongCd') or region['bjdongCd'],lot_type=raw.get('platGbCd') or '0',bun=str(raw.get('bun') or region['bun']).zfill(4),ji=str(raw.get('ji') or region['ji']).zfill(4),use_ym=raw.get('useYm') or ym,energy_type=energy_type)
                         existing=db.scalar(select(EnergyMonthly).filter_by(**{k:v for k,v in values.items() if k!='source'}))
                         if not existing: existing=EnergyMonthly(**values);db.add(existing)
-                        existing.usage_kwh=raw['usage_kwh'];existing.raw_record={k:v for k,v in raw.items() if k!='usage_kwh'}
+                        record={k:v for k,v in raw.items() if k!='usage_kwh'}
+                        if existing.source!=values['source'] and existing.usage_kwh is not None:
+                            # 건축HUB building-meter data takes precedence over K-apt complex data for the same
+                            # parcel and month. Keep the replaced value and its source for comparison.
+                            record['replaced_source']=existing.source;record['replaced_usage_kwh']=existing.usage_kwh
+                        existing.source=values['source'];existing.usage_kwh=raw['usage_kwh'];existing.raw_record=record
                     db.commit()
                     if page*1000>=total: break
                     page+=1

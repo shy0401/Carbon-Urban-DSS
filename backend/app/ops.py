@@ -267,6 +267,89 @@ def probe_vworld() -> dict[str, Any]:
     return report
 
 
+def _provider_summary(response: httpx.Response, key: str) -> dict[str, Any]:
+    """Structure-only summary of a data.go.kr response (JSON or XML). The key is never included."""
+    import xml.etree.ElementTree as ET
+    text = response.text.replace(key, "[REDACTED]") if key else response.text
+    summary: dict[str, Any] = {"http": response.status_code, "format": None, "result_code": None, "result_msg": None, "items": 0, "item_keys": [], "sample": {}}
+    items: list[dict[str, Any]] = []
+    try:
+        payload = json.loads(text)
+        summary["format"] = "json"
+        body = payload.get("response", payload) if isinstance(payload, dict) else {}
+        header = body.get("header") or {}
+        summary["result_code"] = str(header.get("resultCode", body.get("resultCode", "")))
+        summary["result_msg"] = str(header.get("resultMsg", body.get("resultMsg", "")))[:120]
+        content = body.get("body") or {}
+        found = content.get("item")
+        if found is None:
+            container = content.get("items") or {}
+            found = container.get("item") if isinstance(container, dict) else container
+        items = [found] if isinstance(found, dict) else list(found or [])
+        summary["total_count"] = content.get("totalCount")
+    except ValueError:
+        try:
+            root = ET.fromstring(text)
+            summary["format"] = "xml"
+            summary["result_code"] = root.findtext(".//resultCode") or root.findtext(".//returnReasonCode")
+            summary["result_msg"] = (root.findtext(".//resultMsg") or root.findtext(".//errMsg") or "")[:120]
+            items = [{child.tag: child.text for child in node} for node in root.findall(".//item")]
+            summary["total_count"] = root.findtext(".//totalCount")
+        except ET.ParseError:
+            summary["format"] = "unknown"
+            summary["body_start"] = text[:200]
+    summary["items"] = len(items)
+    if items:
+        summary["item_keys"] = sorted(items[0].keys())
+        summary["sample"] = {k: v for k, v in items[0].items() if k not in {"platPlc", "newPlatPlc"}}
+    return summary
+
+
+def probe_datagokr() -> dict[str, Any]:
+    """One minimal request per approved data.go.kr service (K-apt energy, ASOS, 건축HUB energy)."""
+    _init()
+    from .db import Session
+    from .kapt import ApartmentComplex, PROTOTYPE_KAPT_CODE, candidate_energy_parcels
+    from .kapt_energy import KAPT_ENERGY_BASE_URL, KAPT_ENERGY_OPERATION
+    from .kma_asos import KMA_ASOS_BASE_URL
+    key = os.getenv("DATA_GO_KR_SERVICE_KEY", "").strip()
+    report: dict[str, Any] = {"provider": "data.go.kr", "checked_at": _now(), "steps": []}
+    with Session() as db:
+        complex_row = db.get(ApartmentComplex, PROTOTYPE_KAPT_CODE) or db.scalar(select(ApartmentComplex).order_by(ApartmentComplex.kapt_code).limit(1))
+        parcel = (candidate_energy_parcels(db, limit=1) or [None])[0]
+    client = httpx.Client(timeout=30, follow_redirects=True, headers={"User-Agent": "CarbonUrbanDSS/0.1 educational capstone"})
+    requests_: list[tuple[str, str, dict[str, Any]]] = []
+    if complex_row:
+        base = os.getenv("KAPT_ENERGY_BASE_URL", KAPT_ENERGY_BASE_URL).rstrip("/")
+        requests_.append(("kapt_energy", f"{base}/{KAPT_ENERGY_OPERATION}", {"serviceKey": key, "kaptCode": complex_row.kapt_code, "reqDate": f"{DEFAULT_YEAR}01"}))
+    base = os.getenv("KMA_ASOS_BASE_URL", KMA_ASOS_BASE_URL).rstrip("/")
+    requests_.append(("kma_asos", f"{base}/getWthrDataList", {"serviceKey": key, "pageNo": 1, "numOfRows": 3, "dataType": "JSON", "dataCd": "ASOS", "dateCd": "DAY", "startDt": f"{DEFAULT_YEAR}0101", "endDt": f"{DEFAULT_YEAR}0102", "stnIds": "146"}))
+    if parcel:
+        building = os.getenv("BUILDING_ENERGY_API_BASE_URL", "https://apis.data.go.kr/1613000/BldEngyHubService").rstrip("/")
+        requests_.append(("energy", f"{building}/getBeElctyUsgInfo", {"serviceKey": key, "sigunguCd": parcel["sigunguCd"], "bjdongCd": parcel["bjdongCd"], "bun": parcel["bun"], "ji": parcel["ji"], "useYm": f"{DEFAULT_YEAR}01", "numOfRows": 1, "pageNo": 1}))
+    for name, url, params in requests_:
+        public = {k: v for k, v in params.items() if k != "serviceKey"}
+        try:
+            response = client.get(url, params=params)
+            report["steps"].append({"step": name, "params": public, **_provider_summary(response, key)})
+        except httpx.HTTPError as exc:
+            report["steps"].append({"step": name, "params": public, "error": type(exc).__name__})
+    return report
+
+
+def validate_models(year: int = DEFAULT_YEAR) -> dict[str, Any]:
+    """Run the documented spatial validation on real observations (stored in model_runs)."""
+    _init()
+    from .db import Session
+    from .model_service import model_status
+    with Session() as db:
+        report = model_status(db, year, train=True)
+    compact = []
+    for model in report.get("models", []):
+        compact.append({key: model.get(key) for key in ("energy_type", "status", "validated", "observations", "grid_count", "spatial_blocks", "months", "requirements", "best_model", "metrics")})
+    return {"year": year, "status": report.get("status"), "run_id": report.get("run_id"), "models": compact, "full": report}
+
+
 REJECTION_CACHES = {"vworld": ["cache/vworld"], "sgis": ["cache/sgis", "cache/sgis-auth"], "data_go_kr": ["cache/kapt-energy", "cache/kma-asos", "cache"]}
 
 
@@ -312,8 +395,9 @@ def main(argv: list[str] | None = None) -> int:
     s = sub.add_parser("status");s.add_argument("--out")
     r = sub.add_parser("run");r.add_argument("--dataset", required=True);r.add_argument("--scope", choices=SCOPES, default="smoke");r.add_argument("--year", type=int, default=DEFAULT_YEAR);r.add_argument("--out")
     st = sub.add_parser("staged");st.add_argument("--dataset", required=True);st.add_argument("--max-scope", choices=SCOPES);st.add_argument("--year", type=int, default=DEFAULT_YEAR);st.add_argument("--out")
-    p = sub.add_parser("probe");p.add_argument("provider", choices=["sgis", "vworld"]);p.add_argument("--out")
+    p = sub.add_parser("probe");p.add_argument("provider", choices=["sgis", "vworld", "datagokr"]);p.add_argument("--out")
     c = sub.add_parser("clear-rejections");c.add_argument("provider", choices=sorted(REJECTION_CACHES));c.add_argument("--out")
+    m = sub.add_parser("models");m.add_argument("--year", type=int, default=DEFAULT_YEAR);m.add_argument("--out")
     args = parser.parse_args(argv)
     if args.command == "status":
         _write(status(), args.out);return 0
@@ -323,10 +407,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "staged":
         result = staged(args.dataset, args.max_scope, args.year);_write(result, args.out)
         return 0 if result["final_status"] == "SUCCESS" else 2
+    if args.command == "models":
+        _write(validate_models(args.year), args.out);return 0
     if args.command == "clear-rejections":
         _write(clear_rejections(args.provider), args.out);return 0
     if args.command == "probe":
-        _write(probe_sgis() if args.provider == "sgis" else probe_vworld(), args.out);return 0
+        probes = {"sgis": probe_sgis, "vworld": probe_vworld, "datagokr": probe_datagokr}
+        _write(probes[args.provider](), args.out);return 0
     return 1
 
 

@@ -20,6 +20,8 @@ KAPT_ENERGY_CATALOG_URL = "https://www.data.go.kr/data/15012964/openapi.do"
 KAPT_ENERGY_BASE_URL = "https://apis.data.go.kr/1613000/ApHusEnergyUseInfoOfferServiceV2"
 KAPT_ENERGY_OPERATION = "getHsmpApHusUsgQtyInfoSearchV2"
 ELECTRICITY_FACTOR = 0.4541
+# data.go.kr gateway/provider codes that mean the key or its approval is not valid.
+AUTH_CODES = {"20", "21", "30", "31", "32"}
 
 FIELD_MAP = {
     "helect": "electricity_quantity", "elect": "electricity_amount_krw",
@@ -114,9 +116,15 @@ def parse_kapt_energy_response(body: bytes) -> dict[str, Any]:
         code, message, items = _json_or_xml(body)
     except (ET.ParseError, TypeError, ValueError) as exc:
         raise ExternalError("K-apt 응답 파싱 실패") from exc
-    if code not in {"0", "00"}:
-        if code in {"20", "30"}:
+    code = code.strip()
+    if code == "03":
+        # NODATA_ERROR: the provider has no record for this complex and month. Valid empty result.
+        return {"provider_code": code, "provider_message": message, "rows": []}
+    if not code or code.strip("0") != "":
+        if code in AUTH_CODES:
             raise ExternalError("K-apt API 인증 실패: 서비스 활용 승인과 인증키를 확인하세요")
+        if code == "22":
+            raise ExternalError("K-apt API 일일 호출 한도 초과(22): 성공한 월은 건너뛰므로 다음 날 다시 실행하세요")
         raise ExternalError(f"K-apt API 오류: provider_code={code or 'UNKNOWN'}")
     rows = []
     for item in items:
