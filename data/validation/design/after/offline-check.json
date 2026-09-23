@@ -1,0 +1,32 @@
+{
+ "external_requests": [],
+ "errors": [],
+ "map@1440": {
+  "pretendardLoaded": true,
+  "bodyFont": "\"Pretendard Variable\"",
+  "iconSvgs": 18,
+  "titleBlockMode": "오프라인배경지도 없음",
+  "overflow": 0
+ },
+ "dashboard@1440": {
+  "pretendardLoaded": true,
+  "bodyFont": "\"Pretendard Variable\"",
+  "iconSvgs": 13,
+  "titleBlockMode": "오프라인",
+  "overflow": 0
+ },
+ "map@390": {
+  "pretendardLoaded": true,
+  "bodyFont": "\"Pretendard Variable\"",
+  "iconSvgs": 18,
+  "titleBlockMode": "오프라인배경지도 없음",
+  "overflow": 0
+ },
+ "dashboard@390": {
+  "pretendardLoaded": true,
+  "bodyFont": "\"Pretendard Variable\"",
+  "iconSvgs": 13,
+  "titleBlockMode": "오프라인",
+  "overflow": 0
+ }
+}

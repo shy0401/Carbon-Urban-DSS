@@ -1,5 +1,6 @@
 import type { GridProps } from '../types';
-import { RAMPS, TOKENS, USE_GROUP_COLOR, type RampName } from '../theme/palette';
+import { RAMPS, TOKENS, type RampName } from '../theme/palette';
+import { USE_NAME, ZONE_NAME } from './labels';
 import { formatMetric } from './format';
 
 /** One map indicator: what it is, how it is computed, and the basis for a given grid. */
@@ -151,11 +152,7 @@ export const METRICS: MetricDef[] = [
   },
 ];
 
-export const ZONE_NAME: Record<string, string> = { RESIDENTIAL: '주거', COMMERCIAL: '상업', INDUSTRIAL: '공업', GREEN: '녹지', OTHER: '기타', UNKNOWN: '이름 없음' };
-export const USE_NAME: Record<string, string> = { RESIDENTIAL: '주거', COMMERCIAL: '상업·업무', INDUSTRIAL: '공업·창고', PUBLIC: '공공·교육·의료', OTHER: '기타', UNKNOWN: '용도 미상' };
-/** 건물 용도 대분류 색 (DESIGN.md 2.5.1). 용도 미상은 null = 해치. */
-export const USE_ORDER = ['RESIDENTIAL', 'COMMERCIAL', 'INDUSTRIAL', 'PUBLIC', 'OTHER', 'UNKNOWN'] as const;
-export const USE_COLORS: Array<[string, string | null]> = USE_ORDER.map((key) => [key, USE_GROUP_COLOR[key] ?? null]);
+export { USE_COLORS, USE_NAME, USE_ORDER, ZONE_NAME } from './labels';
 
 /** 결측 격자의 바탕색. 그 위에 해치 패턴 레이어를 겹친다(램프 최저색과 구분). */
 export const MISSING_FILL = TOKENS['prov-missing-bg'];

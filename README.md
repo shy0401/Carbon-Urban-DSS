@@ -77,6 +77,7 @@ npm run build
 
 ## 구현 안내
 
+- [디자인 시스템 D안 「도시계획 도면」](docs/DESIGN.md) · [적용 기록](docs/DESIGN_APPLY_LOG.md) — 화면 색·서체·근거 배지·결측 표시·지도 규칙의 기준
 - [Claude 인수인계서](docs/CLAUDE_HANDOFF_2026-09-23.md) (0절: 2026-09-23 최신 결과) · [Claude 시작 프롬프트](docs/CLAUDE_START_PROMPT_2026-09-23.md) · [팀원 PC 재현](docs/TEAM_SETUP.md)
 - [운영 준비 및 최종 Goal 로드맵](docs/FINAL_GOAL_ROADMAP_2026-09-18.md)
 - [수집 실패 원인 조사 및 조치](docs/COLLECTION_FAILURE_AUDIT_2026-09-18.md)

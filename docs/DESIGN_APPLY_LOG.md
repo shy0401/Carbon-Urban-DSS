@@ -222,3 +222,54 @@
 - `styles/report.css`(신규): A4 세로 여백 18mm, 흰 바탕, 사이드바·표제란 머리·버튼 숨김(`.no-print`, 셸 인쇄 규칙), 표제란·표·행 `break-inside: avoid`, 표 머리 반복, 배지·해치·계획안 색은 `print-color-adjust: exact`.
 - `styles.css`에는 임시 별칭만 남음(7단계에서 삭제).
 - 검증: `e2e-refined.cjs`의 보고서 작성·내려받기(근거 SHA256 포함)·인쇄 미리보기(사이드바 숨김) 통과. 인쇄 캡처 `after/reports-print.png`, Chromium A4 PDF `after/reports-print.pdf`.
+
+## 7. 정리와 검증
+
+### 하드코딩 재집계
+
+`rg -n "#[0-9a-fA-F]{3,8}\b" frontend/src --glob '!**/tokens.css' --glob '!**/palette.ts'` → **125줄 → 6줄**. 남은 6줄은 모두 `src/theme/palette.test.ts`가 DESIGN.md의 값(도면지, 먹녹색, 추정 색, 해치, 부하 램프, 편익 램프 끝값)을 그대로 쓰는지 대조하는 단언이다(의도된 예외). 컴포넌트·페이지·CSS의 hex와 `rgba()`는 0개(`rgba`는 tokens.css의 그림자·스크림·배경지도 위 격자선, palette.ts의 같은 값만).
+
+- `styles.css`(임시 별칭만 남았던 파일) 삭제. 새 CSS: `styles/tokens.css`, `base.css`, `shell.css`, `components.css`, `map.css`, `pages.css`, `report.css`.
+- 쓰지 않는 규칙 제거(`.badge-dot`, `.text-button`). 남은 CSS 클래스는 모두 컴포넌트에서 쓰이거나 MapLibre 내부 클래스.
+- 대시보드가 지도 지표 정의 전체(`mapMetrics.ts`의 `METRICS`)를 초기 번들에 끌고 오지 않도록 대분류 이름·용도 색을 `lib/labels.ts`로 분리(`mapMetrics`는 다시 내보냄).
+- 그림자: 팝오버·드로어(`--shadow-popover`)만. 나머지 `box-shadow`는 1px 선택 표시(inset)와 해치 위 글자 바탕.
+
+### 검증 결과
+
+| 항목 | 결과 | 비고 |
+|---|---|---|
+| 단위 테스트 | **54건 통과**(19파일) | Bun 1.4.2 + jsdom(`vitest` API 호환 준비 파일). 사용자 PC의 `npm test`(Vitest 4)는 아직 실행 안 함 |
+| 타입 검사 | 통과 | 작업 환경 `tsc`(테스트 제외 설정) + 사용자 PC 저장소에서 `tsc -p tsconfig.app.json --noEmit`(테스트 포함) 단계마다 통과 |
+| `npm ci && npm run build` | **실행 못 함** | 작업 환경에서 npm 레지스트리·rollup 네이티브 바이너리를 받을 수 없음. 사용자 PC에서 `cd frontend && npm ci && npm test && npm run build` 필요 |
+| E2E `scripts/e2e.cjs` | 9/9 통과 | 오프라인 전환 후 외부 요청 0 포함 |
+| E2E `scripts/e2e-refined.cjs` | 10/10 통과 | 지표 카드 8개, 연도 전환·기상 없음, 지도 선택, 시나리오→보고서, 내려받기(근거 SHA256), 인쇄 시 사이드바 숨김, 390px 5개 화면 가로 넘침 0, 503 오류 표시 |
+| E2E `scripts/e2e-overlays.cjs` | 7/7 통과 | 자료가 없는 경우의 새 경로(켜면 "용도지역 자료 미확보" 안내)는 오버레이 응답을 비운 별도 브라우저 확인으로 통과 |
+| 오프라인 모드 | 통과 | 지도·대시보드 1440/390px에서 외부 요청 0, Pretendard 로드 확인(`document.fonts.check`), 아이콘 SVG 표시, 표제란 "오프라인 / 배경지도 없음", 가로 넘침 0 — `after/offline-check.json` |
+| 대비 | 통과(규칙 내) | `palette.test.ts`: 본문·보조 글자, 근거 배지 4종, 상태 4종, 사이드바, 주 버튼 4.5:1 이상. `--ink-3`는 흰 바탕 전용(4.83). 해치 선이 지나가는 글자(선택 불가한 달, 월별 띠의 빈 달)는 선 위 4.36으로 4.5 미만 — 바탕 평균 5.9이고 해치 자체가 "없음"을 전달하므로 남김 |
+| 백엔드 | 변경 없음 | `git diff 16d5c70..HEAD -- backend` 비어 있음 |
+
+E2E는 사용자 PC의 Docker(nginx 5173)가 아니라 작업 환경의 미리보기 서버에서 돌렸다: 실제 FastAPI 앱을 그대로 쓰고 DB는 2026-09-23 백업 사본(PostGIS 대신 PostgreSQL 16, 공간 연산 일부는 대체), 번들은 Bun으로 만든 미리보기 빌드, 배경지도 타일은 차단.
+
+### 번들 크기 (Bun minify, 전후 같은 방법)
+
+| 항목 | 변경 전 | 변경 후 | 차이 |
+|---|---|---|---|
+| 초기 JS `main.js` | 312,057 B / gzip 100,336 B | **310,149 B / gzip 99,857 B** | −1,908 B / −479 B |
+| 전체 JS(지연 청크 포함) | 2,587,649 B / gzip 797,227 B | 2,605,327 B / gzip 802,514 B | +17,678 B / +5,287 B (지도 화면 청크: 참조 격자·해치·상세 카드·기온 차트) |
+| CSS | 150,738 B / gzip 23,582 B | 154,718 B / gzip 22,398 B | +3,980 B / −1,184 B |
+| 폰트(`public/fonts`) | 없음(시스템 글꼴 대체) | woff2 92개 2,957,724 B | 화면에 쓰인 글자 범위의 파일만 내려받음. JS 번들과 별개 |
+
+새 npm 의존성 없음. Vite 기준 수치는 사용자 PC의 `npm run build` 출력으로 확인해야 한다.
+
+### 전후 캡처
+
+- 변경 전 `data/validation/design/before/`, 변경 후 `data/validation/design/after/` — 같은 스크립트·같은 조작(30층 → 시나리오 계산, 보고서 작성), 같은 데이터.
+- 1440px·390px 8개 화면씩, 인쇄 `reports-print.png`·`reports-print.pdf`. 변경 후에만 오프라인 캡처 `map-offline-*.png`, `dashboard-offline-*.png` 추가.
+
+### 적용하지 못한 부분과 백로그
+
+1. **지표별 근거 배지**(지도 15개 지표, 대시보드의 탄소·원단위·건폐율·용적률·주거지역 비율): 서버 응답에 지표별 근거 유형 필드가 없어 표시하지 않음. 백엔드에 `provenance` 필드를 추가하는 별도 작업 필요(이번 지시는 API 계약 변경 금지).
+2. **추정 값 격자의 가는 사선**(DESIGN.md 2.3): 같은 이유로 미적용.
+3. **`npm ci / npm test / npm run build`와 Docker E2E**: 사용자 PC에서 실행해야 함. 특히 Vitest 4가 `tokens.css?raw`를 읽는 테스트(`palette.test.ts`)와 Vite의 `public/fonts` 복사를 실제로 확인해야 함.
+4. 원격 푸시: 이 작업 환경에는 저장소 쓰기 권한이 없어 커밋은 사용자 PC 저장소에만 있음(`git push origin main` 필요).
+5. 다크 모드: 범위 밖(DESIGN.md 10). 토큰 구조만 둠.

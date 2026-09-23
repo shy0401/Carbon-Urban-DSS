@@ -14,7 +14,7 @@ import { useAnalysisScope } from '../hooks/useAnalysisScope';
 import { useApi } from '../hooks/useApi';
 import { baseChart, compactAxis, lineSeries, missingBands, MONTH_LABELS, monthsOf, SERIES } from '../lib/chartTheme';
 import { formatMetric } from '../lib/format';
-import { USE_COLORS, USE_NAME, ZONE_NAME } from '../lib/mapMetrics';
+import { USE_COLORS, USE_NAME, ZONE_NAME } from '../lib/labels';
 import { PROVENANCE, provenanceFromCode, provenanceFromWeatherSource } from '../lib/provenance';
 import { ZONE_GROUP_COLOR } from '../theme/palette';
 import type { DashboardData } from '../types';

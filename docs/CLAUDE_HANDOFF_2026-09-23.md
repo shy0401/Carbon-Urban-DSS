@@ -2,11 +2,15 @@
 
 - 작성일: 2026-09-23 (Asia/Seoul)
 - 저장소: https://github.com/shy0401/Carbon-Urban-DSS
-- 작성 기준 커밋: `38c2244` (`main`) · 최신 갱신: 2026-09-23 오후 Claude (0-A절)
+- 작성 기준 커밋: `38c2244` (`main`) · 최신 갱신: 2026-09-23 저녁 Claude (0-B절 디자인, 0-A절 수집)
 - 목적: 새 담당자가 현재 구현·검증 범위와 미완료 조건을 구분하고, 근거를 보존하면서 다음 작업을 실행할 수 있게 한다.
 - 바로 실행할 지시문: [CLAUDE_START_PROMPT_2026-09-23.md](CLAUDE_START_PROMPT_2026-09-23.md)
 
-## 0-A. 2026-09-23 오후 — 수집 정확성·공식 건물·화면 개편 (가장 최신)
+## 0-B. 2026-09-23 저녁 — D안 「도시계획 도면」 디자인 적용 (가장 최신)
+
+프런트엔드 전체를 [DESIGN.md](DESIGN.md)의 D안으로 바꿨다(커밋 `design(D): …` 8개, 백엔드·API·계산·라우트 변경 없음): 유리 효과·그라데이션을 없애고 `styles/tokens.css`·`theme/palette.ts`(키 일치 테스트) 토큰, 로컬 Pretendard Variable(오프라인에서도 CDN 없음), 220px 먹녹색 사이드바와 도면 표제란(분석연도·격자·선택 격자·최근 수집일·모드), 서버 필드(`observations_label`, 기상 `source_type`, 시나리오 `data_class`, `building_source`, 오버레이 `quality`)가 있는 곳에만 붙는 근거 배지와 "—"+사유의 결측 표시, 지도의 부하/편익/중립 램프·결측 해치(`fill-pattern`)·선택 외곽선+헤일로·용도지역 외곽선·배경지도가 없을 때 도면지+1km 참조 격자·축척, 대시보드 지표 8개와 결측 월 해치 띠 차트, 보고서 첫 장 표제란+근거 해시와 A4 인쇄를 적용했다. 프런트 상수로 근거를 단정하던 지표별 배지는 서버 필드가 없어 떼고 백로그로 남겼다(지표별 `provenance` 필드 추가 필요). 검증은 작업 환경의 Bun+jsdom 단위 테스트, 미리보기 서버(실제 FastAPI 앱 + 백업 DB 사본) E2E, 전후 캡처로 했고, 사용자 PC의 `npm ci && npm test && npm run build`와 Docker 기반 E2E는 아직 실행하지 않았다. 상세·예외·번들 비교는 [DESIGN_APPLY_LOG.md](DESIGN_APPLY_LOG.md), 캡처는 `data/validation/design/before|after/`.
+
+## 0-A. 2026-09-23 오후 — 수집 정확성·공식 건물·화면 개편
 
 기준: 사용자 PC 실행 `data/ops/20260923-143212-all/`(승인된 공공데이터포털 키 반영 후 첫 전체 실행)과, 그 수집 후 백업(`20260923-143212-after/db.dump`)을 복사해 실제 코드 경로로 다시 계산한 결과. 아래 "확인 필요"는 다음 `scripts\dss.cmd All`에서 검증한다.
 
