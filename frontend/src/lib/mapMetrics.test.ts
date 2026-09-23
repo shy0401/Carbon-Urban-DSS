@@ -32,6 +32,13 @@ describe('map classification', () => {
     expect(JSON.stringify(expression)).toContain(TOKENS['prov-missing-bg']);
     expect(JSON.stringify(expression)).toContain('step');
   });
+  it('a single valued grid gets a plain color, not a step without stops (MapLibre rejects it)', () => {
+    const one = classify([5309649, null, null], undefined, 'load');
+    expect(one.lowerBounds).toHaveLength(0);
+    const expression = stepColor('electricity_kwh_annual', one);
+    expect(JSON.stringify(expression)).not.toContain('step');
+    expect(expression[3]).toBe(one.classes[0].color);
+  });
   it('uses the load ramp for burdens, gain for benefits and a neutral ramp otherwise', () => {
     expect(classify([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], undefined, 'load').classes.at(-1)?.color).toBe(TOKENS['load-5']);
     expect(classify([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], undefined, 'gain').classes.at(-1)?.color).toBe(TOKENS['gain-5']);

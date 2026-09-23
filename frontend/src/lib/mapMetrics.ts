@@ -208,6 +208,8 @@ function pickColors(count: number, ramp: string[]): string[] {
 export function stepColor(property: string, classification: Classification): unknown[] {
   const colors = classification.classes.map((c) => c.color);
   if (!colors.length) return ['case', ['==', ['get', property], null], MISSING_FILL, MISSING_FILL];
+  // 값 있는 격자가 한 구간뿐이면 경계가 없다. MapLibre step은 경계가 1개 이상 필요하므로 단색으로 칠한다.
+  if (!classification.lowerBounds.length) return ['case', ['==', ['get', property], null], MISSING_FILL, colors[0]];
   const step: unknown[] = ['step', ['to-number', ['get', property]], colors[0]];
   classification.lowerBounds.forEach((bound, i) => step.push(bound, colors[i + 1]));
   return ['case', ['==', ['get', property], null], MISSING_FILL, step];
