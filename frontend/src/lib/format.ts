@@ -26,6 +26,9 @@ export function qualityLabel(quality: Quality | null | undefined): string {
     INSUFFICIENT_TRAINING_DATA: '학습 자료 부족',
     VALIDATED: '공간 교차검증 완료',
     NOT_VALIDATED: '미검증',
+    READY_FOR_SPATIAL_VALIDATION: '공간 검증 준비',
+    SPATIALLY_EVALUATED: '공간 교차검증 완료',
+    INSUFFICIENT_BASELINE_DATA: '기준 자료 부족',
   };
   return quality ? labels[quality.toUpperCase()] ?? quality : '미평가';
 }
@@ -34,7 +37,8 @@ export function qualityTone(quality: Quality | null | undefined): string {
   const value = quality?.toUpperCase();
   if (value === 'OBSERVED' || value === 'CALCULATED' || value === 'COMPLETED' || value === 'SUCCESS') return 'good';
   if (value === 'VALIDATED') return 'good';
-  if (value === 'INSUFFICIENT_TRAINING_DATA' || value === 'NOT_VALIDATED') return 'warn';
+  if (value === 'INSUFFICIENT_TRAINING_DATA' || value === 'NOT_VALIDATED' || value === 'INSUFFICIENT_BASELINE_DATA') return 'warn';
+  if (value === 'SPATIALLY_EVALUATED') return 'good';
   if (value === 'ESTIMATED' || value === 'MODELED' || value === 'IMPUTED' || value === 'SCENARIO' || value === 'FALLBACK' || value === 'RUNNING' || value === 'PENDING') return 'warn';
   if (value === 'FAILED' || value === 'ERROR' || value === 'MISSING') return 'bad';
   return 'neutral';

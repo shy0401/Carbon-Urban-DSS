@@ -1,33 +1,42 @@
-import { Building, Building2, CloudSun, Flame, Gauge, Home, Layers, Leaf, Map as MapIcon, Ruler, Zap } from 'lucide-react';
 import { useMemo } from 'react';
 import type { EChartsOption } from 'echarts';
 import { Link } from 'react-router-dom';
 import { Chart } from '../components/Chart';
-import { MissingValue } from '../components/MissingValue';
-import { ProvenanceBadge } from '../components/ProvenanceBadge';
 import { MetricCard } from '../components/MetricCard';
+import { MissingValue } from '../components/MissingValue';
 import { PageHeader } from '../components/PageHeader';
+import { ProvenanceBadge } from '../components/ProvenanceBadge';
 import { QualityBadge } from '../components/QualityBadge';
+import { ShareBar } from '../components/ShareBar';
 import { EmptyState, ErrorState, LoadingState } from '../components/Status';
+import { WeatherChart } from '../components/WeatherChart';
 import { useAnalysisScope } from '../hooks/useAnalysisScope';
 import { useApi } from '../hooks/useApi';
-import { baseChart, compactAxis, lineSeries, SERIES } from '../lib/chartTheme';
+import { baseChart, compactAxis, lineSeries, missingBands, MONTH_LABELS, monthsOf, SERIES } from '../lib/chartTheme';
 import { formatMetric } from '../lib/format';
-import { provenanceFromCode, provenanceFromWeatherSource } from '../lib/provenance';
-import { USE_NAME, ZONE_NAME } from '../lib/mapMetrics';
+import { USE_COLORS, USE_NAME, ZONE_NAME } from '../lib/mapMetrics';
+import { PROVENANCE, provenanceFromCode, provenanceFromWeatherSource } from '../lib/provenance';
+import { ZONE_GROUP_COLOR } from '../theme/palette';
 import type { DashboardData } from '../types';
-
-const ZONE_COLORS: Record<string, string> = { RESIDENTIAL: '#f2c14e', COMMERCIAL: '#e4572e', INDUSTRIAL: '#8d6cab', GREEN: '#5aa469', OTHER: '#b8c2c0', UNKNOWN: '#d5dbe3' };
 
 export function DashboardPage() {
   const { year, query } = useAnalysisScope();
   const { data, loading, error, reload } = useApi<DashboardData>(`/dashboard?${query}`);
   const monthly = data?.monthly ?? [];
-  const chartOption = useMemo<EChartsOption>(() => baseChart({
-    xAxis: { ...(baseChart().xAxis as object), data: monthly.map((row) => `${Number(String(row.use_ym).slice(-2))}월`) },
-    yAxis: { ...(baseChart().yAxis as object), name: 'kWh', axisLabel: { color: '#64738a', fontSize: 12, formatter: compactAxis } },
-    series: [lineSeries('전력', monthly.map((row) => row.electricity_kwh), SERIES.electricity), lineSeries('가스 (kWh 환산)', monthly.map((row) => row.gas_kwh), SERIES.gas)],
-  }), [monthly]);
+  // 근거 배지는 서버 필드만 쓴다: observations_label = 'OBSERVED' (월별 관측 에너지).
+  const observed = provenanceFromCode(data?.observations_label);
+  const chartOption = useMemo<EChartsOption>(() => {
+    const electricity = monthsOf(year, monthly, 'electricity_kwh');
+    const gas = monthsOf(year, monthly, 'gas_kwh');
+    const base = baseChart();
+    const label = observed ? ` (${PROVENANCE[observed].label})` : '';
+    return baseChart({
+      tooltip: { ...(base.tooltip as object), valueFormatter: (value: unknown) => (typeof value === 'number' ? `${formatMetric(value, 'kWh')}${label}` : '자료 없음') },
+      xAxis: { ...(base.xAxis as object), data: MONTH_LABELS },
+      yAxis: { ...(base.yAxis as object), name: 'kWh', axisLabel: { ...((base.yAxis as { axisLabel?: object }).axisLabel ?? {}), formatter: compactAxis } },
+      series: [{ ...lineSeries('전력', electricity, SERIES.electricity), markArea: missingBands(MONTH_LABELS, [electricity, gas]) }, lineSeries('가스 (kWh 환산)', gas, SERIES.gas)],
+    });
+  }, [monthly, year, observed]);
 
   if (loading) return <div className="page"><LoadingState /></div>;
   if (error || !data) return <div className="page"><ErrorState message={error} onRetry={reload} /></div>;
@@ -43,96 +52,77 @@ export function DashboardPage() {
   const electricityCarbonT = typeof data.electricity_carbon_kg === 'number' ? data.electricity_carbon_kg / 1000 : null;
   const areaIssues = data.floor_area_issues ?? [];
   const admins = (context?.admin ?? []).filter((row) => row.grid_share_pct >= 1);
-  // 근거 배지는 서버 필드만 쓴다: observations_label = 'OBSERVED' (월별 관측 에너지).
-  const observed = provenanceFromCode(data.observations_label);
   const complete = data.annual_complete ?? { electricity: false, gas: false };
-  return <div className="page">
-    <PageHeader title="도시 탄소 대시보드" description="선택 격자의 관측 에너지·전력 탄소와 도시 형태를, 값마다 산식과 근거 범위를 붙여 보여줍니다." action={<div className="header-actions"><span className="period-label">{year}.01 — {year}.12 · 공동주택 관측 범위</span><QualityBadge value={data.quality} /></div>} />
-    <section className="sector-banner">
-      <div className="sector-symbol"><Building size={24} /></div>
-      <div><span>현재 분석 대상지</span><h2>{sector?.name ?? '선정된 섹터 없음'}</h2><p>{sector?.reason ?? '섹터 선정에 필요한 공간 자료가 없습니다.'}</p>
-        <div className="hero-facts">
-          {zoning && <span><MapIcon size={13} />주거지역 <b>{formatMetric(zoning.residential_pct, '%', 1)}</b></span>}
-          {buildings && <span><Building2 size={13} />건물 <b>{formatMetric(buildings.building_count, '동')}</b></span>}
-          {complexes && <span><Home size={13} />공동주택 <b>{complexes.count}단지 · {formatMetric(complexes.households, '세대')}</b></span>}
-          {admins.slice(0, 3).map((row) => <span key={row.adm_code}>행정동 <b>{row.adm_name.split(' ').at(-1)}</b> {row.grid_share_pct.toFixed(0)}%</span>)}
-        </div>
-      </div>
-      <dl><div><dt>격자 ID</dt><dd>{sector?.grid_id ?? '—'}</dd></div><div><dt>면적</dt><dd>{formatMetric(sector?.area_m2, 'm²')}</dd></div></dl>
+  const hasEnergy = monthly.some((r) => r.electricity_kwh !== null || r.gas_kwh !== null);
+  return <div className="page dashboard-page">
+    <PageHeader title="도시 탄소 대시보드" description="선택 격자의 관측 에너지와 전력 탄소, 도시 형태를 값마다 산식과 근거 범위를 붙여 보여줍니다." action={<div className="header-actions"><span className="status-tag">{year}년 1–12월 공동주택 관측 범위</span><QualityBadge value={data.quality} /></div>} />
+
+    <section className="panel site-summary" aria-label="현재 분석 대상지">
+      <div className="site-name"><h2>{sector?.name ?? '선정된 섹터 없음'}</h2><p>{sector?.reason ?? '섹터 선정에 필요한 공간 자료가 없습니다.'}</p></div>
+      <dl className="site-facts">
+        <div><dt>격자 ID</dt><dd><code>{sector?.grid_id ?? '—'}</code></dd></div>
+        <div><dt>면적</dt><dd>{formatMetric(sector?.area_m2, 'm²')}</dd></div>
+        <div><dt>건물 수</dt><dd>{buildings ? formatMetric(buildings.building_count, '동') : <MissingValue inline reason="VWorld 건물 미수집" />}</dd></div>
+        <div><dt>공동주택</dt><dd>{complexes ? `${complexes.count}단지, ${formatMetric(complexes.households, '세대')}` : <MissingValue inline />}</dd></div>
+        <div><dt>행정동 (격자 면적 비율)</dt><dd>{admins.length ? admins.slice(0, 3).map((row) => `${row.adm_name.split(' ').at(-1)} ${row.grid_share_pct.toFixed(0)}%`).join(', ') : <MissingValue inline />}</dd></div>
+      </dl>
     </section>
 
-    <div className="section-label"><h2>에너지 · 탄소</h2><span>관측된 공동주택 지번 기준 · 격자 안 모든 건물의 합이 아닙니다</span></div>
-    <section className="metric-grid five">
+    <div className="section-label"><h2>핵심 지표</h2><span>에너지·탄소는 관측된 공동주택 지번 기준이며 격자 안 모든 건물의 합이 아닙니다. 도시 형태는 격자 250,000m² 기준으로 법정 건폐율·용적률(대지면적 기준)과 다릅니다.</span></div>
+    <section className="metric-grid" aria-label="핵심 지표 8개">
       <MetricCard title="전력 사용량" provenance={observed} value={data.electricity_kwh} unit="kWh" basis={<>{complete.electricity ? '완전 연간 값' : '관측 기간 합계'} <b>{eMonths}/12개월</b>{eMonths ? `, 월평균 ${formatMetric((data.electricity_kwh ?? 0) / Math.max(eMonths, 1), 'kWh')}` : ''}</>} missingReason="이 격자·연도에 월별 전력 관측이 없습니다." />
       <MetricCard title="가스 사용량" provenance={observed} value={data.gas_kwh} unit="kWh" basis={<>{complete.gas ? '완전 연간 값' : '관측 기간 합계'} <b>{gMonths}/12개월</b>, 건축HUB kWh 환산값</>} missingReason="이 격자·연도에 월별 가스 관측이 없습니다." />
       <MetricCard title="전력 탄소배출" value={electricityCarbonT} unit="tCO₂eq" digits={1} basis={<>전력 × <b>0.4541</b> kgCO₂eq/kWh (GIR 2024). 가스 탄소는 계수 확정 전이라 제외</>} missingReason="전력 관측이 없어 계산하지 않았습니다." />
       <MetricCard title="전력 원단위" value={norm.electricity_kwh_per_m2 ?? null} unit="kWh/m²·년" digits={1} basis={<>지번 <b>{norm.electricity_area_parcels}곳</b>, 연면적 {formatMetric(norm.electricity_matched_floor_area_m2, 'm²')}{areaIssues.length ? `, 연면적 이상 ${areaIssues.length}곳 제외` : ''}</>} missingReason="12개월 관측과 연면적이 모두 확인된 지번이 없습니다." />
       <MetricCard title="세대당 전력" value={norm.electricity_kwh_per_household ?? null} unit="kWh/세대·년" basis={<>{formatMetric(norm.electricity_households, '세대')} 기준, 월 <b>{formatMetric((norm.electricity_kwh_per_household ?? 0) / 12, 'kWh')}</b></>} missingReason="세대수가 확인된 12개월 관측 지번이 없습니다." />
-    </section>
-
-    <div className="section-label"><h2>도시 형태 · 토지이용</h2><span>격자 250,000m² 기준 · 법정 건폐율·용적률(대지면적 기준)과 다릅니다</span></div>
-    <section className="metric-grid">
-      <MetricCard title="건물 수" value={buildings?.building_count ?? null} unit="동" basis={<>공식 도로명주소 건물, 층수 확인 <b>{formatMetric(buildings?.floors_known_pct, '%')}</b></>} missingReason="공식 건물 레이어(VWorld)를 아직 수집하지 않았습니다." />
       <MetricCard title="건폐율 근사" value={buildings?.coverage_pct ?? null} unit="%" digits={1} ratio={buildings?.coverage_pct} basis={<>건축면적 <b>{formatMetric(buildings?.footprint_m2, 'm²')}</b> ÷ 250,000 m²</>} missingReason="건물 윤곽이 있어야 계산합니다." />
-      <MetricCard title="추정 용적률" value={buildings?.far_est_pct ?? null} unit="%" digits={1} basis={<>Σ건축면적×층수 <b>{formatMetric(buildings?.floor_area_est_m2, 'm²')}</b> ÷ 250,000 m²</>} missingReason="층수가 기록된 건물이 있어야 추정합니다." />
+      <MetricCard title="추정 용적률" value={buildings?.far_est_pct ?? null} unit="%" digits={1} basis={<>Σ건축면적×층수 <b>{formatMetric(buildings?.floor_area_est_m2, 'm²')}</b> ÷ 250,000 m², 층수 확인 {formatMetric(buildings?.floors_known_pct, '%')}</>} missingReason="층수가 기록된 건물이 있어야 추정합니다." />
       <MetricCard title="주거지역 비율" value={zoning?.residential_pct ?? null} unit="%" digits={1} ratio={zoning?.residential_pct} basis={zoning ? Object.entries(zoning.shares_pct).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${ZONE_NAME[k] ?? k} ${v.toFixed(1)}%`).join(', ') || '도시지역 용도지역 없음' : undefined} missingReason="용도지역(VWorld)을 아직 수집하지 않았습니다." />
     </section>
 
-    {data.regional_totals && <section className="regional-strip"><div><span>전주시 전체 수집 합계</span><strong>공간 미매칭 자료 포함 · 전주시 전체 소비량이 아님</strong></div><dl><div><dt>전력</dt><dd>{formatMetric(data.regional_totals.electricity_kwh, 'kWh')}</dd></div><div><dt>가스</dt><dd>{formatMetric(data.regional_totals.gas_kwh, 'kWh')}</dd></div><div><dt>탄소 (전력+가스)</dt><dd>{formatMetric(data.regional_totals.carbon_kg, 'kgCO₂eq')}</dd></div></dl></section>}
+    {data.regional_totals && <section className="panel regional-totals" aria-label="전주시 전체 수집 합계"><div><h3>전주시 전체 수집 합계</h3><p className="caveat">공간 미매칭 자료를 포함한 수집 합계이며 전주시 전체 소비량이 아닙니다.</p></div><dl><div><dt>전력</dt><dd>{formatMetric(data.regional_totals.electricity_kwh, 'kWh')}</dd></div><div><dt>가스</dt><dd>{formatMetric(data.regional_totals.gas_kwh, 'kWh')}</dd></div><div><dt>탄소 (전력+가스)</dt><dd>{data.regional_totals.carbon_kg === null ? <MissingValue inline reason="가스 계수 확정 전" /> : formatMetric(data.regional_totals.carbon_kg, 'kgCO₂eq')}</dd></div></dl></section>}
 
-    <div className="scope-notice"><span>시뮬레이션 기준: {data.baseline_scope ? `${data.baseline_scope.parcel_names.join(', ')} (연면적 ${formatMetric(data.baseline_scope.area_m2, 'm²')}, ${data.baseline_scope.energy_types.map((t) => (t === 'GAS' ? '가스' : '전력')).join('·')} 12개월)${data.baseline_scope.excluded_names.length ? ` · 제외: ${data.baseline_scope.excluded_names.join(', ')}` : ''}` : '12개월 관측과 연면적이 모두 있는 지번이 없어 기준을 만들지 않았습니다.'}</span><Link to="/analysis">이 결과의 데이터 →</Link></div>
+    <p className="scope-notice"><span>시뮬레이션 기준: {data.baseline_scope ? `${data.baseline_scope.parcel_names.join(', ')} (연면적 ${formatMetric(data.baseline_scope.area_m2, 'm²')}, ${data.baseline_scope.energy_types.map((t) => (t === 'GAS' ? '가스' : '전력')).join('·')} 12개월)${data.baseline_scope.excluded_names.length ? `. 제외: ${data.baseline_scope.excluded_names.join(', ')}` : ''}` : '12개월 관측과 연면적이 모두 있는 지번이 없어 기준을 만들지 않았습니다.'}</span><Link to="/analysis">이 결과의 데이터 보기</Link></p>
     <section className="content-grid dashboard-grid">
-      <article className="panel chart-panel"><div className="panel-title"><div><span>MONTHLY ENERGY</span><h3>월별 관측 에너지</h3></div><div className="badge-row">{observed && <ProvenanceBadge kind={observed} />}<small>결측 월은 선을 잇지 않습니다. 단위 kWh</small></div></div>
-        {monthly.some((r) => r.electricity_kwh !== null || r.gas_kwh !== null) ? <Chart option={chartOption} height={300} ariaLabel="월별 전력 및 가스 사용량 차트" /> : <div className="data-gap"><CloudSun size={34} /><h3>에너지 관측 자료를 기다리고 있습니다</h3><p>이 격자에는 아직 월별 관측이 없습니다. 0으로 채우지 않습니다.</p><Link className="button secondary" to="/data">수집 상태 확인</Link></div>}
+      <article className="panel chart-panel"><div className="panel-title"><h3>월별 관측 에너지</h3><div className="badge-row">{observed && <ProvenanceBadge kind={observed} />}<small>결측 월은 선을 잇지 않습니다. 단위 kWh</small></div></div>
+        {hasEnergy ? <Chart option={chartOption} height={300} ariaLabel="월별 전력 및 가스 사용량 차트" /> : <div className="empty-block is-missing"><strong>월별 에너지 관측이 없어 운영탄소를 계산하지 않았습니다.</strong><dl><div><dt>관측 월</dt><dd>0 / 필요 1 이상</dd></div></dl><Link className="button secondary" to="/data">수집 상태 보기</Link></div>}
       </article>
-      <aside className="panel insight-panel"><div className="panel-title"><div><span>DATA COVERAGE</span><h3>관측 범위</h3></div><CloudSun size={20} /></div>
-        <div className="coverage-block"><strong>{Math.round(((eMonths + gMonths) / 24) * 100)}%</strong><span>전력·가스 24개월 중 관측 {eMonths + gMonths}개월</span></div>
-        <div style={{ display: 'grid', gap: 6 }}>
-          <MonthRow label="전력" months={monthly.map((r) => r.electricity_kwh !== null)} />
-          <MonthRow label="가스" months={monthly.map((r) => r.gas_kwh !== null)} />
-        </div>
-        <dl className="compact-list" style={{ marginTop: 10 }}>
+      <aside className="panel coverage-panel"><div className="panel-title"><h3>관측 범위</h3></div>
+        <p className="coverage-figure"><b>{eMonths + gMonths}</b><span className="unit">/ 24개월</span><small>전력·가스 관측 월 ({formatMetric(((eMonths + gMonths) / 24) * 100, '%', 0)})</small></p>
+        <MonthRow label="전력" months={Array.from({ length: 12 }, (_, i) => monthsOf(year, monthly, 'electricity_kwh')[i] !== null)} />
+        <MonthRow label="가스" months={Array.from({ length: 12 }, (_, i) => monthsOf(year, monthly, 'gas_kwh')[i] !== null)} />
+        <dl className="compact-list">
           <div><dt>수집 관측 행 (연도 전체)</dt><dd>{formatMetric(coverage.energy_records, '행')}</dd></div>
           <div><dt>격자에 공간 매칭된 행</dt><dd>{formatMetric(coverage.matched_records, '행')}{coverage.energy_records ? ` (${Math.round(((coverage.matched_records ?? 0) / coverage.energy_records) * 100)}%)` : ''}</dd></div>
           <div><dt>연결된 데이터 출처</dt><dd>{data.sources?.length ?? 0}개</dd></div>
         </dl>
-        <div className="truth-note"><strong>표시 원칙</strong><p>관측이 없는 값은 0으로 채우지 않습니다. 모든 수치에 관측·계산·추정 표식과 산식을 붙이고, 공표 연면적이 비현실적이면 원단위 분모에서 뺍니다.</p></div>
+        <div className="truth-note"><strong>표시 원칙</strong><p>관측이 없는 값은 0으로 채우지 않습니다. 근거 유형은 서버가 알려준 값에만 표시하고, 공표 연면적이 비현실적이면 원단위 분모에서 뺍니다.</p></div>
       </aside>
     </section>
-    {buildings && Object.keys(buildings.category_share_pct ?? {}).length > 0 && <section className="panel weather-panel"><div className="panel-title"><div><span>BUILDING USE</span><h3>건축면적 기준 건물 용도 구성</h3></div></div><StackRow shares={buildings.category_share_pct} names={USE_NAME} colors={{ RESIDENTIAL: '#f2b705', COMMERCIAL: '#e4572e', INDUSTRIAL: '#8d6cab', PUBLIC: '#2a78d6', OTHER: '#64748b', UNKNOWN: '#b8c2c0' }} counts={buildings.category_count} /></section>}
-    {zoning && Object.keys(zoning.shares_pct).length > 0 && <section className="panel weather-panel"><div className="panel-title"><div><span>ZONING</span><h3>격자 면적 중 법정 용도지역</h3></div></div><StackRow shares={zoning.shares_pct} names={ZONE_NAME} colors={ZONE_COLORS} rest="도시지역 외·미지정" /></section>}
-    <WeatherPanel data={data} />
+    <section className="content-grid two-up">
+      <article className="panel"><div className="panel-title"><h3>건축면적 기준 건물 용도 구성</h3></div>{buildings && Object.keys(buildings.category_share_pct ?? {}).length > 0 ? <ShareBar shares={buildings.category_share_pct} names={USE_NAME} colors={Object.fromEntries(USE_COLORS)} counts={buildings.category_count} /> : <MissingValue reason="공식 건물 레이어(VWorld)를 아직 수집하지 않았습니다." />}</article>
+      <article className="panel"><div className="panel-title"><h3>격자 면적 중 법정 용도지역</h3></div>{zoning && Object.keys(zoning.shares_pct).length > 0 ? <ShareBar shares={zoning.shares_pct} names={ZONE_NAME} colors={ZONE_GROUP_COLOR} rest="도시지역 외·미지정" /> : <MissingValue reason={zoning ? '이 격자에 도시지역 용도지역 도형이 없습니다.' : '용도지역(VWorld)을 아직 수집하지 않았습니다.'} />}</article>
+    </section>
+    <WeatherPanel data={data} year={year} />
   </div>;
 }
 
 function MonthRow({ label, months }: { label: string; months: boolean[] }) {
   const count = months.filter(Boolean).length;
-  return <div className="month-strip-row"><span>{label}</span><div className="month-strip" aria-label={`${label} 관측 ${count}/12개월`}>{Array.from({ length: 12 }, (_, i) => <span key={i} className={months[i] ? 'on' : ''}>{i + 1}</span>)}</div><b>{count}/12</b></div>;
+  return <div className="month-strip-row"><span>{label}</span><div className="month-strip" aria-label={`${label} 관측 ${count}/12개월`}>{months.map((on, i) => <span key={i} className={on ? 'on' : 'is-missing'} title={`${i + 1}월 ${on ? '관측' : '관측 없음'}`}>{i + 1}</span>)}</div><b>{count}/12</b></div>;
 }
 
-function StackRow({ shares, names, colors, counts, rest }: { shares: Record<string, number>; names: Record<string, string>; colors: Record<string, string>; counts?: Record<string, number>; rest?: string }) {
-  const entries = Object.entries(shares).sort((a, b) => b[1] - a[1]);
-  const remainder = rest ? Math.max(0, 100 - entries.reduce((s, [, v]) => s + v, 0)) : 0;
-  return <div style={{ marginTop: 14 }}><div className="stack-bar" style={{ height: 16 }} role="img" aria-label={entries.map(([k, v]) => `${names[k] ?? k} ${v.toFixed(1)}%`).join(', ')}>{entries.map(([k, v]) => <span key={k} style={{ width: `${v}%`, background: colors[k] ?? '#b8c2c0' }} />)}{remainder > 0.05 && <span style={{ width: `${remainder}%`, background: 'rgba(14,26,43,.08)' }} />}</div><div className="stack-legend">{entries.map(([k, v]) => <span key={k}><i style={{ background: colors[k] ?? '#b8c2c0' }} />{names[k] ?? k} <b>{v.toFixed(1)}%</b>{counts?.[k] !== undefined && <>({counts[k].toLocaleString('ko-KR')}동)</>}</span>)}{remainder > 0.05 && <span><i style={{ background: 'rgba(14,26,43,.12)' }} />{rest} <b>{remainder.toFixed(1)}%</b></span>}</div></div>;
-}
-
-function WeatherPanel({ data }: { data: DashboardData }) {
+function WeatherPanel({ data, year }: { data: DashboardData; year: number }) {
   const rows = data.weather ?? [];
   const provider = String(rows[0]?.provider ?? rows[0]?.source ?? '');
   const official = rows.filter((r) => provenanceFromWeatherSource(r.source_type) === 'observed').length;
-  const option = useMemo<EChartsOption>(() => baseChart({
-    grid: { left: 48, right: 20, top: 40, bottom: 28 },
-    xAxis: { ...(baseChart().xAxis as object), data: rows.map((r) => `${Number(String(r.use_ym).slice(-2))}월`) },
-    yAxis: { ...(baseChart().yAxis as object), name: '°C' },
-    series: [lineSeries('월평균 기온', rows.map((r) => (typeof r.mean_temperature === 'number' ? Number(r.mean_temperature.toFixed(1)) : null)), SERIES.temperature)],
-  }), [rows]);
+  const fallback = rows.filter((r) => provenanceFromWeatherSource(r.source_type) === 'fallback').length;
   // HDD·CDD 합계는 값이 있는 달만 더하고, 몇 개월 합계인지 함께 적는다(결측 월을 0으로 더하지 않음).
   const hddRows = rows.filter((r) => typeof r.hdd === 'number');
   const cddRows = rows.filter((r) => typeof r.cdd === 'number');
   const hdd = hddRows.reduce((s, r) => s + (r.hdd as number), 0);
   const cdd = cddRows.reduce((s, r) => s + (r.cdd as number), 0);
-  const fallback = rows.filter((r) => provenanceFromWeatherSource(r.source_type) === 'fallback').length;
-  return <section className="panel weather-panel"><div className="panel-title"><div><h3>월별 기상과 냉난방 수요 조건</h3></div><div className="badge-row">{official > 0 && <ProvenanceBadge kind="observed" detail={`${official}개월`} />}{fallback > 0 && <ProvenanceBadge kind="fallback" detail={`${fallback}개월`} />}{!rows.length && <ProvenanceBadge kind="missing" />}</div></div>
-    {rows.length ? <><Chart height={230} ariaLabel="월평균 기온 차트" option={option} /><div className="chart-note"><span>자료: <b>{official === rows.length ? 'KMA ASOS 전주(146) 관측' : official ? `KMA ASOS ${official}개월 + ERA5-Land 대체 ${rows.length - official}개월` : provider || 'ERA5-Land 재분석(대체)'}</b></span><span>{rows.length}/12개월</span><span>난방도일 HDD {hddRows.length ? <b>{formatMetric(hdd, '°C·일')}</b> : <MissingValue inline />}{hddRows.length > 0 && hddRows.length < 12 ? ` (${hddRows.length}개월 합계)` : ''}</span><span>냉방도일 CDD {cddRows.length ? <b>{formatMetric(cdd, '°C·일')}</b> : <MissingValue inline />}{cddRows.length > 0 && cddRows.length < 12 ? ` (${cddRows.length}개월 합계)` : ''}</span><span>기준온도 18°C</span></div></> : <EmptyState description="이 연도의 기상 자료가 없습니다." />}
+  return <section className="panel weather-panel"><div className="panel-title"><h3>월별 기상과 냉난방 수요 조건</h3><div className="badge-row">{official > 0 && <ProvenanceBadge kind="observed" detail={`${official}개월`} />}{fallback > 0 && <ProvenanceBadge kind="fallback" detail={`${fallback}개월`} />}{!rows.length && <ProvenanceBadge kind="missing" />}</div></div>
+    {rows.length ? <><WeatherChart year={year} rows={rows} /><dl className="chart-note"><div><dt>자료</dt><dd>{official === rows.length ? 'KMA ASOS 전주(146) 관측' : official ? `KMA ASOS ${official}개월, ERA5-Land 대체 ${rows.length - official}개월` : provider || 'ERA5-Land 재분석(대체)'}</dd></div><div><dt>기온 관측 월</dt><dd>{rows.length}/12개월</dd></div><div><dt>난방도일 HDD</dt><dd>{hddRows.length ? formatMetric(hdd, '°C·일') : <MissingValue inline />}{hddRows.length > 0 && hddRows.length < 12 ? ` (${hddRows.length}개월 합계)` : ''}</dd></div><div><dt>냉방도일 CDD</dt><dd>{cddRows.length ? formatMetric(cdd, '°C·일') : <MissingValue inline />}{cddRows.length > 0 && cddRows.length < 12 ? ` (${cddRows.length}개월 합계)` : ''}</dd></div><div><dt>기준온도</dt><dd>18°C</dd></div></dl></> : <EmptyState description="이 연도의 기상 자료가 없습니다." />}
   </section>;
 }

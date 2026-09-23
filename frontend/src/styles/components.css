@@ -72,7 +72,7 @@
 
 /* 패널·표·빈 상태 (4.5, 5) */
 .panel { min-width: 0; padding: var(--sp-5); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-panel); }
-.panel-title { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-3); margin-bottom: var(--sp-3); }
+.panel-title { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: var(--sp-2) var(--sp-3); margin-bottom: var(--sp-3); }
 .panel-title h3 { font-size: var(--fs-panel); line-height: 1.4; }
 .panel-title small { color: var(--ink-3); font-size: var(--fs-caption); }
 .panel-title > svg { flex: none; color: var(--ink-3); }

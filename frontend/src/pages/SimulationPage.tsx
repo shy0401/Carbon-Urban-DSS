@@ -1,6 +1,8 @@
-import { Calculator, Info, Leaf, Play, RotateCcw } from 'lucide-react';
+import { Info, Play, RotateCcw } from 'lucide-react';
 import { FormEvent, useMemo, useState, useEffect, useRef } from 'react';
 import type { EChartsOption } from 'echarts';
+import { baseChart, compactAxis, lineSeries, missingBands } from '../lib/chartTheme';
+import { TOKENS } from '../theme/palette';
 import { Link } from 'react-router-dom';
 import { useAnalysisScope } from '../hooks/useAnalysisScope';
 import { Chart } from '../components/Chart';
@@ -41,13 +43,25 @@ export function SimulationPage() {
   useEffect(()=>{revision.current++;setResult(null);setOptimization(null);setRequestError(null);},[input,year,gridId]);
   useEffect(()=>{revision.current++;setOptimization(null);},[constraints]);
   const series = useMemo(() => result ? extractMonthly(result, active) : [], [result, active]);
-  const chartOption = useMemo<EChartsOption>(() => ({
-    color: [active === 'difference' ? '#f97316' : active === 'scenario' ? '#0f766e' : '#475569'],
-    tooltip: { trigger: 'axis' }, grid: { left: 60, right: 20, top: 30, bottom: 35 },
-    xAxis: { type: 'category', data: series.map((row) => String(row.month ?? row.use_ym ?? '')), axisLabel: { color: '#64748b' } },
-    yAxis: { type: 'value', splitLine: { lineStyle: { color: '#edf2f4' } }, axisLabel: { color: '#64748b' } },
-    series: [{ name: activeLabel(active), type: 'line', smooth: true, symbolSize: 7, data: series.map((row) => numericValue(row)), areaStyle: { opacity: 0.1 } }],
-  }), [series, active]);
+  // 현황 --ink 실선, 시나리오 --plan-a 짧은 점선(1 3), 증감은 부호별 증감 램프 막대. 값이 없는 달은 비워 둔다.
+  const chartOption = useMemo<EChartsOption>(() => {
+    const labels = series.map((row) => monthLabel(row.month ?? row.use_ym));
+    const values = series.map((row) => numericValue(row));
+    const base = baseChart();
+    const unit = series.some((row) => typeof row.carbon_kg === 'number') ? 'kgCO₂eq' : 'kWh';
+    const kind = active === 'scenario' ? '시나리오' : active === 'difference' ? '시나리오 − 현황' : '관측 원단위 기반 현황';
+    const line = active === 'difference'
+      ? { name: activeLabel(active), type: 'bar' as const, barMaxWidth: 18, data: values.map((v) => (v === null ? null : { value: v, itemStyle: { color: v < 0 ? TOKENS['diff-neg-2'] : v > 0 ? TOKENS['diff-pos-2'] : TOKENS['diff-zero'] } })) }
+      : lineSeries(activeLabel(active), values, active === 'scenario' ? TOKENS['plan-a'] : TOKENS.ink, active === 'scenario' ? 'scenario' : 'solid');
+    return baseChart({
+      legend: { show: false },
+      grid: { left: 64, right: 20, top: 30, bottom: 30 },
+      tooltip: { ...(base.tooltip as object), valueFormatter: (value: unknown) => (typeof value === 'number' ? `${formatMetric(value, unit, 1)} (${kind})` : '자료 없음') },
+      xAxis: { ...(base.xAxis as object), data: labels },
+      yAxis: { ...(base.yAxis as object), name: unit, axisLabel: { ...((base.yAxis as { axisLabel?: object }).axisLabel ?? {}), formatter: compactAxis } },
+      series: [{ ...line, markArea: missingBands(labels, [values]) }],
+    });
+  }, [series, active]);
 
   const submit = async (event?: FormEvent) => {
     event?.preventDefault();
@@ -70,16 +84,16 @@ export function SimulationPage() {
 
   return <div className="page simulation-page">
     <PageHeader title="탄소 시뮬레이션" description="관측 원단위를 적용해 개발 조건 변화의 1차 추정치를 비교합니다." action={<span className="badge warn"><Info size={13} />의사결정 전 검토 필요</span>} />
-    <div className="simulation-context"><span>기준 {year}년 · {gridId || '예비 선정 격자'}</span><span>입력 예시이며 실제 현재 배치가 아닙니다</span></div><div className="simulation-layout">
+    <div className="simulation-context"><span>기준 {year}년, 격자 {gridId || '예비 선정 격자'}</span><span>입력값은 예시이며 실제 현재 배치가 아닙니다</span></div><div className="simulation-layout">
       <form className="panel scenario-form" onSubmit={submit}>
-        <div className="panel-title"><div><span>INPUT CONDITIONS</span><h3>개발 조건</h3></div><Calculator size={20} /></div>
+        <div className="panel-title"><h3>개발 조건</h3></div>
         <div className="floor-presets"><span>층수·수용량 빠른 설정</span><div>{[5, 10, 20, 30, 40].map((floors) => <button type="button" className={input.floors === floors ? 'active' : ''} key={floors} onClick={() => preset(floors)}>{floors}층</button>)}</div><small>연면적과 평균 세대면적으로 세대수를 다시 계산하고 현재 가구당 인구비를 적용합니다.</small></div>
         <div className="field-grid">{fields.map((field) => <label className={errors[field.key] ? 'field error' : 'field'} key={field.key}><span>{field.label}</span><div><input type="number" value={input[field.key]} step={field.step ?? 1} min={field.min} max={field.max} onChange={(event) => setInput((old) => ({ ...old, [field.key]: Number(event.target.value) }))} /><em>{field.unit}</em></div>{errors[field.key] && <small>{errors[field.key]}</small>}</label>)}</div>
         <div className="derived-strip"><div><span>예상 연면적</span><strong>{formatMetric(input.building_count * input.footprint_per_building * input.floors, 'm²')}</strong></div><div><span>계획 용적률</span><strong>{formatMetric((input.building_count * input.footprint_per_building * input.floors / input.site_area) * 100, '%', 1)}</strong></div></div>
         <div className="form-actions"><button type="button" className="button ghost" onClick={() => { setInput(initial); setErrors({}); setResult(null); }}><RotateCcw size={15} />초기화</button><button className="button primary" disabled={submitting}><Play size={15} />{submitting ? '계산 중…' : '시나리오 계산'}</button></div>
       </form>
       <section className="panel scenario-result">
-        <div className="panel-title"><div><span>ESTIMATION RESULT</span><h3>에너지·탄소 비교</h3></div>{result && <div className="badge-row">{provenanceFromCode(result.data_class) && <ProvenanceBadge kind={provenanceFromCode(result.data_class)!} />}{result.quality && <QualityBadge value={result.quality} />}</div>}</div>
+        <div className="panel-title"><h3>에너지·탄소 비교</h3>{result && <div className="badge-row">{provenanceFromCode(result.data_class) && <ProvenanceBadge kind={provenanceFromCode(result.data_class)!} />}{result.quality && <QualityBadge value={result.quality} />}</div>}</div>
         {requestError && <ErrorState message={requestError} onRetry={() => void submit()} />}
         {!requestError && !result && <div className="scenario-empty"><ScenarioMassing input={input} /><h3>조건을 입력하고 계산을 시작하세요</h3><p>서버가 보유한 관측 원단위를 이용하며, 근거 자료가 없으면 임의의 결과를 만들지 않습니다.</p></div>}
         {result && <><ScenarioMassing input={input}/>{result.id && <Link className="button secondary report-from-scenario" to={`/reports?scenario=${result.id}`}>이 계획안으로 보고서 작성</Link>}{result.total_footprint !== undefined && <div className="calculation-strip"><div><span>건축면적 합계</span><strong>{formatMetric(result.total_footprint, 'm²')}</strong></div><div><span>연면적</span><strong>{formatMetric(result.gross_floor_area, 'm²')}</strong></div><div><span>용적률</span><strong>{formatMetric(result.far, '%', 1)}</strong></div><div><span>건폐율</span><strong>{formatMetric(result.bcr, '%', 1)}</strong></div></div>}<div className="tabs" role="tablist">{(['current', 'scenario', 'difference'] as const).map((tab) => <button key={tab} role="tab" aria-selected={active === tab} onClick={() => setActive(tab)}>{activeLabel(tab)}</button>)}</div>
@@ -88,7 +102,7 @@ export function SimulationPage() {
           <div className="assumption-note"><strong>해석 범위</strong><p>{result.limitation ?? `${result.label ?? '원단위 기반 1차 추정'} 결과이며, 설계·인허가 수치로 사용할 수 없습니다.`}</p>{result.assumptions?.length ? <ul>{result.assumptions.map((assumption) => <li key={assumption}>{assumption}</li>)}</ul> : null}</div></>}
       </section>
     </div>
-    <section className="panel optimization-panel"><div className="panel-title"><div><span>DETERMINISTIC GRID SEARCH</span><h3>도시구조 최적화</h3></div><span className="status-tag neutral">결정론적 계산</span></div><p className="panel-description">최소 수용 목표를 충족하는 후보를 같은 입력과 제약에서 항상 같은 순서로 탐색합니다. 법적 상한 자료가 없으면 에너지 최적안으로만 표시합니다.</p><div className="optimization-controls"><label><span>최소 세대수</span><input type="number" min="0" value={constraints.min_households} onChange={(event) => setConstraints((old) => ({ ...old, min_households: Number(event.target.value) }))} /></label><label><span>최소 인구</span><input type="number" min="0" value={constraints.min_population} onChange={(event) => setConstraints((old) => ({ ...old, min_population: Number(event.target.value) }))} /></label><button className="button primary" onClick={() => void optimize()} disabled={optimizing}>{optimizing ? '탐색 중…' : '최적안 탐색'}</button></div>{optimization && <OptimizationResults result={optimization} />}</section>
+    <section className="panel optimization-panel"><div className="panel-title"><h3>도시구조 최적화</h3><span className="status-tag neutral">결정론적 계산</span></div><p className="panel-description">최소 수용 목표를 충족하는 후보를 같은 입력과 제약에서 항상 같은 순서로 탐색합니다. 법적 상한 자료가 없으면 에너지 최적안으로만 표시합니다.</p><div className="optimization-controls"><label><span>최소 세대수</span><input type="number" min="0" value={constraints.min_households} onChange={(event) => setConstraints((old) => ({ ...old, min_households: Number(event.target.value) }))} /></label><label><span>최소 인구</span><input type="number" min="0" value={constraints.min_population} onChange={(event) => setConstraints((old) => ({ ...old, min_population: Number(event.target.value) }))} /></label><button className="button secondary" onClick={() => void optimize()} disabled={optimizing}>{optimizing ? '탐색 중…' : '최적안 탐색'}</button></div>{optimization && <OptimizationResults result={optimization} />}</section>
   </div>;
 }
 
@@ -101,5 +115,6 @@ function extractMonthly(result: ScenarioResult, active: string): Array<Record<st
 function numericValue(row: Record<string, unknown>) { for (const key of ['carbon_kg', 'energy_kwh', 'electricity_kwh', 'value']) if (typeof row[key] === 'number') return row[key]; return null; }
 function allMissing(series: ScenarioSeries | null) { return !series || Object.values(series).every((value) => value === null || value === undefined); }
 
-function ScenarioMassing({ input }: { input: ScenarioInput }) { return <div className="massing" aria-label={`${input.building_count}개 동 ${input.floors}층 계획 모형`}><div className="massing-ground">{Array.from({ length: Math.min(input.building_count, 12) }, (_, index) => <span key={index} style={{ height: `${Math.max(28, Math.min(125, input.floors * 3))}px` }}><i>{input.floors}F</i></span>)}</div><small>개념 배치 · 축척 없음</small></div>; }
+function ScenarioMassing({ input }: { input: ScenarioInput }) { return <div className="massing" aria-label={`${input.building_count}개 동 ${input.floors}층 계획 모형`}><div className="massing-ground">{Array.from({ length: Math.min(input.building_count, 12) }, (_, index) => <span key={index} style={{ height: `${Math.max(28, Math.min(125, input.floors * 3))}px` }}><i>{input.floors}F</i></span>)}</div><small>개념 배치도 (축척 없음, 층수 비례)</small></div>; }
 function OptimizationResults({ result }: { result: OptimizationResult }) { const rows = result.alternatives ?? result.candidates ?? []; return <div className="optimization-results"><div className="optimization-status">{result.status && <QualityBadge value={result.status} />}<strong>{result.legal_status ?? 'ENERGY_OPTIMAL · 법적 상한 미확정'}</strong><p>{result.explanation ?? result.reason ?? '서버가 반환한 제약 충족 후보를 목적함수 순으로 표시합니다.'}</p></div>{rows.length ? <div className="alternative-grid">{rows.slice(0, 5).map((row, index) => <article key={String(row.id ?? index)}><span>{String(row.label ?? row.objective ?? `대안 ${index + 1}`)}</span><h4>{row.floors === null || row.floors === undefined ? '층수 자료 없음' : `${row.floors}층 · ${row.building_count ?? '—'}동`}</h4><dl>{['far', 'bcr', 'households', 'population', 'annual_carbon_kg'].map((key) => <div key={key}><dt>{metricLabel(key)}</dt><dd>{typeof row[key] === 'number' ? formatMetric(row[key] as number, metricUnit(key), 1) : '자료 없음'}</dd></div>)}</dl></article>)}</div> : <EmptyState title="제약을 충족하는 후보가 없습니다" />}{result.limitations?.length ? <ul className="optimization-limitations">{result.limitations.map((item) => <li key={item}>{item}</li>)}</ul> : null}</div>; }
+function monthLabel(value: unknown) { const text = String(value ?? ''); const month = Number(text.replace('-', '').slice(-2)); return month >= 1 && month <= 12 ? `${month}월` : text; }
