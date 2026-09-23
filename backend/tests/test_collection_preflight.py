@@ -78,3 +78,41 @@ def test_sgis_rejection_is_bound_to_both_credentials(monkeypatch, tmp_path):
     assert collection_blockers(["sgis"], data_dir=tmp_path)[0]["dataset"] == "sgis"
     monkeypatch.setenv("SGIS_CONSUMER_SECRET", "replacement-secret")
     assert collection_blockers(["sgis"], data_dir=tmp_path) == []
+
+
+def test_preflight_blocks_placeholder_keys_before_any_request(monkeypatch, tmp_path):
+    placeholder = "발급받은_서비스키를_입력"
+    monkeypatch.setenv("DATA_GO_KR_SERVICE_KEY", placeholder)
+
+    blocked = collection_blockers(["kapt_energy", "kma_asos", "energy"], data_dir=tmp_path)
+
+    assert [item["dataset"] for item in blocked] == ["kapt_energy", "kma_asos", "energy"]
+    assert all("형식 오류" in item["message"] and "DATA_GO_KR_SERVICE_KEY" in item["message"] for item in blocked)
+    assert placeholder not in json.dumps(blocked, ensure_ascii=False)
+
+
+def test_preflight_format_check_rejects_quotes_spaces_and_english_placeholders(monkeypatch, tmp_path):
+    from app.collection_preflight import credential_format_problem
+
+    assert credential_format_problem("DATA_GO_KR_SERVICE_KEY", '"abc123"')
+    assert credential_format_problem("DATA_GO_KR_SERVICE_KEY", "abc 123")
+    assert credential_format_problem("VWORLD_API_KEY", "YOUR_VWORLD_KEY")
+    assert credential_format_problem("DATA_GO_KR_SERVICE_KEY", "a1B2c3D4e5F6+/==") is None
+    # Domains are URLs, not keys, and are not format checked.
+    assert credential_format_problem("VWORLD_DOMAIN", "http://localhost") is None
+
+
+def test_vworld_rejection_is_tied_to_the_domain_so_fixing_it_allows_retry(monkeypatch, tmp_path):
+    key = "TEST-VWORLD-KEY-0001"
+    monkeypatch.setenv("VWORLD_API_KEY", key)
+    monkeypatch.setenv("VWORLD_DOMAIN", "http://localhost")
+    cache = tmp_path / "cache" / "vworld"
+    cache.mkdir(parents=True)
+    (cache / "rejected.json").write_text(json.dumps({
+        "timestamp": time.time(), "error": "VWorld 인증 실패: provider_code=INCORRECT_KEY",
+        "auth_hash": hashlib.sha256(key.encode()).hexdigest(), "params": {"domain": "http://localhost"},
+    }, ensure_ascii=False), encoding="utf-8")
+
+    assert [item["dataset"] for item in collection_blockers(["vworld_zoning"], data_dir=tmp_path)] == ["vworld_zoning"]
+    monkeypatch.setenv("VWORLD_DOMAIN", "http://127.0.0.1")
+    assert collection_blockers(["vworld_zoning"], data_dir=tmp_path) == []

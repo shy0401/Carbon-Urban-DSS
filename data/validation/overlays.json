@@ -1,0 +1,33 @@
+{
+  "checks": [
+    {
+      "name": "zoning",
+      "status": "SKIP",
+      "reason": "not collected"
+    },
+    {
+      "name": "admin",
+      "status": "PASS",
+      "features": 35
+    }
+  ],
+  "meta": {
+    "zoning_features": 0,
+    "admin_features": 35,
+    "admin_reference_year": 2024,
+    "zoning_area_km2_by_category": {},
+    "zoning_grids_covered": 0,
+    "analysis_year": 2025,
+    "crs": "EPSG:4326 (저장 EPSG:5179)",
+    "sources": {
+      "zoning": "VWorld LT_C_UQ111 도시지역 용도지역",
+      "admin": "SGIS 행정동 경계·인구·가구 (행정구역 통계, 500m 격자 배분 없음)"
+    },
+    "truth_rules": [
+      "행정동 인구는 공식 행정동 경계에만 표시하며 500m 격자에 배분하지 않습니다.",
+      "용도지역 비율은 VWorld에 실제 요청한 격자만 계산하며 미요청 격자는 결측입니다.",
+      "비공개(*)·결측 통계는 0으로 바꾸지 않습니다."
+    ]
+  },
+  "pageErrors": []
+}

@@ -28,6 +28,19 @@ scripts\start-prototype.cmd
 docker compose up -d --force-recreate api worker
 ```
 
+## 팀원 PC 재현·백업·검증
+
+Git clone만으로는 DB·원본(`data/raw`)·API 키·AI 모델이 전달되지 않습니다. 새 PC 준비, 승인된 데이터 묶음 내보내기/가져오기, 백업·복원 검증은 [팀원 PC 재현 안내](docs/TEAM_SETUP.md)를 따릅니다.
+
+```powershell
+scripts\dss.cmd Doctor                 # 사전 점검(키 값은 출력하지 않음)
+scripts\dss.cmd All                    # 백업 → 재빌드 → 단계 수집 → 복원 검증 → 테스트
+scripts\dss.cmd ExportBundle           # 팀 공유 묶음(.env·캐시·임시 URL 제외)
+scripts\dss.cmd ImportBundle -BundlePath <zip>
+```
+
+결과는 `data\ops\<시각>-<작업>\summary.json`에 저장됩니다.
+
 ## 데이터와 한계
 
 현재 확보한 실데이터, 정확한 개수, 실패한 API는 [DATA_SOURCE_DISCOVERY](docs/DATA_SOURCE_DISCOVERY.md)와 [검증 보고서](docs/FINAL_REPORT.md)에 기록합니다. API 화면은 문서의 숫자를 복제하지 않고 **현재 DB**를 조회합니다.
@@ -64,7 +77,7 @@ npm run build
 
 ## 구현 안내
 
-- [Claude 인수인계서](docs/CLAUDE_HANDOFF_2026-09-23.md) · [Claude 시작 프롬프트](docs/CLAUDE_START_PROMPT_2026-09-23.md)
+- [Claude 인수인계서](docs/CLAUDE_HANDOFF_2026-09-23.md) (0절: 2026-09-23 최신 결과) · [Claude 시작 프롬프트](docs/CLAUDE_START_PROMPT_2026-09-23.md) · [팀원 PC 재현](docs/TEAM_SETUP.md)
 - [운영 준비 및 최종 Goal 로드맵](docs/FINAL_GOAL_ROADMAP_2026-09-18.md)
 - [수집 실패 원인 조사 및 조치](docs/COLLECTION_FAILURE_AUDIT_2026-09-18.md)
 - [현재 구현·미구현·API 키 연동 현황](docs/PROJECT_IMPLEMENTATION_STATUS.md)

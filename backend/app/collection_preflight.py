@@ -28,6 +28,37 @@ CREDENTIAL_CACHE = {
 }
 
 
+# Values that are clearly not provider-issued keys (for example a Korean
+# placeholder copied from a guide). Sending them only produces provider code 30
+# and hides the real cause, so they are blocked before any request is made.
+_PLACEHOLDER_MARKERS = ("your_", "your-", "_here", "-here", "changeme", "placeholder", "example", "xxxxxxxx", "<", ">")
+_FORMAT_CHECKED = {"DATA_GO_KR_SERVICE_KEY", "SGIS_CONSUMER_KEY", "SGIS_CONSUMER_SECRET", "VWORLD_API_KEY"}
+
+
+def credential_format_problem(name: str, value: str | None) -> str | None:
+    """Return a value-free description of an obviously malformed credential."""
+    value = (value or "").strip()
+    if not value or name not in _FORMAT_CHECKED:
+        return None
+    if any(ord(char) > 127 for char in value):
+        return "발급 키가 아닌 문자(한글 등 비ASCII)가 포함되어 자리표시자로 보입니다"
+    if any(char.isspace() for char in value) or value[0] in "\"'" or value[-1] in "\"'":
+        return "공백·줄바꿈·따옴표가 포함되어 있습니다"
+    lowered = value.lower()
+    if any(marker in lowered for marker in _PLACEHOLDER_MARKERS):
+        return "예시 문구(자리표시자)로 보입니다"
+    return None
+
+
+def credential_format_problems(names: Iterable[str]) -> dict[str, str]:
+    problems = {}
+    for name in names:
+        problem = credential_format_problem(name, os.getenv(name, ""))
+        if problem:
+            problems[name] = problem
+    return problems
+
+
 class CollectionBlockedError(RuntimeError):
     def __init__(self, blockers: list[dict[str, str]]):
         self.blockers = blockers
@@ -46,12 +77,26 @@ def collection_blockers(datasets: Iterable[str], *, data_dir: str | Path | None 
         if missing:
             blocked.append({"dataset": dataset, "message": "환경변수 미설정: " + ", ".join(missing)})
             continue
+        malformed = credential_format_problems(required)
+        if malformed:
+            blocked.append({
+                "dataset": dataset,
+                "message": "환경변수 형식 오류: " + " / ".join(f"{name} — {problem}" for name, problem in malformed.items())
+                + ". 공공데이터포털·기관에서 발급된 실제 키로 교체하세요.",
+            })
+            continue
         cache_config = CREDENTIAL_CACHE.get(dataset)
         if not cache_config:
             continue
         credential_names, cache_path = cache_config
         credential = "|".join(os.getenv(name, "").strip() for name in credential_names)
-        error = recent_credential_error(root / cache_path, credential)
+        match = None
+        if dataset.startswith("vworld_"):
+            # A VWorld rejection is tied to the key *and* the registered domain; fixing
+            # VWORLD_DOMAIN must allow an immediate retry.
+            domain = os.getenv("VWORLD_DOMAIN", "http://localhost").strip()
+            match = lambda meta, domain=domain: (meta.get("params") or {}).get("domain", domain) == domain
+        error = recent_credential_error(root / cache_path, credential, match=match)
         auth_markers = ("인증 실패", "INVALID_KEY", "SERVICE_KEY", "SERVICE_ACCESS", "30:", "20:")
         if error and any(marker in error for marker in auth_markers):
             credential_name = credential_names[0]

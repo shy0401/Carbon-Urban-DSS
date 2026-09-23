@@ -35,7 +35,7 @@ def run_collection(job_id):
                     collect_asos(db,int(job.start_month[:4]),scope)
                 elif dataset=='sgis':
                     from .sgis import collect_sgis_admin
-                    collect_sgis_admin(db,int(os.getenv('SGIS_BASE_YEAR','2020')),scope)
+                    collect_sgis_admin(db,int(os.getenv('SGIS_BASE_YEAR','2024')),scope)
                 elif dataset in ('vworld_zoning','vworld_cadastral'):
                     from .vworld import collect_vworld
                     collect_vworld(db,dataset.removeprefix('vworld_'),scope)

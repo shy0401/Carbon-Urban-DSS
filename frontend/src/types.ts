@@ -76,6 +76,22 @@ export interface MapData {
   grid_size_m?: number;
 }
 
+export interface OverlayData {
+  zoning: GeoJSON.FeatureCollection;
+  admin: GeoJSON.FeatureCollection;
+  meta: {
+    zoning_features: number;
+    admin_features: number;
+    admin_reference_year: number | null;
+    zoning_area_km2_by_category?: Record<string, number>;
+    zoning_grids_covered?: number;
+    analysis_year?: number;
+    crs?: string;
+    sources?: Record<string, string>;
+    truth_rules?: string[];
+  };
+}
+
 export interface SourceDetail {
   source: DataSource;
   raw_preview: unknown;
@@ -110,7 +126,7 @@ export interface ReadinessSource {
   acquisition: string;
   collection_dataset: string | null;
   collectable_now: boolean;
-  credentials: Array<{ name: string; configured: boolean }>;
+  credentials: Array<{ name: string; configured: boolean; format_ok?: boolean; problem?: string | null }>;
   scopes: Record<string, string>;
   products: string[];
   uses: string[];

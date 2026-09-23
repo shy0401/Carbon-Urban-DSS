@@ -10,7 +10,8 @@ from sqlalchemy import func, select
 
 from .models import DataSource, EnergyMonthly, Grid, RawDataAsset
 from .settings import offline_mode
-from .collection_preflight import collection_blockers
+from .collection_preflight import collection_blockers, credential_format_problem
+from .catalog import REPLACED_BY
 
 
 REGISTRY: dict[str, dict[str, Any]] = {
@@ -18,10 +19,10 @@ REGISTRY: dict[str, dict[str, Any]] = {
     "energy": dict(label="건축HUB 건물에너지", acquisition="API_KEY", collection_dataset="energy", credentials=["DATA_GO_KR_SERVICE_KEY"], scopes={"smoke": "후보 지번 제한", "limited": "최대 12개월", "full": "전주시 전수화 추가 개발"}, products=["지번별 전력·가스"], uses=["격자별 에너지", "운영탄소", "모델 검증"]),
     "building_official": dict(label="건축HUB 건축물대장", acquisition="API_KEY", collection_dataset=None, credentials=["DATA_GO_KR_SERVICE_KEY"], scopes={}, products=["공식 연면적", "층수", "현재 FAR/BCR"], uses=["건물 속성 보정", "용적률 분석", "에너지 원단위"]),
     "weather_kma": dict(label="KMA ASOS 전주 146", acquisition="API_KEY", collection_dataset="kma_asos", credentials=["DATA_GO_KR_SERVICE_KEY"], scopes={"smoke": "2025년 1월", "limited": "선택연도 12개월", "full": "선택연도 12개월"}, products=["일별 기상", "완전월 기상"], uses=["기상 보정", "HDD/CDD", "에너지 모델 설명변수"]),
-    "sgis_admin": dict(label="SGIS 행정구역 인구·가구", acquisition="API_KEY", collection_dataset="sgis", credentials=["SGIS_CONSUMER_KEY", "SGIS_CONSUMER_SECRET"], scopes={"smoke": "전주시 인구", "limited": "전주시 인구·가구", "full": "전주시 인구·가구"}, products=["행정구역 인구", "가구", "비공개 상태"], uses=["도시 현황 비교", "수요 지표", "보고서 근거"]),
+    "sgis_admin": dict(label="SGIS 행정구역 인구·가구", acquisition="API_KEY", collection_dataset="sgis", credentials=["SGIS_CONSUMER_KEY", "SGIS_CONSUMER_SECRET"], scopes={"smoke": "전주시 구별 인구(공표연도 자동 확인)", "limited": "행정동 인구 + 공식 행정동 경계", "full": "행정동 인구·가구 + 공식 행정동 경계"}, products=["행정구역 인구", "가구", "공식 행정동 경계", "비공개 상태"], uses=["행정동 인구 지도", "도시 현황 비교", "보고서 근거"]),
     "sgis_grid": dict(label="SGIS 공식 500m 격자", acquisition="MANUAL_DOWNLOAD", collection_dataset=None, credentials=[], scopes={}, products=["공식 격자 ID", "500m 인구", "비밀보호 표식"], uses=["인구밀도 지도", "자체 격자 교차검증", "수용량 분석"]),
-    "vworld_zoning": dict(label="VWorld 용도지역", acquisition="API_KEY", collection_dataset="vworld_zoning", credentials=["VWORLD_API_KEY", "VWORLD_DOMAIN"], scopes={"smoke": "분석격자 1개 bbox", "limited": "분석격자 25개 bbox", "full": "분석격자 전체 bbox"}, products=["용도지역 도형", "격자별 교차비율"], uses=["토지이용 지도", "시나리오 제약 근거", "보고서 출처"]),
-    "vworld_cadastral": dict(label="VWorld 연속지적", acquisition="API_KEY", collection_dataset="vworld_cadastral", credentials=["VWORLD_API_KEY", "VWORLD_DOMAIN"], scopes={"smoke": "분석격자 1개 bbox", "limited": "분석격자 25개 bbox", "full": "분석격자 전체 bbox"}, products=["PNU", "필지 경계", "법정동·지번"], uses=["에너지 지번 매칭", "건축물 연결", "공간 품질검증"]),
+    "vworld_zoning": dict(label="VWorld 용도지역", acquisition="API_KEY", collection_dataset="vworld_zoning", credentials=["VWORLD_API_KEY", "VWORLD_DOMAIN"], scopes={"smoke": "분석격자 1개 bbox", "limited": "분석격자 25개 bbox", "full": "분석격자 전체 bbox"}, products=["용도지역 도형", "격자별 교차비율"], uses=["용도지역 지도", "격자 주거지역 비율", "보고서 출처"]),
+    "vworld_cadastral": dict(label="VWorld 연속지적", acquisition="API_KEY", collection_dataset="vworld_cadastral", credentials=["VWORLD_API_KEY", "VWORLD_DOMAIN"], scopes={"smoke": "분석격자 1개 bbox", "limited": "분석격자 25개 bbox", "full": "분석격자 전체 bbox (VWORLD_CADASTRAL_FULL=true 필요)"}, products=["PNU", "필지 경계", "법정동·지번"], uses=["에너지 지번 매칭", "건축물 연결", "공간 품질검증"]),
     "factors": dict(label="공식 에너지 배출계수", acquisition="MANUAL_DOWNLOAD", collection_dataset=None, credentials=[], scopes={}, products=["에너지원별 계수", "적용연도·단위"], uses=["전기 운영탄소", "가스 계수 검증", "보고서 산식"]),
     "kapt": dict(label="K-apt 공동주택 기본정보", acquisition="OPEN_WEB", collection_dataset=None, credentials=[], scopes={}, products=["단지 위치", "주소", "연면적"], uses=["에너지 단지 매칭", "격자 연결", "대상지 설명"]),
     "jeonju_apartments": dict(label="전주시 공동주택 공개자료", acquisition="OPEN_FILE", collection_dataset=None, credentials=[], scopes={}, products=["준공·공사중 공동주택"], uses=["공동주택 모집단 비교", "K-apt 누락 검토"]),
@@ -34,7 +35,13 @@ REGISTRY: dict[str, dict[str, Any]] = {
 
 
 def _credential_rows(names: list[str]) -> list[dict[str, Any]]:
-    return [{"name": name, "configured": bool(os.getenv(name, "").strip())} for name in names]
+    rows = []
+    for name in names:
+        value = os.getenv(name, "")
+        problem = credential_format_problem(name, value)
+        # Only presence and a value-free format verdict are exposed, never the value.
+        rows.append({"name": name, "configured": bool(value.strip()), "format_ok": problem is None, "problem": problem})
+    return rows
 
 
 def _state(source: DataSource | None, meta: dict[str, Any], credentials: list[dict[str, Any]]) -> str:
@@ -48,7 +55,7 @@ def _state(source: DataSource | None, meta: dict[str, Any], credentials: list[di
         return "PARTIAL"
     if meta["acquisition"] == "MANUAL_DOWNLOAD" or status == "MANUAL_DOWNLOAD_REQUIRED":
         return "MANUAL_REQUIRED"
-    if credentials and not all(item["configured"] for item in credentials):
+    if credentials and not all(item["configured"] and item.get("format_ok", True) for item in credentials):
         return "CREDENTIAL_REQUIRED"
     if status in {"NEEDS_API_KEY", "NEEDS_API_APPROVAL", "FAILED", "ERROR"}:
         return "APPROVAL_OR_FIX_REQUIRED"
@@ -64,8 +71,12 @@ def build_readiness(db: Any) -> dict[str, Any]:
     is_offline = offline_mode()
     collection_datasets = [meta["collection_dataset"] for meta in REGISTRY.values() if meta["collection_dataset"]]
     blocker_by_dataset = {item["dataset"]: item["message"] for item in collection_blockers(collection_datasets)}
+    replaced = []
     for source_id in source_ids:
         source = stored.get(source_id)
+        if source_id not in REGISTRY and source and source.status == "REPLACED":
+            replaced.append({"id": source_id, "name": source.name, "replaced_by": REPLACED_BY.get(source_id)})
+            continue
         meta = REGISTRY.get(source_id, dict(label=source.name if source else source_id, acquisition="CATALOG", collection_dataset=None, credentials=[], scopes={}, products=[], uses=[]))
         credentials = _credential_rows(meta["credentials"])
         state = _state(source, meta, credentials)
@@ -111,6 +122,6 @@ def build_readiness(db: Any) -> dict[str, Any]:
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(), "offline_mode": is_offline,
         "summary": {"total_sources": len(rows), "states": dict(counts), "collectable_now": sum(row["collectable_now"] for row in rows)},
-        "pipeline": pipeline, "sources": rows,
+        "pipeline": pipeline, "sources": rows, "replaced_sources": replaced,
         "truth_rules": ["0행은 미수집이며 실제 사용량 0과 다릅니다.", "행정구역 통계를 500m 격자에 임의 배분하지 않습니다.", "단위와 배출계수가 검증되지 않은 에너지원은 탄소로 합산하지 않습니다."],
     }

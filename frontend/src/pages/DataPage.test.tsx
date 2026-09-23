@@ -44,3 +44,24 @@ it('외부 공급기관과 안전한 단계별 수집 범위를 선택할 수 �
   expect(screen.getByText('API 인증 실패: 서비스 승인 및 키 확인 필요 (30/20)')).toBeInTheDocument();
   expect(screen.getByText('페이지 제한 5 도달')).toBeInTheDocument();
 });
+
+it('자리표시자 키는 설정됨이 아니라 형식 오류로 표시한다', async () => {
+  vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+    const url = String(input);
+    const readiness = {
+      generated_at: '2025-01-01T00:00:00Z',
+      offline_mode: false,
+      summary: { total_sources: 1, collectable_now: 0, states: { CREDENTIAL_REQUIRED: 1 } },
+      pipeline: [{ id: 'acquire', label: '수집', value: 1, detail: '공식 API' }],
+      sources: [
+        { id: 'kapt_energy', name: 'K-apt 월별 에너지', organization: '한국부동산원', status: 'NEEDS_API_KEY', state: 'CREDENTIAL_REQUIRED', acquisition: 'API_KEY', collection_dataset: 'kapt_energy', collectable_now: false, credentials: [{ name: 'DATA_GO_KR_SERVICE_KEY', configured: true, format_ok: false, problem: '자리표시자로 보입니다' }], scopes: { smoke: '1단지 × 1개월' }, products: ['단지·월 에너지'], uses: ['운영탄소'], raw_rows: 0, normalized_rows: 0, blocker: '환경변수 형식 오류: DATA_GO_KR_SERVICE_KEY' },
+      ],
+      truth_rules: [],
+    };
+    const payload = url.includes('/readiness') ? readiness : url.includes('/reports/engine') ? { status: 'UNAVAILABLE', allowed_tasks: [], prohibited_tasks: '' } : [];
+    return Promise.resolve(new Response(JSON.stringify(payload), { status: 200 }));
+  });
+  render(<MemoryRouter><DataPage /></MemoryRouter>);
+  expect(await screen.findByText('형식 오류')).toBeInTheDocument();
+  expect(screen.queryByText('설정됨')).not.toBeInTheDocument();
+});

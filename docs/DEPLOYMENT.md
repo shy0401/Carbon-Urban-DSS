@@ -37,6 +37,10 @@ powershell -ExecutionPolicy Bypass -File scripts/prototype.ps1 Stop
 
 주소는 터널 재생성 또는 재시작 시 변경될 수 있다. `Status`는 마지막 터널 로그의 주소를 보여주므로 현재 실제 접속도 확인한다. PC 종료·절전·네트워크 단절·Docker 중단 시 사이트가 중단된다. Docker가 다시 실행되면 `unless-stopped` 정책으로 컨테이너가 재시작하지만 Windows에서 Docker 자체의 자동 실행은 사용자 설정에 따른다. 절전이나 로그인 설정을 스크립트가 변경하지 않는다.
 
+## 백업·복원과 Docker 디스크 위치
+
+운영 DB 백업과 복원 검증은 `scripts\dss.cmd Backup` / `VerifyRestore`를 사용한다(상세: [TEAM_SETUP.md](TEAM_SETUP.md)). 백업은 `data/backups/<시각>-<라벨>/`에 `db.dump`, `table-counts.tsv`, `raw-manifest.csv`, `manifest.json`으로 남고 Git에 올리지 않는다. 2026-09-23부터 이 PC의 Docker 디스크 이미지는 `F:\DockerDesktop\Docker`에 있다(Docker Desktop 설정의 Disk image location). vhdx 파일을 탐색기로 직접 옮기거나 열면 `ERROR_SHARING_VIOLATION`으로 엔진이 멈출 수 있다.
+
 ## 데이터와 보안 경계
 
 기존 named volume과 `data/`를 그대로 사용한다. `docker compose down -v`를 실행하지 않는다. GitHub 저장소만 새로 복제하면 기존 DB·원본·키·AI 모델이 함께 복제되는 것은 아니다. 새로운 PC는 승인된 원본의 이전 또는 재수집이 필요하다.

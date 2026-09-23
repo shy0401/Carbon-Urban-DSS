@@ -83,7 +83,7 @@ docker compose exec -T api python -m app.cli enrich --year 2025
 
 공식 자료: [SGIS 자료제공](https://sgis.kostat.go.kr/view/pss/openDataIntrcn).
 
-행정구역 인구·가구 API는 구현되어 있다. SGIS 개발자 사이트에서 consumer key/secret을 발급받아 `.env`의 `SGIS_CONSUMER_KEY`, `SGIS_CONSUMER_SECRET`에 넣는다. 문서에서 확인된 제공연도에 맞춰 `SGIS_BASE_YEAR`를 설정하며 기본값은 2020이다. 토큰은 만료 전까지 메모리/Redis에서 재사용하고 DB·원본 메타데이터에 기록하지 않는다.
+행정구역 인구·가구 API는 구현되어 있다. SGIS 개발자 사이트에서 consumer key/secret을 발급받아 `.env`의 `SGIS_CONSUMER_KEY`, `SGIS_CONSUMER_SECRET`에 넣는다. `SGIS_BASE_YEAR`(기본 2024)부터 SGIS가 공표한 연도를 자동으로 찾아 최대 5년 이전까지 내려가며, 실제 사용한 연도를 기준기간으로 기록한다(2026-09-23 기준 2024년 자료 확보). 연도별 시도·시군구 코드는 SGIS 응답에서 매번 확인하므로 전북특별자치도 코드 변경에도 대응한다. `LIMITED` 이상에서 행정동 인구와 공식 행정동 경계(`hadmarea.geojson`, EPSG:5179)를, `FULL`에서 가구를 적재한다. 토큰은 만료 전까지 메모리/Redis에서 재사용하고 DB·원본 메타데이터에 기록하지 않는다.
 
 ```powershell
 docker compose up -d --force-recreate api worker
@@ -107,7 +107,7 @@ API 결과는 행정구역 통계이므로 500m 격자로 임의 분배하지 �
 
 공식 진입점: [VWorld](https://www.vworld.kr/), [2D Data API 안내](https://www.vworld.kr/dev/v4dv_2ddataguide2_s001.do).
 
-API 수집기는 용도지역 `LT_C_UQ111`과 연속지적 `LP_PA_CBND_BUBUN`을 설정 파일에서 사용한다. VWorld 키와 등록 도메인을 `.env`의 `VWORLD_API_KEY`, `VWORLD_DOMAIN`에 설정한다. 한 분석격자에서 SMOKE를 성공한 뒤 FULL을 실행한다.
+API 수집기는 용도지역 `LT_C_UQ111`과 연속지적 `LP_PA_CBND_BUBUN`을 설정 파일에서 사용한다. VWorld 키와 등록 도메인을 `.env`의 `VWORLD_API_KEY`, `VWORLD_DOMAIN`에 설정한다. **인증키 관리의 활용API에서 `2D데이터 API`를 반드시 체크**해야 한다(체크하지 않으면 모든 요청이 `INCORRECT_KEY`). 서비스유형 `웹사이트`, 서비스URL은 `VWORLD_DOMAIN`과 같은 값(개발 PC는 `http://localhost`)으로 둔다. 등록 정보를 고친 뒤 `scripts\dss.cmd Collect -RetryRejected`로 재시도한다. 한 분석격자에서 SMOKE를 성공한 뒤 FULL을 실행한다.
 
 ```powershell
 docker compose up -d --force-recreate api worker

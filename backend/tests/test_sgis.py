@@ -97,3 +97,61 @@ def test_rejected_statistics_token_is_tied_back_to_consumer_credentials(tmp_path
     with pytest.raises(ExternalError, match='인증 실패'):
         collect_sgis_admin(db, 2020, 'smoke', token_manager=AcceptedManager(), client=RejectedStatisticsClient(), data_dir=tmp_path)
     assert recent_credential_error(tmp_path/'cache'/'sgis-auth','consumer-key|consumer-secret') == 'SGIS 인증 실패: consumer key/secret 또는 access token을 확인하세요'
+
+
+def test_boundary_parser_keeps_official_codes_repairs_geometry_and_treats_minus_100_as_empty():
+    from app.sgis import parse_sgis_boundary
+    bowtie = [[0, 0], [10, 10], [0, 10], [10, 0], [0, 0]]
+    body = json.dumps({'errCd': 0, 'type': 'FeatureCollection', 'features': [
+        {'type': 'Feature', 'properties': {'adm_cd': '3501151', 'adm_nm': '중앙동'}, 'geometry': {'type': 'Polygon', 'coordinates': [bowtie]}},
+        {'type': 'Feature', 'properties': {'adm_cd': '3501152', 'adm_nm': '풍남동'}, 'geometry': {'type': 'Polygon', 'coordinates': [[[0, 0], [5, 0], [5, 5], [0, 5], [0, 0]]]}},
+    ]}).encode()
+    parsed = parse_sgis_boundary(body)
+    assert [f['adm_code'] for f in parsed['features']] == ['3501151', '3501152']
+    assert parsed['features'][0]['geometry_repaired'] is True and parsed['features'][0]['geometry'].is_valid
+    assert parsed['features'][1]['geometry'].area == 25
+    assert parse_sgis_boundary(json.dumps({'errCd': -100, 'errMsg': '검색결과가 존재하지 않습니다'}).encode())['status'] == 'EMPTY_VALID'
+    with pytest.raises(ExternalError, match='인증 실패'):
+        parse_sgis_boundary(json.dumps({'errCd': -401}).encode())
+
+
+def test_candidate_years_fall_back_at_most_five_older_years():
+    from app.sgis import _candidate_years
+    assert _candidate_years(2024) == [2024, 2023, 2022, 2021, 2020, 2019]
+    assert _candidate_years(2016) == [2016, 2015]
+
+
+class _FakeDb:
+    def __init__(self):
+        self.rows = {}
+    def get(self, model, key):
+        return self.rows.get((model.__name__, key))
+    def add(self, row):
+        self.rows[(type(row).__name__, getattr(row, 'id', id(row)))] = row
+    def commit(self):
+        pass
+
+
+def test_city_resolution_uses_year_specific_codes_and_skips_unpublished_year(tmp_path):
+    from app.sgis import _SgisRun, _resolve_city
+    payloads = {
+        ('2024', None): {'errCd': -100, 'errMsg': '검색결과가 존재하지 않습니다'},
+        ('2023', None): {'errCd': 0, 'result': [{'adm_cd': '11', 'adm_nm': '서울특별시', 'population': '1'}, {'adm_cd': '52', 'adm_nm': '전북특별자치도', 'population': '2'}]},
+        ('2023', '52'): {'errCd': 0, 'result': [{'adm_cd': '52111', 'adm_nm': '전주시 완산구', 'population': '100'}, {'adm_cd': '52113', 'adm_nm': '전주시 덕진구', 'population': '*'}, {'adm_cd': '52130', 'adm_nm': '군산시', 'population': '50'}]},
+    }
+    class Session:
+        def get(self, provider, operation, url, params):
+            assert 'accessToken' in params
+            return {'body': json.dumps(payloads[(params['year'], params.get('adm_cd'))]).encode(), 'id': operation}
+    class Source:
+        id = 'sgis_admin'; organization = 'SGIS'
+    db = _FakeDb()
+    run = _SgisRun(db, Session(), 'token', tmp_path, 'https://example.invalid', 'k|s', Source())
+    assert _resolve_city(run, 2024) is None
+    province, districts = _resolve_city(run, 2023)
+    assert province == '52'
+    assert [row['adm_code'] for row in districts] == ['52111', '52113']
+    stored = {key[1]: row for key, row in db.rows.items() if key[0] == 'SgisPopulationAdmin'}
+    assert stored['2023:52111'].population_count == 100.0
+    assert stored['2023:52113'].population_count is None and stored['2023:52113'].value_status == 'SUPPRESSED'
+    assert (tmp_path / 'raw' / 'sgis' / '2023' / 'population-52.json').exists()

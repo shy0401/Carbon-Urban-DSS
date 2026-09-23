@@ -13,8 +13,12 @@ ERROR_CACHE_SECONDS = 3600
 def _is_secret(name):
     return str(name).replace('-','_').casefold() in SECRET_PARAM_NAMES
 
-def recent_credential_error(root, credential, max_age=ERROR_CACHE_SECONDS):
-    """Return a sanitized recent error recorded for this exact credential."""
+def recent_credential_error(root, credential, max_age=ERROR_CACHE_SECONDS, match=None):
+    """Return a sanitized recent error recorded for this exact credential.
+
+    ``match`` optionally narrows the check to cached requests whose public
+    metadata still applies (e.g. the same VWorld domain).
+    """
     if not credential:
         return None
     auth_hash=hashlib.sha256(str(credential).encode()).hexdigest()
@@ -22,7 +26,8 @@ def recent_credential_error(root, credential, max_age=ERROR_CACHE_SECONDS):
         try:
             meta=json.loads(meta_path.read_text(encoding='utf-8'))
             if (meta.get('error') and meta.get('auth_hash')==auth_hash
-                    and time.time()-float(meta.get('timestamp',0))<max_age):
+                    and time.time()-float(meta.get('timestamp',0))<max_age
+                    and (match is None or match(meta))):
                 return str(meta['error'])
         except (OSError,ValueError,TypeError,json.JSONDecodeError):
             continue

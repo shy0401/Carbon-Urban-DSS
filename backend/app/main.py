@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from typing import Literal
 from fastapi import FastAPI,HTTPException,Query
 from fastapi.responses import JSONResponse
+from fastapi.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel,Field,model_validator
 from sqlalchemy import select,text,func
 from .db import Base,engine,Session
@@ -16,6 +17,7 @@ from .settings import DEFAULT_YEAR,offline_mode
 from . import official,kapt,kapt_energy,kma_asos,sgis,vworld
 from .imports import router as uploads_router
 from .reporting import router as reports_router
+from .overlays import router as overlays_router, grid_zoning_summary
 from .readiness import build_readiness
 from .collection_preflight import CollectionBlockedError,available_collection_datasets
 
@@ -23,6 +25,8 @@ from .collection_preflight import CollectionBlockedError,available_collection_da
 async def lifespan(app):
     with engine.begin() as connection: connection.execute(text('CREATE EXTENSION IF NOT EXISTS postgis'))
     Base.metadata.create_all(engine)
+    from .migrations import apply_migrations
+    apply_migrations(engine)
     with Session() as db:
         seed_sources(db)
         kma_asos.backfill_weather_observations(db)
@@ -48,8 +52,10 @@ async def lifespan(app):
     yield
 
 app=FastAPI(title='Carbon Urban DSS',version='0.1.0',lifespan=lifespan)
+app.add_middleware(GZipMiddleware,minimum_size=2048)
 app.include_router(uploads_router)
 app.include_router(reports_router)
+app.include_router(overlays_router)
 
 @app.get('/api/health')
 @app.get('/health')
@@ -202,6 +208,12 @@ def map_data(year:int=Query(DEFAULT_YEAR,ge=2000,le=2100)):
             area=meta.get('baseline_floor_area_m2') if meta.get('baseline_year')==year else None
             p['carbon_intensity']=p['carbon_kg']/area if p['carbon_kg'] is not None and area else None
             p['far']=None;p['population_density']=None
+        zoning=grid_zoning_summary(db)
+        for f in grids:
+            p=f['properties'];z=zoning.get(p.get('id'))
+            p['residential_zone_ratio']=z['residential_zone_ratio'] if z else None
+            p['urban_zone_ratio']=z['urban_zone_ratio'] if z else None
+            p['dominant_zone']=z.get('dominant_zone') if z else None
         spatial_path=DATA/'spatial.json';spatial=json.loads(spatial_path.read_text(encoding='utf-8')) if spatial_path.exists() else {}
         return {'grids':{'type':'FeatureCollection','features':grids},'buildings':{'type':'FeatureCollection','features':[b.geojson for b in db.scalars(select(Building))]},'boundary':spatial.get('boundary',{'type':'FeatureCollection','features':[]}),'selected_sector':serialize(sector) if sector else None,'center':[127.148,35.8242],'crs':'EPSG:5179','grid_size_m':500,'year':year,'offline_mode':offline_mode()}
 

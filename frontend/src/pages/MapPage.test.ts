@@ -18,3 +18,26 @@ describe('MapPage expressions', () => {
     expect(JSON.stringify(metricColor('carbon_kg'))).toContain('#cbd5d1');
   });
 });
+
+describe('MapPage overlays', () => {
+  it('용도지역 범주별 색과 미분류 기본색을 가진다', async () => {
+    const { zoneColor, ZONE_LEGEND } = await import('./MapPage');
+    const expression = JSON.stringify(zoneColor());
+    expect(expression).toContain('RESIDENTIAL');
+    expect(expression).toContain(ZONE_LEGEND[4][2]);
+  });
+  it('행정동 인구밀도 결측은 회색으로 두고 최대값으로 색 범위를 정한다', async () => {
+    const { densityColor, maxOf } = await import('./MapPage');
+    expect(JSON.stringify(densityColor(1000))).toContain('#d7d3de');
+    const fc = { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: null, properties: { population_density: 12 } }, { type: 'Feature', geometry: null, properties: { population_density: null } }] } as unknown as GeoJSON.FeatureCollection;
+    expect(maxOf(fc, 'population_density')).toBe(12);
+    expect(maxOf(undefined, 'population_density')).toBe(0);
+  });
+  it('비공개·미수집 통계를 0으로 표시하지 않는다', async () => {
+    const { statValue } = await import('./MapPage');
+    expect(statValue(null, 'SUPPRESSED', '명')).toBe('비공개(*)');
+    expect(statValue(undefined, 'NOT_COLLECTED', '명')).toBe('미수집');
+    expect(statValue(null, 'NOT_AVAILABLE', '명')).toBe('자료 없음');
+    expect(statValue(0, 'OBSERVED_ZERO', '명')).toContain('0');
+  });
+});

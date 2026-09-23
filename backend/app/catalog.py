@@ -19,10 +19,19 @@ dict(id='boundary',category='기타 수집 데이터',name='전주시 행정경�
 dict(id='building_official',category='기타 수집 데이터',name='건축HUB 건축물대장',organization='국토교통부',source_url='https://www.data.go.kr/data/15134735/openapi.do',status='NEEDS_API_KEY',limitation='별도 서비스 활용 승인 필요. 공식 연면적·용적률이 없으면 현재 FAR를 표시하지 않습니다.'),
 ]
 
+# Early catalog entries that are now served by dedicated adapters. They are kept
+# (never deleted) for provenance but shown once, under the replacement source.
+REPLACED_BY={'zoning':'vworld_zoning','population':'sgis_grid'}
+
 def seed_sources(db):
     for item in SOURCES:
         current=db.get(DataSource,item['id'])
         if not current: db.add(DataSource(**item))
         elif current.status=='CONNECTED' and current.normalized_row_count==0:
             current.status='NOT_COLLECTED'
+    for legacy,replacement in REPLACED_BY.items():
+        current=db.get(DataSource,legacy)
+        if current and not current.normalized_row_count and current.status!='REPLACED':
+            current.status='REPLACED';current.quality=f'{replacement} 출처로 대체'
+            current.limitation=f'초기 카탈로그 항목입니다. 수집·표시는 {replacement} 출처를 사용합니다.'
     db.commit()

@@ -48,7 +48,7 @@ def dashboard(db,grid_id=None,year=2025):
     if observed:area=matched_areas(observed).get(selected_grid)
     population=meta.get('population');households=meta.get('households')
     source_rows=[]
-    for r in db.scalars(select(DataSource)):
+    for r in db.scalars(select(DataSource).where(DataSource.status!='REPLACED')):
         s=serialize(r)
         try:
             from .quality import dataset_quality

@@ -13,6 +13,8 @@ def init_tables():
     except ImportError:pass
     with engine.begin() as c:c.execute(text('CREATE EXTENSION IF NOT EXISTS postgis'))
     Base.metadata.create_all(engine)
+    from .migrations import apply_migrations
+    apply_migrations(engine)
 
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('command',choices=['demo','online','status','enrich','collect','validate-models','snapshot']);parser.add_argument('--year',type=int,default=DEFAULT_YEAR)

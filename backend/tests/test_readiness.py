@@ -51,3 +51,17 @@ def test_local_engine_status_exposes_safe_operating_role(monkeypatch):
     assert body["privacy"] == "로컬 Docker 네트워크 내부 처리"
     assert body["allowed_tasks"] == ["검증된 근거 ID 선택", "한국어 보고서 요약"]
     assert "수치 계산" in body["prohibited_tasks"]
+
+
+def test_readiness_flags_placeholder_key_without_returning_it(monkeypatch):
+    placeholder = "여기에_서비스키_입력"
+    monkeypatch.setenv("DATA_GO_KR_SERVICE_KEY", placeholder)
+    response = TestClient(app).get("/api/readiness")
+    body = response.json()
+    kapt = {item["id"]: item for item in body["sources"]}["kapt_energy"]
+    credential = kapt["credentials"][0]
+    assert credential["configured"] is True and credential["format_ok"] is False
+    assert kapt["state"] == "CREDENTIAL_REQUIRED"
+    assert kapt["collectable_now"] is False
+    assert "형식 오류" in kapt["blocker"]
+    assert placeholder not in response.text

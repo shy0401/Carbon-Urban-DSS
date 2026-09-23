@@ -70,6 +70,34 @@ class GridZoningStat(Base):
     source: Mapped[str] = mapped_column(String)
 
 
+class VworldGridCoverage(Base):
+    """Which analysis grids were actually requested from VWorld.
+
+    Distinguishes "not collected" (no row) from "collected, no feature" (row with
+    feature_count 0) so an empty grid is never shown as missing data or vice versa.
+    """
+    __tablename__ = "vworld_grid_coverage"
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    dataset: Mapped[str] = mapped_column(String, index=True)
+    grid_id: Mapped[str] = mapped_column(String, index=True)
+    pages: Mapped[int] = mapped_column(default=0)
+    feature_count: Mapped[int] = mapped_column(default=0)
+    status: Mapped[str] = mapped_column(String)
+    collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+ZONE_CATEGORIES = (("주거", "RESIDENTIAL"), ("상업", "COMMERCIAL"), ("공업", "INDUSTRIAL"), ("녹지", "GREEN"))
+
+
+def zone_category(zone_name: str | None) -> str:
+    """Map an official 용도지역 name to a display category without inventing values."""
+    name = str(zone_name or "")
+    for keyword, category in ZONE_CATEGORIES:
+        if keyword in name:
+            return category
+    return "OTHER" if name else "UNKNOWN"
+
+
 def load_layer_config(path: str | Path | None = None) -> dict[str, Any]:
     config_path = Path(path) if path else Path(__file__).parents[1] / "config" / "vworld_layers.yaml"
     config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
@@ -193,7 +221,9 @@ def collect_vworld(db: Any, dataset: str, scope: str = "smoke", *, client: Cache
     key = (api_key or os.getenv("VWORLD_API_KEY", "")).strip()
     if not key:
         source.status="NEEDS_API_KEY";db.commit();raise ExternalError("VWorld 인증 실패: VWORLD_API_KEY 미설정")
-    if scope == "full" and not db.scalar(select(RawDataAsset.id).where(RawDataAsset.source_id == source.id, RawDataAsset.collection_status == "COLLECTED").limit(1)):
+    if dataset == "cadastral" and scope == "full" and os.getenv("VWORLD_CADASTRAL_FULL", "").lower() not in {"1", "true", "yes"}:
+        raise ValueError("연속지적 전체 수집은 필지 수가 많아 VWORLD_CADASTRAL_FULL=true 설정 시에만 실행합니다")
+    if scope == "full" and not db.scalar(select(RawDataAsset.id).where(RawDataAsset.source_id == source.id, RawDataAsset.collection_status.in_(["SUCCESS", "EMPTY_VALID", "COLLECTED"])).limit(1)):
         raise ValueError("VWorld full 수집 전에 smoke 성공이 필요합니다")
     layer=load_layer_config()[dataset];grids=_grid_shapes(db,scope)
     if not grids:raise ValueError("프로젝트 분석격자가 없습니다")
@@ -203,9 +233,10 @@ def collect_vworld(db: Any, dataset: str, scope: str = "smoke", *, client: Cache
     requested=normalized=repaired=empty=0
     model=VworldZoningArea if dataset=="zoning" else CadastralParcel
     for grid in grids:
-        page=1
+        page=1;grid_features=0
         while True:
             params={"service":"data","version":"2.0","request":"GetFeature","key":key,"format":"json","size":1000,"page":page,"data":layer["dataset_id"],"geomFilter":bbox_filter(grid["geometry"].bounds),"geometry":"true","attribute":"true","crs":layer["source_crs"],"domain":domain_value}
+            if str(domain_value).strip().lower() in {"none","-"}:params.pop("domain")
             result=session.get("VWorld",f"{dataset}-{grid['id']}-{page}",url,params);requested+=1
             raw_path=raw_root/f"{grid['id']}-page-{page}.json";raw_path.write_bytes(result["body"])
             parsed=parse_cached_response(session,result,parse_vworld_response);empty+=parsed["status"]=="EMPTY_VALID"
@@ -222,9 +253,12 @@ def collect_vworld(db: Any, dataset: str, scope: str = "smoke", *, client: Cache
                     row=row or CadastralParcel(id=ident,source_feature_id=feature["id"],source_crs=layer["source_crs"],source="VWorld")
                     row.pnu=str(props.get("pnu") or "") or None;row.legal_dong_code=row.pnu[:10] if row.pnu else None;row.lot_main_no=row.pnu[-8:-4] if row.pnu else None;row.lot_sub_no=row.pnu[-4:] if row.pnu else None
                 row.geom=from_shape(feature["geometry"],srid=5179);row.properties=props;row.geometry_repaired=feature["geometry_repaired"];row.raw_source_id=digest;row.collected_at=datetime.now(timezone.utc);db.add(row);normalized+=1;repaired+=feature["geometry_repaired"]
+            grid_features+=len(parsed["features"])
             db.commit()
             if page>=parsed["total_pages"]:break
             page+=1
+        coverage=db.get(VworldGridCoverage,f"{dataset}:{grid['id']}") or VworldGridCoverage(id=f"{dataset}:{grid['id']}",dataset=dataset,grid_id=grid["id"])
+        coverage.pages=page;coverage.feature_count=grid_features;coverage.status="EMPTY_VALID" if grid_features==0 else "SUCCESS";coverage.collected_at=datetime.now(timezone.utc);db.add(coverage);db.commit()
     stored=db.scalar(select(func.count()).select_from(model)) or 0
     intersections=rebuild_grid_zoning_stats(db) if dataset=="zoning" else 0
     source.status="COLLECTED" if scope == "full" else "PARTIAL";source.raw_row_count=requested;source.normalized_row_count=stored;source.missing_count=0;source.reference_period="수집 시점";source.quality=f"{layer['dataset_id']} feature {stored}개 / geometry 보정 {repaired}개";source.collected_at=datetime.now(timezone.utc);db.commit()

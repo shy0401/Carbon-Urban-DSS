@@ -1,5 +1,28 @@
 # 실제 실행 검증
 
+## 2026-09-23 실행기 기반 검증 (최신)
+
+Windows 사용자 PC에서 한 명령으로 백업부터 복원 검증까지 수행한다. Node/Playwright를 PC에 설치할 필요가 없다(모두 컨테이너에서 실행).
+
+```powershell
+scripts\dss.cmd All            # Doctor → 백업 → 재빌드 → 상태 → Probe → 단계 수집 → 상태 → 백업 → 복원 검증(+pytest, +E2E) → 프런트 테스트
+scripts\dss.cmd VerifyRestore  # 최신 백업만 별도 프로젝트에 복원해 검증
+scripts\dss.cmd FrontendTest   # docker build --target test frontend
+```
+
+| 검증 | 결과 (2026-09-23) | 기록 |
+|---|---|---|
+| 백업 → 별도 프로젝트(`carbon-urban-dss-restoretest`) 복원 | 36개 테이블 행 수 전부 일치 | `data/ops/20260923-122427-all/summary.json` |
+| 복원 사본 API·웹 | `/api/health` ok, 격자 916, 행정동 오버레이 35, 웹 200 | 같은 파일 |
+| Python pytest (복원 사본, 실데이터 DB에 테스트 행을 남기지 않음) | 104 통과 | `pytest-restore.log` |
+| React/Vitest (Linux 컨테이너) | 12파일, 24 통과 | `frontend-test.log` |
+| Chromium E2E (복원 사본) | 기존 9개 통과, pageerror 0 | `data/validation/e2e.json` |
+| 지도 오버레이 E2E | SGIS 행정동 PASS(35개 렌더링), VWorld 용도지역 SKIP(미수집) | `data/validation/overlays.json`, `overlay-admin.png` |
+| 운영 빌드 | 초기 JS 약 293KB(gzip 93KB), 지도·차트 라이브러리는 지연 로드 | 재빌드 로그 |
+
+실행하지 않은 것: 공공데이터포털 소스의 실제 수집(유효 키 없음), VWorld 실제 수집(키 활용API 수정 후 재실행 필요), Quick Tunnel 공개 주소 검증(이번 실행 범위 밖).
+
+
 2026-09-18 Windows Docker Desktop Linux 엔진에서 다시 실행했다. 테스트 fixture는 계산 검증용이며 실제 관측으로 저장하지 않는다.
 
 | 검증 | 최종 결과 |

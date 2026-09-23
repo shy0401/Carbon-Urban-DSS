@@ -22,3 +22,4 @@ playwright-report/
 frontend/vite.config.js
 frontend/vite.config.d.ts
 *.log
+data/ops/

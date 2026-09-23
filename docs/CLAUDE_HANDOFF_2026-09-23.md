@@ -2,9 +2,39 @@
 
 - 작성일: 2026-09-23 (Asia/Seoul)
 - 저장소: https://github.com/shy0401/Carbon-Urban-DSS
-- 작성 기준 커밋: `38c2244` (`main`)
+- 작성 기준 커밋: `38c2244` (`main`) · 최신 갱신: 2026-09-23 Claude (0절)
 - 목적: 새 담당자가 현재 구현·검증 범위와 미완료 조건을 구분하고, 근거를 보존하면서 다음 작업을 실행할 수 있게 한다.
 - 바로 실행할 지시문: [CLAUDE_START_PROMPT_2026-09-23.md](CLAUDE_START_PROMPT_2026-09-23.md)
+
+## 0. 2026-09-23 Claude 작업 결과 (최신, 이 절이 아래 표보다 우선)
+
+아래 수치는 모두 이 날 사용자 PC의 Docker에서 `scripts\dss.cmd All`로 다시 측정했다. 실행 결과 원본은 로컬 `data/ops/20260923-122427-all/`(Git 제외)에 있다.
+
+| 항목 | 확인된 사실 | 근거 |
+|---|---|---|
+| Docker | 엔진 미기동 원인은 `docker_data.vhdx`의 `ERROR_SHARING_VIOLATION`(다른 프로세스가 파일 점유)였다. 사용자가 Docker Desktop을 재설치하고 디스크 위치를 `F:\DockerDesktop\Docker`로 옮긴 뒤 정상 기동. 기존 DB 볼륨 보존 확인 | Docker 로그, `Doctor` |
+| 공공데이터포털 키 | `.env`의 `DATA_GO_KR_SERVICE_KEY`는 **발급 키가 아니라 한글 14자 예시 문구**였다. 과거 403/코드 30은 승인 지연보다 이 값이 그대로 전송된 결과다. 이제 수집 전 `환경변수 형식 오류`로 차단하고 외부 호출을 하지 않는다 | `collection_preflight.py`, `status-after.json` |
+| DB 보존 | 변경 전 백업 33개 테이블: 격자 916, OSM 건물 2,171, K-apt 단지 364, 전주시 공동주택 공개자료 595(+공사중 14), 법정동 86, 기상 월 30행, 월별 에너지 0 | `data/backups/20260923-121408-before/table-counts.tsv` |
+| **SGIS 실수집** | 2024년 공표자료 자동 확인. 전주시 완산구 327,406명·덕진구 322,228명, 행정동 인구 34개·가구 34개, 공식 행정동 경계 35개(EPSG:5179). 500m 격자 배분 없음 | `collect-sgis.json`, `sgis_*` 테이블 |
+| VWorld | 키 형식 정상이나 모든 도메인 후보에서 `INCORRECT_KEY`. 원인: 키 활용API에 **2D데이터 API 미체크**. 사용자가 체크·저장함 → `scripts\dss.cmd Collect -RetryRejected`로 재수집 필요 | `probe-vworld.json` |
+| 백업·복원 | 수집 후 백업을 별도 Compose 프로젝트에 복원해 **36개 테이블 행 수 전부 일치** | `summary.json` restore |
+| 테스트 | 복원 사본 pytest **104 통과**, Vitest **12파일 24개 통과**, 브라우저 E2E 9개 통과(페이지 오류 0), 지도 SGIS 행정동 레이어 렌더링 통과 | `pytest-restore.log`, `frontend-test.log`, `data/validation/e2e.json`, `overlays.json` |
+| 초기 JS | 약 2.5MB → **293KB(gzip 93KB)**. MapLibre·ECharts는 해당 화면에서만 지연 로드 | Vite 빌드 로그 |
+
+### 이번에 바뀐 코드·운영 흐름
+
+- **팀원 PC 재현·검증 실행기** `scripts/dss.ps1`·`scripts/dss.cmd`: Doctor(키 값 비노출), Backup(`pg_dump -n public` + 전 테이블 행 수 + raw SHA-256), Rebuild, Probe, 단계 수집(SMOKE→LIMITED→FULL, 첫 실패에서 중단), **VerifyRestore**(별도 프로젝트 복원·행 수 비교·pytest·E2E 후 그 프로젝트만 정리), FrontendTest(Linux 컨테이너 Vitest+빌드), ExportBundle/ImportBundle(비밀·캐시·임시 URL 제외, SHA-256 검증, 비어 있지 않은 DB에는 가져오지 않음). 안내: [TEAM_SETUP.md](TEAM_SETUP.md)
+- **SGIS**: 연도별 코드 자동 확인(시도→전주 시군구, 전북특별자치도 코드 변경 대응), 공표연도 자동 후퇴(최대 5년), 행정동 인구·가구와 공식 행정동 경계(`sgis_admin_boundaries`) 적재
+- **지도/분석 시각화**: `/api/map/overlays`(VWorld 용도지역 도형, SGIS 행정동 경계+인구·가구·인구밀도), 지도 레이어 토글·범례·행정동 정보, 격자 지표 `주거지역 비율`(VWorld 요청 격자만 계산, 미요청 격자는 결측), 분석 화면의 행정동 인구 막대·용도지역 면적 구성 차트
+- **VWorld**: 실제 요청한 격자 기록(`vworld_grid_coverage`)으로 결측과 '요청했으나 도형 없음'을 구분, FULL 전 SMOKE 성공 확인 버그 수정(`COLLECTED`가 아닌 `SUCCESS/EMPTY_VALID` 확인), 연속지적 FULL은 `VWORLD_CADASTRAL_FULL=true`일 때만, 도메인을 고치면 1시간 차단 없이 재시도
+- **품질**: 수집원 중복 표시 정리(`zoning`→`vworld_zoning`, `population`→`sgis_grid`는 `REPLACED`로 한 번만 표시), 버전 DB 마이그레이션(`schema_migrations`, `app/migrations.py`), 페이지 지연 로딩·벤더 청크 분리, 로컬에 남아 실제 Vite 설정을 가리던 오래된 `frontend/vite.config.js`를 `data/backups/stale-frontend-config/`로 이동, `.gitattributes`로 `.cmd`/`.ps1` CRLF 고정
+
+### 남은 외부 의존성과 다음 행동
+
+1. **VWorld**: 2D데이터 API 체크 반영 후 `scripts\dss.cmd Collect -RetryRejected` → 용도지역 SMOKE(1격자)→LIMITED(25)→FULL(916), 연속지적 SMOKE→LIMITED
+2. **공공데이터포털**: 실제 일반 인증키(Decoding)를 `.env`에 넣고 K-apt 에너지(15012964)·ASOS(15059093)·건축HUB 에너지(15135963)·건축물대장(15134735) 각각 활용신청 승인 → `docker compose up -d --force-recreate api worker` → `scripts\dss.cmd Collect`
+3. SGIS 공식 500m 격자 파일(경계·ID·기준연도·비밀보호 표식), 기업 100m 탄소격자 원본·이용조건, 가스 CO₂eq 계수 근거는 여전히 제공기관 자료가 필요
+4. 월별 에너지 관측이 0행이므로 운영탄소·모델 성능은 계속 `자료 없음`으로 표시한다
 
 ## 1. 프로젝트 목표와 성공 기준
 
