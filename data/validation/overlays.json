@@ -9,6 +9,14 @@
       "name": "admin",
       "status": "PASS",
       "features": 35
+    },
+    {
+      "name": "analysis_population_chart",
+      "status": "PASS"
+    },
+    {
+      "name": "analysis_zoning_chart",
+      "status": "PASS"
     }
   ],
   "meta": {

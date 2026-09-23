@@ -12,12 +12,13 @@ scripts\dss.cmd FrontendTest   # docker build --target test frontend
 
 | 검증 | 결과 (2026-09-23) | 기록 |
 |---|---|---|
-| 백업 → 별도 프로젝트(`carbon-urban-dss-restoretest`) 복원 | 36개 테이블 행 수 전부 일치 | `data/ops/20260923-122427-all/summary.json` |
-| 복원 사본 API·웹 | `/api/health` ok, 격자 916, 행정동 오버레이 35, 웹 200 | 같은 파일 |
-| Python pytest (복원 사본, 실데이터 DB에 테스트 행을 남기지 않음) | 104 통과 | `pytest-restore.log` |
+| 백업 → 별도 프로젝트(`carbon-urban-dss-restoretest`) 복원 | 36개 테이블 행 수 전부 일치 (최종 실행 16단계 모두 PASS) | `data/ops/20260923-133513-all/summary.json` |
+| 복원 사본 API·웹 | `/api/health` ok, 격자 916, 용도지역 413, 행정동 35, 웹 200 | 같은 파일 |
+| Python pytest (복원 사본, 실데이터 DB에 테스트 행을 남기지 않음) | 105 통과 | `pytest-restore.log` |
 | React/Vitest (Linux 컨테이너) | 12파일, 24 통과 | `frontend-test.log` |
 | Chromium E2E (복원 사본) | 기존 9개 통과, pageerror 0 | `data/validation/e2e.json` |
-| 지도 오버레이 E2E | SGIS 행정동 PASS(35개 렌더링). VWorld 용도지역은 수집 후 재검증(아래 최신 실행 참조) | `data/validation/overlays.json`, `overlay-admin.png` |
+| 공식 데이터 E2E | 지도 VWorld 용도지역(413)·SGIS 행정동(35) 레이어, 분석 화면 행정동 인구·용도지역 면적 차트 4개 PASS | `data/validation/overlays.json`, `overlay-zoning.png`, `overlay-admin.png`, `analysis-official.png` |
+| 새 PC 재현(`VerifyBundle`) | 묶음 100.4MB → 커밋 `faef193` 깨끗한 clone → 별도 프로젝트 가져오기: 36개 테이블 일치, health ok, 격자 916, 웹 200 | `data/ops/20260923-133513-all/import-test.log` |
 | 운영 빌드 | 초기 JS 약 293KB(gzip 93KB), 지도·차트 라이브러리는 지연 로드 | 재빌드 로그 |
 
 실행하지 않은 것: 공공데이터포털 소스의 실제 수집(유효 키 없음), Quick Tunnel 공개 주소 검증(이번 실행 범위 밖).

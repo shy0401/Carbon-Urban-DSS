@@ -8,7 +8,7 @@
 
 ## 0. 2026-09-23 Claude 작업 결과 (최신, 이 절이 아래 표보다 우선)
 
-아래 수치는 모두 이 날 사용자 PC의 Docker에서 `scripts\dss.cmd All`로 다시 측정했다. 실행 결과 원본은 로컬 `data/ops/20260923-122427-all/`(Git 제외)에 있다.
+아래 수치는 모두 이 날 사용자 PC의 Docker에서 `scripts\dss.cmd All`로 다시 측정했다. 최종 실행 `data/ops/20260923-133513-all/`(Git 제외)에서 **16개 단계가 모두 PASS**했다(커밋 `faef193` 기준).
 
 | 항목 | 확인된 사실 | 근거 |
 |---|---|---|
@@ -17,8 +17,9 @@
 | DB 보존 | 변경 전 백업 33개 테이블: 격자 916, OSM 건물 2,171, K-apt 단지 364, 전주시 공동주택 공개자료 595(+공사중 14), 법정동 86, 기상 월 30행, 월별 에너지 0 | `data/backups/20260923-121408-before/table-counts.tsv` |
 | **SGIS 실수집** | 2024년 공표자료 자동 확인. 전주시 완산구 327,406명·덕진구 322,228명, 행정동 인구 34개·가구 34개, 공식 행정동 경계 35개(EPSG:5179). 500m 격자 배분 없음 | `collect-sgis.json`, `sgis_*` 테이블 |
 | **VWorld 실수집** | 처음엔 모든 도메인에서 `INCORRECT_KEY`(키 활용API에 2D데이터 API 미체크). 사용자가 체크한 뒤 `INVALID_RANGE`가 났는데, 원인은 geomFilter 좌표가 지수 표기(`1.765e+06`)로 나간 코드 버그라 수정(`a7ba92f`). 이후 **용도지역 FULL(916격자) 도형 413개·격자 교차 2,762건, 연속지적 LIMITED(25격자) 필지 3,995개** 적재. 좌표는 EPSG:5179, 등록 도메인은 `http://localhost`만 통과 | `data/ops/20260923-131115-all/collect-vworld_*.json` |
-| 백업·복원 | 수집 후 백업을 별도 Compose 프로젝트에 복원해 **36개 테이블 행 수 전부 일치** | `summary.json` restore |
-| 테스트 | 복원 사본 pytest **105 통과**, Vitest **12파일 24개 통과**, 브라우저 E2E 9개 통과(페이지 오류 0), 지도 SGIS 행정동 레이어 렌더링 통과(13:02 전체 실행 15단계 모두 PASS) | `pytest-restore.log`, `frontend-test.log`, `data/validation/e2e.json`, `overlays.json` |
+| 백업·복원 | 수집 후 백업을 별도 Compose 프로젝트에 복원해 **36개 테이블 행 수 전부 일치**, 복원 사본 API·지도(격자 916, 용도지역 413, 행정동 35)·웹 200 | `summary.json` restore |
+| **새 PC 재현** | 데이터 묶음(100.4MB, `.env`·키·캐시·임시 URL 제외, 비밀값 0건 검사) → `faef193`을 깨끗한 폴더에 `git clone` → 그 복제본에서 별도 프로젝트로 가져오기 → **36개 테이블 일치, health ok, 격자 916, 웹 200** → 테스트 프로젝트만 정리 | `summary.json` verify_bundle, `import-test.log` |
+| 테스트 | 복원 사본 pytest **105 통과**, Vitest **12파일 24개 통과**, 브라우저 E2E 9개 + 공식 데이터 4개(지도 용도지역·행정동 레이어, 분석 화면 인구·용도지역 차트) 통과, 페이지 오류 0 | `pytest-restore.log`, `frontend-test.log`, `data/validation/e2e.json`, `overlays.json` |
 | 초기 JS | 약 2.5MB → **293KB(gzip 93KB)**. MapLibre·ECharts는 해당 화면에서만 지연 로드 | Vite 빌드 로그 |
 
 ### 이번에 바뀐 코드·운영 흐름
