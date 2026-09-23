@@ -67,7 +67,7 @@ export function SimulationPage() {
   const preset = (floors: number) => setInput((old) => ({ ...old, ...applyFloorPreset(old, floors) }));
 
   return <div className="page simulation-page">
-    <PageHeader eyebrow="PRELIMINARY SCENARIO" title="탄소 시뮬레이션" description="관측 원단위를 적용해 개발 조건 변화의 1차 추정치를 비교합니다." action={<span className="badge warn"><Info size={13} />의사결정 전 검토 필요</span>} />
+    <PageHeader title="탄소 시뮬레이션" description="관측 원단위를 적용해 개발 조건 변화의 1차 추정치를 비교합니다." action={<span className="badge warn"><Info size={13} />의사결정 전 검토 필요</span>} />
     <div className="simulation-context"><span>기준 {year}년 · {gridId || '예비 선정 격자'}</span><span>입력 예시이며 실제 현재 배치가 아닙니다</span></div><div className="simulation-layout">
       <form className="panel scenario-form" onSubmit={submit}>
         <div className="panel-title"><div><span>INPUT CONDITIONS</span><h3>개발 조건</h3></div><Calculator size={20} /></div>

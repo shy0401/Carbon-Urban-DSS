@@ -42,7 +42,7 @@ export function DashboardPage() {
   const areaIssues = data.floor_area_issues ?? [];
   const admins = (context?.admin ?? []).filter((row) => row.grid_share_pct >= 1);
   return <div className="page">
-    <PageHeader eyebrow="CARBON OVERVIEW" title="도시 탄소 대시보드" description="선택 격자의 관측 에너지·전력 탄소와 도시 형태를, 값마다 산식과 근거 범위를 붙여 보여줍니다." action={<div className="header-actions"><span className="period-label">{year}.01 — {year}.12 · 공동주택 관측 범위</span><QualityBadge value={data.quality} /></div>} />
+    <PageHeader title="도시 탄소 대시보드" description="선택 격자의 관측 에너지·전력 탄소와 도시 형태를, 값마다 산식과 근거 범위를 붙여 보여줍니다." action={<div className="header-actions"><span className="period-label">{year}.01 — {year}.12 · 공동주택 관측 범위</span><QualityBadge value={data.quality} /></div>} />
     <section className="sector-banner">
       <div className="sector-symbol"><Building size={24} /></div>
       <div><span>현재 분석 대상지</span><h2>{sector?.name ?? '선정된 섹터 없음'}</h2><p>{sector?.reason ?? '섹터 선정에 필요한 공간 자료가 없습니다.'}</p>

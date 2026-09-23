@@ -157,7 +157,7 @@ export function MapPage() {
   const total = grids.features.length;
   const zoningTotal = Object.values(overlayMeta?.zoning_area_km2_by_category ?? {}).reduce((a, b) => a + b, 0);
   return <div className="page map-page">
-    <PageHeader eyebrow="SPATIAL EXPLORER" title="도시 탄소 지도" description={`500m 분석 격자 ${total.toLocaleString('ko-KR')}개(격자당 250,000m²) · 격자를 누르면 모든 분석 화면의 대상지가 바뀝니다.`} action={<button className="button secondary" onClick={reload}><RefreshCw size={15} />새로고침</button>} />
+    <PageHeader title="도시 탄소 지도" description={`500m 분석 격자 ${total.toLocaleString('ko-KR')}개(격자당 250,000m²) · 격자를 누르면 모든 분석 화면의 대상지가 바뀝니다.`} action={<button className="button secondary" onClick={reload}><RefreshCw size={15} />새로고침</button>} />
     <div className={`map-workspace${selected && detailOpen ? ' has-detail' : ''}`}>
       <div ref={container} className="map-canvas" aria-label="전주시 탄소 공간 지도" />
       <div className="map-rail">
