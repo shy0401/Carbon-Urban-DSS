@@ -111,7 +111,14 @@ def bbox_filter(bounds: tuple[float, float, float, float]) -> str:
     minx, miny, maxx, maxy = bounds
     if maxx <= minx or maxy <= miny or (maxx - minx) * (maxy - miny) > 2_000_000:
         raise ValueError("VWorld bbox must be positive and at most 2km²")
-    return f"BOX({minx:g} {miny:g},{maxx:g} {maxy:g})"
+    # VWorld expects BOX(minx,miny,maxx,maxy) with plain decimals; ':g' produced
+    # scientific notation (1.765e+06) that the provider rejects as INVALID_RANGE.
+    return "BOX(" + ",".join(_plain(value) for value in (minx, miny, maxx, maxy)) + ")"
+
+
+def _plain(value: float) -> str:
+    text = f"{float(value):.6f}".rstrip("0").rstrip(".")
+    return text if text not in {"", "-0"} else "0"
 
 
 def parse_vworld_response(body: bytes) -> dict[str, Any]:

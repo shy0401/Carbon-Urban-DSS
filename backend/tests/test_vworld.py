@@ -33,7 +33,10 @@ def test_parser_repairs_invalid_geometry_and_keeps_provider_pagination():
 
 def test_bbox_and_intersections_preserve_multiple_zones_per_grid():
     grid = Polygon([(0, 0), (500, 0), (500, 500), (0, 500), (0, 0)])
-    assert bbox_filter(grid.bounds) == 'BOX(0 0,500 500)'
+    assert bbox_filter(grid.bounds) == 'BOX(0,0,500,500)'
+    # Real EPSG:5179 grid bounds must not use scientific notation (provider INVALID_RANGE).
+    assert bbox_filter((954500.0, 1765000.0, 955000.0, 1765500.0)) == 'BOX(954500,1765000,955000,1765500)'
+    assert bbox_filter((954500.25, 1765000.5, 955000.25, 1765500.5)) == 'BOX(954500.25,1765000.5,955000.25,1765500.5)'
     zones = [
         {'id': 'a', 'zone_code': 'A', 'zone_name': '주거', 'geometry': Polygon([(0, 0), (250, 0), (250, 500), (0, 500)])},
         {'id': 'b', 'zone_code': 'B', 'zone_name': '상업', 'geometry': Polygon([(250, 0), (500, 0), (500, 500), (250, 500)])},

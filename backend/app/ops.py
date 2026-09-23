@@ -203,6 +203,7 @@ def probe_sgis() -> dict[str, Any]:
     return report
 
 
+AUTH_ERRORS = {"INCORRECT_KEY", "INVALID_KEY", "UNAVAILABLE_KEY"}
 DOMAIN_VARIANTS = ["http://localhost", "localhost", "http://127.0.0.1", "http://localhost:5173", "http://localhost:8000", "https://localhost", "none"]
 
 
@@ -254,8 +255,11 @@ def probe_vworld() -> dict[str, Any]:
     for domain in [configured] + [variant for variant in DOMAIN_VARIANTS if variant != configured]:
         result = _vworld_request(client, url, key, config["zoning"], bounds, domain)
         report["steps"].append({"step": "zoning", "domain": domain, "grid_id": grid.id, **result})
-        if result.get("status") in ("OK", "NOT_FOUND"):
+        code = (result.get("error") or {}).get("code")
+        if result.get("status") in ("OK", "NOT_FOUND") or (result.get("status") == "ERROR" and code not in AUTH_ERRORS):
+            # The key/domain pair was accepted even if the request itself failed for another reason.
             report["working_domain"] = domain
+            report["key_accepted"] = True
             break
     if report["working_domain"]:
         result = _vworld_request(client, url, key, config["cadastral"], bounds, report["working_domain"])
