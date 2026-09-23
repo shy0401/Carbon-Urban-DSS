@@ -64,16 +64,123 @@ export interface DashboardData {
   regional_totals?: { electricity_kwh: number | null; gas_kwh: number | null; carbon_kg: number | null };
   carbon_status?: string | null;
   baseline_floor_area_m2?: number | null;
+  electricity_carbon_kg?: number | null;
+  gas_carbon_kg?: number | null;
+  annual_complete?: { electricity: boolean; gas: boolean };
+  normalized?: {
+    electricity_kwh_per_m2?: number | null;
+    electricity_matched_floor_area_m2?: number | null;
+    electricity_kwh_per_household?: number | null;
+    electricity_households?: number | null;
+    electricity_complete_parcels?: number;
+    electricity_observed_parcels?: number;
+    electricity_area_parcels?: number;
+    electricity_household_parcels?: number;
+    electricity_carbon_kg_per_m2?: number | null;
+    energy_kwh_per_m2?: number | null;
+  };
+  baseline_scope?: { parcels: string[]; parcel_names: string[]; energy_types: string[]; excluded_parcels: string[]; excluded_names: string[]; area_m2: number } | null;
+  floor_area_issues?: Array<{ kapt_code: string; name: string; status: string; reason: string | null }>;
+  context?: GridContext | null;
+}
+
+export interface GridContext {
+  grid_id: string | null;
+  zoning: { status: string; shares_pct: Record<string, number>; residential_pct: number; dominant: string | null; source: string } | null;
+  admin: Array<{ adm_code: string; adm_name: string; reference_year: number; grid_share_pct: number; population: number | null; population_status: string; households: number | null }>;
+  complexes: { count: number; households: number | null; gross_floor_area_m2: number | null; with_floor_area: number; floor_area_excluded?: string[]; names: string[]; source: string } | null;
+  buildings: (GridBuildings & { source: string }) | null;
+}
+
+export interface GridBuildings {
+  status: string;
+  building_count: number;
+  footprint_m2: number;
+  coverage_pct: number;
+  floor_area_est_m2: number | null;
+  far_est_pct: number | null;
+  floors_known_count: number;
+  floors_known_pct: number | null;
+  avg_floors: number | null;
+  max_floors: number | null;
+  category_share_pct: Record<string, number>;
+  category_count: Record<string, number>;
+  dominant_use: string | null;
+}
+
+/** Per-grid indicators served by /api/map (every ratio comes with its basis). */
+export interface GridProps {
+  id: string;
+  area_m2: number;
+  selected: boolean;
+  electricity_kwh: number | null;
+  gas_kwh: number | null;
+  electricity_months: number;
+  gas_months: number;
+  energy_parcels: number;
+  electricity_complete_parcels: number;
+  electricity_observed_parcels: number;
+  electricity_area_parcels: number;
+  electricity_household_parcels: number;
+  electricity_kwh_per_m2: number | null;
+  electricity_kwh_per_household: number | null;
+  electricity_area_m2: number | null;
+  electricity_households: number | null;
+  gas_kwh_per_m2: number | null;
+  gas_complete_parcels: number;
+  electricity_carbon_kg: number | null;
+  electricity_carbon_kg_per_m2: number | null;
+  carbon_kg: number | null;
+  completeness: number;
+  zoning_status: string | null;
+  residential_zone_ratio: number | null;
+  urban_zone_ratio: number | null;
+  dominant_zone: string | null;
+  zone_shares: Record<string, number> | null;
+  building_source: 'VWORLD' | 'OSM' | null;
+  building_status: string | null;
+  building_count: number | null;
+  footprint_m2: number | null;
+  coverage_pct: number | null;
+  far_est_pct: number | null;
+  floor_area_est_m2: number | null;
+  avg_floors: number | null;
+  max_floors: number | null;
+  floors_known_pct: number | null;
+  building_density: number | null;
+  residential_building_share: number | null;
+  dominant_use: string | null;
+  use_share_pct: Record<string, number> | null;
+  complex_count: number;
+  complex_households: number | null;
+  complex_gfa_m2: number | null;
+  complex_gfa_excluded: number;
+  [key: string]: unknown;
 }
 
 export interface MapData {
-  grids: GeoJSON.FeatureCollection;
+  grids: GeoJSON.FeatureCollection<GeoJSON.Geometry, GridProps>;
   buildings: GeoJSON.FeatureCollection;
+  buildings_mode?: 'viewport' | 'embedded';
+  buildings_source?: string;
   boundary: GeoJSON.FeatureCollection;
+  boundary_source?: string;
+  complexes?: GeoJSON.FeatureCollection;
+  complex_floor_area_issues?: number;
+  factors?: { electricity: { value: number; unit: string; source: string; reference_year: number } | null; gas: { value: number; unit: string } | null };
   selected_sector: Sector | null;
   center?: [number, number];
   crs?: string;
   grid_size_m?: number;
+  grid_area_m2?: number;
+  year?: number;
+  offline_mode?: boolean;
+}
+
+export interface BuildingViewport extends GeoJSON.FeatureCollection {
+  total: number;
+  truncated: boolean;
+  source: string | null;
 }
 
 export interface OverlayData {

@@ -1,6 +1,6 @@
 @echo off
 rem Carbon Urban DSS operations runner.
-rem Usage: scripts\dss.cmd [All, Doctor, Status, Backup, Rebuild, Probe, Collect, VerifyRestore, FrontendTest, ExportBundle, ImportBundle] [options]
+rem Usage: scripts\dss.cmd [All, Doctor, Status, Backup, Rebuild, Probe, Collect, Snapshot, VerifyRestore, FrontendTest, ExportBundle, ImportBundle, VerifyBundle] [options]
 chcp 65001 >nul
 set "DSS_DIR=%~dp0"
 set "DSS_ACTION=%~1"

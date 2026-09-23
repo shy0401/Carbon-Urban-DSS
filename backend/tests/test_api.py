@@ -24,9 +24,34 @@ def test_stored_grid_exact_dimensions():
 def test_dashboard_and_map_have_real_spatial_records():
     c=TestClient(app)
     d=c.get('/api/dashboard').json();m=c.get('/api/map').json()
-    assert len(m['buildings']['features'])>0
+    if m['buildings_mode']=='embedded':
+        assert len(m['buildings']['features'])>0
+    else:
+        # Official buildings are served per viewport; the prototype grid has buildings.
+        lon,lat=m['center'];box=f'{lon-0.02},{lat-0.02},{lon+0.02},{lat+0.02}'
+        viewport=c.get('/api/map/buildings',params={'bbox':box}).json()
+        assert viewport['total']>0 and viewport['features'][0]['properties']['use_category']
     assert d['selected_sector']['area_m2']==250000
     assert len(d['monthly'])==12
+
+
+def test_map_grids_carry_explicit_indicator_fields():
+    m=TestClient(app).get('/api/map').json()
+    props=m['grids']['features'][0]['properties']
+    for key in ('electricity_kwh','electricity_months','electricity_kwh_per_m2','electricity_complete_parcels','residential_zone_ratio','zone_shares','building_count','coverage_pct','far_est_pct','floors_known_pct','complex_count','completeness'):
+        assert key in props
+    assert m['grid_area_m2']==250000 and m['complexes']['type']=='FeatureCollection'
+    # A ratio is never reported without the observations behind it.
+    for feature in m['grids']['features']:
+        p=feature['properties']
+        if p['electricity_kwh_per_m2'] is not None:
+            assert p['electricity_complete_parcels']>0 and p['electricity_area_m2']>0
+
+
+def test_building_viewport_rejects_oversized_or_malformed_bbox():
+    c=TestClient(app)
+    assert c.get('/api/map/buildings',params={'bbox':'127,35,128,36'}).status_code==422
+    assert c.get('/api/map/buildings',params={'bbox':'a,b,c,d'}).status_code==422
 
 def test_invalid_scenario_geometry_rejected():
     c=TestClient(app)

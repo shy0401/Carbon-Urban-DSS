@@ -1,0 +1,49 @@
+import { describe, expect, it } from 'vitest';
+import { classIndex, classify, METRICS, quantileBounds, rangeLabel, stepColor, withMetricValues } from './mapMetrics';
+import type { GridProps } from '../types';
+
+describe('map classification', () => {
+  it('keeps missing values out of the classes and counts them separately', () => {
+    const result = classify([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, null, null]);
+    expect(result.missing).toBe(2);
+    expect(result.valued).toBe(10);
+    expect(result.classes.reduce((sum, c) => sum + c.count, 0)).toBe(10);
+    expect(result.min).toBe(1);
+    expect(result.max).toBe(10);
+  });
+  it('uses strictly increasing lower bounds above the minimum', () => {
+    const bounds = quantileBounds([0, 0, 0, 0, 0, 0, 5, 10, 20, 40]);
+    expect(bounds.every((b, i) => b > 0 && (i === 0 || b > bounds[i - 1]))).toBe(true);
+  });
+  it('places a value equal to a bound in the upper class', () => {
+    expect(classIndex(20, [20, 40])).toBe(1);
+    expect(classIndex(19.9, [20, 40])).toBe(0);
+  });
+  it('fixed percentage bounds keep their meaning even when data is narrow', () => {
+    const result = classify([12, 15, 18], [20, 40, 60, 80]);
+    expect(result.classes[0].count).toBe(3);
+    expect(result.classes).toHaveLength(5);
+    expect(rangeLabel(result.classes[4], 0, true)).toBe('80 이상');
+  });
+  it('builds a MapLibre expression with an explicit missing color', () => {
+    const expression = stepColor('coverage_pct', classify([1, 50, 100], [20, 40]));
+    expect(expression[0]).toBe('case');
+    expect(JSON.stringify(expression)).toContain('#cbd5d1');
+    expect(JSON.stringify(expression)).toContain('step');
+  });
+  it('derives tCO₂eq from kg and never invents values for missing inputs', () => {
+    const props = { electricity_carbon_kg_annual: 2411111.6, completeness: 0, electricity_months: 0, gas_months: 0 } as unknown as GridProps;
+    const fc = withMetricValues({ type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: [0, 0] }, properties: props }] });
+    const p = fc.features[0].properties as GridProps;
+    expect(p.electricity_carbon_t).toBeCloseTo(2411.1116);
+    expect(p.completeness).toBeNull();
+    expect(p.electricity_kwh_per_m2).toBeNull();
+  });
+  it('every metric states its formula, source and data class', () => {
+    for (const metric of METRICS) {
+      expect(metric.formula.length).toBeGreaterThan(3);
+      expect(metric.source.length).toBeGreaterThan(3);
+      expect(['OBSERVED', 'CALCULATED', 'ESTIMATED']).toContain(metric.dataClass);
+    }
+  });
+});

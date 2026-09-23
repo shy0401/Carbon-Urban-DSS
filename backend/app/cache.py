@@ -106,6 +106,13 @@ class CachedClient:
                 if attempt<2: time.sleep(2**(attempt+1));continue
                 raise ExternalError('외부 서비스 연결 실패 또는 시간 초과') from None
 
+    def forget(self,result):
+        """Drop one cached response (used to retry a temporary provider failure)."""
+        ident=result.get('id') if isinstance(result,dict) else None
+        if not ident:return
+        for suffix in ('.json','.body'):
+            (self.root/(str(ident)+suffix)).unlink(missing_ok=True)
+
     def record_error(self,result,message):
         ident=result.get('id') if isinstance(result,dict) else None
         if not ident:return

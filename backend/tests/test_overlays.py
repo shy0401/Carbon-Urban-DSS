@@ -51,3 +51,12 @@ def test_context_facts_report_missing_zoning_honestly():
     from app.overlays import context_facts
     facts = context_facts({'zoning': None, 'admin': [], 'complexes': None})
     assert facts == [{'id': 'context_zoning', 'text': '대상 격자의 용도지역은 아직 수집되지 않았습니다.'}]
+
+
+def test_bbox_parser_limits_viewport_queries():
+    import pytest
+    from app.overlays import parse_bbox
+    assert parse_bbox('127.1,35.8,127.2,35.9') == (127.1, 35.8, 127.2, 35.9)
+    for bad in ('127.2,35.8,127.1,35.9', '126,35,128,36', '1,2,3', 'x,y,z,w'):
+        with pytest.raises(ValueError):
+            parse_bbox(bad)

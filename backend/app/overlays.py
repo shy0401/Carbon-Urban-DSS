@@ -11,8 +11,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from fastapi import APIRouter, Query
-from sqlalchemy import select, text
+from fastapi import APIRouter, HTTPException, Query
+from sqlalchemy import case, func, select, text
 
 from .db import Session
 from .settings import DEFAULT_YEAR
@@ -59,6 +59,113 @@ def grid_zoning_summary(db: Any) -> dict[str, dict[str, Any]]:
     coverage = [(row.grid_id, row.status) for row in db.scalars(select(VworldGridCoverage).where(VworldGridCoverage.dataset == "zoning"))]
     stats = [(row.grid_id, row.zone_name, row.grid_area_ratio) for row in db.scalars(select(GridZoningStat))]
     return summarize_zoning(coverage, stats)
+
+
+def grid_building_summary(db: Any) -> dict[str, dict[str, Any]]:
+    """Per-grid official building indicators (VWorld LT_C_SPBD), aggregated in SQL."""
+    from .building_use import summarize_grid_aggregates
+    from .vworld import VworldBuilding, VworldGridCoverage
+
+    if not _table_exists(db, "vworld_buildings"):
+        return {}
+    requested = {row.grid_id: row.status for row in db.scalars(select(VworldGridCoverage).where(VworldGridCoverage.dataset == "buildings"))}
+    known = VworldBuilding.above_floors.is_not(None)
+    rows = db.execute(select(
+        VworldBuilding.grid_id, VworldBuilding.use_category, func.count(),
+        func.coalesce(func.sum(VworldBuilding.footprint_m2), 0.0),
+        func.count(VworldBuilding.above_floors),
+        func.coalesce(func.sum(case((known, VworldBuilding.footprint_m2), else_=0.0)), 0.0),
+        func.coalesce(func.sum(VworldBuilding.footprint_m2 * VworldBuilding.above_floors), 0.0),
+        func.coalesce(func.sum(VworldBuilding.above_floors), 0),
+        func.max(VworldBuilding.above_floors),
+    ).where(VworldBuilding.grid_id.is_not(None)).group_by(VworldBuilding.grid_id, VworldBuilding.use_category)).all()
+    if not rows and not requested:
+        return {}
+    aggregates = [
+        {"grid_id": grid_id, "use_category": category, "count": count, "footprint_m2": footprint,
+         "floors_known_count": known_count, "floors_known_footprint_m2": known_footprint,
+         "floor_area_est_m2": floor_area, "floor_sum": floor_sum, "max_floors": max_floors}
+        for grid_id, category, count, footprint, known_count, known_footprint, floor_area, floor_sum, max_floors in rows
+    ]
+    return summarize_grid_aggregates(aggregates, requested)
+
+
+def parse_bbox(value: str) -> tuple[float, float, float, float]:
+    """Validate "minLon,minLat,maxLon,maxLat" (EPSG:4326) for viewport queries."""
+    try:
+        west, south, east, north = (float(part) for part in value.split(","))
+    except ValueError:
+        raise ValueError("bbox는 minLon,minLat,maxLon,maxLat 형식이어야 합니다") from None
+    if not (-180 <= west < east <= 180 and -90 <= south < north <= 90):
+        raise ValueError("bbox 범위가 올바르지 않습니다")
+    if (east - west) > 0.2 or (north - south) > 0.2:
+        raise ValueError("건물 도형은 약 20km 이내 화면에서만 조회합니다. 지도를 확대하세요")
+    return west, south, east, north
+
+
+def buildings_in_bbox(db: Any, bbox: tuple[float, float, float, float], limit: int = 6000) -> dict[str, Any]:
+    """Official building footprints whose representative point lies in the viewport."""
+    from .building_use import CATEGORY_LABEL
+
+    if not _table_exists(db, "vworld_buildings"):
+        return dict(EMPTY, total=0, truncated=False, source=None)
+    west, south, east, north = bbox
+    where = "centroid_lon BETWEEN :west AND :east AND centroid_lat BETWEEN :south AND :north"
+    params = {"west": west, "east": east, "south": south, "north": north}
+    total = db.execute(text(f"SELECT count(*) FROM vworld_buildings WHERE {where}"), params).scalar() or 0
+    rows = db.execute(text(
+        "SELECT id, name, use_label, use_category, above_floors, below_floors, footprint_m2, grid_id, "
+        "ST_AsGeoJSON(ST_Transform(geom, 4326), 6) AS geometry "
+        f"FROM vworld_buildings WHERE {where} ORDER BY footprint_m2 DESC NULLS LAST LIMIT :limit"
+    ), dict(params, limit=limit)).mappings()
+    features = []
+    for row in rows:
+        if not row["geometry"]:
+            continue
+        features.append({"type": "Feature", "id": row["id"], "geometry": json.loads(row["geometry"]), "properties": {
+            "id": row["id"], "name": row["name"], "use_label": row["use_label"], "use_category": row["use_category"],
+            "use_category_label": CATEGORY_LABEL.get(row["use_category"], row["use_category"]),
+            "above_floors": row["above_floors"], "below_floors": row["below_floors"],
+            "footprint_m2": row["footprint_m2"], "grid_id": row["grid_id"], "quality": "OBSERVED",
+        }})
+    return {"type": "FeatureCollection", "features": features, "total": int(total), "truncated": int(total) > len(features),
+            "source": "VWorld LT_C_SPBD 도로명주소 건물"}
+
+
+def city_boundary(db: Any) -> dict[str, Any] | None:
+    """Jeonju outline dissolved from the official SGIS 행정동 boundaries (latest year), if collected."""
+    if not _table_exists(db, "sgis_admin_boundaries"):
+        return None
+    row = db.execute(text(
+        "SELECT reference_year, count(*) AS dongs, "
+        "ST_AsGeoJSON(ST_Transform(ST_SimplifyPreserveTopology(ST_Union(geom), 5.0), 4326), 6) AS geometry, "
+        "ST_Area(ST_Union(geom)) AS area_m2 "
+        "FROM sgis_admin_boundaries WHERE reference_year = (SELECT max(reference_year) FROM sgis_admin_boundaries) "
+        "GROUP BY reference_year"
+    )).mappings().first()
+    if not row or not row["geometry"]:
+        return None
+    return {"type": "FeatureCollection", "features": [{"type": "Feature", "geometry": json.loads(row["geometry"]), "properties": {
+        "name": "전주시", "source": f"SGIS {row['reference_year']} 행정동 경계 {row['dongs']}개 병합",
+        "area_km2": round(float(row["area_m2"] or 0) / 1_000_000, 2), "quality": "OBSERVED",
+    }}]}
+
+
+def complex_features(db: Any) -> dict[str, Any]:
+    """K-apt apartment complexes as points (official 공동주택 기본정보), with a floor-area plausibility flag."""
+    from .grid_metrics import floor_area_status
+    from .kapt import ApartmentComplex
+
+    features = []
+    for row in db.scalars(select(ApartmentComplex).where(ApartmentComplex.longitude.is_not(None), ApartmentComplex.latitude.is_not(None)).order_by(ApartmentComplex.kapt_code)):
+        status, reason = floor_area_status(row.gross_floor_area_m2, row.households, row.management_area_m2)
+        features.append({"type": "Feature", "id": row.kapt_code, "geometry": {"type": "Point", "coordinates": [row.longitude, row.latitude]}, "properties": {
+            "kapt_code": row.kapt_code, "name": row.name, "households": row.households,
+            "gross_floor_area_m2": row.gross_floor_area_m2, "floor_area_status": status, "floor_area_issue": reason,
+            "building_count": row.building_count,
+            "approval_date": row.approval_date, "heating_type": row.heating_type, "grid_id": row.grid_id,
+        }})
+    return {"type": "FeatureCollection", "features": features}
 
 
 def zoning_area_by_category(db: Any) -> tuple[dict[str, float], int]:
@@ -134,6 +241,16 @@ def admin_features(db: Any, year: int | None = None) -> tuple[dict[str, Any], in
     return {"type": "FeatureCollection", "features": features}, chosen
 
 
+@router.get("/buildings")
+def map_buildings(bbox: str = Query(..., description="minLon,minLat,maxLon,maxLat (EPSG:4326)"), limit: int = Query(6000, ge=1, le=12000)) -> dict[str, Any]:
+    try:
+        box = parse_bbox(bbox)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from None
+    with Session() as db:
+        return buildings_in_bbox(db, box, limit)
+
+
 @router.get("/overlays")
 def overlays(year: int = Query(DEFAULT_YEAR, ge=2000, le=2100)) -> dict[str, Any]:
     with Session() as db:
@@ -172,7 +289,7 @@ def grid_context(db: Any, grid_id: str | None) -> dict[str, Any]:
       Their population/households are administrative totals, never grid values.
     * complexes: K-apt complexes whose point lies in the grid (households, floor area)
     """
-    context: dict[str, Any] = {"grid_id": grid_id, "zoning": None, "admin": [], "complexes": None}
+    context: dict[str, Any] = {"grid_id": grid_id, "zoning": None, "admin": [], "complexes": None, "buildings": None}
     if not grid_id:
         return context
     zoning = grid_zoning_summary(db).get(grid_id)
@@ -196,15 +313,23 @@ def grid_context(db: Any, grid_id: str | None) -> dict[str, Any]:
                 "population": pop.population_count if pop else None, "population_status": pop.value_status if pop else "NOT_COLLECTED",
                 "households": house.household_count if house else None,
             })
+    buildings = grid_building_summary(db).get(grid_id)
+    if buildings:
+        context["buildings"] = dict(buildings, source="VWorld LT_C_SPBD 도로명주소 건물")
     from .kapt import ApartmentComplex
     complexes = list(db.scalars(select(ApartmentComplex).where(ApartmentComplex.grid_id == grid_id)))
     if complexes:
+        from .grid_metrics import floor_area_status
         def total(field: str) -> float | None:
             values = [getattr(row, field) for row in complexes if getattr(row, field) is not None]
             return float(sum(values)) if values else None
+        # Published floor areas outside the plausible range are excluded, not summed.
+        usable = [row for row in complexes if floor_area_status(row.gross_floor_area_m2, row.households, row.management_area_m2)[0] == "OK"]
         context["complexes"] = {
-            "count": len(complexes), "households": total("households"), "gross_floor_area_m2": total("gross_floor_area_m2"),
-            "with_floor_area": sum(1 for row in complexes if row.gross_floor_area_m2 is not None),
+            "count": len(complexes), "households": total("households"),
+            "gross_floor_area_m2": float(sum(row.gross_floor_area_m2 for row in usable)) if usable else None,
+            "with_floor_area": len(usable),
+            "floor_area_excluded": [row.name for row in complexes if row not in usable],
             "names": [row.name for row in complexes][:10], "source": "K-apt 공동주택 기본정보",
         }
     return context
@@ -231,6 +356,10 @@ def context_facts(context: dict[str, Any]) -> list[dict[str, str]]:
             else f"{row['adm_name'].split()[-1]}(격자의 {row['grid_share_pct']:.0f}%, 인구 {'비공개' if row['population_status'] == 'SUPPRESSED' else '자료 없음'})"
             for row in admin[:4])
         facts.append({"id": "context_admin", "text": f"대상 격자는 행정동 {parts}에 걸쳐 있습니다. SGIS {admin[0]['reference_year']} 행정동 전체 통계이며 격자 인구가 아닙니다."})
+    buildings = context.get("buildings")
+    if buildings and buildings.get("building_count"):
+        floors = f", 지상층수 확인 {buildings['floors_known_pct']:.0f}% 기준 평균 {buildings['avg_floors']:.1f}층" if buildings.get("avg_floors") is not None else ""
+        facts.append({"id": "context_buildings", "text": f"격자 안 공식 건물(도로명주소 건물)은 {buildings['building_count']:,}동, 건축면적 합계 {buildings['footprint_m2']:,.0f}m²로 격자 면적의 {buildings['coverage_pct']:.1f}%입니다{floors}."})
     complexes = context.get("complexes")
     if complexes:
         households = f"{complexes['households']:,.0f}세대" if complexes["households"] is not None else "세대수 자료 없음"

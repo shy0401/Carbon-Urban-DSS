@@ -3,16 +3,38 @@ from app.main import app
 
 
 def test_baseline_area_is_restricted_to_matching_observation_year():
+    """Stored sector metadata applies only to its own year, and only where no observation exists
+    (with observations the area comes from the same parcel set as the energy)."""
+    from sqlalchemy import select
     from app.db import Session
-    from app.models import TestbedSector
+    from app.models import EnergyMonthly, Grid, TestbedSector
     from app.service import dashboard
     with Session() as db:
+        observed={row for row in db.scalars(select(EnergyMonthly.grid_id).where(EnergyMonthly.grid_id.is_not(None)).distinct())}
+        empty_grid=next(grid_id for grid_id in db.scalars(select(Grid.id).order_by(Grid.id)) if grid_id not in observed)
         sector=db.get(TestbedSector,'prototype')
+        sector.grid_id=empty_grid
         sector.metadata_json=dict(sector.metadata_json,baseline_floor_area_m2=94993.33,baseline_year=2025)
         db.flush()
         assert dashboard(db,year=2025)['baseline_floor_area_m2']==94993.33
         assert dashboard(db,year=2024)['baseline_floor_area_m2'] is None
         db.rollback()
+
+
+def test_scenario_baseline_uses_one_parcel_set_for_energy_and_area():
+    from app.db import Session
+    from app.service import dashboard
+    with Session() as db:
+        data=dashboard(db,year=2025)
+        scope=data['baseline_scope']
+        if scope is None:
+            assert data['baseline_floor_area_m2'] is None or not data['coverage']['energy_records']
+            return
+        assert data['baseline_floor_area_m2']==scope['area_m2']
+        assert len(data['baseline_monthly'])==12
+        assert all(row['electricity_kwh'] is not None for row in data['baseline_monthly'])
+        if 'GAS' in scope['energy_types']:
+            assert all(row['gas_kwh'] is not None for row in data['baseline_monthly'])
 
 def test_nondefault_year_is_returned_and_missing_months_are_null():
     c=TestClient(app)

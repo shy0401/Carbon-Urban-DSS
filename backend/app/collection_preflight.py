@@ -16,6 +16,7 @@ REQUIRED_ENV = {
     "sgis": ("SGIS_CONSUMER_KEY", "SGIS_CONSUMER_SECRET"),
     "vworld_zoning": ("VWORLD_API_KEY", "VWORLD_DOMAIN"),
     "vworld_cadastral": ("VWORLD_API_KEY", "VWORLD_DOMAIN"),
+    "vworld_buildings": ("VWORLD_API_KEY", "VWORLD_DOMAIN"),
 }
 
 CREDENTIAL_CACHE = {
@@ -25,6 +26,7 @@ CREDENTIAL_CACHE = {
     "sgis": (("SGIS_CONSUMER_KEY", "SGIS_CONSUMER_SECRET"), "cache/sgis-auth"),
     "vworld_zoning": (("VWORLD_API_KEY",), "cache/vworld"),
     "vworld_cadastral": (("VWORLD_API_KEY",), "cache/vworld"),
+    "vworld_buildings": (("VWORLD_API_KEY",), "cache/vworld"),
 }
 
 

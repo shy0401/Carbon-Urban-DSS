@@ -1,5 +1,5 @@
 """Real-source ingestion and idempotent normalization, with durable provenance."""
-import calendar,hashlib,io,json,os,re,zipfile
+import calendar,hashlib,io,json,os,re,time,zipfile
 from pathlib import Path
 from urllib.parse import unquote
 from datetime import datetime,timezone
@@ -111,7 +111,33 @@ def energy_candidates(db):
     regions.sort(key=lambda r:(-weights.get(r.name.split()[-1],0),r.code))
     return regions[:3]
 
-def collect_energy(db,start='2025-01',end='2025-12',progress=None):
+ENERGY_TRANSIENT_CODES={'01','02','04','05','99'}
+ENERGY_AUTH_CODES={'20','21','30','31','32'}
+
+def _energy_request(operation,params,attempts=3):
+    """One 건축HUB request; temporary provider failures are retried without reusing the cached failure."""
+    url='https://apis.data.go.kr/1613000/BldEngyHubService/'+operation
+    for attempt in range(attempts):
+        response=None
+        try:
+            response=client.get('molit',operation,url,params)
+            return response,parse_cached_response(client,response,parse_energy)
+        except (ExternalError,ValueError) as exc:
+            message=str(exc);code=message.split(':',1)[0].strip()
+            if code in ENERGY_AUTH_CODES or '인증 실패' in message:
+                raise ExternalError('API 인증 실패: 건축HUB 에너지 활용승인과 DATA_GO_KR_SERVICE_KEY를 확인하세요',getattr(exc,'asset',None) or response) from None
+            if code=='22' or '호출 제한' in message:
+                raise ExternalError('건축HUB 일일 호출 한도 초과(22): 성공한 요청은 캐시되므로 다음 날 다시 실행하세요',getattr(exc,'asset',None) or response) from None
+            transient=code in ENERGY_TRANSIENT_CODES or '외부 데이터 HTTP 5' in message or '연결 실패' in message
+            cached=response or getattr(exc,'asset',None)
+            if not transient:
+                raise ExternalError(f'건축HUB 응답 오류: {message[:80]}',cached) from None
+            if isinstance(cached,dict):client.forget(cached)
+            if attempt==attempts-1:
+                raise ExternalError(f'건축HUB 제공기관 일시 오류: {message[:60]}',cached) from None
+            time.sleep(2*(attempt+1))
+
+def collect_energy(db,start='2025-01',end='2025-12',progress=None,scope='limited'):
     key=unquote(os.environ.get('DATA_GO_KR_SERVICE_KEY','').strip())
     if not key: raise ExternalError('API 인증 실패: DATA_GO_KR_SERVICE_KEY 미설정')
     operations={'ELECTRICITY':'getBeElctyUsgInfo','GAS':'getBeGasUsgInfo'}
@@ -125,35 +151,29 @@ def collect_energy(db,start='2025-01',end='2025-12',progress=None):
     spec=json.loads(spec_path.read_text(encoding='utf-8'))
     if not all('/'+o in spec['paths'] for o in operations.values()): raise ExternalError('공식 API operation 불일치')
     from .kapt import candidate_energy_parcels
-    candidates=candidate_energy_parcels(db,limit=3)
+    # smoke 1 / limited 3 parcels; full = every unambiguous K-apt parcel with ≥200 households
+    # (건축HUB excludes smaller complexes, so requesting them would only return empty answers).
+    candidates=candidate_energy_parcels(db,limit={'smoke':1,'limited':3}.get(scope),min_households=200 if scope=='full' else None)
     if not candidates: raise ExternalError('법정동 코드가 없습니다. 지역코드 수집 필요')
-    periods=month_range(start,end);done=0;errors=[]
+    client.min_interval=max(float(os.getenv('BUILDING_ENERGY_REQUEST_DELAY_MS','300'))/1000,0)
+    periods=month_range(start,end);done=0;errors=[];failed=0;total_steps=len(candidates)*len(periods)*len(operations)
     for region in candidates:
         for ym in periods:
             for energy_type,operation in operations.items():
-                params=dict(serviceKey=key,**{key:region[key] for key in ('sigunguCd','bjdongCd','bun','ji')},useYm=ym,numOfRows=1000,pageNo=1)
-                # Initial smallest possible probe. No duplicate identical historical requests.
-                probe=dict(params,numOfRows=1)
-                if done==0:
-                    try:
-                        response=client.get('molit',operation,'https://apis.data.go.kr/1613000/BldEngyHubService/'+operation,probe)
-                        rows,total=parse_cached_response(client,response,parse_energy)
-                        record_asset(db,'energy',response,len(rows),ym)
-                        if total==0:
-                            done+=1;continue
-                    except ExternalError as exc:
-                        if exc.asset: record_asset(db,'energy',exc.asset,0,ym,'FAILED',str(exc));db.commit()
-                        raise
+                params=dict(serviceKey=key,**{name:region[name] for name in ('sigunguCd','bjdongCd','bun','ji')},useYm=ym,numOfRows=1000,pageNo=1)
                 page=1
-                while page<=5:
+                while True:
                     params['pageNo']=page
                     try:
-                        response=client.get('molit',operation,'https://apis.data.go.kr/1613000/BldEngyHubService/'+operation,params)
-                        rows,total=parse_cached_response(client,response,parse_energy)
-                        record_asset(db,'energy',response,len(rows),ym)
+                        response,(rows,total)=_energy_request(operation,params)
                     except ExternalError as exc:
                         if exc.asset: record_asset(db,'energy',exc.asset,0,ym,'FAILED',str(exc))
-                        db.commit();raise
+                        db.commit()
+                        if '일시 오류' not in str(exc): raise
+                        # Keep going; the failed request is retried on the next run (no cached failure).
+                        failed+=1;errors.append({'dataset':'energy','message':f'{region.get("kapt_name",region["bjdongCd"])} {ym} {energy_type}: {exc}'})
+                        break
+                    record_asset(db,'energy',response,len(rows),ym)
                     for raw in rows:
                         values=dict(source='국토교통부 건축HUB',sigungu_code=raw.get('sigunguCd') or region['sigunguCd'],bjdong_code=raw.get('bjdongCd') or region['bjdongCd'],lot_type=raw.get('platGbCd') or '0',bun=str(raw.get('bun') or region['bun']).zfill(4),ji=str(raw.get('ji') or region['ji']).zfill(4),use_ym=raw.get('useYm') or ym,energy_type=energy_type)
                         existing=db.scalar(select(EnergyMonthly).filter_by(**{k:v for k,v in values.items() if k!='source'}))
@@ -165,12 +185,15 @@ def collect_energy(db,start='2025-01',end='2025-12',progress=None):
                             record['replaced_source']=existing.source;record['replaced_usage_kwh']=existing.usage_kwh
                         existing.source=values['source'];existing.usage_kwh=raw['usage_kwh'];existing.raw_record=record
                     db.commit()
-                    if page*1000>=total: break
+                    if not rows or page*1000>=total: break
                     page+=1
-                if page>5: errors.append(f'{region.get("name",region["bjdongCd"])} {ym}: 페이지 제한 5 도달')
+                    if page>5:
+                        errors.append({'dataset':'energy','message':f'{region.get("kapt_name",region["bjdongCd"])} {ym}: 페이지 제한 5 도달'});break
                 done+=1
-                if progress: progress(done/(len(candidates)*len(periods)*2),f'{region.get("name",region["bjdongCd"])} {ym} {energy_type}')
+                if progress: progress(done/total_steps,f'{region.get("kapt_name",region["bjdongCd"])} {ym} {energy_type} ({done}/{total_steps})')
     count=db.scalar(select(func.count()).select_from(EnergyMonthly))
     null_count=db.scalar(select(func.count()).select_from(EnergyMonthly).where(EnergyMonthly.usage_kwh.is_(None)))
-    update_source(db,'energy',count,status='PARTIAL' if count else 'CONNECTED',quality=f'{count} 관측 / 지번 좌표 매칭 확인 필요',missing=null_count)
+    parcels=db.scalar(select(func.count(func.distinct(EnergyMonthly.sigungu_code+EnergyMonthly.bjdong_code+EnergyMonthly.bun+EnergyMonthly.ji))).where(EnergyMonthly.source=='국토교통부 건축HUB')) or 0
+    status='COLLECTED' if scope=='full' and not failed else ('PARTIAL' if count else 'CONNECTED')
+    update_source(db,'energy',count,status=status,quality=f'{count} 관측 / 건축HUB 지번 {parcels}곳 / 요청 지번 {len(candidates)}곳({scope}) / 일시 오류 {failed}건',missing=null_count)
     return errors

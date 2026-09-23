@@ -514,8 +514,12 @@ def collect_municipal(db: Any, raw_dir: str | Path | None = None) -> dict[str, i
     return {"completed_rows": len(completed), "under_construction_rows": len(construction)}
 
 
-def candidate_energy_parcels(db: Any, limit: int = 3) -> list[dict[str, Any]]:
-    """Return unambiguous, exact K-apt parcel keys for bounded MOLIT probes."""
+def candidate_energy_parcels(db: Any, limit: int | None = 3, min_households: int | None = None) -> list[dict[str, Any]]:
+    """Return unambiguous, exact K-apt parcel keys for MOLIT building-energy requests.
+
+    ``min_households``: 건축HUB 에너지 excludes complexes under 200 households (2020-), so
+    the full run skips them instead of spending requests on guaranteed empty answers.
+    """
     rows = list(db.scalars(select(ApartmentComplex).where(ApartmentComplex.bjd_code.is_not(None), ApartmentComplex.bun.is_not(None))))
     counts: dict[tuple[str, str, str], int] = {}
     for row in rows:
@@ -534,6 +538,8 @@ def candidate_energy_parcels(db: Any, limit: int = 3) -> list[dict[str, Any]]:
         key = (row.bjd_code, _parcel(row.bun), _parcel(row.ji) or "0000")
         if counts[key] != 1 or "외" in (row.parcel_address or ""):
             continue
+        if min_households and (row.households or 0) < min_households:
+            continue
         result.append({
             "sigunguCd": row.bjd_code[:5], "bjdongCd": row.bjd_code[5:], "bun": key[1], "ji": key[2],
             "kapt_code": row.kapt_code, "kapt_name": row.name, "grid_id": row.grid_id,
@@ -541,7 +547,7 @@ def candidate_energy_parcels(db: Any, limit: int = 3) -> list[dict[str, Any]]:
             "gross_floor_area_m2": row.gross_floor_area_m2,
             "parcel_match_status": "EXACT_SINGLE_COMPLEX",
         })
-        if len(result) >= limit:
+        if limit and len(result) >= limit:
             break
     return result
 

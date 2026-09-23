@@ -72,8 +72,9 @@ scripts\dss.cmd Collect
 | `Status` | DB 전 테이블 행 수, `data/raw` 수·SHA-256 집계, readiness, 키 설정 여부 | `status.json` |
 | `Backup` | `pg_dump -Fc -n public` + 행 수 + raw 매니페스트 + SHA-256 | `data\backups\<시각>-manual\` |
 | `Rebuild` | api/worker/frontend 재빌드·재기동(볼륨 유지) | — |
-| `Probe` | SGIS·VWorld 최소 실제 요청의 구조 요약(값 비노출) | `probe-sgis.json`, `probe-vworld.json` |
-| `Collect` | SGIS·VWorld 용도지역 FULL, 연속지적 LIMITED, 공공데이터포털 소스는 사전 검사 결과 | `collect-<dataset>.json` |
+| `Probe` | 공공데이터포털·SGIS·VWorld(용도지역·지적·건물) 최소 실제 요청의 구조 요약(값 비노출) | `probe-*.json` |
+| `Collect` | SMOKE→LIMITED→FULL: SGIS → VWorld 용도지역 → **VWorld 건물** → KMA ASOS → K-apt 에너지 → 건축HUB 에너지 → 연속지적(FULL, `-SkipHeavy`면 LIMITED) → 모델 검증. `-Datasets kapt_energy,energy`로 일부만. 전체는 1~2시간, 성공 응답은 캐시되어 중단 후 이어서 실행 | `collect-<dataset>.json`, `models.json` |
+| `Snapshot` | 지도·대시보드·오버레이·수집 이력 API 응답을 JSON으로 저장(화면 검토용) | `api/*.json` |
 | `VerifyRestore` | 최신 백업을 **별도 프로젝트 `carbon-urban-dss-restoretest`**(포트 8010/5190, 오프라인)에 복원 → 행 수 전수 비교 → 웹·API·지도·오버레이 점검 → pytest → 브라우저 E2E → 이 프로젝트만 정리 | `summary.json`, `pytest-restore.log`, `e2e.log`, `data\validation\*.png` |
 | `FrontendTest` | `docker build --target test frontend` (Vitest + `tsc -b` + Vite 운영 빌드) | `frontend-test.log` |
 | `VerifyBundle` | **새 PC 모의**: 묶음 내보내기 → 현재 커밋을 `git clone`한 깨끗한 폴더 → 그 폴더의 실행기로 별도 프로젝트(`carbon-urban-dss-importtest`, 포트 8010/5190)에 `ImportBundle` → 행 수·API·지도·웹 확인 → 그 프로젝트만 정리 | `import-test.log`, 복제본의 `data\ops\…-importbundle\summary.json` |
@@ -90,4 +91,6 @@ scripts\dss.cmd Collect
 | 공공데이터포털 `SERVICE_KEY_IS_NOT_REGISTERED`(30) | 해당 서비스 활용신청 미승인 또는 키 반영 전. 승인 후 1시간 캐시가 지나거나 키가 바뀌면 재시도 |
 | VWorld `INCORRECT_KEY` | 인증키 관리 → 활용API에서 **`2D데이터 API` 체크**, 서비스URL과 `VWORLD_DOMAIN`을 똑같이(개발 PC `http://localhost`) 설정한 뒤 `scripts\dss.cmd Collect -RetryRejected` |
 | VWorld `INVALID_RANGE` | geomFilter 형식 오류. 2026-09-23 수정(`BOX(minx,miny,maxx,maxy)` 일반 소수). 오래된 이미지라면 `scripts\dss.cmd Rebuild` |
+| K-apt `provider_code=04`(HTTP_ERROR) | 제공기관 일시 오류. 이제 3회 재시도하고 실패한 월만 `FAILED`로 남긴 채 계속 진행한다. `scripts\dss.cmd Collect -Datasets kapt_energy`로 그 월만 다시 요청 |
+| K-apt 월별 값이 0 | 해당 단지가 그 달을 입력하지 않은 것(미보고). 0kWh로 쓰지 않고 `NOT_REPORTED`로 둔다 |
 | `ImportBundle`이 "already has N tables"로 중단 | 대상 DB가 비어 있지 않음. 기존 DB를 `Backup`으로 보존한 뒤 새 PC/새 볼륨에서 가져오기 |

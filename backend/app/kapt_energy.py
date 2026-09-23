@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, Float, String, Text, UniqueConstraint, func, select
+from sqlalchemy import JSON, DateTime, Float, String, UniqueConstraint, func, select
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .cache import CachedClient, ExternalError, parse_cached_response
@@ -22,6 +22,20 @@ KAPT_ENERGY_OPERATION = "getHsmpApHusUsgQtyInfoSearchV2"
 ELECTRICITY_FACTOR = 0.4541
 # data.go.kr gateway/provider codes that mean the key or its approval is not valid.
 AUTH_CODES = {"20", "21", "30", "31", "32"}
+# Gateway codes for a temporary provider failure (01 APPLICATION, 02 DB, 04 HTTP, 05 TIMEOUT, 99 UNKNOWN).
+# The request is retried; a month that still fails stays FAILED and is re-requested on the next run.
+TRANSIENT_CODES = {"01", "02", "04", "05", "99"}
+QUANTITY_FIELDS = ("electricity_quantity", "gas_quantity", "heating_quantity", "hot_water_quantity", "water_quantity")
+# Statuses that are a valid provider answer (never re-requested). FAILED rows are retried.
+ANSWERED = {"SUCCESS", "EMPTY_VALID", "NOT_REPORTED", "SUSPECT"}
+# K-apt fills items a complex did not enter with 0. A month in which every quantity is 0 is
+# "not reported", not zero use. A reported electricity value below this monthly amount per
+# household is physically implausible for an occupied complex and is kept only for audit.
+MIN_PLAUSIBLE_KWH_PER_HOUSEHOLD = 20.0
+
+
+class TransientProviderError(ExternalError):
+    """Temporary provider failure; safe to retry."""
 
 FIELD_MAP = {
     "helect": "electricity_quantity", "elect": "electricity_amount_krw",
@@ -92,9 +106,13 @@ def _json_or_xml(body: bytes) -> tuple[str, str, list[dict[str, Any]]]:
         payload = json.loads(body.decode("utf-8-sig"))
     except (UnicodeDecodeError, json.JSONDecodeError):
         root = ET.fromstring(body)
-        code = root.findtext(".//resultCode") or ""
-        message = root.findtext(".//resultMsg") or ""
+        # Gateway errors use <OpenAPI_ServiceResponse><cmmMsgHeader><returnReasonCode>.
+        code = root.findtext(".//resultCode") or root.findtext(".//returnReasonCode") or ""
+        message = root.findtext(".//resultMsg") or root.findtext(".//errMsg") or ""
         return code, message, [{child.tag: child.text for child in item} for item in root.findall(".//item")]
+    if isinstance(payload, dict) and "OpenAPI_ServiceResponse" in payload:
+        header = (payload.get("OpenAPI_ServiceResponse") or {}).get("cmmMsgHeader") or {}
+        return str(header.get("returnReasonCode", "")), str(header.get("errMsg", "")), []
     response = payload.get("response", payload) if isinstance(payload, dict) else {}
     header = response.get("header") or {}
     code = str(header.get("resultCode", response.get("resultCode", "")))
@@ -125,6 +143,8 @@ def parse_kapt_energy_response(body: bytes) -> dict[str, Any]:
             raise ExternalError("K-apt API 인증 실패: 서비스 활용 승인과 인증키를 확인하세요")
         if code == "22":
             raise ExternalError("K-apt API 일일 호출 한도 초과(22): 성공한 월은 건너뛰므로 다음 날 다시 실행하세요")
+        if code in TRANSIENT_CODES:
+            raise TransientProviderError(f"K-apt 제공기관 일시 오류: provider_code={code} {message}".strip())
         raise ExternalError(f"K-apt API 오류: provider_code={code or 'UNKNOWN'}")
     rows = []
     for item in items:
@@ -138,6 +158,108 @@ def parse_kapt_energy_response(body: bytes) -> dict[str, Any]:
             row[normalized] = _number(item.get(upstream))
         rows.append(row)
     return {"provider_code": code, "provider_message": message, "rows": rows}
+
+
+def classify_month(values: dict[str, float | None], households: int | None) -> tuple[str, dict[str, float | None], str | None]:
+    """Classify one complex-month and return (status, cleaned quantities, reason).
+
+    * every quantity 0/None -> NOT_REPORTED (all quantities null; not zero use)
+    * individual 0 -> null (K-apt uses 0 for an item that was not entered)
+    * electricity below MIN_PLAUSIBLE_KWH_PER_HOUSEHOLD per household -> SUSPECT
+    """
+    cleaned = {field: (None if values.get(field) in (None, 0, 0.0) else values.get(field)) for field in QUANTITY_FIELDS}
+    if all(value is None for value in cleaned.values()):
+        return "NOT_REPORTED", {field: None for field in QUANTITY_FIELDS}, "모든 사용량 항목이 0 또는 공란(미보고)"
+    electricity = cleaned["electricity_quantity"]
+    if electricity is not None and households and households > 0 and electricity / households < MIN_PLAUSIBLE_KWH_PER_HOUSEHOLD:
+        return "SUSPECT", cleaned, f"세대당 전기 {electricity / households:.2f}kWh/월 < {MIN_PLAUSIBLE_KWH_PER_HOUSEHOLD:.0f}kWh (비현실적 값)"
+    return "SUCCESS", cleaned, None
+
+
+def _is_transient(message: str) -> bool:
+    return any(marker in message for marker in ("일시 오류", "provider_code=UNKNOWN", "외부 데이터 HTTP 5", "외부 서비스 연결 실패"))
+
+
+def _fetch_month(session: Any, url: str, key: str, code: str, month: str, attempts: int = 3, sleep: Any = None) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Request one complex-month, retrying temporary provider failures without reusing a cached failure."""
+    import time
+    pause = sleep or time.sleep
+    forget = getattr(session, "forget", None)
+    for attempt in range(attempts):
+        result = None
+        try:
+            result = session.get("kapt-energy", f"monthly-{code}-{month}", url, {"serviceKey": key, "kaptCode": code, "reqDate": month})
+            return result, parse_cached_response(session, result, parse_kapt_energy_response)
+        except ExternalError as exc:
+            if not (isinstance(exc, TransientProviderError) or _is_transient(str(exc))):
+                raise
+            cached = result or exc.asset
+            if forget and isinstance(cached, dict):
+                forget(cached)
+            if attempt == attempts - 1:
+                raise TransientProviderError(str(exc)) from None
+            pause(2 * (attempt + 1))
+    raise TransientProviderError("K-apt 제공기관 일시 오류")
+
+
+def _unsync_observation(db: Any, complex_row: Any, month: str) -> None:
+    """Remove a K-apt electricity observation that is no longer a valid SUCCESS value."""
+    if not complex_row.bjd_code or not complex_row.bun:
+        return
+    observation = db.scalar(select(EnergyMonthly).filter_by(
+        sigungu_code=complex_row.bjd_code[:5], bjdong_code=complex_row.bjd_code[5:], lot_type="0",
+        bun=str(complex_row.bun).zfill(4), ji=str(complex_row.ji or "0").zfill(4), use_ym=month, energy_type="ELECTRICITY"))
+    if observation is not None and observation.source == "K-apt":
+        db.delete(observation)
+
+
+def _apply_month(db: Any, complex_row: Any, row: "ApartmentEnergyMonthly", row_data: dict[str, Any] | None) -> str:
+    """Store one complex-month with its classification and keep energy_monthly in sync."""
+    if row_data is None:
+        row.quality_status = "EMPTY_VALID"
+        for field in FIELD_MAP.values():
+            setattr(row, field, None)
+        row.units = dict(UNITS)
+        row.raw_record = {}
+    else:
+        values = {field: row_data.get(field) for field in QUANTITY_FIELDS}
+        status, cleaned, reason = classify_month(values, complex_row.households)
+        for field in FIELD_MAP.values():
+            value = row_data.get(field)
+            setattr(row, field, None if value in (0, 0.0) else value)
+        for field, value in cleaned.items():
+            setattr(row, field, value)
+        row.units = row_data.get("units") or dict(UNITS)
+        row.raw_record = dict(row_data.get("raw_record") or {}, **({"quality_reason": reason} if reason else {}))
+        row.quality_status = status
+    row.grid_id = complex_row.grid_id
+    row.electricity_carbon_kg = row.electricity_quantity * ELECTRICITY_FACTOR if row.quality_status == "SUCCESS" and row.electricity_quantity is not None else None
+    db.add(row)
+    db.flush()
+    if row.quality_status == "SUCCESS" and row.electricity_quantity is not None:
+        _sync_electricity_observation(db, complex_row, row)
+    else:
+        _unsync_observation(db, complex_row, row.year_month)
+    return row.quality_status
+
+
+def reclassify_existing(db: Any) -> dict[str, int]:
+    """Re-apply the no-report/plausibility rules to rows stored by earlier versions (idempotent)."""
+    from .kapt import ApartmentComplex
+    complexes = {row.kapt_code: row for row in db.scalars(select(ApartmentComplex))}
+    counts: dict[str, int] = {}
+    for row in db.scalars(select(ApartmentEnergyMonthly).where(ApartmentEnergyMonthly.source == "K-apt")):
+        complex_row = complexes.get(row.complex_code)
+        if complex_row is None or row.quality_status not in {"SUCCESS", "SUSPECT", "NOT_REPORTED"} or not row.raw_record:
+            continue
+        raw = {key: value for key, value in row.raw_record.items() if key != "quality_reason"}
+        data = {"raw_record": raw, "units": row.units}
+        for upstream, normalized in FIELD_MAP.items():
+            data[normalized] = _number(raw.get(upstream))
+        status = _apply_month(db, complex_row, row, data)
+        counts[status] = counts.get(status, 0) + 1
+    db.commit()
+    return counts
 
 
 def _source(db: Any) -> DataSource:
@@ -208,10 +330,11 @@ def collect_kapt_energy(
     if not key:
         raise ExternalError("K-apt API 인증 실패: DATA_GO_KR_SERVICE_KEY 미설정")
     source = _source(db)
+    reclassify_existing(db)
     if scope == "full":
         smoke = db.scalar(select(ApartmentEnergyMonthly.id).where(
             ApartmentEnergyMonthly.year_month == f"{year}01",
-            ApartmentEnergyMonthly.quality_status.in_(["SUCCESS", "EMPTY_VALID"]),
+            ApartmentEnergyMonthly.quality_status.in_(sorted(ANSWERED)),
         ).limit(1))
         if not smoke:
             raise ValueError("K-apt full 수집 전에 같은 연도의 smoke 성공이 필요합니다")
@@ -225,7 +348,8 @@ def collect_kapt_energy(
     delay = max(float(os.getenv("KAPT_ENERGY_REQUEST_DELAY_MS", "250")) / 1000, 0)
     session = client or CachedClient(root / "cache" / "kapt-energy", min_interval=delay)
     base_url = os.getenv("KAPT_ENERGY_BASE_URL", KAPT_ENERGY_BASE_URL).rstrip("/")
-    stats = {"requested": 0, "normalized": 0, "skipped": 0, "empty": 0, "failed": 0}
+    stats = {"requested": 0, "normalized": 0, "skipped": 0, "empty": 0, "not_reported": 0, "suspect": 0, "failed": 0}
+    url = f"{base_url}/{KAPT_ENERGY_OPERATION}"
     for complex_row in targets:
         mapping = db.get(ComplexGridMapping, complex_row.kapt_code) or ComplexGridMapping(complex_code=complex_row.kapt_code)
         mapping.grid_id = complex_row.grid_id
@@ -237,52 +361,52 @@ def collect_kapt_energy(
         for month in months:
             ident = f"{complex_row.kapt_code}:{month}:K-apt"
             existing = db.get(ApartmentEnergyMonthly, ident)
-            if existing and existing.quality_status in {"SUCCESS", "EMPTY_VALID"}:
+            if existing and existing.quality_status in ANSWERED:
                 stats["skipped"] += 1
                 continue
             stats["requested"] += 1
-            result = session.get(
-                "kapt-energy", f"monthly-{complex_row.kapt_code}-{month}",
-                f"{base_url}/{KAPT_ENERGY_OPERATION}",
-                {"serviceKey": key, "kaptCode": complex_row.kapt_code, "reqDate": month},
-            )
+            row = existing or ApartmentEnergyMonthly(id=ident, complex_code=complex_row.kapt_code, year_month=month, source="K-apt")
+            try:
+                result, parsed = _fetch_month(session, url, key, complex_row.kapt_code, month)
+            except TransientProviderError as exc:
+                # Keep going: one provider hiccup must not discard the rest of the run.
+                row.quality_status = "FAILED"
+                row.provider_code = str(exc)[:120]
+                row.units = row.units or dict(UNITS)
+                row.raw_record = row.raw_record or {}
+                row.collected_at = datetime.now(timezone.utc)
+                db.add(row)
+                db.commit()
+                stats["failed"] += 1
+                continue
             raw_dir = raw_root / complex_row.kapt_code
             raw_dir.mkdir(parents=True, exist_ok=True)
             raw_path = raw_dir / f"{month}.json"
             raw_path.write_bytes(result["body"])
-            parsed = parse_cached_response(session, result, parse_kapt_energy_response)
-            row_data = next((row for row in parsed["rows"] if not row["complex_code"] or row["complex_code"] == complex_row.kapt_code), None)
+            row_data = next((item for item in parsed["rows"] if not item["complex_code"] or item["complex_code"] == complex_row.kapt_code), None)
             asset_id = _record_raw(db, source, raw_path, result, complex_row.kapt_code, month, len(parsed["rows"]), "COLLECTED")
-            row = existing or ApartmentEnergyMonthly(id=ident, complex_code=complex_row.kapt_code, year_month=month, source="K-apt")
-            if row_data is None:
-                row.quality_status = "EMPTY_VALID"
-                row.units = dict(UNITS)
-                row.raw_record = {}
-                stats["empty"] += 1
-            else:
-                for field in FIELD_MAP.values():
-                    setattr(row, field, row_data[field])
-                row.units = row_data["units"]
-                row.raw_record = row_data["raw_record"]
-                row.quality_status = "SUCCESS"
-                stats["normalized"] += 1
-            row.grid_id = complex_row.grid_id
             row.provider_code = parsed["provider_code"]
             row.raw_source_id = asset_id
-            row.electricity_carbon_kg = row.electricity_quantity * ELECTRICITY_FACTOR if row.electricity_quantity is not None else None
+            status = _apply_month(db, complex_row, row, row_data)
+            stats[{"SUCCESS": "normalized", "EMPTY_VALID": "empty", "NOT_REPORTED": "not_reported", "SUSPECT": "suspect"}[status]] += 1
             row.collected_at = datetime.now(timezone.utc)
             db.add(row)
-            db.flush()
-            _sync_electricity_observation(db, complex_row, row)
             db.commit()
     total = db.scalar(select(func.count()).select_from(ApartmentEnergyMonthly)) or 0
     complexes = db.scalar(select(func.count(func.distinct(ApartmentEnergyMonthly.complex_code)))) or 0
-    source.normalized_row_count = total
+    by_status = dict(db.execute(select(ApartmentEnergyMonthly.quality_status, func.count()).group_by(ApartmentEnergyMonthly.quality_status)).all())
+    reporting = db.scalar(select(func.count(func.distinct(ApartmentEnergyMonthly.complex_code))).where(ApartmentEnergyMonthly.quality_status == "SUCCESS")) or 0
+    source.normalized_row_count = int(by_status.get("SUCCESS", 0))
     source.raw_row_count = db.scalar(select(func.count()).select_from(RawDataAsset).where(RawDataAsset.source_id == source.id)) or 0
-    source.missing_count = stats["empty"]
+    source.missing_count = int(by_status.get("NOT_REPORTED", 0) + by_status.get("EMPTY_VALID", 0) + by_status.get("FAILED", 0))
     source.reference_period = f"{year}-01 ~ {year}-12" if scope != "smoke" else f"{year}-01"
     source.status = "COLLECTED" if scope == "full" and stats["failed"] == 0 else "PARTIAL"
-    source.quality = f"단지 {complexes}개 / 월별 {total}행 / {scope} 수집"
+    source.quality = (
+        f"요청 단지 {complexes}개 중 사용량 보고 {reporting}개 / 유효 {by_status.get('SUCCESS', 0)}행 · "
+        f"미보고 {by_status.get('NOT_REPORTED', 0)}행 · 이상값 {by_status.get('SUSPECT', 0)}행 · "
+        f"일시 오류 {by_status.get('FAILED', 0)}행 / {scope} 수집"
+    )
+    stats["total_rows"] = int(total)
     source.collected_at = datetime.now(timezone.utc)
     db.commit()
     return stats

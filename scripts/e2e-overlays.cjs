@@ -13,9 +13,15 @@ fs.mkdirSync(out, { recursive: true });
   page.on('pageerror', (error) => errors.push(error.message));
   try {
     const meta = (await (await page.request.get(base + '/api/map/overlays')).json()).meta;
+    const mapData = await (await page.request.get(base + '/api/map')).json();
     await page.goto(base + '/map', { waitUntil: 'domcontentloaded' });
     await page.locator('.maplibregl-canvas').waitFor();
     await page.waitForFunction(() => Number(document.querySelector('.map-canvas')?.dataset.renderedFeatures) > 0, null, { timeout: 60000 });
+    // Every map metric shows explicit classes plus a separate "missing (not 0)" row.
+    await page.locator('.legend-classes li, .map-empty-hint').first().waitFor();
+    checks.push({ name: 'metric_legend_explicit', status: 'PASS', metric: (await page.locator('.metric-trigger strong').innerText()).trim() });
+    // Layer switches live in the layer popover.
+    await page.getByRole('button', { name: /레이어/ }).first().click();
     for (const [key, label, count, dataKey, legend] of [
       ['zoning', /용도지역 \(VWorld\)/, meta.zoning_features, 'renderedZoning', '용도지역'],
       ['admin', /행정동 인구 \(SGIS\)/, meta.admin_features, 'renderedAdmin', '행정동 인구밀도'],
@@ -32,6 +38,15 @@ fs.mkdirSync(out, { recursive: true });
       await page.screenshot({ path: path.join(out, `overlay-${key}.png`), fullPage: true });
       checks.push({ name: key, status: 'PASS', features: count });
       await box.uncheck();
+    }
+    // Official building footprints (VWorld LT_C_SPBD) are fetched per viewport after zooming in.
+    if (mapData.buildings_mode === 'viewport') {
+      await page.getByRole('button', { name: '선택 격자로 확대' }).click();
+      await page.waitForFunction(() => Number(document.querySelector('.map-canvas')?.dataset.renderedBuildings) > 0, null, { timeout: 60000 });
+      await page.screenshot({ path: path.join(out, 'map-buildings.png'), fullPage: true });
+      checks.push({ name: 'official_buildings', status: 'PASS', rendered: await page.evaluate(() => Number(document.querySelector('.map-canvas')?.dataset.renderedBuildings)) });
+    } else {
+      checks.push({ name: 'official_buildings', status: 'SKIP', reason: 'VWorld buildings not collected (OSM fallback shown)' });
     }
     // Analysis screen: official-data charts render only when the data exists.
     await page.goto(base + '/analysis', { waitUntil: 'domcontentloaded' });

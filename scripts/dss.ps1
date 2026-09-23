@@ -12,6 +12,12 @@ Actions
   Probe         minimal real SGIS / VWorld requests, sanitized structure report
   Collect       staged SMOKE -> LIMITED -> FULL collection (stops on first failure)
                 -RetryRejected: retry now after a key registration was fixed
+                -Datasets kapt_energy,energy: collect only these datasets
+                -SkipHeavy: keep the parcel layer (vworld_cadastral) at LIMITED
+                Full K-apt / 건축HUB / building collection can take 1-2 hours; every
+                successful response is cached, so an interrupted run resumes.
+  Snapshot      save the main API responses (map, dashboard, overlays, readiness,
+                collections) as JSON in the run folder for offline UI review
   VerifyRestore restore the latest backup into a separate throwaway project,
                 compare every table count, run pytest and (optionally) browser E2E
   FrontendTest  Vitest + production build inside Linux (docker build --target test)
@@ -31,7 +37,7 @@ Safety
   * Results are written to data/ops/<timestamp>-<action>/ (summary.json, *.log).
 #>
 param(
-    [ValidateSet('All', 'Doctor', 'Status', 'Backup', 'Rebuild', 'Probe', 'Collect', 'VerifyRestore', 'FrontendTest', 'E2E', 'ExportBundle', 'ImportBundle', 'VerifyBundle')]
+    [ValidateSet('All', 'Doctor', 'Status', 'Backup', 'Rebuild', 'Probe', 'Collect', 'Snapshot', 'VerifyRestore', 'FrontendTest', 'E2E', 'ExportBundle', 'ImportBundle', 'VerifyBundle')]
     [string]$Action = 'All',
     [string]$BundlePath,
     [string]$BackupDir,
@@ -39,7 +45,9 @@ param(
     [switch]$SkipE2E,
     [switch]$SkipCollect,
     [switch]$KeepRestoreProject,
-    [switch]$RetryRejected
+    [switch]$RetryRejected,
+    [string[]]$Datasets,
+    [switch]$SkipHeavy
 )
 
 $ErrorActionPreference = 'Stop'
@@ -154,6 +162,20 @@ WHERE table_schema = 'public' AND table_type = 'BASE TABLE' AND table_name <> 's
 ORDER BY table_name;
 "@
 
+function Wait-Postgres([string]$Which) {
+    # The postgres image initialises a new volume with a temporary server that listens only on the
+    # Unix socket, then restarts. 'compose up --wait' can pass during that phase, so wait until the
+    # final server accepts TCP connections inside the container.
+    # No embedded double quotes: Windows PowerShell 5.1 does not escape them for native commands.
+    $probe = @('exec', '-T', 'postgres', 'sh', '-c', 'PGPASSWORD=$POSTGRES_PASSWORD psql -h 127.0.0.1 -U ${POSTGRES_USER:-carbon} -d ${POSTGRES_DB:-carbon} -Atc ''select 1''')
+    for ($attempt = 0; $attempt -lt 60; $attempt++) {
+        $result = if ($Which -eq 'restore') { Compose-Restore $probe } else { Compose-Main $probe }
+        if ($result.Code -eq 0 -and ($result.Lines -contains '1')) { return }
+        Start-Sleep -Seconds 2
+    }
+    throw "postgres ($Which) did not accept TCP connections within 120 s"
+}
+
 function Get-TableCounts([string]$Which) {
     $psqlArgs = @('exec', '-T', 'postgres', 'psql', '-U', 'carbon', '-d', 'carbon', '-At', '-v', 'ON_ERROR_STOP=1')
     if ($Which -eq 'restore') { $result = Compose-Restore $psqlArgs $CountSql } else { $result = Compose-Main $psqlArgs $CountSql }
@@ -243,6 +265,7 @@ function Invoke-VerifyRestore([string]$Dir) {
     $expected = Read-CountFile (Join-Path $Dir 'table-counts.tsv')
     Remove-RestoreProject
     Assert-Native (Compose-Restore @('up', '-d', '--wait', 'postgres', 'redis')) 'restore-test postgres start'
+    Wait-Postgres 'restore'
     Assert-Native (Compose-Restore @('exec', '-T', 'postgres', 'psql', '-U', 'carbon', '-d', 'carbon', '-v', 'ON_ERROR_STOP=1', '-c', 'CREATE EXTENSION IF NOT EXISTS postgis')) 'create postgis extension (restore-test)'
     Assert-Native (Compose-Restore @('cp', (Join-Path $Dir 'db.dump'), 'postgres:/tmp/restore.dump')) 'copy dump into restore-test'
     $restore = Compose-Restore @('exec', '-T', 'postgres', 'pg_restore', '-U', 'carbon', '-d', 'carbon', '--no-owner', '--no-privileges', '/tmp/restore.dump')
@@ -422,10 +445,17 @@ function Invoke-Collect {
         $dg = Invoke-Ops @('probe', 'datagokr') 'probe-datagokr-collect.json'
         foreach ($step in @($dg.Json.steps)) { Write-Log "    data.go.kr $($step.step): http=$($step.http) code=$($step.result_code) items=$($step.items) $($step.result_msg)" }
     } catch { Write-Log "    data.go.kr probe failed: $($_.Exception.Message)" }
-    # Cheap and cached sources first; K-apt FULL (up to ~4,400 calls) last.
-    foreach ($dataset in @('sgis', 'vworld_zoning', 'vworld_cadastral', 'kma_asos', 'energy', 'kapt_energy')) {
-        $execEnv = if ($dataset -like 'vworld_*') { $vworldEnv } else { @{} }
-        $ops = Invoke-Ops @('staged', '--dataset', $dataset) "collect-$dataset.json" $execEnv
+    # Cheap sources first, then the official building layer (map), then the long energy runs.
+    # Every successful response is cached, so an interrupted run resumes where it stopped.
+    $order = @('sgis', 'vworld_zoning', 'vworld_buildings', 'kma_asos', 'kapt_energy', 'energy', 'vworld_cadastral')
+    if ($Datasets) { $wanted = @($Datasets | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ }); $order = @($order | Where-Object { $wanted -contains $_ }) }
+    $estimates = @{ vworld_buildings = '~10-20 min (916 grids, paged)'; kapt_energy = '~40-60 min (364 complexes x 12 months)'; energy = '~40-70 min (200+ household complexes x 12 months x 2)'; vworld_cadastral = '~20-40 min (all parcels)' }
+    foreach ($dataset in $order) {
+        $execEnv = if ($dataset -like 'vworld_*') { $vworldEnv.Clone() } else { @{} }
+        if ($dataset -eq 'vworld_cadastral' -and -not $SkipHeavy) { $execEnv['VWORLD_CADASTRAL_FULL'] = 'true' }
+        if ($estimates.ContainsKey($dataset)) { Write-Log "    ${dataset}: $($estimates[$dataset]); progress is shown in the web 'Data' page (collection jobs)" }
+        $maxScope = if ($dataset -eq 'vworld_cadastral' -and $SkipHeavy) { @('--max-scope', 'limited') } else { @() }
+        $ops = Invoke-Ops (@('staged', '--dataset', $dataset) + $maxScope) "collect-$dataset.json" $execEnv
         $steps = @($ops.Json.steps)
         $last = $steps | Select-Object -Last 1
         $message = if ($last.blockers) { ($last.blockers | ForEach-Object { $_.message }) -join ' / ' } elseif ($last.errors) { ($last.errors | ForEach-Object { $_.message }) -join ' / ' } else { $last.source.quality }
@@ -440,6 +470,27 @@ function Invoke-Collect {
     } catch { Write-Log "    model validation failed: $($_.Exception.Message)" }
     Save-Summary
     return (($results.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value.final)" }) -join ', ')
+}
+
+function Invoke-Snapshot([string]$Base = "http://127.0.0.1:$ApiPort") {
+    # Raw API responses (UTF-8 bytes written as-is) for offline UI review; no credentials are involved.
+    $dir = Join-Path $RunDir 'api'
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    $saved = @()
+    foreach ($item in @(@('map', '/api/map?year=2025'), @('dashboard', '/api/dashboard?year=2025'), @('overlays', '/api/map/overlays?year=2025'), @('readiness', '/api/readiness'), @('collections', '/api/collections'), @('sources', '/api/sources?year=2025'), @('model', '/api/model?year=2025'), @('system', '/api/system'))) {
+        $target = Join-Path $dir "$($item[0]).json"
+        Invoke-WebRequest -Uri ($Base + $item[1]) -OutFile $target -UseBasicParsing -TimeoutSec 180
+        $saved += "$($item[0])=$([math]::Round((Get-Item -LiteralPath $target).Length / 1KB))KB"
+    }
+    $map = Get-Content -LiteralPath (Join-Path $dir 'map.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+    $grid = $map.selected_sector.grid_id
+    if ($map.buildings_mode -eq 'viewport' -and $grid) {
+        $lon = [double]$map.center[0]; $lat = [double]$map.center[1]
+        $box = '{0},{1},{2},{3}' -f ($lon - 0.03).ToString([Globalization.CultureInfo]::InvariantCulture), ($lat - 0.03).ToString([Globalization.CultureInfo]::InvariantCulture), ($lon + 0.03).ToString([Globalization.CultureInfo]::InvariantCulture), ($lat + 0.03).ToString([Globalization.CultureInfo]::InvariantCulture)
+        Invoke-WebRequest -Uri "$Base/api/map/buildings?bbox=$box" -OutFile (Join-Path $dir 'buildings-center.json') -UseBasicParsing -TimeoutSec 180
+        $saved += 'buildings-center'
+    }
+    return ($saved -join ', ')
 }
 
 function Invoke-ExportBundle {
@@ -490,6 +541,7 @@ function Invoke-ImportBundle {
         Write-Log '    created .env from .env.example (API keys are empty; add them later)'
     }
     Assert-Native (Compose-Main @('up', '-d', '--wait', 'postgres', 'redis')) 'postgres start'
+    Wait-Postgres 'main'
     $existing = Get-TableCounts 'main'
     $nonEmpty = @($existing.GetEnumerator() | Where-Object { $_.Value -gt 0 })
     if ($existing.Count -gt 0) { throw "Target database already has $($existing.Count) tables ($($nonEmpty.Count) non-empty). Import only into an empty database; back it up and use a new PC/volume instead." }
@@ -569,7 +621,7 @@ $selected = $Action
 if ($Action -notin @('Doctor', 'All')) {
     if (-not (Invoke-Step 'Docker engine' { Start-DockerEngine })) { $selected = 'Skip'; $ok = $false }
 }
-if ($selected -in @('Status', 'Probe', 'Collect')) {
+if ($selected -in @('Status', 'Probe', 'Collect', 'Snapshot')) {
     # app.ops runs inside the api image; make sure it contains the current code first.
     # --force-recreate: containers must pick up .env changes (new API keys) as well as new code.
     if (-not (Invoke-Step 'Services up to date' { Assert-Native (Compose-Main @('up', '-d', '--build', '--force-recreate', '--wait', 'api', 'worker')) 'compose up --build'; 'api/worker rebuilt with current code and .env' })) { $selected = 'Skip'; $ok = $false }
@@ -585,6 +637,7 @@ switch ($selected) {
         $ok = (Invoke-Step 'Probe VWorld' { $p = Invoke-Ops @('probe', 'vworld') 'probe-vworld.json'; "working_domain=$($p.Json.working_domain); " + (($p.Json.steps | ForEach-Object { "$($_.step)[$($_.domain)]:$($_.status) $($_.error.code) features=$($_.features)" }) -join ' ') }) -and $ok
     }
     'Collect' { $ok = Invoke-Step 'Staged collection' { Invoke-Collect } }
+    'Snapshot' { $ok = Invoke-Step 'API snapshot' { Invoke-Snapshot } }
     'VerifyRestore' {
         $ok = Invoke-Step 'Restore into separate project' { Invoke-VerifyRestore $BackupDir }
         if ($ok) {
@@ -613,6 +666,7 @@ switch ($selected) {
                 Invoke-Step 'Probe VWorld' { $p = Invoke-Ops @('probe', 'vworld') 'probe-vworld.json'; "working_domain=$($p.Json.working_domain); " + (($p.Json.steps | ForEach-Object { "$($_.step)[$($_.domain)]:$($_.status) $($_.error.code) features=$($_.features)" }) -join ' ') } | Out-Null
                 if (-not $SkipCollect) { Invoke-Step 'Staged collection' { Invoke-Collect } | Out-Null }
                 Invoke-Step 'Status after collection' { $s = Invoke-Ops @('status') 'status-after.json'; "tables=$(@($s.Json.table_counts.PSObject.Properties).Count), raw=$($s.Json.raw.files)" } | Out-Null
+                Invoke-Step 'API snapshot' { Invoke-Snapshot } | Out-Null
                 $backupOk = Invoke-Step 'Backup after collection' { Invoke-Backup 'after' }
                 if ($backupOk) {
                     $restored = Invoke-Step 'Restore into separate project' { Invoke-VerifyRestore $script:LatestBackup }

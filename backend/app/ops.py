@@ -24,7 +24,7 @@ from .settings import DATA_DIR, DEFAULT_YEAR, offline_mode
 
 SCOPES = ["smoke", "limited", "full"]
 # Maximum automatic scope. Cadastral parcels are numerous; full needs an explicit opt-in.
-MAX_SCOPE = {"sgis": "full", "vworld_zoning": "full", "vworld_cadastral": "limited", "kapt_energy": "full", "kma_asos": "full", "energy": "limited"}
+MAX_SCOPE = {"sgis": "full", "vworld_zoning": "full", "vworld_buildings": "full", "vworld_cadastral": "full", "kapt_energy": "full", "kma_asos": "full", "energy": "full"}
 CREDENTIALS = ["DATA_GO_KR_SERVICE_KEY", "SGIS_CONSUMER_KEY", "SGIS_CONSUMER_SECRET", "VWORLD_API_KEY", "VWORLD_DOMAIN"]
 
 
@@ -226,7 +226,7 @@ def _vworld_request(client: httpx.Client, url: str, key: str, layer: dict[str, A
         "error": {"code": error.get("code"), "text": str(error.get("text"))[:200]} if error else None,
         "record": body.get("record"), "page": body.get("page"), "features": len(features),
         "property_keys": _keys(features[0].get("properties")) if features else [],
-        "sample_properties": {k: v for k, v in (features[0].get("properties") or {}).items() if k in ("uname", "ucode", "pnu", "jibun", "sido_name", "sigg_name")} if features else {},
+        "sample_properties": {k: v for k, v in (features[0].get("properties") or {}).items() if k in ("uname", "ucode", "pnu", "jibun", "sido_name", "sigg_name", "bdtyp_cd", "gro_flo_co", "und_flo_co", "buld_nm", "bd_mgt_sn")} if features else {},
         "coordinate_sample": _coordinate_sample(features[0].get("geometry")) if features else None,
     }
 
@@ -244,7 +244,10 @@ def probe_vworld() -> dict[str, Any]:
     report: dict[str, Any] = {"provider": "VWorld", "checked_at": _now(), "configured_domain": configured, "working_domain": None, "steps": []}
     key = os.getenv("VWORLD_API_KEY", "").strip()
     with Session() as db:
-        grid = db.scalar(select(Grid).order_by(Grid.id).limit(1))
+        # A dense urban grid (the prototype sector) so attribute keys are actually returned.
+        from .models import TestbedSector
+        sector = db.get(TestbedSector, "prototype")
+        grid = (db.get(Grid, sector.grid_id) if sector and sector.grid_id else None) or db.scalar(select(Grid).order_by(Grid.id).limit(1))
         bounds = to_shape(grid.geom).bounds if grid else None
     if not bounds:
         report["steps"].append({"step": "grid", "ok": False, "error": "분석격자 없음"})
@@ -262,8 +265,9 @@ def probe_vworld() -> dict[str, Any]:
             report["key_accepted"] = True
             break
     if report["working_domain"]:
-        result = _vworld_request(client, url, key, config["cadastral"], bounds, report["working_domain"])
-        report["steps"].append({"step": "cadastral", "domain": report["working_domain"], "grid_id": grid.id, **result})
+        for name in ("cadastral", "buildings"):
+            result = _vworld_request(client, url, key, config[name], bounds, report["working_domain"])
+            report["steps"].append({"step": name, "domain": report["working_domain"], "grid_id": grid.id, **result})
     return report
 
 

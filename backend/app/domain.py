@@ -20,9 +20,15 @@ def parse_energy(body: bytes):
         raise ValueError('EMPTY_RESPONSE: API 빈 응답')
     if text.startswith('{'):
         root=json.loads(text)
+        if 'OpenAPI_ServiceResponse' in root:
+            # data.go.kr gateway error envelope (auth, rate limit, temporary HTTP error); never an empty result.
+            header=(root.get('OpenAPI_ServiceResponse') or {}).get('cmmMsgHeader') or {}
+            raise ValueError(f"{header.get('returnReasonCode','99')}: {header.get('errMsg','GATEWAY_ERROR')}")
         root=root.get('response',root)
         header=root.get('header',{})
         code=str(header.get('resultCode','00'))
+        if code=='03':
+            return [],0
         if code not in ('00','0','000'):
             raise ValueError(f"{code}: {header.get('resultMsg','API 오류')}")
         data=root.get('body',{})
@@ -33,12 +39,15 @@ def parse_energy(body: bytes):
     else:
         root=ET.fromstring(text)
         code=root.findtext('.//returnReasonCode') or root.findtext('.//resultCode') or '00'
+        if code=='03' and root.tag=='response':
+            return [],0
         if code not in ('00','0','000'):
             raise ValueError(f"{code}: {root.findtext('.//errMsg') or root.findtext('.//resultMsg') or 'API 오류'}")
         rows=[{child.tag:child.text for child in item} for item in root.findall('.//item')]
         total=int(root.findtext('.//totalCount') or len(rows))
         if root.tag not in ('response','OpenAPI_ServiceResponse'):
             raise ValueError('INVALID_RESPONSE: 예상하지 못한 XML 응답')
+    # A metered 0 is kept as 0 (e.g. gas in a month without heating); a missing value stays None.
     return [dict(r,usage_kwh=number(r.get('useQty'))) for r in rows or []],total
 
 def nullable_sum(values):

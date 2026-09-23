@@ -7,6 +7,7 @@ import { QualityBadge } from '../components/QualityBadge';
 import { EmptyState, ErrorState, LoadingState } from '../components/Status';
 import { useAnalysisScope } from '../hooks/useAnalysisScope';
 import { useApi } from '../hooks/useApi';
+import { baseChart, compactAxis, SERIES } from '../lib/chartTheme';
 import { formatMetric } from '../lib/format';
 import type { DashboardData, OverlayData } from '../types';
 
@@ -40,25 +41,30 @@ export function AnalysisPage() {
       series: [{ type: 'pie', radius: ['45%', '72%'], label: { formatter: '{b}\n{c} km²', fontSize: 11 }, data: entries.map(([key, value]) => ({ name: ZONE_LABELS[key]?.[0] ?? key, value, itemStyle: { color: ZONE_LABELS[key]?.[1] ?? '#b8c2c0' } })) }],
     };
   }, [zoningArea]);
-  const chartOption = useMemo<EChartsOption>(() => ({
-    color: ['#334155', '#0f766e'],
-    tooltip: { trigger: 'axis' },
-    legend: { right: 12, top: 4 },
-    grid: { left: 58, right: 24, top: 44, bottom: 34 },
-    xAxis: { type: 'category', data: data?.monthly?.map((row) => row.use_ym) ?? [], axisLabel: { color: '#64748b' } },
-    yAxis: [{ type: 'value', name: 'kgCO₂eq', splitLine: { lineStyle: { color: '#edf2f4' } } }, { type: 'value', name: 'kWh' }],
+  // Weather sensitivity: each point is one month (x = heating degree days, y = observed kWh). One axis per measure.
+  const sensitivity = useMemo(() => {
+    const weather = new Map((data?.weather ?? []).map((row) => [String(row.use_ym), typeof row.hdd === 'number' ? row.hdd : null]));
+    const points = (key: 'electricity_kwh' | 'gas_kwh') => (data?.monthly ?? []).flatMap((row) => { const hdd = weather.get(String(row.use_ym)); const value = row[key]; return hdd !== null && hdd !== undefined && typeof value === 'number' ? [[hdd, value, `${Number(String(row.use_ym).slice(-2))}월`]] : []; });
+    return { electricity: points('electricity_kwh'), gas: points('gas_kwh') };
+  }, [data]);
+  const chartOption = useMemo<EChartsOption>(() => baseChart({
+    grid: { left: 64, right: 24, top: 44, bottom: 44 },
+    tooltip: { trigger: 'item', backgroundColor: 'rgba(255,255,255,.94)', borderColor: 'rgba(14,26,43,.08)', textStyle: { color: '#0e1a2b', fontSize: 12 }, formatter: (p: unknown) => { const item = p as { seriesName: string; value: [number, number, string] }; return `${item.value[2]} · ${item.seriesName}<br/>HDD ${item.value[0].toLocaleString('ko-KR')} °C·일<br/>${Math.round(item.value[1]).toLocaleString('ko-KR')} kWh`; } },
+    xAxis: { type: 'value', name: '난방도일 HDD (°C·일)', nameLocation: 'middle', nameGap: 28, nameTextStyle: { color: '#64738a', fontSize: 11 }, splitLine: { lineStyle: { color: 'rgba(14,26,43,.07)' } }, axisLabel: { color: '#64738a', fontSize: 12 } },
+    yAxis: { type: 'value', name: 'kWh', nameTextStyle: { color: '#64738a', fontSize: 11 }, splitLine: { lineStyle: { color: 'rgba(14,26,43,.07)' } }, axisLabel: { color: '#64738a', fontSize: 12, formatter: compactAxis } },
     series: [
-      { name: '탄소', type: 'bar', barMaxWidth: 28, data: data?.monthly?.map((row) => row.carbon_kg) ?? [], itemStyle: { borderRadius: [5, 5, 0, 0] } },
-      { name: '전력', type: 'line', yAxisIndex: 1, smooth: true, data: data?.monthly?.map((row) => row.electricity_kwh) ?? [] },
+      { name: '전력', type: 'scatter', symbolSize: 11, data: sensitivity.electricity, itemStyle: { color: SERIES.electricity, borderColor: '#fff', borderWidth: 2 } },
+      { name: '가스 (kWh 환산)', type: 'scatter', symbolSize: 11, data: sensitivity.gas, itemStyle: { color: SERIES.gas, borderColor: '#fff', borderWidth: 2 } },
     ],
-  }), [data]);
+  }), [sensitivity]);
+  const carbonT = typeof data?.electricity_carbon_kg === 'number' ? data.electricity_carbon_kg / 1000 : null;
   if (loading) return <div className="page"><LoadingState /></div>;
   if (error || !data) return <div className="page"><ErrorState message={error} onRetry={reload} /></div>;
   return <div className="page">
     <PageHeader eyebrow="EVIDENCE ANALYSIS" title="관측 데이터 분석" description="월별 관측 흐름과 데이터 출처 품질을 함께 확인해 해석의 범위를 투명하게 유지합니다." action={<QualityBadge value={data.quality} />} />
     <section className="content-grid analysis-summary">
-      <article className="panel analysis-lead"><span className="eyebrow">ANNUAL SNAPSHOT</span><h2>{formatMetric(data.carbon_kg, 'kgCO₂eq')}</h2><p>현재 선택 섹터의 API 집계 탄소 배출량</p><div className="mini-metrics"><div><span>전력</span><strong>{formatMetric(data.electricity_kwh, 'kWh')}</strong></div><div><span>가스</span><strong>{formatMetric(data.gas_kwh, 'kWh')}</strong></div></div></article>
-      <article className="panel chart-panel"><div className="panel-title"><div><span>MONTHLY PROFILE</span><h3>에너지와 탄소의 월별 관계</h3></div><BarChart3 size={20} /></div>{data.monthly?.some(r=>r.carbon_kg!==null || r.electricity_kwh!==null) ? <Chart option={chartOption} height={270} ariaLabel="월별 에너지와 탄소 배출량 복합 차트" /> : <EmptyState />}</article>
+      <article className="panel analysis-lead"><span className="eyebrow">ANNUAL SNAPSHOT · 전력 탄소</span><h2>{carbonT === null ? '자료 없음' : `${formatMetric(carbonT, '', 1)} tCO₂eq`}</h2><p>선택 격자의 관측 전력 × 0.4541 kgCO₂eq/kWh (GIR 2024). 가스 탄소는 배출계수 확정 전이라 합산하지 않습니다.</p><div className="mini-metrics"><div><span>전력 (관측)</span><strong>{formatMetric(data.electricity_kwh, 'kWh')}</strong></div><div><span>가스 (관측, kWh 환산)</span><strong>{formatMetric(data.gas_kwh, 'kWh')}</strong></div><div><span>전력 원단위</span><strong>{formatMetric(data.normalized?.electricity_kwh_per_m2 ?? null, 'kWh/m²·년', 1)}</strong></div><div><span>세대당 전력</span><strong>{formatMetric(data.normalized?.electricity_kwh_per_household ?? null, 'kWh/세대·년')}</strong></div></div></article>
+      <article className="panel chart-panel"><div className="panel-title"><div><span>WEATHER SENSITIVITY</span><h3>난방도일과 월별 에너지</h3></div><BarChart3 size={20} /></div>{sensitivity.electricity.length || sensitivity.gas.length ? <><Chart option={chartOption} height={270} ariaLabel="월별 난방도일과 에너지 사용량 산점도" /><p className="muted">점 하나가 한 달입니다. 가스가 오른쪽 위로 모이면 난방 수요에 민감한 것입니다(상관관계이며 인과 추정이 아님).</p></> : <EmptyState description="같은 달의 에너지 관측과 기상(HDD)이 모두 있어야 표시합니다." />}</article>
     </section>
     <section className="content-grid official-context" aria-label="공식 도시 현황">
       <article className="panel chart-panel"><div className="panel-title"><div><span>SGIS {overlays.data?.meta.admin_reference_year ?? ''}</span><h3>행정동 인구</h3></div><Landmark size={20} /></div>{admin.length ? <><Chart option={populationOption} height={Math.max(260, admin.length * 18)} ariaLabel="SGIS 행정동별 인구 막대 차트" /><p className="muted">SGIS 행정구역 통계를 공식 행정동 경계 단위로만 표시합니다. 500m 격자에 배분하지 않으며 비공개(*)·결측은 막대가 없습니다.</p></> : <EmptyState title={overlays.loading ? '확인 중' : 'SGIS 행정동 자료 미수집'} description="수집 데이터 화면에서 SGIS 인구·가구를 LIMITED 이상으로 수집하면 표시됩니다." />}</article>

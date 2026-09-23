@@ -78,6 +78,10 @@ def _number(value: Any) -> float | None:
 def parse_asos_response(body: bytes) -> dict[str, Any]:
     try:
         payload = json.loads(body.decode("utf-8-sig"))
+        if isinstance(payload, dict) and "OpenAPI_ServiceResponse" in payload:
+            # data.go.kr gateway envelope (auth / rate limit / temporary HTTP error).
+            gateway = (payload.get("OpenAPI_ServiceResponse") or {}).get("cmmMsgHeader") or {}
+            payload = {"response": {"header": {"resultCode": gateway.get("returnReasonCode", ""), "resultMsg": gateway.get("errMsg", "")}, "body": {}}}
         response = payload.get("response", {})
         header, content = response.get("header", {}), response.get("body", {})
         code, message = str(header.get("resultCode", "")), str(header.get("resultMsg", ""))
@@ -87,7 +91,8 @@ def parse_asos_response(body: bytes) -> dict[str, Any]:
     except (UnicodeDecodeError, json.JSONDecodeError, AttributeError, TypeError, ValueError):
         try:
             root = ET.fromstring(body)
-            code, message = root.findtext(".//resultCode") or "", root.findtext(".//resultMsg") or ""
+            code = root.findtext(".//resultCode") or root.findtext(".//returnReasonCode") or ""
+            message = root.findtext(".//resultMsg") or root.findtext(".//errMsg") or ""
             items = [{child.tag: child.text for child in node} for node in root.findall(".//item")]
             total = int(root.findtext(".//totalCount") or len(items))
         except (ET.ParseError, ValueError) as exc:

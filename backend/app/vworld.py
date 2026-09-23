@@ -24,6 +24,9 @@ from .models import DataSource, Grid, RawDataAsset
 VWORLD_API_URL = "https://api.vworld.kr/req/data"
 VWORLD_GUIDE_URL = "https://www.vworld.kr/dev/v4dv_2ddataguide2_s001.do"
 _TO_5179 = Transformer.from_crs("EPSG:4326", "EPSG:5179", always_xy=True)
+_TO_4326 = Transformer.from_crs("EPSG:5179", "EPSG:4326", always_xy=True)
+DATASETS = {"zoning", "cadastral", "buildings"}
+GRID_SIZE_M = 500
 
 
 class VworldZoningArea(Base):
@@ -56,6 +59,60 @@ class CadastralParcel(Base):
     source: Mapped[str] = mapped_column(String)
     raw_source_id: Mapped[str | None] = mapped_column(String, nullable=True)
     collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class VworldBuilding(Base):
+    """Official 도로명주소 건물 footprint (VWorld LT_C_SPBD) with floors and use code.
+
+    ``grid_id`` is the project 500m cell containing the building's representative point;
+    ``centroid_lon/lat`` (EPSG:4326) serve viewport queries for the map.
+    """
+    __tablename__ = "vworld_buildings"
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    source_feature_id: Mapped[str] = mapped_column(String, index=True)
+    building_mgmt_no: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    name: Mapped[str | None] = mapped_column(String, nullable=True)
+    use_code: Mapped[str | None] = mapped_column(String, nullable=True)
+    use_label: Mapped[str | None] = mapped_column(String, nullable=True)
+    use_category: Mapped[str] = mapped_column(String, index=True, default="UNKNOWN")
+    above_floors: Mapped[int | None] = mapped_column(nullable=True)
+    below_floors: Mapped[int | None] = mapped_column(nullable=True)
+    footprint_m2: Mapped[float | None] = mapped_column(Float, nullable=True)
+    centroid_lon: Mapped[float] = mapped_column(Float, index=True)
+    centroid_lat: Mapped[float] = mapped_column(Float, index=True)
+    grid_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    source_crs: Mapped[str] = mapped_column(String)
+    geom: Mapped[object] = mapped_column(Geometry("GEOMETRY", srid=5179, spatial_index=True))
+    properties: Mapped[dict] = mapped_column(JSON)
+    geometry_repaired: Mapped[bool] = mapped_column(default=False)
+    source: Mapped[str] = mapped_column(String)
+    raw_source_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+def grid_cell_id(x: float, y: float) -> str:
+    """Project 500m cell id (EPSG:5179 lower-left corner) containing a metric point."""
+    return f"cell_{int(x // GRID_SIZE_M) * GRID_SIZE_M}_{int(y // GRID_SIZE_M) * GRID_SIZE_M}"
+
+
+def building_values(properties: dict[str, Any], geometry: Any, grid_ids: set[str] | None = None) -> dict[str, Any]:
+    """Normalized columns for one LT_C_SPBD feature (geometry in EPSG:5179)."""
+    from .building_use import classify_use, floors
+    point = geometry.representative_point()
+    lon, lat = _TO_4326.transform(point.x, point.y)
+    cell = grid_cell_id(point.x, point.y)
+    code = properties.get("bdtyp_cd")
+    label, category = classify_use(code)
+    name = str(properties.get("buld_nm") or "").strip() or None
+    return {
+        "building_mgmt_no": str(properties.get("bd_mgt_sn") or "").strip() or None,
+        "name": name, "use_code": str(code).strip() if code not in (None, "") else None,
+        "use_label": label, "use_category": category,
+        "above_floors": floors(properties.get("gro_flo_co")), "below_floors": floors(properties.get("und_flo_co")),
+        "footprint_m2": round(float(geometry.area), 2),
+        "centroid_lon": round(float(lon), 7), "centroid_lat": round(float(lat), 7),
+        "grid_id": cell if grid_ids is None or cell in grid_ids else None,
+    }
 
 
 class GridZoningStat(Base):
@@ -101,7 +158,7 @@ def zone_category(zone_name: str | None) -> str:
 def load_layer_config(path: str | Path | None = None) -> dict[str, Any]:
     config_path = Path(path) if path else Path(__file__).parents[1] / "config" / "vworld_layers.yaml"
     config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-    for name in ("zoning", "cadastral"):
+    for name in DATASETS:
         if not config.get(name, {}).get("dataset_id") or not config[name].get("source_crs"):
             raise ValueError(f"VWorld {name} layer configuration is incomplete")
     return config
@@ -201,9 +258,10 @@ def _grid_shapes(db: Any, scope: str) -> list[dict[str, Any]]:
 
 def _source(db: Any, dataset: str) -> DataSource:
     source_id = f"vworld_{dataset}"
-    names = {"zoning": "VWorld 도시지역 용도지역", "cadastral": "VWorld 연속지적도"}
+    names = {"zoning": "VWorld 도시지역 용도지역", "cadastral": "VWorld 연속지적도", "buildings": "VWorld 도로명주소 건물"}
+    categories = {"zoning": "용도지역", "cadastral": "지적", "buildings": "건축물 정보"}
     source = db.get(DataSource, source_id) or DataSource(
-        id=source_id, category="용도지역" if dataset == "zoning" else "지적",
+        id=source_id, category=categories[dataset],
         name=names[dataset], organization="국토교통부 / VWorld", source_url=VWORLD_GUIDE_URL,
         source_type="OFFICIAL", status="NOT_COLLECTED",
         limitation="VWorld 2D Data API의 전주시 분석격자 bbox 조회 결과입니다.",
@@ -222,7 +280,7 @@ def rebuild_grid_zoning_stats(db: Any) -> int:
 
 
 def collect_vworld(db: Any, dataset: str, scope: str = "smoke", *, client: CachedClient | None = None, api_key: str | None = None, domain: str | None = None, data_dir: str | Path | None = None) -> dict[str, int]:
-    if dataset not in {"zoning", "cadastral"} or scope not in {"smoke", "limited", "full"}:
+    if dataset not in DATASETS or scope not in {"smoke", "limited", "full"}:
         raise ValueError("invalid VWorld dataset or scope")
     source = _source(db, dataset);db.commit()
     key = (api_key or os.getenv("VWORLD_API_KEY", "")).strip()
@@ -238,7 +296,8 @@ def collect_vworld(db: Any, dataset: str, scope: str = "smoke", *, client: Cache
     session=client or CachedClient(root/"cache"/"vworld",min_interval=0.3)
     url=os.getenv("VWORLD_DATA_URL",VWORLD_API_URL);domain_value=domain or os.getenv("VWORLD_DOMAIN","http://localhost")
     requested=normalized=repaired=empty=0
-    model=VworldZoningArea if dataset=="zoning" else CadastralParcel
+    model={"zoning":VworldZoningArea,"cadastral":CadastralParcel,"buildings":VworldBuilding}[dataset]
+    grid_ids=set(db.scalars(select(Grid.id))) if dataset=="buildings" else set()
     for grid in grids:
         page=1;grid_features=0
         while True:
@@ -256,6 +315,9 @@ def collect_vworld(db: Any, dataset: str, scope: str = "smoke", *, client: Cache
                 if dataset=="zoning":
                     row=row or VworldZoningArea(id=ident,source_feature_id=feature["id"],source_crs=layer["source_crs"],source="VWorld")
                     row.zone_name=props.get("uname");row.zone_code=props.get("ucode") or props.get("zone_code") or feature["id"]
+                elif dataset=="buildings":
+                    row=row or VworldBuilding(id=ident,source_feature_id=feature["id"],source_crs=layer["source_crs"],source="VWorld")
+                    for column,value in building_values(props,feature["geometry"],grid_ids).items():setattr(row,column,value)
                 else:
                     row=row or CadastralParcel(id=ident,source_feature_id=feature["id"],source_crs=layer["source_crs"],source="VWorld")
                     row.pnu=str(props.get("pnu") or "") or None;row.legal_dong_code=row.pnu[:10] if row.pnu else None;row.lot_main_no=row.pnu[-8:-4] if row.pnu else None;row.lot_sub_no=row.pnu[-4:] if row.pnu else None
@@ -268,5 +330,11 @@ def collect_vworld(db: Any, dataset: str, scope: str = "smoke", *, client: Cache
         coverage.pages=page;coverage.feature_count=grid_features;coverage.status="EMPTY_VALID" if grid_features==0 else "SUCCESS";coverage.collected_at=datetime.now(timezone.utc);db.add(coverage);db.commit()
     stored=db.scalar(select(func.count()).select_from(model)) or 0
     intersections=rebuild_grid_zoning_stats(db) if dataset=="zoning" else 0
-    source.status="COLLECTED" if scope == "full" else "PARTIAL";source.raw_row_count=requested;source.normalized_row_count=stored;source.missing_count=0;source.reference_period="수집 시점";source.quality=f"{layer['dataset_id']} feature {stored}개 / geometry 보정 {repaired}개";source.collected_at=datetime.now(timezone.utc);db.commit()
+    quality=f"{layer['dataset_id']} feature {stored}개 / geometry 보정 {repaired}개"
+    if dataset=="buildings":
+        with_floors=db.scalar(select(func.count()).select_from(VworldBuilding).where(VworldBuilding.above_floors.is_not(None))) or 0
+        with_use=db.scalar(select(func.count()).select_from(VworldBuilding).where(VworldBuilding.use_category!="UNKNOWN")) or 0
+        covered=db.scalar(select(func.count()).select_from(VworldGridCoverage).where(VworldGridCoverage.dataset=="buildings")) or 0
+        quality=f"건물 {stored:,}동 / 지상층수 확인 {with_floors:,}동 / 용도코드 확인 {with_use:,}동 / 요청 격자 {covered}개"
+    source.status="COLLECTED" if scope == "full" else "PARTIAL";source.raw_row_count=requested;source.normalized_row_count=stored;source.missing_count=0;source.reference_period="수집 시점";source.quality=quality;source.collected_at=datetime.now(timezone.utc);db.commit()
     return {"requests":requested,"normalized":stored,"geometry_repaired":repaired,"empty_requests":empty,"grid_intersections":intersections}

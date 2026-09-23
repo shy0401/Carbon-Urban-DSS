@@ -103,3 +103,16 @@ def test_asos_nodata_is_empty_and_db_error_is_not_reported_as_auth_failure():
     with pytest.raises(ExternalError) as raised:
         parse_asos_response(db_error)
     assert '인증' not in str(raised.value)
+
+
+def test_gateway_envelope_is_an_error_not_an_empty_month():
+    import json as _json
+    import pytest as _pytest
+    from app.cache import ExternalError
+    from app.kma_asos import parse_asos_response
+    auth = _json.dumps({'OpenAPI_ServiceResponse': {'cmmMsgHeader': {'errMsg': 'SERVICE_KEY_IS_NOT_REGISTERED_ERROR', 'returnReasonCode': '30'}}}).encode()
+    with _pytest.raises(ExternalError, match='인증 실패'):
+        parse_asos_response(auth)
+    temporary = b'<OpenAPI_ServiceResponse><cmmMsgHeader><errMsg>HTTP_ERROR</errMsg><returnReasonCode>04</returnReasonCode></cmmMsgHeader></OpenAPI_ServiceResponse>'
+    with _pytest.raises(ExternalError, match='provider_code=04'):
+        parse_asos_response(temporary)

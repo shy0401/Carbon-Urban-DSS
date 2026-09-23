@@ -30,6 +30,9 @@ async def lifespan(app):
     with Session() as db:
         seed_sources(db)
         kma_asos.backfill_weather_observations(db)
+        # K-apt rows stored before the no-report rule (all-zero months) must not stay as 0 kWh.
+        try:kapt_energy.reclassify_existing(db)
+        except Exception:db.rollback()
         # Import durable real raw assets on first startup; subsequent boots reuse normalized data.
         for source,model,collector in [('regions',Region,collect_regions),('buildings',Building,collect_spatial),('weather',WeatherMonthly,collect_weather)]:
             if db.scalar(select(func.count()).select_from(model))==0:
@@ -67,7 +70,12 @@ def health():
 
 @app.get('/api/dashboard')
 def get_dashboard(year:int=Query(DEFAULT_YEAR,ge=2000,le=2100),grid_id:str|None=None):
-    with Session() as db:return dashboard(db,grid_id,year)
+    from .overlays import grid_context
+    with Session() as db:
+        data=dashboard(db,grid_id,year)
+        # Official context of the same grid (zoning, overlapping 행정동, buildings, K-apt complexes).
+        data['context']=grid_context(db,data['selected_sector']['grid_id'] if data['selected_sector'] else None)
+        return data
 
 @app.get('/api/sources')
 def sources(year:int=Query(DEFAULT_YEAR,ge=2000,le=2100)):
@@ -140,7 +148,7 @@ def source_detail(source_id:str):
         return dict(source=details,raw_preview=raw_preview(assets[0]) if assets else [],normalized_preview=preview,jobs=jobs,assets=asset_rows,errors=[a.error for a in assets if a.error]+[e for j in jobs for e in j['errors']],coverage={'period':source.reference_period,'geography':source.geographic_coverage,'raw_rows':source.raw_row_count,'normalized_rows':source.normalized_row_count,'missing':source.missing_count},fields=list(preview[0]) if preview else [],quality_scores=details.get('quality_scores'),license='ODbL' if source.source_type=='FALLBACK' and source_id in ('buildings','boundary') else '공급기관 원문 이용조건 참조',manual_import={'formats':['CSV','XLSX','GeoJSON','ZIP(SHP+SHX+DBF+PRJ)'],'upload_location':'수집 데이터 → 파일 업로드','source_url':source.source_url})
 
 class CollectionInput(BaseModel):
-    datasets:list[Literal['energy','weather','kapt_energy','kma_asos','sgis','vworld_zoning','vworld_cadastral']]=Field(min_length=1,max_length=7)
+    datasets:list[Literal['energy','weather','kapt_energy','kma_asos','sgis','vworld_zoning','vworld_cadastral','vworld_buildings']]=Field(min_length=1,max_length=8)
     start_month:str=Field(default='2025-01',pattern=r'^20\d{2}-(0[1-9]|1[0-2])$')
     end_month:str=Field(default='2025-12',pattern=r'^20\d{2}-(0[1-9]|1[0-2])$')
     region:str='전주시'
@@ -185,7 +193,7 @@ def collection_detail(job_id:str):
         return serialize(job)
 
 class JobInput(BaseModel):
-    source:Literal['energy','weather','kapt_energy','kma_asos','sgis','vworld_zoning','vworld_cadastral']
+    source:Literal['energy','weather','kapt_energy','kma_asos','sgis','vworld_zoning','vworld_cadastral','vworld_buildings']
     start_month:str='2025-01'
     end_month:str='2025-12'
     region:str='전주시'
@@ -197,37 +205,97 @@ def create_v1_job(request:JobInput):
     except ValueError:raise HTTPException(422,'수집 기간 또는 지역 형식이 올바르지 않습니다') from None
     return create_collection(validated)
 
+def grid_energy_properties(db,year,factors):
+    """Observed energy per grid for the map (sums, months, 12-month intensities)."""
+    from .domain import carbon_kg
+    from .grid_metrics import grid_energy_intensity
+    from .kapt import ApartmentComplex
+    within=EnergyMonthly.use_ym.between(f'{year}01',f'{year}12')
+    rows=db.scalars(select(EnergyMonthly).where(within,EnergyMonthly.grid_id.is_not(None),EnergyMonthly.usage_kwh.is_not(None))).all()
+    result={}
+    for r in rows:
+        p=result.setdefault(r.grid_id,{'electricity_kwh':None,'gas_kwh':None,'electricity_months':set(),'gas_months':set(),'parcels':set()})
+        key='electricity' if r.energy_type=='ELECTRICITY' else 'gas'
+        p[key+'_kwh']=(p[key+'_kwh'] or 0)+r.usage_kwh;p[key+'_months'].add(r.use_ym);p['parcels'].add((r.sigungu_code,r.bjdong_code,r.bun,r.ji))
+    from .grid_metrics import validated_complex_areas
+    complexes=list(db.scalars(select(ApartmentComplex)))
+    households={row.kapt_code:row.households for row in complexes}
+    areas,_=validated_complex_areas(complexes)
+    intensity=grid_energy_intensity([{'grid_id':r.grid_id,'energy_type':r.energy_type,'use_ym':r.use_ym,'usage_kwh':r.usage_kwh,'kapt_code':(r.raw_record or {}).get('kapt_code'),'matched_gross_floor_area_m2':(r.raw_record or {}).get('matched_gross_floor_area_m2')} for r in rows],households,areas)
+    electricity_factor=factors.get('ELECTRICITY')
+    for grid_id,p in result.items():
+        e=intensity.get(grid_id,{}).get('ELECTRICITY') or {};g=intensity.get(grid_id,{}).get('GAS') or {}
+        p['electricity_months']=len(p['electricity_months']);p['gas_months']=len(p['gas_months']);p['energy_parcels']=len(p.pop('parcels'))
+        p['electricity_complete_parcels']=e.get('complete_parcels') or 0;p['electricity_observed_parcels']=e.get('observed_parcels') or 0
+        p['electricity_area_parcels']=e.get('area_parcels') or 0;p['electricity_household_parcels']=e.get('household_parcels') or 0
+        p['electricity_kwh_per_m2']=e.get('kwh_per_m2');p['electricity_kwh_per_household']=e.get('kwh_per_household')
+        p['electricity_area_m2']=e.get('area_m2');p['electricity_households']=e.get('households')
+        p['gas_kwh_per_m2']=g.get('kwh_per_m2');p['gas_complete_parcels']=g.get('complete_parcels') or 0;p['gas_observed_parcels']=g.get('observed_parcels') or 0
+        p['gas_area_parcels']=g.get('area_parcels') or 0;p['gas_area_m2']=g.get('area_m2')
+        # 12-month totals of parcels observed in every month (partial-year parcels excluded).
+        p['electricity_kwh_annual']=e.get('kwh');p['gas_kwh_annual']=g.get('kwh')
+        p['electricity_carbon_kg_annual']=carbon_kg(e.get('kwh'),electricity_factor)
+        p['electricity_carbon_kg']=carbon_kg(p['electricity_kwh'],electricity_factor)
+        p['electricity_carbon_kg_per_m2']=carbon_kg(p['electricity_kwh_per_m2'],electricity_factor)
+    return result
+
 @app.get('/api/map')
 def map_data(year:int=Query(DEFAULT_YEAR,ge=2000,le=2100)):
+    from .domain import carbon_kg
+    from .overlays import city_boundary,complex_features,grid_building_summary
     with Session() as db:
         sector=db.get(TestbedSector,'prototype')
+        factors=factors_for(db,year)
+        energy=grid_energy_properties(db,year,factors)
+        zoning=grid_zoning_summary(db)
+        buildings=grid_building_summary(db)
+        complexes=complex_features(db)
+        by_grid={}
+        for feature in complexes['features']:
+            c=feature['properties'];item=by_grid.setdefault(c.get('grid_id'),{'complex_count':0,'complex_households':None,'complex_gfa_m2':None,'complex_gfa_excluded':0})
+            item['complex_count']+=1
+            if c.get('households') is not None:item['complex_households']=(item['complex_households'] or 0)+c['households']
+            # Only plausible published floor areas are summed; the rest are counted as excluded.
+            if c.get('floor_area_status')=='OK':item['complex_gfa_m2']=(item['complex_gfa_m2'] or 0)+c['gross_floor_area_m2']
+            else:item['complex_gfa_excluded']+=1
+        empty_energy={'electricity_kwh':None,'gas_kwh':None,'electricity_months':0,'gas_months':0,'energy_parcels':0,'electricity_complete_parcels':0,'electricity_observed_parcels':0,'electricity_area_parcels':0,'electricity_household_parcels':0,'electricity_kwh_per_m2':None,'electricity_kwh_per_household':None,'electricity_area_m2':None,'electricity_households':None,'gas_kwh_per_m2':None,'gas_complete_parcels':0,'gas_observed_parcels':0,'gas_area_parcels':0,'gas_area_m2':None,'electricity_kwh_annual':None,'gas_kwh_annual':None,'electricity_carbon_kg_annual':None,'electricity_carbon_kg':None,'electricity_carbon_kg_per_m2':None}
         grids=[]
         for r in db.scalars(select(Grid)):
-            f=dict(r.geojson);f['properties']=dict(r.properties,selected=bool(sector and sector.grid_id==r.id),electricity_kwh=None,gas_kwh=None,carbon_kg=None,completeness=0)
-            grids.append(f)
-        for grid_id,typ,total,months in db.execute(select(EnergyMonthly.grid_id,EnergyMonthly.energy_type,func.sum(EnergyMonthly.usage_kwh),func.count(func.distinct(EnergyMonthly.use_ym))).where(EnergyMonthly.grid_id.is_not(None),EnergyMonthly.usage_kwh.is_not(None),EnergyMonthly.use_ym.between(f'{year}01',f'{year}12')).group_by(EnergyMonthly.grid_id,EnergyMonthly.energy_type)):
-            for f in grids:
-                if f['properties']['id']==grid_id:
-                    f['properties']['electricity_kwh' if typ=='ELECTRICITY' else 'gas_kwh']=total
-                    f['properties']['completeness']+=months/24*100
-        from .domain import carbon_kg
-        factors=factors_for(db,year)
-        for f in grids:
-            p=f['properties'];e=carbon_kg(p.get('electricity_kwh'),factors.get('ELECTRICITY'));g=carbon_kg(p.get('gas_kwh'),factors.get('GAS'))
-            p['carbon_kg']=e+g if e is not None and g is not None else None
-            p['electricity_carbon_kg']=e
-            meta=sector.metadata_json if sector and sector.grid_id==p.get('id',p.get('grid_id')) else {}
-            area=meta.get('baseline_floor_area_m2') if meta.get('baseline_year')==year else None
-            p['carbon_intensity']=p['carbon_kg']/area if p['carbon_kg'] is not None and area else None
-            p['far']=None;p['population_density']=None
-        zoning=grid_zoning_summary(db)
-        for f in grids:
-            p=f['properties'];z=zoning.get(p.get('id'))
+            f=dict(r.geojson);base=dict(r.properties);grid_id=base.get('id',r.id)
+            p={'id':grid_id,'area_m2':r.area_m2 or 250000,'x':base.get('x'),'y':base.get('y'),'selected':bool(sector and sector.grid_id==grid_id)}
+            p.update(energy.get(grid_id,empty_energy))
+            g=carbon_kg(p['gas_kwh'],factors.get('GAS'))
+            p['carbon_kg']=p['electricity_carbon_kg']+g if p['electricity_carbon_kg'] is not None and g is not None else None
+            p['completeness']=round((p['electricity_months']+p['gas_months'])/24*100,1)
+            z=zoning.get(grid_id)
+            p['zoning_status']=z['zoning_status'] if z else None
             p['residential_zone_ratio']=z['residential_zone_ratio'] if z else None
             p['urban_zone_ratio']=z['urban_zone_ratio'] if z else None
             p['dominant_zone']=z.get('dominant_zone') if z else None
+            p['zone_shares']=z['shares'] if z else None
+            b=buildings.get(grid_id)
+            if b:
+                p.update(building_source='VWORLD',building_status=b['status'],building_count=b['building_count'],footprint_m2=b['footprint_m2'],coverage_pct=b['coverage_pct'],far_est_pct=b['far_est_pct'],floor_area_est_m2=b['floor_area_est_m2'],avg_floors=b['avg_floors'],max_floors=b['max_floors'],floors_known_pct=b['floors_known_pct'],building_density=b['density_per_km2'],residential_building_share=b['residential_share_pct'],dominant_use=b['dominant_use'],use_share_pct=b['category_share_pct'])
+            else:
+                # Fallback: OSM apartment outlines only (not every building).
+                p.update(building_source='OSM' if base.get('building_count') else None,building_status=None,building_count=base.get('building_count'),footprint_m2=None,coverage_pct=None,far_est_pct=None,floor_area_est_m2=None,avg_floors=None,max_floors=None,floors_known_pct=None,building_density=None,residential_building_share=None,dominant_use=None,use_share_pct=None)
+            p.update(by_grid.get(grid_id,{'complex_count':0,'complex_households':None,'complex_gfa_m2':None,'complex_gfa_excluded':0}))
+            f['properties']=p;grids.append(f)
+        official_buildings=any(b['building_count'] for b in buildings.values())
         spatial_path=DATA/'spatial.json';spatial=json.loads(spatial_path.read_text(encoding='utf-8')) if spatial_path.exists() else {}
-        return {'grids':{'type':'FeatureCollection','features':grids},'buildings':{'type':'FeatureCollection','features':[b.geojson for b in db.scalars(select(Building))]},'boundary':spatial.get('boundary',{'type':'FeatureCollection','features':[]}),'selected_sector':serialize(sector) if sector else None,'center':[127.148,35.8242],'crs':'EPSG:5179','grid_size_m':500,'year':year,'offline_mode':offline_mode()}
+        official_boundary=city_boundary(db)
+        boundary=official_boundary or spatial.get('boundary',{'type':'FeatureCollection','features':[]})
+        electricity_factor=factors.get('ELECTRICITY')
+        return {
+            'grids':{'type':'FeatureCollection','features':grids},
+            'buildings':{'type':'FeatureCollection','features':[] if official_buildings else [b.geojson for b in db.scalars(select(Building))]},
+            'buildings_mode':'viewport' if official_buildings else 'embedded',
+            'buildings_source':'VWorld LT_C_SPBD 도로명주소 건물(화면 범위 조회)' if official_buildings else 'OpenStreetMap 공동주택 윤곽(대체 자료, 전체 건물 아님)',
+            'boundary':boundary,'boundary_source':official_boundary['features'][0]['properties']['source'] if official_boundary else 'OpenStreetMap 행정경계(대체 자료)',
+            'complexes':complexes,'complex_floor_area_issues':sum(1 for f in complexes['features'] if f['properties'].get('floor_area_status')!='OK'),
+            'factors':{'electricity':{'value':electricity_factor['factor'],'unit':electricity_factor['factor_unit'],'source':electricity_factor.get('source'),'reference_year':electricity_factor.get('reference_year')} if electricity_factor else None,'gas':None if not factors.get('GAS') else {'value':factors['GAS']['factor'],'unit':factors['GAS']['factor_unit']}},
+            'selected_sector':serialize(sector) if sector else None,'center':[127.148,35.8242],'crs':'EPSG:5179','grid_size_m':500,'grid_area_m2':250000,'year':year,'offline_mode':offline_mode(),
+        }
 
 @app.get('/api/grids/{grid_id}')
 def grid_detail(grid_id:str,year:int=Query(DEFAULT_YEAR,ge=2000,le=2100)):
@@ -260,7 +328,8 @@ class ScenarioInput(BaseModel):
 def scenario(request:ScenarioInput):
     with Session() as db:
         if request.grid_id and not db.get(Grid,request.grid_id):raise HTTPException(404,'격자를 찾을 수 없습니다')
-        baseline=dashboard(db,request.grid_id,request.year);result=scenario_calculation(request.model_dump(),baseline['monthly'],baseline['baseline_floor_area_m2'],factors_for(db,request.year))
+        baseline=dashboard(db,request.grid_id,request.year);result=scenario_calculation(request.model_dump(),baseline['baseline_monthly'],baseline['baseline_floor_area_m2'],factors_for(db,request.year))
+        result['baseline_scope']=baseline.get('baseline_scope')
         result['id']=str(uuid.uuid4());result['quality']='기준 에너지·연면적 부족' if not baseline['baseline_floor_area_m2'] else '공간 매칭된 관측 원단위 기반'
         result['calculations']={key:result[key] for key in ['total_footprint','gross_floor_area','far','bcr','households','population','green_area_m2']}
         result['baseline']={k:baseline.get(k) for k in ['current_far','current_bcr','households','population','gross_floor_area_m2','developable_site_area_m2']}
@@ -276,7 +345,8 @@ def optimization(request:OptimizationInput):
     from .modeling import optimize
     with Session() as db:
         baseline=dashboard(db,request.grid_id,request.year)
-        result=optimize(request.model_dump(),baseline['monthly'],baseline['baseline_floor_area_m2'],factors_for(db,request.year))
+        result=optimize(request.model_dump(),baseline['baseline_monthly'],baseline['baseline_floor_area_m2'],factors_for(db,request.year))
+        result['baseline_scope']=baseline.get('baseline_scope')
         sid=str(uuid.uuid4());db.add(Scenario(id=sid,inputs=dict(request.model_dump(),type='OPTIMIZATION')));db.flush();db.add(ScenarioResult(id=sid,result=result));db.commit();return result
 
 @app.get('/api/model')

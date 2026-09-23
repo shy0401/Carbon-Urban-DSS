@@ -23,20 +23,22 @@ def run_collection(job_id):
                 def progress(fraction,message):
                     job.progress=(i+fraction)/len(job.datasets)*100;job.message=message;db.commit()
                 if dataset=='energy':
-                    errors.extend(collect_energy(db,job.start_month,job.end_month,progress))
+                    errors.extend(collect_energy(db,job.start_month,job.end_month,progress,scope))
                     from .kapt import merge_energy_coordinates
                     merge_energy_coordinates(db)
                 elif dataset=='weather': collect_weather(db,job.start_month,job.end_month)
                 elif dataset=='kapt_energy':
                     from .kapt_energy import collect_kapt_energy
-                    collect_kapt_energy(db,int(job.start_month[:4]),scope)
+                    stats=collect_kapt_energy(db,int(job.start_month[:4]),scope)
+                    if stats.get('failed'):
+                        errors.append({'dataset':dataset,'message':f"{stats['failed']}개 단지·월이 제공기관 일시 오류로 비어 있습니다. 다시 실행하면 그 월만 재요청합니다"})
                 elif dataset=='kma_asos':
                     from .kma_asos import collect_asos
                     collect_asos(db,int(job.start_month[:4]),scope)
                 elif dataset=='sgis':
                     from .sgis import collect_sgis_admin
                     collect_sgis_admin(db,int(os.getenv('SGIS_BASE_YEAR','2024')),scope)
-                elif dataset in ('vworld_zoning','vworld_cadastral'):
+                elif dataset in ('vworld_zoning','vworld_cadastral','vworld_buildings'):
                     from .vworld import collect_vworld
                     collect_vworld(db,dataset.removeprefix('vworld_'),scope)
                 else: raise ValueError('지원하지 않는 자동 수집 데이터셋')
