@@ -73,14 +73,3 @@ export function share(part: number | null | undefined, total: number | null | un
   if (part === null || part === undefined || !total) return null;
   return (part / total) * 100;
 }
-
-export type DataClass = 'OBSERVED' | 'CALCULATED' | 'ESTIMATED' | 'SCENARIO' | 'FALLBACK' | 'MISSING';
-
-export const DATA_CLASS: Record<DataClass, { label: string; css: string; hint: string }> = {
-  OBSERVED: { label: '관측', css: 'obs', hint: '공공기관이 측정·공표한 값을 그대로 사용' },
-  CALCULATED: { label: '계산', css: 'calc', hint: '관측값과 공식 계수·면적으로 계산 (산식 공개)' },
-  ESTIMATED: { label: '추정', css: 'est', hint: '가정이 포함된 근사값 (예: 건축면적 × 층수)' },
-  SCENARIO: { label: '시나리오', css: 'scen', hint: '계획안 입력에 따른 가정 결과' },
-  FALLBACK: { label: '대체', css: 'fb', hint: '공식 자료가 없어 대체 출처를 사용' },
-  MISSING: { label: '미확보', css: 'miss', hint: '자료가 없어 계산하지 않음 (0이 아님)' },
-};

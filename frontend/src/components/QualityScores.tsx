@@ -11,7 +11,7 @@ const fields: Array<[ComponentScoreKey, string]> = [
 
 export function QualityScores({ scores }: { scores: Scores | null | undefined }) {
   return <div className="quality-scores">
-    {fields.map(([key, label]) => { const dimension = dimensionFor(key); const value = scores?.[key] ?? scores?.dimensions?.[dimension]?.score; const evidence = scores?.dimensions?.[dimension]?.evidence; return <div className="score-row" key={key}><div><span>{label}</span><strong>{scoreText(value)}</strong></div><div className="score-track"><span style={{ width: scoreWidth(value) }} /></div>{evidence && <small>{evidence}</small>}</div>; })}
+    {fields.map(([key, label]) => { const dimension = dimensionFor(key); const value = scores?.[key] ?? scores?.dimensions?.[dimension]?.score; const evidence = scores?.dimensions?.[dimension]?.evidence; return <div className="score-row" key={key}><div><span>{label}</span><strong>{scoreText(value)}</strong></div><div className={`score-track${value === null || value === undefined ? ' is-missing' : ''}`}>{value === null || value === undefined ? <span className="sr-only">점수 미산정</span> : <span style={{ width: scoreWidth(value) }} />}</div>{evidence && <small>{evidence}</small>}</div>; })}
     <div className="overall-score"><span>종합 품질</span><strong>{scoreText(scores?.overall)}</strong><small>구성 점수와 함께 해석하세요</small></div>
   </div>;
 }

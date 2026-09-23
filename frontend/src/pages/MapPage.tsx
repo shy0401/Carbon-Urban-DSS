@@ -3,13 +3,14 @@ import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import { ChevronDown, Layers3, LocateFixed, RefreshCw, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { DataClassChip } from '../components/DataClassChip';
+import { MissingValue } from '../components/MissingValue';
+import { ProvenanceBadge } from '../components/ProvenanceBadge';
 import { PageHeader } from '../components/PageHeader';
 import { ErrorState, LoadingState } from '../components/Status';
 import { useApi } from '../hooks/useApi';
 import { useAnalysisScope } from '../hooks/useAnalysisScope';
 import { api } from '../lib/api';
-import { formatMetric, type DataClass } from '../lib/format';
+import { formatMetric } from '../lib/format';
 import { classify, METRIC_GROUPS, METRICS, MISSING_COLOR, rangeLabel, stepColor, USE_COLORS, USE_NAME, withMetricValues, ZONE_NAME, type Classification, type MetricDef } from '../lib/mapMetrics';
 import type { BuildingViewport, DashboardData, GridProps, MapData, OverlayData } from '../types';
 
@@ -171,7 +172,7 @@ export function MapPage() {
           </section>}
         </div>
         <section className="map-legend floating-panel" aria-label="지표 범례">
-          <div className="legend-head"><div><strong>{metric.label}</strong><small>{metric.unit}</small></div><DataClassChip value={classification.valued ? metric.dataClass : 'MISSING'} /></div>
+          <div className="legend-head"><div><strong>{metric.label}</strong><small>{metric.unit}</small></div></div>
           <p className="legend-def">{metric.definition}<br /><code>{metric.formula}</code></p>
           {classification.classes.length ? <ul className="legend-classes">{classification.classes.map((c, i) => <li key={i}><i style={{ background: c.color }} /><span>{rangeLabel(c, metric.digits, i === classification.classes.length - 1)}</span><em>{c.count}격자</em></li>)}<li className="missing"><i /><span>자료 없음 (0 아님)</span><em>{classification.missing}격자</em></li></ul> : <p className="map-empty-hint">이 지표는 아직 계산할 관측 자료가 없습니다. 모든 격자를 결측(회색)으로 표시합니다.</p>}
           <div className="legend-coverage"><div><span>값 있는 격자</span><b>{classification.valued}/{total} ({formatMetric(classification.valued / Math.max(total, 1) * 100, '%', 1)})</b></div><div className="ratio-track"><span style={{ width: `${classification.valued / Math.max(total, 1) * 100}%` }} /></div></div>
@@ -210,13 +211,12 @@ function GridDetail({ props: p, name, metric, classification, details, detailsLo
   const cls = value === null ? null : classification.classes.find((c, i) => i === classification.classes.length - 1 ? value >= c.from : value >= c.from && value < c.to);
   const detailMatches = details?.selected_sector && String(details.selected_sector.grid_id) === p.id;
   const months = detailMatches ? details?.monthly ?? [] : [];
-  const buildingClass: DataClass = p.building_source === 'OSM' ? 'FALLBACK' : 'OBSERVED';
   return <aside className="map-detail floating-panel" aria-label="선택 격자 상세">
     <div className="panel-title"><div><span>SELECTED GRID</span><h3>{name || '선택 격자'}</h3><code className="grid-id">{p.id}</code></div><div className="detail-actions"><button className="icon-link" aria-label="선택 격자로 확대" onClick={onFocus}><LocateFixed size={18} /></button><button className="icon-link subtle" aria-label="상세 닫기" onClick={onClose}><X size={18} /></button></div></div>
-    <div className="detail-section"><header><h4>{metric.label}</h4><DataClassChip value={value === null ? 'MISSING' : metric.dataClass} /></header>
+    <div className="detail-section"><header><h4>{metric.label}</h4>{value === null && <ProvenanceBadge kind="missing" />}</header>
       <dl className="fact-list"><Fact label={cls ? <span className="tip-class"><i style={{ background: cls.color, display: 'inline-block', width: 10, height: 10, borderRadius: 3, marginRight: 6 }} />{metric.unit}</span> : metric.unit} value={value} unit="" digits={metric.digits} why={value === null ? '이 격자에는 이 지표를 계산할 관측 자료가 없습니다.' : metric.basis(p) ?? undefined} /></dl>
     </div>
-    <div className="detail-section"><header><h4>에너지 관측 ({months.length ? `${String(months[0]?.use_ym).slice(0, 4)}년` : '연간'})</h4><DataClassChip value={p.electricity_months || p.gas_months ? 'OBSERVED' : 'MISSING'} /></header>
+    <div className="detail-section"><header><h4>에너지 관측 ({months.length ? `${String(months[0]?.use_ym).slice(0, 4)}년` : '연간'})</h4>{!p.electricity_months && !p.gas_months && <ProvenanceBadge kind="missing" />}</header>
       <dl className="fact-list">
         <Fact label="전력 (12개월 관측 지번)" value={p.electricity_kwh_annual as number | null} unit="kWh" why={p.electricity_complete_parcels ? `지번 ${p.electricity_complete_parcels}곳` : p.electricity_months ? `관측 ${p.electricity_months}/12개월 — 12개월이 모두 있는 지번이 없어 연간값을 만들지 않음` : '관측 없음'} />
         <Fact label="가스 (12개월 관측 지번)" value={p.gas_kwh_annual as number | null} unit="kWh" why={p.gas_complete_parcels ? `지번 ${p.gas_complete_parcels}곳 · 건축HUB kWh 환산` : '관측 없음'} />
@@ -224,7 +224,7 @@ function GridDetail({ props: p, name, metric, classification, details, detailsLo
       {months.length > 0 && <div style={{ marginTop: 10 }}><MonthRow label="전력" months={months.map((r) => r.electricity_kwh !== null)} /><MonthRow label="가스" months={months.map((r) => r.gas_kwh !== null)} /></div>}
       {!months.length && detailsLoading && <p className="muted">월별 관측 확인 중…</p>}
     </div>
-    <div className="detail-section"><header><h4>원단위 · 탄소</h4><DataClassChip value={p.electricity_kwh_per_m2 !== null ? 'CALCULATED' : 'MISSING'} /></header>
+    <div className="detail-section"><header><h4>원단위 · 탄소</h4></header>
       <dl className="fact-list">
         <Fact label="전력 원단위" value={p.electricity_kwh_per_m2} unit="kWh/m²·년" digits={1} why={p.electricity_area_m2 ? `연면적 ${formatMetric(p.electricity_area_m2, 'm²')} (${p.electricity_area_parcels}곳)` : undefined} />
         <Fact label="세대당 전력" value={p.electricity_kwh_per_household} unit="kWh/세대·년" why={p.electricity_households ? `${formatMetric(p.electricity_households, '세대')} · 월 ${formatMetric((p.electricity_kwh_per_household ?? 0) / 12, 'kWh')}` : undefined} />
@@ -233,7 +233,7 @@ function GridDetail({ props: p, name, metric, classification, details, detailsLo
         <Fact label="가스 탄소" value={null} unit="" missingText="계수 확정 전 (0 아님)" />
       </dl>
     </div>
-    <div className="detail-section"><header><h4>도시 형태</h4><DataClassChip value={p.building_count === null ? 'MISSING' : buildingClass} /></header>
+    <div className="detail-section"><header><h4>도시 형태</h4>{p.building_count === null ? <ProvenanceBadge kind="missing" /> : p.building_source === 'OSM' && <ProvenanceBadge kind="fallback" detail="OSM" />}</header>
       <dl className="fact-list">
         <Fact label="건물 수" value={p.building_count} unit="동" why={p.building_source === 'OSM' ? 'OSM 공동주택 윤곽만 (전체 건물 아님)' : p.building_count !== null ? `밀도 ${formatMetric(p.building_density, '동/km²')}` : '건물 레이어 미수집'} />
         <Fact label="건폐율 근사" value={p.coverage_pct} unit="%" digits={1} why={p.footprint_m2 !== null ? `건축면적 ${formatMetric(p.footprint_m2, 'm²')} ÷ 250,000 m²` : undefined} />
@@ -242,10 +242,10 @@ function GridDetail({ props: p, name, metric, classification, details, detailsLo
       </dl>
       {p.use_share_pct && Object.keys(p.use_share_pct).length > 0 && <ShareBar title="건축면적 기준 용도 구성" shares={p.use_share_pct} colors={Object.fromEntries(USE_COLORS)} names={USE_NAME} />}
     </div>
-    <div className="detail-section"><header><h4>토지이용 (용도지역)</h4><DataClassChip value={p.zone_shares ? 'CALCULATED' : 'MISSING'} /></header>
+    <div className="detail-section"><header><h4>토지이용 (용도지역)</h4>{!p.zone_shares && <ProvenanceBadge kind="missing" />}</header>
       {p.zone_shares && Object.keys(p.zone_shares).length ? <ShareBar title="격자 면적 중 용도지역 비율" shares={p.zone_shares} colors={Object.fromEntries(ZONE_LEGEND.map(([k, , c]) => [k, c]))} names={ZONE_NAME} rest="도시지역 외·미지정" /> : <p className="map-empty-hint">{p.zoning_status ? '조회했으나 이 격자에 도시지역 용도지역 도형이 없습니다.' : '용도지역 미수집 격자입니다.'}</p>}
     </div>
-    <div className="detail-section"><header><h4>공동주택 (K-apt)</h4><DataClassChip value={p.complex_count ? 'OBSERVED' : 'MISSING'} /></header>
+    <div className="detail-section"><header><h4>공동주택 (K-apt)</h4></header>
       <dl className="fact-list">
         <Fact label="단지 · 세대" value={p.complex_count ? p.complex_households : null} unit="세대" missingText="격자 안 단지 없음" why={p.complex_count ? `단지 ${p.complex_count}개` : undefined} />
         <Fact label="연면적 합 (공표값)" value={p.complex_gfa_m2} unit="m²" why={p.complex_gfa_excluded ? `연면적 이상값 ${p.complex_gfa_excluded}개 단지 제외` : undefined} />
@@ -257,7 +257,7 @@ function GridDetail({ props: p, name, metric, classification, details, detailsLo
 
 function Fact({ label, value, unit, digits = 0, why, missingText = '자료 없음' }: { label: ReactNode; value: number | null | undefined; unit: string; digits?: number; why?: string; missingText?: string }) {
   const missing = value === null || value === undefined || !Number.isFinite(value);
-  return <div className={`fact${missing ? ' missing' : ''}`}><dt>{label}</dt><dd>{missing ? missingText : <>{formatMetric(value, '', digits)}{unit && <small>{unit}</small>}</>}</dd>{why && <span className="why">{why}</span>}</div>;
+  return <div className={`fact${missing ? ' missing' : ''}`}><dt>{label}</dt><dd>{missing ? <MissingValue inline reason={missingText === '자료 없음' ? undefined : missingText} /> : <>{formatMetric(value, '', digits)}{unit && <span className="unit">{unit}</span>}</>}</dd>{why && <span className="why">{why}</span>}</div>;
 }
 
 function MonthRow({ label, months }: { label: string; months: boolean[] }) {

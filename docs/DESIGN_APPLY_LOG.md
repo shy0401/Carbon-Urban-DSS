@@ -147,3 +147,33 @@
 - `PageHeader.tsx`: 영문 대문자 눈썹 라벨(`eyebrow`) 제거, 제목 20px/600.
 - CSS: `styles/shell.css`, `styles/components.css`(버튼: 주 버튼 `--primary` 채움, 나머지 흰 바탕 `--line-strong`, 반경 6px). `styles.css`에서 셸·헤더·버튼 구역 삭제.
 - 애니메이션: DESIGN.md 8("선택 확대 하나만")에 따라 드로어 슬라이드·화살표 회전 전환 효과를 두지 않았다.
+
+## 3. 근거 체계
+
+- 신규: `components/ProvenanceBadge.tsx`(실측·계산·추정·시나리오·대체·자료 미확보, 추정·대체 점선·시나리오 점 테두리, 한글 라벨 필수), `components/MissingValue.tsx`("—" + 사유, 화면 낭독기에는 "자료 없음"), `lib/provenance.ts`(서버 코드 → 배지 매핑, 모르는 값은 `null`로 배지 없음), 테스트 `lib/provenance.test.ts`, `components/Provenance.test.tsx`.
+- 삭제: `components/DataClassChip.tsx`, `lib/format.ts`의 `DataClass`/`DATA_CLASS`, `mapMetrics.ts`의 지표별 `dataClass`. 모두 프런트 상수로 근거를 단정하던 것이라 0.4 백로그로 옮김. `mapMetrics.test.ts`의 "data class" 단언은 "dataClass 필드가 없다"로 바꿈(사유: 서버 필드만 매핑).
+- `QualityBadge.tsx`: 근거 코드는 근거 배지로, 작업·모델 상태 코드는 상태 태그로, 서버의 자유 문장(예: "공간매칭된 관측 / 표본 범위 확인")은 중립 태그로 그대로 표시.
+- `MetricCard.tsx`: 라벨 13px → 값 28px + 단위 0.85em → 근거 배지 + 기준 12px. 아이콘·강조색 띠 제거. 값이 없으면 `MissingValue`와 "자료 미확보" 배지, 카드 배경 해치(해치 위 글자는 결측 바탕을 깔아 판독성 확보).
+
+적용 위치와 서버 필드:
+
+| 화면 | 위치 | 서버 필드 → 표시 |
+|---|---|---|
+| 대시보드 | 전력·가스 사용량 카드, 월별 관측 에너지 패널 | `observations_label` → 실측. `annual_complete.*`로 "완전 연간 값"/"관측 기간 합계 N/12개월" 구분 |
+| 대시보드 | 월별 기상 패널 | `weather[].source_type` → 실측 N개월 / 대체 M개월, 행이 없으면 자료 미확보 |
+| 대시보드 | 나머지 카드 | 배지 없음(필드 없음). 값 `null`이면 결측 표시와 사유 |
+| 지도 상세 | 도시 형태 | `building_source === 'OSM'` → 대체(OSM). `building_count === null` → 자료 미확보 |
+| 지도 상세 | 선택 지표·에너지·토지이용 | 값·관측 월이 없을 때만 자료 미확보 |
+| 시뮬레이션 | 결과 머리 | `data_class` → 시나리오, `quality` 문장은 중립 태그 |
+| 시뮬레이션 | 최적화 | `status`가 있을 때만 상태 태그(이전의 `'CALCULATED'` 기본값 제거) |
+| 보고서 | 계획안 비교 머리 | 각 계획안 `result.data_class` → 시나리오 |
+| 보고서·분석 | 출처 표 | `source_type` → 공식·대체·파생·미검증 출처 표기 |
+
+결측을 0·빈칸으로 보이던 곳을 고친 목록:
+
+- 대시보드 기상 패널: HDD·CDD 합계가 값이 없는 달을 0으로 더했다 → 값이 있는 달만 더하고 "(N개월 합계)" 표기, 전부 없으면 "—".
+- 보고서 계획안 비교: `Number(null)`이 0이 되어 결측이 "0"으로 인쇄될 수 있었다 → 결측 셀은 "—"(`title="자료 미확보"`).
+- 보고서 출처 표: 정규화 행이 `null`이면 "행"만 남았다 → "—".
+- 출처 상세 품질 점수: 미산정 점수의 막대가 0% 막대로 보였다 → 해치 막대 + "점수 미산정".
+- 모델 표본 진행: 응답에 개수가 없으면 0으로 그렸다 → "—"와 해치 막대.
+- 시뮬레이션 결과: 품질 값이 없을 때 `'ESTIMATED'`를 기본값으로 넣어 "추정"으로 보이던 것 제거.

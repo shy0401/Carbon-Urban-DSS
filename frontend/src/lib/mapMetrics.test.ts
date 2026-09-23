@@ -39,11 +39,11 @@ describe('map classification', () => {
     expect(p.completeness).toBeNull();
     expect(p.electricity_kwh_per_m2).toBeNull();
   });
-  it('every metric states its formula, source and data class', () => {
+  it('every metric states its formula and source (근거 유형 배지는 서버 필드가 없어 달지 않음)', () => {
     for (const metric of METRICS) {
       expect(metric.formula.length).toBeGreaterThan(3);
       expect(metric.source.length).toBeGreaterThan(3);
-      expect(['OBSERVED', 'CALCULATED', 'ESTIMATED']).toContain(metric.dataClass);
+      expect('dataClass' in metric).toBe(false);
     }
   });
 });

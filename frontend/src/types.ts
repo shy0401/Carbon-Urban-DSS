@@ -82,6 +82,10 @@ export interface DashboardData {
   baseline_scope?: { parcels: string[]; parcel_names: string[]; energy_types: string[]; excluded_parcels: string[]; excluded_names: string[]; area_m2: number } | null;
   floor_area_issues?: Array<{ kapt_code: string; name: string; status: string; reason: string | null }>;
   context?: GridContext | null;
+  /** 월별 관측 에너지의 근거 유형 코드 (서버 고정값 'OBSERVED'). */
+  observations_label?: string;
+  /** 메타데이터 파생값의 근거 유형 코드 (서버 고정값 'CALCULATED'). */
+  metadata_label?: string;
 }
 
 export interface GridContext {
@@ -302,6 +306,8 @@ export interface ScenarioResult {
   quality?: Quality | null;
   limitation?: string | null;
   label?: string;
+  /** 서버 근거 유형 코드 (시나리오 계산은 'SCENARIO'). */
+  data_class?: string;
   total_footprint?: number | null;
   gross_floor_area?: number | null;
   far?: number | null;

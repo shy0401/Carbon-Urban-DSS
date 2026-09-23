@@ -17,3 +17,99 @@
 .button:disabled { opacity: .55; }
 .text-button { border: 0; background: none; padding: var(--sp-1) var(--sp-2); border-radius: var(--r-control); color: var(--primary); font-size: var(--fs-label); font-weight: 500; }
 .text-button:hover { text-decoration: underline; }
+
+/* 근거 배지 (2.3, 5): 높이 20px, 12px 500, 반경 2px. 추정 점선, 시나리오 점, 대체 점선 테두리. */
+.prov-badge {
+  display: inline-flex; align-items: center; gap: var(--sp-1); height: 20px; padding: 0 6px;
+  border: 1px solid transparent; border-radius: var(--r-map);
+  font-size: var(--fs-caption); font-weight: 500; line-height: 1; white-space: nowrap;
+  print-color-adjust: exact; -webkit-print-color-adjust: exact;
+}
+.prov-badge .prov-detail { font-weight: 400; }
+.prov-observed { color: var(--prov-observed); background: var(--prov-observed-bg); }
+.prov-computed { color: var(--prov-computed); background: var(--prov-computed-bg); }
+.prov-estimated { color: var(--prov-estimated); background: var(--prov-estimated-bg); border: 1px dashed var(--prov-estimated); }
+.prov-scenario { color: var(--prov-scenario); background: var(--prov-scenario-bg); border: 1px dotted var(--prov-scenario); }
+.prov-fallback { color: var(--prov-estimated); background: var(--prov-estimated-bg); border: 1px dashed var(--prov-estimated); }
+.prov-missing {
+  color: var(--ink-2); background-color: var(--prov-missing-bg); background-image: var(--hatch-image);
+  border: 1px solid var(--hatch);
+}
+.badge-row { display: inline-flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+
+/* 결측 값 (5): 값 자리에 "—", 아래 12px 사유. */
+.missing-value { display: inline-grid; gap: 2px; color: var(--ink-2); }
+.missing-value .mv-dash { font-weight: 500; color: var(--prov-missing); }
+.missing-value .mv-reason { font-size: var(--fs-caption); font-weight: 400; line-height: 1.4; color: var(--ink-2); }
+.missing-value.inline { display: inline-flex; align-items: baseline; gap: var(--sp-1); }
+
+/* 상태 태그: 작업·모델 상태 코드와 서버의 자유 문장. 시스템 상태 색은 성공·경고·오류에만. */
+.status-tag, .badge {
+  display: inline-flex; align-items: center; gap: var(--sp-1); min-height: 20px; padding: 0 6px;
+  border-radius: var(--r-map); background: var(--surface-sunk); color: var(--ink-2);
+  font-size: var(--fs-caption); font-weight: 500; line-height: 1.4; white-space: normal;
+}
+.status-tag.good, .badge.good { background: var(--success-bg); color: var(--success); }
+.status-tag.warn, .badge.warn { background: var(--warning-bg); color: var(--warning); }
+.status-tag.bad, .badge.bad { background: var(--danger-bg); color: var(--danger); }
+.badge-dot { display: none; }
+
+/* 지표 카드 (5): 흰 바탕, 1px 선, 반경 8px, 그림자 없음. */
+.metric-card {
+  display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; padding: var(--sp-4);
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-panel);
+}
+.metric-label { font-size: var(--fs-label); font-weight: 500; line-height: 1.45; color: var(--ink-2); }
+.metric-value { margin: 0; font-size: var(--fs-figure); font-weight: 600; line-height: 1.2; color: var(--ink); overflow-wrap: normal; word-break: keep-all; }
+.metric-value .missing-value .mv-dash { font-size: var(--fs-figure); line-height: 1.2; }
+.metric-foot { display: flex; align-items: flex-start; gap: var(--sp-2); flex-wrap: wrap; margin-top: auto; }
+.metric-basis { font-size: var(--fs-caption); line-height: 1.5; color: var(--ink-3); }
+.metric-basis b { font-weight: 500; color: var(--ink-2); }
+.metric-card.is-missing { border-color: var(--hatch); background-color: var(--prov-missing-bg); background-image: var(--hatch-image); print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+.metric-card.is-missing .metric-label, .metric-card.is-missing .missing-value, .metric-card.is-missing .metric-basis { align-self: flex-start; background: var(--prov-missing-bg); box-shadow: 0 0 0 3px var(--prov-missing-bg); }
+.ratio-track { height: 4px; background: var(--surface-sunk); border-radius: var(--r-map); overflow: hidden; }
+.ratio-track span { display: block; height: 100%; background: var(--seq-4); }
+
+/* 패널·표·빈 상태 (4.5, 5) */
+.panel { min-width: 0; padding: var(--sp-5); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-panel); }
+.panel-title { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-3); margin-bottom: var(--sp-3); }
+.panel-title h3 { font-size: var(--fs-panel); line-height: 1.4; }
+.panel-title small { color: var(--ink-3); font-size: var(--fs-caption); }
+.panel-title > svg { flex: none; color: var(--ink-3); }
+.panel-description { margin: 0 0 var(--sp-4); color: var(--ink-2); font-size: var(--fs-label); line-height: 1.6; }
+.content-grid { display: grid; gap: var(--sp-4); }
+.muted { color: var(--ink-3); font-size: var(--fs-caption); line-height: 1.6; }
+
+.table-wrap { overflow-x: auto; margin-top: var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-panel); background: var(--surface); }
+.table-wrap table { width: 100%; border-collapse: collapse; font-size: var(--fs-label); }
+.table-wrap th { position: sticky; top: 0; padding: var(--sp-2) var(--sp-3); background: var(--surface-sunk); color: var(--ink-2); font-size: var(--fs-label); font-weight: 500; text-align: left; white-space: nowrap; border-bottom: 1px solid var(--line); }
+.table-wrap td { padding: var(--sp-2) var(--sp-3); border-bottom: 1px solid var(--line); color: var(--ink); vertical-align: top; }
+.table-wrap tbody tr:last-child td { border-bottom: 0; }
+.table-wrap td strong, .table-wrap td small { display: block; }
+.table-wrap td strong { font-weight: 500; }
+.table-wrap td small { margin-top: 2px; color: var(--ink-3); }
+.table-wrap td.num, .table-wrap th.num { text-align: right; }
+
+.compact-list { margin: 0; }
+.compact-list > div { display: flex; justify-content: space-between; align-items: baseline; gap: var(--sp-3); padding: var(--sp-2) 0; border-bottom: 1px solid var(--line); }
+.compact-list > div:last-child { border-bottom: 0; }
+.compact-list dt { color: var(--ink-2); font-size: var(--fs-label); }
+.compact-list dd { margin: 0; max-width: 65%; font-size: var(--fs-label); font-weight: 500; text-align: right; }
+
+.state-panel { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--sp-2); min-height: 240px; padding: var(--sp-6); text-align: center; color: var(--ink-2); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-panel); }
+.state-panel strong { color: var(--ink); font-size: var(--fs-panel); font-weight: 600; }
+.state-panel.compact { min-height: 140px; border: 0; background: transparent; }
+.state-panel.state-error { border-color: var(--danger); background: var(--danger-bg); }
+.state-panel.state-error svg { color: var(--danger); }
+.spinner { width: 24px; height: 24px; border: 2px solid var(--line); border-top-color: var(--primary); border-radius: 50%; animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.inline-error, .form-error { display: flex; align-items: center; gap: var(--sp-2); margin: var(--sp-3) 0; padding: var(--sp-2) var(--sp-3); border-radius: var(--r-control); background: var(--danger-bg); color: var(--danger); font-size: var(--fs-label); }
+.error-text { color: var(--danger); }
+.truth-note, .assumption-note { margin-top: var(--sp-3); padding: var(--sp-3); border: 1px solid var(--line); border-left: 3px solid var(--primary); border-radius: var(--r-map); background: var(--surface); }
+.truth-note strong, .assumption-note strong { font-size: var(--fs-label); font-weight: 600; color: var(--ink); }
+.truth-note p, .assumption-note p { margin-top: var(--sp-1); color: var(--ink-2); font-size: var(--fs-label); line-height: 1.6; }
+.assumption-note ul { margin: var(--sp-2) 0 0; padding-left: 18px; color: var(--ink-2); font-size: var(--fs-label); line-height: 1.6; }
+.icon-link { display: grid; place-items: center; width: 34px; height: 34px; border: 1px solid var(--line-strong); border-radius: var(--r-control); background: var(--surface); color: var(--ink-2); }
+.icon-link:hover { border-color: var(--ink-3); color: var(--ink); }
+.score-track.is-missing { background-color: var(--prov-missing-bg); background-image: var(--hatch-image); }

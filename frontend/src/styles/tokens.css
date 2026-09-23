@@ -41,6 +41,7 @@
   --prov-scenario: #4A5568;  --prov-scenario-bg: #E8EBF0;
   --prov-missing: #6B746E;   --prov-missing-bg: #F1F0EA;
   --hatch: #CFCBBF;
+  --hatch-image: repeating-linear-gradient(45deg, var(--hatch) 0 1px, transparent 1px 6px);
 
   /* 2.4 지표 램프 (부하·편익·증감) + 중립 순차(방향성 없는 도시 형태·인구 지표) */
   --load-1: #F1EAD9; --load-2: #E2C58F; --load-3: #CC9350; --load-4: #A65B2B; --load-5: #6A2E17;
@@ -91,4 +92,5 @@
 .is-missing {
   background-color: var(--prov-missing-bg);
   background-image: repeating-linear-gradient(45deg, var(--hatch) 0 1px, transparent 1px 6px);
+  print-color-adjust: exact; -webkit-print-color-adjust: exact;
 }
