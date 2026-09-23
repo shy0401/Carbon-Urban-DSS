@@ -16,9 +16,9 @@
 | 공공데이터포털 키 | `.env`의 `DATA_GO_KR_SERVICE_KEY`는 **발급 키가 아니라 한글 14자 예시 문구**였다. 과거 403/코드 30은 승인 지연보다 이 값이 그대로 전송된 결과다. 이제 수집 전 `환경변수 형식 오류`로 차단하고 외부 호출을 하지 않는다 | `collection_preflight.py`, `status-after.json` |
 | DB 보존 | 변경 전 백업 33개 테이블: 격자 916, OSM 건물 2,171, K-apt 단지 364, 전주시 공동주택 공개자료 595(+공사중 14), 법정동 86, 기상 월 30행, 월별 에너지 0 | `data/backups/20260923-121408-before/table-counts.tsv` |
 | **SGIS 실수집** | 2024년 공표자료 자동 확인. 전주시 완산구 327,406명·덕진구 322,228명, 행정동 인구 34개·가구 34개, 공식 행정동 경계 35개(EPSG:5179). 500m 격자 배분 없음 | `collect-sgis.json`, `sgis_*` 테이블 |
-| VWorld | 키 형식 정상이나 모든 도메인 후보에서 `INCORRECT_KEY`. 원인: 키 활용API에 **2D데이터 API 미체크**. 사용자가 체크·저장함 → `scripts\dss.cmd Collect -RetryRejected`로 재수집 필요 | `probe-vworld.json` |
+| **VWorld 실수집** | 처음엔 모든 도메인에서 `INCORRECT_KEY`(키 활용API에 2D데이터 API 미체크). 사용자가 체크한 뒤 `INVALID_RANGE`가 났는데, 원인은 geomFilter 좌표가 지수 표기(`1.765e+06`)로 나간 코드 버그라 수정(`a7ba92f`). 이후 **용도지역 FULL(916격자) 도형 413개·격자 교차 2,762건, 연속지적 LIMITED(25격자) 필지 3,995개** 적재. 좌표는 EPSG:5179, 등록 도메인은 `http://localhost`만 통과 | `data/ops/20260923-131115-all/collect-vworld_*.json` |
 | 백업·복원 | 수집 후 백업을 별도 Compose 프로젝트에 복원해 **36개 테이블 행 수 전부 일치** | `summary.json` restore |
-| 테스트 | 복원 사본 pytest **104 통과**, Vitest **12파일 24개 통과**, 브라우저 E2E 9개 통과(페이지 오류 0), 지도 SGIS 행정동 레이어 렌더링 통과 | `pytest-restore.log`, `frontend-test.log`, `data/validation/e2e.json`, `overlays.json` |
+| 테스트 | 복원 사본 pytest **105 통과**, Vitest **12파일 24개 통과**, 브라우저 E2E 9개 통과(페이지 오류 0), 지도 SGIS 행정동 레이어 렌더링 통과(13:02 전체 실행 15단계 모두 PASS) | `pytest-restore.log`, `frontend-test.log`, `data/validation/e2e.json`, `overlays.json` |
 | 초기 JS | 약 2.5MB → **293KB(gzip 93KB)**. MapLibre·ECharts는 해당 화면에서만 지연 로드 | Vite 빌드 로그 |
 
 ### 이번에 바뀐 코드·운영 흐름
@@ -31,7 +31,7 @@
 
 ### 남은 외부 의존성과 다음 행동
 
-1. **VWorld**: 2D데이터 API 체크 반영 후 `scripts\dss.cmd Collect -RetryRejected` → 용도지역 SMOKE(1격자)→LIMITED(25)→FULL(916), 연속지적 SMOKE→LIMITED
+1. **VWorld**: 용도지역 FULL과 연속지적 LIMITED까지 완료. 연속지적 전체는 필지 수가 많아 `.env`에 `VWORLD_CADASTRAL_FULL=true`를 넣고 `scripts\dss.cmd Collect`로 실행(에너지 지번 매칭이 필요해질 때)
 2. **공공데이터포털**: 실제 일반 인증키(Decoding)를 `.env`에 넣고 K-apt 에너지(15012964)·ASOS(15059093)·건축HUB 에너지(15135963)·건축물대장(15134735) 각각 활용신청 승인 → `docker compose up -d --force-recreate api worker` → `scripts\dss.cmd Collect`
 3. SGIS 공식 500m 격자 파일(경계·ID·기준연도·비밀보호 표식), 기업 100m 탄소격자 원본·이용조건, 가스 CO₂eq 계수 근거는 여전히 제공기관 자료가 필요
 4. 월별 에너지 관측이 0행이므로 운영탄소·모델 성능은 계속 `자료 없음`으로 표시한다

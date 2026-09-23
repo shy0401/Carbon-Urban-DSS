@@ -17,8 +17,11 @@ Actions
   FrontendTest  Vitest + production build inside Linux (docker build --target test)
   ExportBundle  team share bundle: DB dump + data/raw (+uploads) + checksums
   ImportBundle  import a bundle into an EMPTY database on a new PC (-BundlePath)
+  VerifyBundle  new-PC simulation: export a bundle, 'git clone' HEAD into a clean
+                folder, import there into a separate project, compare counts,
+                check API/web, then remove that project
   All           Doctor, Backup, Rebuild, Status, Probe, Collect, Status, Backup,
-                VerifyRestore(+pytest,+E2E), FrontendTest
+                VerifyRestore(+pytest,+E2E), FrontendTest, VerifyBundle
 
 Safety
   * The main project's volumes are never removed. Only the throwaway project
@@ -28,7 +31,7 @@ Safety
   * Results are written to data/ops/<timestamp>-<action>/ (summary.json, *.log).
 #>
 param(
-    [ValidateSet('All', 'Doctor', 'Status', 'Backup', 'Rebuild', 'Probe', 'Collect', 'VerifyRestore', 'FrontendTest', 'E2E', 'ExportBundle', 'ImportBundle')]
+    [ValidateSet('All', 'Doctor', 'Status', 'Backup', 'Rebuild', 'Probe', 'Collect', 'VerifyRestore', 'FrontendTest', 'E2E', 'ExportBundle', 'ImportBundle', 'VerifyBundle')]
     [string]$Action = 'All',
     [string]$BundlePath,
     [string]$BackupDir,
@@ -58,7 +61,10 @@ try {
 
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location -LiteralPath $Root
-$MainProject = 'carbon-urban-dss'
+$MainProject = if ($env:DSS_PROJECT) { $env:DSS_PROJECT } else { 'carbon-urban-dss' }
+$MainOverride = if ($env:DSS_COMPOSE_OVERRIDE) { $env:DSS_COMPOSE_OVERRIDE } else { 'compose.demo.yaml' }
+$ApiPort = if ($env:DSS_API_PORT) { $env:DSS_API_PORT } else { '8000' }
+$WebPort = if ($env:DSS_WEB_PORT) { $env:DSS_WEB_PORT } else { '5173' }
 $RestoreProject = 'carbon-urban-dss-restoretest'
 $PlaywrightImage = 'mcr.microsoft.com/playwright:v1.55.0-noble'
 $Stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
@@ -109,7 +115,7 @@ function Assert-Native($Result, [string]$What) {
 }
 
 function Compose-Main([string[]]$Arguments, [string]$InputText) {
-    $base = @('compose', '-p', $MainProject, '-f', 'compose.yaml', '-f', 'compose.demo.yaml')
+    $base = @('compose', '-p', $MainProject, '-f', 'compose.yaml', '-f', $MainOverride)
     if ($PSBoundParameters.ContainsKey('InputText')) { return Invoke-Native -File 'docker' -Arguments ($base + $Arguments) -InputText $InputText }
     return Invoke-Native -File 'docker' -Arguments ($base + $Arguments)
 }
@@ -265,7 +271,7 @@ function Invoke-RestoreServices {
 
 function Invoke-Pytest([string]$Which) {
     $stepLog = Join-Path $RunDir "pytest-$Which.log"
-    $base = if ($Which -eq 'restore') { @('compose', '-p', $RestoreProject, '-f', 'compose.yaml', '-f', 'compose.validation.yaml') } else { @('compose', '-p', $MainProject, '-f', 'compose.yaml', '-f', 'compose.demo.yaml') }
+    $base = if ($Which -eq 'restore') { @('compose', '-p', $RestoreProject, '-f', 'compose.yaml', '-f', 'compose.validation.yaml') } else { @('compose', '-p', $MainProject, '-f', 'compose.yaml', '-f', $MainOverride) }
     $result = Invoke-Native -File 'docker' -Arguments ($base + @('exec', '-T', 'api', 'python', '-m', 'pytest', '-q', '-p', 'no:cacheprovider')) -StepLog $stepLog
     $last = ($result.Lines | Where-Object { $_ -match '(passed|failed|error)' } | Select-Object -Last 1)
     $script:Summary.results["pytest_$Which"] = [ordered]@{ exit = $result.Code; summary = $last; log = $stepLog }
@@ -296,6 +302,7 @@ function Invoke-FrontendTest {
     $stepLog = Join-Path $RunDir 'frontend-test.log'
     $result = Invoke-Native -File 'docker' -Arguments @('build', '--progress=plain', '--target', 'test', '-t', 'carbon-urban-dss-frontend-test', 'frontend') -StepLog $stepLog
     $tests = ($result.Lines | Where-Object { $_ -match 'Tests\s+\d+' } | Select-Object -Last 1)
+    if (-not $tests -and ($result.Text -match 'RUN npm test\s*\n[^\n]*CACHED')) { $tests = 'CACHED: frontend sources unchanged since the last passing Vitest run' }
     $build = ($result.Lines | Where-Object { $_ -match 'built in|✓ built' } | Select-Object -Last 1)
     $script:Summary.results.frontend = [ordered]@{ exit = $result.Code; tests = $tests; build = $build; log = $stepLog }
     Save-Summary
@@ -466,6 +473,12 @@ function Invoke-ImportBundle {
         }
     }
     Write-Log '    checksums OK'
+    $envFile = Join-Path $Root '.env'
+    if (-not (Test-Path -LiteralPath $envFile)) {
+        # New PC: compose needs .env. Keys are never part of a bundle; fill them in afterwards.
+        Copy-Item -LiteralPath (Join-Path $Root '.env.example') -Destination $envFile
+        Write-Log '    created .env from .env.example (API keys are empty; add them later)'
+    }
     Assert-Native (Compose-Main @('up', '-d', '--wait', 'postgres', 'redis')) 'postgres start'
     $existing = Get-TableCounts 'main'
     $nonEmpty = @($existing.GetEnumerator() | Where-Object { $_.Value -gt 0 })
@@ -490,14 +503,54 @@ function Invoke-ImportBundle {
     Assert-Native (Compose-Main @('cp', (Join-Path $stage 'db.dump'), 'postgres:/tmp/restore.dump')) 'copy dump'
     $restore = Compose-Main @('exec', '-T', 'postgres', 'pg_restore', '-U', 'carbon', '-d', 'carbon', '--no-owner', '--no-privileges', '/tmp/restore.dump')
     Write-Log "    pg_restore exit $($restore.Code)"
-    $problems = Compare-Counts (Read-CountFile (Join-Path $stage 'table-counts.tsv')) (Get-TableCounts 'main')
+    $imported = Get-TableCounts 'main'
+    Set-Content -LiteralPath (Join-Path $RunDir 'imported-counts.tsv') -Value @($imported.GetEnumerator() | ForEach-Object { "$($_.Key)|$($_.Value)" }) -Encoding UTF8
+    $problems = Compare-Counts (Read-CountFile (Join-Path $stage 'table-counts.tsv')) $imported
     $script:Summary.results.import = [ordered]@{ bundle = $BundlePath; raw_conflicts_kept_local = $conflicts; mismatches = $problems }
     Save-Summary
     if ($problems.Count) { throw "Row count mismatch after import: $($problems -join '; ')" }
     Assert-Native (Compose-Main @('up', '-d', '--build', '--wait', 'api', 'worker', 'frontend')) 'service start'
-    $health = Invoke-RestMethod -Uri 'http://127.0.0.1:8000/api/health' -TimeoutSec 60
+    $health = Invoke-RestMethod -Uri "http://127.0.0.1:$ApiPort/api/health" -TimeoutSec 60
+    $map = Invoke-RestMethod -Uri "http://127.0.0.1:$ApiPort/api/map" -TimeoutSec 120
+    $web = Invoke-WebCheck "http://127.0.0.1:$WebPort/map"
+    $grids = @($map.grids.features).Count
+    $script:Summary.results.import_services = [ordered]@{ health = $health.status; grids = $grids; web_status = $web.StatusCode }
+    Save-Summary
+    if ($health.status -ne 'ok' -or $grids -lt 1 -or $web.StatusCode -ne 200) { throw 'imported services did not pass health/map/web checks' }
     Remove-Item -LiteralPath $stage -Recurse -Force
-    return "imported; health=$($health.status); raw conflicts kept local: $($conflicts.Count)"
+    return "imported $($imported.Count) tables with identical row counts; health=$($health.status); grids=$grids; web=$($web.StatusCode); raw conflicts kept local: $($conflicts.Count)"
+}
+
+function Invoke-VerifyBundle {
+    # New-PC simulation on this machine: export -> clean git clone of HEAD -> import into a separate project.
+    $exported = Invoke-ExportBundle
+    $zip = $script:Summary.results.bundle.zip
+    $clone = Join-Path $RunDir 'clean-clone'
+    $dirty = Invoke-Native -File 'git' -Arguments @('status', '--porcelain', '--untracked-files=no')
+    $uncommitted = @($dirty.Lines | Where-Object { $_ -and $_ -notmatch '\.idea/' })
+    if ($uncommitted.Count) { Write-Log "    note: $($uncommitted.Count) uncommitted tracked change(s) are not part of the clean clone" }
+    Assert-Native (Invoke-Native -File 'git' -Arguments @('clone', '--quiet', '--no-hardlinks', $Root, $clone)) 'git clone (clean checkout of HEAD)'
+    $head = (Invoke-Native -File 'git' -Arguments @('-C', $clone, 'rev-parse', '--short', 'HEAD')).Lines | Select-Object -Last 1
+    $project = 'carbon-urban-dss-importtest'
+    $saved = @{ DSS_PROJECT = $env:DSS_PROJECT; DSS_COMPOSE_OVERRIDE = $env:DSS_COMPOSE_OVERRIDE; DSS_API_PORT = $env:DSS_API_PORT; DSS_WEB_PORT = $env:DSS_WEB_PORT }
+    $env:DSS_PROJECT = $project; $env:DSS_COMPOSE_OVERRIDE = 'compose.validation.yaml'; $env:DSS_API_PORT = '8010'; $env:DSS_WEB_PORT = '5190'
+    $stepLog = Join-Path $RunDir 'import-test.log'
+    try {
+        $child = Invoke-Native -File 'powershell.exe' -Arguments @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $clone 'scripts\dss.ps1'), '-Action', 'ImportBundle', '-BundlePath', $zip) -StepLog $stepLog
+    } finally {
+        foreach ($key in $saved.Keys) { Set-Item -Path "env:$key" -Value $saved[$key] -ErrorAction SilentlyContinue; if ($null -eq $saved[$key]) { Remove-Item -Path "env:$key" -ErrorAction SilentlyContinue } }
+    }
+    $childRun = Get-Content -LiteralPath (Join-Path $clone 'data\ops\latest.txt') -ErrorAction SilentlyContinue | Select-Object -First 1
+    $childSummary = if ($childRun) { Get-Content -LiteralPath (Join-Path $clone "data\ops\$childRun\summary.json") -Raw -Encoding UTF8 | ConvertFrom-Json } else { $null }
+    # Remove only the throwaway import-test project and its volumes.
+    if ($project -notmatch 'importtest$') { throw 'Refusing to remove a non-test project.' }
+    Invoke-Native -File 'docker' -Arguments @('compose', '-p', $project, '-f', (Join-Path $clone 'compose.yaml'), '-f', (Join-Path $clone 'compose.validation.yaml'), 'down', '--remove-orphans') -StepLog $stepLog | Out-Null
+    foreach ($volume in @("$($project)_postgres_data", "$($project)_redis_data")) { Invoke-Native -File 'docker' -Arguments @('volume', 'rm', '-f', $volume) -StepLog $stepLog | Out-Null }
+    $script:Summary.results.verify_bundle = [ordered]@{ bundle = $zip; clone_head = $head; exit = $child.Code; child_steps = $childSummary.steps; child_results = $childSummary.results }
+    Save-Summary
+    if ($child.Code -ne 0) { throw "import in clean clone failed: $(($child.Lines | Where-Object { $_ -match 'FAIL' } | Select-Object -Last 2) -join ' | ')" }
+    $importStep = $childSummary.steps | Where-Object { $_.name -eq 'Import team bundle' } | Select-Object -Last 1
+    return "clean clone @ ${head}: $($importStep.detail) ($exported)"
 }
 
 # ----------------------------------------------------------------------------
@@ -533,6 +586,7 @@ switch ($selected) {
     'E2E' { $ok = Invoke-Step 'Browser E2E (restore-test project must be running)' { Invoke-E2E } }
     'ExportBundle' { $ok = Invoke-Step 'Export team bundle' { Invoke-ExportBundle } }
     'ImportBundle' { $ok = Invoke-Step 'Import team bundle' { Invoke-ImportBundle } }
+    'VerifyBundle' { $ok = Invoke-Step 'New-PC bundle import (clean clone)' { Invoke-VerifyBundle } }
     'All' {
         $ok = Invoke-Step 'Doctor' { Invoke-Doctor }
         if ($ok) {
@@ -557,6 +611,7 @@ switch ($selected) {
                     if (-not $KeepRestoreProject) { Invoke-Step 'Remove restore-test project' { Remove-RestoreProject; 'removed' } | Out-Null }
                 }
                 Invoke-Step 'Frontend Vitest + build' { Invoke-FrontendTest } | Out-Null
+                Invoke-Step 'New-PC bundle import (clean clone)' { Invoke-VerifyBundle } | Out-Null
             }
         }
         $ok = -not ($Summary.steps | Where-Object { $_.status -eq 'FAIL' })

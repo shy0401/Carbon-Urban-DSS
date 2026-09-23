@@ -17,10 +17,10 @@ scripts\dss.cmd FrontendTest   # docker build --target test frontend
 | Python pytest (복원 사본, 실데이터 DB에 테스트 행을 남기지 않음) | 104 통과 | `pytest-restore.log` |
 | React/Vitest (Linux 컨테이너) | 12파일, 24 통과 | `frontend-test.log` |
 | Chromium E2E (복원 사본) | 기존 9개 통과, pageerror 0 | `data/validation/e2e.json` |
-| 지도 오버레이 E2E | SGIS 행정동 PASS(35개 렌더링), VWorld 용도지역 SKIP(미수집) | `data/validation/overlays.json`, `overlay-admin.png` |
+| 지도 오버레이 E2E | SGIS 행정동 PASS(35개 렌더링). VWorld 용도지역은 수집 후 재검증(아래 최신 실행 참조) | `data/validation/overlays.json`, `overlay-admin.png` |
 | 운영 빌드 | 초기 JS 약 293KB(gzip 93KB), 지도·차트 라이브러리는 지연 로드 | 재빌드 로그 |
 
-실행하지 않은 것: 공공데이터포털 소스의 실제 수집(유효 키 없음), VWorld 실제 수집(키 활용API 수정 후 재실행 필요), Quick Tunnel 공개 주소 검증(이번 실행 범위 밖).
+실행하지 않은 것: 공공데이터포털 소스의 실제 수집(유효 키 없음), Quick Tunnel 공개 주소 검증(이번 실행 범위 밖).
 
 
 2026-09-18 Windows Docker Desktop Linux 엔진에서 다시 실행했다. 테스트 fixture는 계산 검증용이며 실제 관측으로 저장하지 않는다.

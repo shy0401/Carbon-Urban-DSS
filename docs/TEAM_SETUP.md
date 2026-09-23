@@ -47,7 +47,7 @@ scripts\dss.cmd ExportBundle -IncludeUploads   # 업로드 원본까지 공유�
 묶음 구성: `db.dump`(pg_dump custom, `public` 스키마), `table-counts.tsv`(전 테이블 행 수), `raw.zip`(`data/raw`), `raw-manifest.csv`(파일별 SHA-256), `manifest.json`, `SHA256SUMS.txt`, `README-IMPORT.txt`.
 **포함하지 않는 것:** `.env`·API 키, `.secrets`, `data/cache`, `data/deployment`(임시 공개 URL), Ollama 모델. 묶음은 팀 내부의 안전한 경로로만 전달하고 각 제공기관 이용조건을 따른다.
 
-새 PC에서(Docker Desktop 실행 후, 아직 서비스를 띄우기 **전에**):
+새 PC에서(Docker Desktop 실행 후, 아직 서비스를 띄우기 **전에**; `.env`가 없으면 `.env.example`로 만들고 키는 비워 둔다):
 
 ```powershell
 scripts\dss.cmd ImportBundle -BundlePath D:\share\carbon-dss-bundle-20260923-120000.zip
@@ -76,7 +76,8 @@ scripts\dss.cmd Collect
 | `Collect` | SGIS·VWorld 용도지역 FULL, 연속지적 LIMITED, 공공데이터포털 소스는 사전 검사 결과 | `collect-<dataset>.json` |
 | `VerifyRestore` | 최신 백업을 **별도 프로젝트 `carbon-urban-dss-restoretest`**(포트 8010/5190, 오프라인)에 복원 → 행 수 전수 비교 → 웹·API·지도·오버레이 점검 → pytest → 브라우저 E2E → 이 프로젝트만 정리 | `summary.json`, `pytest-restore.log`, `e2e.log`, `data\validation\*.png` |
 | `FrontendTest` | `docker build --target test frontend` (Vitest + `tsc -b` + Vite 운영 빌드) | `frontend-test.log` |
-| `All` | 위 전 과정 | `data\ops\<시각>-all\` |
+| `VerifyBundle` | **새 PC 모의**: 묶음 내보내기 → 현재 커밋을 `git clone`한 깨끗한 폴더 → 그 폴더의 실행기로 별도 프로젝트(`carbon-urban-dss-importtest`, 포트 8010/5190)에 `ImportBundle` → 행 수·API·지도·웹 확인 → 그 프로젝트만 정리 | `import-test.log`, 복제본의 `data\ops\…-importbundle\summary.json` |
+| `All` | 위 전 과정(마지막에 `VerifyBundle`) | `data\ops\<시각>-all\` |
 
 안전 규칙: 메인 프로젝트 볼륨은 삭제하지 않는다(`down -v` 미사용). 테스트는 복원 사본에서 실행해 실데이터 DB에 테스트 행을 남기지 않는다. E2E가 바꾸는 오프라인 플래그(`data/offline.flag`)는 실행 전 상태로 되돌린다.
 
@@ -87,5 +88,6 @@ scripts\dss.cmd Collect
 | Docker 엔진이 계속 `starting`, 로그에 `ERROR_SHARING_VIOLATION` | `docker_data.vhdx`를 다른 프로세스가 열고 있음(Windows에 가상 디스크로 연결됨, 백업·백신 검사 등). Docker Desktop 종료 → `wsl --shutdown` → 그래도 같으면 재부팅. vhdx 파일을 탐색기에서 직접 옮기거나 열지 말고 Docker Desktop의 Disk image location 설정을 사용한다 |
 | 수집 화면에 `환경변수 형식 오류` | `.env` 값이 발급 키가 아니라 예시 문구·한글·따옴표 포함 값. 실제 키로 교체 후 api/worker 재생성 |
 | 공공데이터포털 `SERVICE_KEY_IS_NOT_REGISTERED`(30) | 해당 서비스 활용신청 미승인 또는 키 반영 전. 승인 후 1시간 캐시가 지나거나 키가 바뀌면 재시도 |
-| VWorld `INCORRECT_KEY`/도메인 오류 | `VWORLD_DOMAIN`을 키 발급 시 등록한 서비스 URL과 똑같이 설정 |
+| VWorld `INCORRECT_KEY` | 인증키 관리 → 활용API에서 **`2D데이터 API` 체크**, 서비스URL과 `VWORLD_DOMAIN`을 똑같이(개발 PC `http://localhost`) 설정한 뒤 `scripts\dss.cmd Collect -RetryRejected` |
+| VWorld `INVALID_RANGE` | geomFilter 형식 오류. 2026-09-23 수정(`BOX(minx,miny,maxx,maxy)` 일반 소수). 오래된 이미지라면 `scripts\dss.cmd Rebuild` |
 | `ImportBundle`이 "already has N tables"로 중단 | 대상 DB가 비어 있지 않음. 기존 DB를 `Backup`으로 보존한 뒤 새 PC/새 볼륨에서 가져오기 |

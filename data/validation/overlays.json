@@ -2,8 +2,8 @@
   "checks": [
     {
       "name": "zoning",
-      "status": "SKIP",
-      "reason": "not collected"
+      "status": "PASS",
+      "features": 413
     },
     {
       "name": "admin",
@@ -12,11 +12,17 @@
     }
   ],
   "meta": {
-    "zoning_features": 0,
+    "zoning_features": 413,
     "admin_features": 35,
     "admin_reference_year": 2024,
-    "zoning_area_km2_by_category": {},
-    "zoning_grids_covered": 0,
+    "zoning_area_km2_by_category": {
+      "COMMERCIAL": 4.938,
+      "GREEN": 162.396,
+      "INDUSTRIAL": 7.347,
+      "RESIDENTIAL": 38.547,
+      "UNKNOWN": 0.099
+    },
+    "zoning_grids_covered": 916,
     "analysis_year": 2025,
     "crs": "EPSG:4326 (저장 EPSG:5179)",
     "sources": {

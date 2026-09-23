@@ -33,6 +33,20 @@ fs.mkdirSync(out, { recursive: true });
       checks.push({ name: key, status: 'PASS', features: count });
       await box.uncheck();
     }
+    // Analysis screen: official-data charts render only when the data exists.
+    await page.goto(base + '/analysis', { waitUntil: 'domcontentloaded' });
+    await page.getByText('행정동 인구', { exact: true }).first().waitFor();
+    for (const [name, count, label] of [
+      ['analysis_population_chart', meta.admin_features, 'SGIS 행정동별 인구 막대 차트'],
+      ['analysis_zoning_chart', meta.zoning_features, '분석 격자 내 용도지역 면적 구성 차트'],
+    ]) {
+      if (!count) { checks.push({ name, status: 'SKIP', reason: 'not collected' }); continue; }
+      const chart = page.getByRole('img', { name: label });
+      await chart.waitFor();
+      await page.waitForFunction((l) => !!document.querySelector(`[aria-label="${l}"] canvas`), label, { timeout: 30000 });
+      checks.push({ name, status: 'PASS' });
+    }
+    await page.screenshot({ path: path.join(out, 'analysis-official.png'), fullPage: true });
     if (errors.length) throw new Error('page errors: ' + errors.join(' | '));
     fs.writeFileSync(path.join(out, 'overlays.json'), JSON.stringify({ checks, meta, pageErrors: errors }, null, 2));
     console.log(JSON.stringify({ overlays: checks.map((c) => `${c.name}:${c.status}`), passed: checks.filter((c) => c.status === 'PASS').length }));

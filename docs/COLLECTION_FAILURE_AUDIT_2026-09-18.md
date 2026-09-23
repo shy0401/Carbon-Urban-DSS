@@ -7,6 +7,7 @@
 
 - `.env`의 `DATA_GO_KR_SERVICE_KEY` 값은 발급 키가 아니라 **한글 예시 문구(14자)**였다. 이 값을 그대로 보내면 공급기관은 `SERVICE_KEY_IS_NOT_REGISTERED`(30)를 반환한다. 이제 한글·공백·따옴표·예시 문구 값은 수집 전 `환경변수 형식 오류`로 차단하고 화면에는 `형식 오류`로 표시한다(값은 출력하지 않음).
 - VWorld 키는 형식이 정상이었지만 도메인 후보 7가지 모두 `INCORRECT_KEY`였다. 인증키 관리 화면의 활용API에 **2D데이터 API가 체크되지 않은 것**이 원인이며 사용자가 체크했다. VWorld 거절 기록은 키와 도메인에 묶어, 도메인을 고치면 바로 재시도한다. 등록 정보를 고친 뒤에는 `scripts\dss.cmd Collect -RetryRejected`로 캐시된 거절만 지우고 재시도한다.
+- 2D데이터 API를 체크한 뒤에는 `INVALID_RANGE`가 났다. geomFilter 좌표가 지수 표기(`1.765e+06`)로 전송된 코드 버그였고 `BOX(minx,miny,maxx,maxy)` 일반 소수로 고쳤다. 이후 용도지역 FULL(도형 413개)과 연속지적 LIMITED(필지 3,995개)를 수집했다. 등록 도메인은 `http://localhost`만 통과한다(`127.0.0.1`은 `INCORRECT_KEY`).
 - SGIS는 새 키로 2024년 행정통계·행정동 경계 수집에 성공했다.
 
 ## 조사 결과
