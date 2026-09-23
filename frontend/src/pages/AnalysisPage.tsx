@@ -12,8 +12,11 @@ import type { DashboardData, OverlayData } from '../types';
 
 const ZONE_LABELS: Record<string, [string, string]> = { RESIDENTIAL: ['주거지역', '#f2c14e'], COMMERCIAL: ['상업지역', '#e4572e'], INDUSTRIAL: ['공업지역', '#8d6cab'], GREEN: ['녹지지역', '#5aa469'], OTHER: ['기타·미분류', '#b8c2c0'], UNKNOWN: ['이름 없음', '#d7dcdb'] };
 
+// SGIS returns full names such as '전북특별자치도 전주시 덕진구 송천1동'; charts show '덕진구 송천1동'.
+export function shortAdminName(name: string) { return name.replace(/^.*?전주시\s*/, '').trim() || name; }
+
 export function adminRows(overlays: OverlayData | null) {
-  return (overlays?.admin.features ?? []).map((feature) => feature.properties ?? {}).map((p) => ({ name: String(p.adm_name ?? p.adm_code ?? ''), population: typeof p.population === 'number' ? p.population : null, households: typeof p.households === 'number' ? p.households : null, density: typeof p.population_density === 'number' ? p.population_density : null, status: String(p.population_status ?? '') })).sort((a, b) => (b.population ?? -1) - (a.population ?? -1));
+  return (overlays?.admin.features ?? []).map((feature) => feature.properties ?? {}).map((p) => ({ name: shortAdminName(String(p.adm_name ?? p.adm_code ?? '')), population: typeof p.population === 'number' ? p.population : null, households: typeof p.households === 'number' ? p.households : null, density: typeof p.population_density === 'number' ? p.population_density : null, status: String(p.population_status ?? '') })).sort((a, b) => (b.population ?? -1) - (a.population ?? -1));
 }
 
 export function AnalysisPage() {

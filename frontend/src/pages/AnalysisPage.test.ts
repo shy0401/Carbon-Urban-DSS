@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { adminRows } from './AnalysisPage';
+import { adminRows, shortAdminName } from './AnalysisPage';
 import type { OverlayData } from '../types';
 
 describe('AnalysisPage official context', () => {
@@ -14,5 +14,9 @@ describe('AnalysisPage official context', () => {
     expect(rows[2].population).toBeNull();
     expect(rows[0].households).toBe(120);
     expect(adminRows(null)).toEqual([]);
+  });
+  it('행정동 이름에서 시도·시 접두어를 줄여 표시한다', () => {
+    expect(shortAdminName('전북특별자치도 전주시 덕진구 송천1동')).toBe('덕진구 송천1동');
+    expect(shortAdminName('효자4동')).toBe('효자4동');
   });
 });
