@@ -1,4 +1,4 @@
-import { Activity, BarChart3, BrainCircuit, Database, FileText, Leaf, Map, Menu, PlayCircle, X } from 'lucide-react';
+import { Activity, BarChart3, BrainCircuit, Database, FileText, LandPlot, Leaf, Map, Menu, PlayCircle, X } from 'lucide-react';
 import { useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { AnalysisScopeBar } from './AnalysisScopeBar';
@@ -10,6 +10,7 @@ const navigation = [
   { to: '/map', label: '지도 분석', icon: Map },
   { to: '/analysis', label: '분석', icon: Activity },
   { to: '/model', label: '모델', icon: BrainCircuit },
+  { to: '/area', label: '지역 시뮬레이션', icon: LandPlot },
   { to: '/simulation', label: '시뮬레이션', icon: PlayCircle },
   { to: '/data', label: '수집 데이터', icon: Database },
   { to: '/reports', label: '검토 보고서', icon: FileText },

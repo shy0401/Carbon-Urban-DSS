@@ -8,6 +8,7 @@ import './styles/components.css';
 import './styles/map.css';
 import './styles/pages.css';
 import './styles/report.css';
+import './styles/area.css';
 import App from './App';
 
 createRoot(document.getElementById('root')!).render(<StrictMode><App /></StrictMode>);
