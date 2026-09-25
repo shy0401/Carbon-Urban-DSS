@@ -1,0 +1,13 @@
+# Ollama 등록용. GGUF 변환 결과(carbon-area-narrator.gguf)와 같은 폴더에서 사용.
+FROM ./carbon-area-narrator.gguf
+TEMPLATE """{{ if .System }}<|im_start|>system
+{{ .System }}<|im_end|>
+{{ end }}{{ if .Prompt }}<|im_start|>user
+{{ .Prompt }}<|im_end|>
+{{ end }}<|im_start|>assistant
+{{ .Response }}<|im_end|>
+"""
+PARAMETER stop "<|im_end|>"
+PARAMETER stop "<|im_start|>"
+PARAMETER temperature 0
+PARAMETER num_ctx 4096

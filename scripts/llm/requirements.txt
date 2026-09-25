@@ -1,0 +1,7 @@
+# GPU 학습 환경 전용 (프로젝트 Docker 이미지에는 넣지 않음). CUDA에 맞는 torch는 https://pytorch.org 안내대로 먼저 설치.
+torch>=2.3
+transformers>=4.46,<5
+peft>=0.13
+accelerate>=0.34
+safetensors>=0.4
+sentencepiece

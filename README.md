@@ -85,6 +85,7 @@ npm run build
 - [요구사항](docs/SRS.md), [구조](docs/ARCHITECTURE.md), [데이터 사전](docs/DATA_DICTIONARY.md)
 - [수집 및 수동 업로드](docs/DATA_COLLECTION.md), [후보 선정](docs/TESTBED_SELECTION.md)
 - [탄소 계산](docs/CARBON_METHOD.md), [모델 검증](docs/MODEL_VALIDATION.md), [시뮬레이션](docs/SIMULATION_METHOD.md)
+- [지역 개발 시뮬레이션·과거 수집·감축 노력·보고서 (/area)](docs/AREA_SIMULATION.md), [로컬 보고서 모델 학습](scripts/llm/README.md)
 - [알려진 한계](docs/LIMITATIONS.md), [5분 시연](docs/DEMO_SCRIPT.md)
 
 ## 계획서 기반 최신 보완
