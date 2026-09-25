@@ -127,13 +127,13 @@ def create_report(request:ReportInput):
 
 @router.get('')
 def reports():
-    with Session() as db:return [{'id':r.id,'created_at':r.created_at.isoformat(),'year':r.snapshot['year'],'grid_id':r.snapshot['grid_id'],'mode':r.snapshot['summary']['mode']} for r in db.scalars(select(DecisionReport).order_by(DecisionReport.created_at.desc()).limit(50))]
+    with Session() as db:return [{'id':r.id,'created_at':r.created_at.isoformat(),'year':r.snapshot['year'],'grid_id':r.snapshot['grid_id'],'mode':r.snapshot['summary']['mode']} for r in db.scalars(select(DecisionReport).order_by(DecisionReport.created_at.desc()).limit(200)) if r.snapshot.get('kind')!='AREA'][:50]
 
 @router.get('/{report_id}')
 def get_report(report_id:str):
     with Session() as db:
         r=db.get(DecisionReport,report_id)
-        if not r:raise HTTPException(404,'보고서를 찾을 수 없습니다')
+        if not r or r.snapshot.get('kind')=='AREA':raise HTTPException(404,'보고서를 찾을 수 없습니다')
         return dict(id=r.id,**r.snapshot)
 
 @router.get('/{report_id}/markdown')

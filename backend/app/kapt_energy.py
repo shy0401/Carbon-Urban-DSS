@@ -320,10 +320,24 @@ def _sync_electricity_observation(db: Any, complex_row: Any, row: ApartmentEnerg
     db.add(observation)
 
 
+def approval_month(complex_row: Any) -> str | None:
+    """YYYYMM of the complex's 사용승인일, or None when it is missing or unreadable."""
+    digits = "".join(ch for ch in str(getattr(complex_row, "approval_date", None) or "") if ch.isdigit())
+    if len(digits) >= 6 and digits[:4].isdigit() and 1900 < int(digits[:4]) < 2100 and 1 <= int(digits[4:6]) <= 12:
+        return digits[:6]
+    return None
+
+
 def collect_kapt_energy(
     db: Any, year: int, scope: str = "smoke", *, client: CachedClient | None = None,
-    service_key: str | None = None, data_dir: str | Path | None = None,
+    service_key: str | None = None, data_dir: str | Path | None = None, history: bool = False,
 ) -> dict[str, int]:
+    """Collect one year of K-apt monthly energy.
+
+    ``history=True`` (past-year back-fill) skips months before each complex's 사용승인일:
+    a building that did not exist yet has no energy to report, and asking would only
+    spend the daily call quota. Skipped months create no rows (they are not "0").
+    """
     if scope not in {"smoke", "limited", "full"}:
         raise ValueError("scope must be smoke, limited, or full")
     key = (service_key or os.getenv("DATA_GO_KR_SERVICE_KEY", "")).strip()
@@ -348,7 +362,7 @@ def collect_kapt_energy(
     delay = max(float(os.getenv("KAPT_ENERGY_REQUEST_DELAY_MS", "250")) / 1000, 0)
     session = client or CachedClient(root / "cache" / "kapt-energy", min_interval=delay)
     base_url = os.getenv("KAPT_ENERGY_BASE_URL", KAPT_ENERGY_BASE_URL).rstrip("/")
-    stats = {"requested": 0, "normalized": 0, "skipped": 0, "empty": 0, "not_reported": 0, "suspect": 0, "failed": 0}
+    stats = {"requested": 0, "normalized": 0, "skipped": 0, "empty": 0, "not_reported": 0, "suspect": 0, "failed": 0, "before_approval": 0}
     url = f"{base_url}/{KAPT_ENERGY_OPERATION}"
     for complex_row in targets:
         mapping = db.get(ComplexGridMapping, complex_row.kapt_code) or ComplexGridMapping(complex_code=complex_row.kapt_code)
@@ -358,7 +372,11 @@ def collect_kapt_energy(
         mapping.match_status = "MATCHED" if complex_row.grid_id else "UNMATCHED"
         mapping.matched_at = datetime.now(timezone.utc)
         db.add(mapping)
+        built = approval_month(complex_row) if history else None
         for month in months:
+            if built and month < built:
+                stats["before_approval"] += 1
+                continue
             ident = f"{complex_row.kapt_code}:{month}:K-apt"
             existing = db.get(ApartmentEnergyMonthly, ident)
             if existing and existing.quality_status in ANSWERED:

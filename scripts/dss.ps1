@@ -16,6 +16,11 @@ Actions
                 -SkipHeavy: keep the parcel layer (vworld_cadastral) at LIMITED
                 Full K-apt / 건축HUB / building collection can take 1-2 hours; every
                 successful response is cached, so an interrupted run resumes.
+  CollectHistory  back-fill past years (-FromYear 2015 -ToYear 2025, optional -Datasets)
+                for area history / before-after development analysis: SGIS, ASOS,
+                K-apt and 건축HUB energy per year, then VWorld buildings and parcels.
+                Daily API quotas can stop it; run the same command again the next day
+                and it resumes (data/ops/history-progress.json, cached responses).
   Snapshot      save the main API responses (map, dashboard, overlays, readiness,
                 collections) as JSON in the run folder for offline UI review
   VerifyRestore restore the latest backup into a separate throwaway project,
@@ -37,7 +42,7 @@ Safety
   * Results are written to data/ops/<timestamp>-<action>/ (summary.json, *.log).
 #>
 param(
-    [ValidateSet('All', 'Doctor', 'Status', 'Backup', 'Rebuild', 'Probe', 'Collect', 'Snapshot', 'VerifyRestore', 'FrontendTest', 'E2E', 'ExportBundle', 'ImportBundle', 'VerifyBundle')]
+    [ValidateSet('All', 'Doctor', 'Status', 'Backup', 'Rebuild', 'Probe', 'Collect', 'CollectHistory', 'Snapshot', 'VerifyRestore', 'FrontendTest', 'E2E', 'ExportBundle', 'ImportBundle', 'VerifyBundle')]
     [string]$Action = 'All',
     [string]$BundlePath,
     [string]$BackupDir,
@@ -47,7 +52,9 @@ param(
     [switch]$KeepRestoreProject,
     [switch]$RetryRejected,
     [string[]]$Datasets,
-    [switch]$SkipHeavy
+    [switch]$SkipHeavy,
+    [int]$FromYear = 2015,
+    [int]$ToYear = 2025
 )
 
 $ErrorActionPreference = 'Stop'
@@ -472,6 +479,26 @@ function Invoke-Collect {
     return (($results.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value.final)" }) -join ', ')
 }
 
+function Invoke-CollectHistory {
+    # Streams progress to the console and the run log: the back-fill can run for hours.
+    $cliArgs = @('exec', '-T', 'api', 'python', '-u', '-m', 'app.cli', 'collect-history', '--from', "$FromYear", '--to', "$ToYear")
+    if ($Datasets) { $cliArgs += @('--datasets', ((@($Datasets | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })) -join ',')) }
+    $historyLog = Join-Path $RunDir 'collect-history.log'
+    Write-Log "    back-fill $FromYear-$ToYear. K-apt/건축HUB energy can hit the daily quota; run the same command again the next day to resume."
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & docker compose -p $MainProject -f compose.yaml -f $MainOverride @cliArgs 2>&1 | ForEach-Object { "$_" } | Where-Object { $_ -ne 'System.Management.Automation.RemoteException' } | ForEach-Object { Add-Content -LiteralPath $historyLog -Value $_ -Encoding UTF8; Write-Host "    $_" }
+        $code = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $previous
+    }
+    if ($code -ne 0) { throw "collect-history exited $code (see collect-history.log)" }
+    $last = Get-Content -LiteralPath $historyLog -Encoding UTF8 | Where-Object { $_ -match '^\{"statuses"' } | Select-Object -Last 1
+    $script:Summary.results.collect_history = "$last"
+    return "history ${FromYear}-${ToYear}: $last"
+}
+
 function Invoke-Snapshot([string]$Base = "http://127.0.0.1:$ApiPort") {
     # Raw API responses (UTF-8 bytes written as-is) for offline UI review; no credentials are involved.
     $dir = Join-Path $RunDir 'api'
@@ -621,7 +648,7 @@ $selected = $Action
 if ($Action -notin @('Doctor', 'All')) {
     if (-not (Invoke-Step 'Docker engine' { Start-DockerEngine })) { $selected = 'Skip'; $ok = $false }
 }
-if ($selected -in @('Status', 'Probe', 'Collect', 'Snapshot')) {
+if ($selected -in @('Status', 'Probe', 'Collect', 'CollectHistory', 'Snapshot')) {
     # app.ops runs inside the api image; make sure it contains the current code first.
     # --force-recreate: containers must pick up .env changes (new API keys) as well as new code.
     if (-not (Invoke-Step 'Services up to date' { Assert-Native (Compose-Main @('up', '-d', '--build', '--force-recreate', '--wait', 'api', 'worker')) 'compose up --build'; 'api/worker rebuilt with current code and .env' })) { $selected = 'Skip'; $ok = $false }
@@ -637,6 +664,12 @@ switch ($selected) {
         $ok = (Invoke-Step 'Probe VWorld' { $p = Invoke-Ops @('probe', 'vworld') 'probe-vworld.json'; "working_domain=$($p.Json.working_domain); " + (($p.Json.steps | ForEach-Object { "$($_.step)[$($_.domain)]:$($_.status) $($_.error.code) features=$($_.features)" }) -join ' ') }) -and $ok
     }
     'Collect' { $ok = Invoke-Step 'Staged collection' { Invoke-Collect } }
+    'CollectHistory' {
+        $ok = Invoke-Step 'Backup before back-fill' { Invoke-Backup 'before-history' }
+        if ($ok) { $ok = Invoke-Step 'Frontend up to date' { Assert-Native (Compose-Main @('up', '-d', '--build', '--wait', 'frontend')) 'compose up frontend'; 'frontend rebuilt' } }
+        if ($ok) { $ok = Invoke-Step "Back-fill $FromYear-$ToYear" { Invoke-CollectHistory } }
+        Invoke-Step 'Status after back-fill' { $s = Invoke-Ops @('status') 'status-after.json'; "tables=$(@($s.Json.table_counts.PSObject.Properties).Count)" } | Out-Null
+    }
     'Snapshot' { $ok = Invoke-Step 'API snapshot' { Invoke-Snapshot } }
     'VerifyRestore' {
         $ok = Invoke-Step 'Restore into separate project' { Invoke-VerifyRestore $BackupDir }

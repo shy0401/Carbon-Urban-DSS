@@ -224,3 +224,27 @@ def test_rows_stored_by_older_versions_are_reclassified(tmp_path):
     assert reclassify_existing(db) == {'NOT_REPORTED': 1}
     assert db.get(ApartmentEnergyMonthly, 'A1:202501:K-apt').quality_status == 'NOT_REPORTED'
     assert db.scalar(select(func.count()).select_from(EnergyMonthly)) == 0
+
+
+def test_history_mode_skips_months_before_the_complex_existed(tmp_path):
+    from app.kapt_energy import approval_month
+    db = make_db()
+    add_complex(db)
+    complex_row = db.get(ApartmentComplex, 'A1')
+    complex_row.approval_date = '2025-06-15'
+    db.commit()
+    client = StubClient(response({'kaptCode': 'A1', 'reqDate': '202506', 'helect': '1000'}))
+    stats = collect_kapt_energy(db, 2025, 'limited', client=client, service_key='valid-test-key', data_dir=tmp_path, history=True)
+    assert approval_month(complex_row) == '202506'
+    assert stats['before_approval'] == 5
+    assert [call['reqDate'] for call in client.calls] == [f'2025{m:02d}' for m in range(6, 13)]
+    # Months before approval create no rows at all (not zero, not missing).
+    assert db.scalar(select(func.count()).select_from(ApartmentEnergyMonthly)) == 7
+
+
+def test_approval_month_ignores_unreadable_dates():
+    from types import SimpleNamespace
+    from app.kapt_energy import approval_month
+    assert approval_month(SimpleNamespace(approval_date='19951130')) == '199511'
+    assert approval_month(SimpleNamespace(approval_date=None)) is None
+    assert approval_month(SimpleNamespace(approval_date='2025-13-01')) is None

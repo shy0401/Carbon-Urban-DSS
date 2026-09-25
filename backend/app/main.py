@@ -59,6 +59,10 @@ app.add_middleware(GZipMiddleware,minimum_size=2048)
 app.include_router(uploads_router)
 app.include_router(reports_router)
 app.include_router(overlays_router)
+from .area import router as area_router
+from .area_report import router as area_report_router
+app.include_router(area_router)
+app.include_router(area_report_router)
 
 @app.get('/api/health')
 @app.get('/health')

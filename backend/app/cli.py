@@ -17,9 +17,12 @@ def init_tables():
     apply_migrations(engine)
 
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument('command',choices=['demo','online','status','enrich','collect','validate-models','snapshot']);parser.add_argument('--year',type=int,default=DEFAULT_YEAR)
+    parser=argparse.ArgumentParser();parser.add_argument('command',choices=['demo','online','status','enrich','collect','collect-history','validate-models','snapshot','llm-dataset','llm-eval']);parser.add_argument('--year',type=int,default=DEFAULT_YEAR)
+    parser.add_argument('--from',dest='from_year',type=int,default=2015);parser.add_argument('--to',dest='to_year',type=int,default=DEFAULT_YEAR)
+    parser.add_argument('--datasets',default='',help='comma-separated: sgis,kma_asos,kapt_energy,energy,vworld_buildings,vworld_cadastral');parser.add_argument('--force',action='store_true')
     parser.add_argument('--source',choices=['energy','weather','kapt-energy','kma','sgis','vworld-zoning','vworld-cadastral'])
     parser.add_argument('--scope',choices=['smoke','limited','full'],default='smoke')
+    parser.add_argument('--model',default=None,help='llm-eval: Ollama model name (default OLLAMA_MODEL)');parser.add_argument('--limit',type=int,default=None);parser.add_argument('--file',default=None)
     args=parser.parse_args();init_tables()
     with Session() as db:
         seed_sources(db)
@@ -58,6 +61,19 @@ def main():
             aliases={'kapt-energy':'kapt_energy','kma':'kma_asos','vworld-zoning':'vworld_zoning','vworld-cadastral':'vworld_cadastral'}
             datasets=[aliases.get(args.source,args.source)] if args.source else ['weather']
             job=queue_collection(db,datasets,f'{args.year}-01',f'{args.year}-12',args.scope);print('job',job.id,job.status)
+        elif args.command=='collect-history':
+            from .history import collect_history
+            datasets=[d.strip() for d in args.datasets.split(',') if d.strip()] or None
+            result=collect_history(db,args.from_year,args.to_year,datasets=datasets,force=args.force,log=lambda m:print(m,flush=True))
+            statuses={}
+            for item in result['items'].values():statuses[item['status']]=statuses.get(item['status'],0)+1
+            print(json.dumps({'statuses':statuses,'blocked':result['blocked']},ensure_ascii=False))
+        elif args.command=='llm-dataset':
+            from .llm_dataset import build_dataset
+            print(json.dumps(build_dataset(db,args.from_year,args.to_year,log=lambda m:print(m,flush=True)),ensure_ascii=False))
+        elif args.command=='llm-eval':
+            from .llm_dataset import evaluate
+            print(json.dumps(evaluate(args.file,model=args.model,limit=args.limit,log=lambda m:print(m,flush=True)),ensure_ascii=False))
         elif args.command=='validate-models':
             from .model_service import model_status
             print(json.dumps(model_status(db,args.year,train=True),ensure_ascii=False,indent=2))
