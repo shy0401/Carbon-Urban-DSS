@@ -206,6 +206,18 @@ def area_markdown(s: dict[str, Any]) -> str:
         elec = e.get("electricity", {})
         table.append(f"| {y} | {fmt(elec.get('kwh'))} ({elec.get('complete_parcels', 0)}곳) | {fmt(e.get('electricity_carbon_kgco2eq'))} | {fmt(w.get('hdd'))} | {fmt(w.get('cdd'))} | {fmt(p.get('population'))} | {int(ev.get('households') or 0):,} |")
     lines.append("\n".join(table))
+    sg = h.get("sgis_grid") or {}
+    if sg.get("overlap"):
+        o = sg["overlap"]
+        pct = lambda v: "자료 부족" if v is None else f"{v:,.1f}%"  # noqa: E731
+        lines += [f"## 지역 특성 (SGIS {sg['year']}년 1km 격자)",
+                  f"구역이 걸친 1km 격자 {sg['cells']}개(통계 있는 격자 {sg['cells_with_stats']}개)의 합계입니다. 구역은 이 격자 면적의 {sg['coverage_pct']:,.1f}%입니다.",
+                  "\n".join(["| 항목 | 값 |", "| --- | --- |",
+                             f"| 인구 | {fmt(o.get('population'))} |", f"| 가구 | {fmt(o.get('households'))} |", f"| 주택 | {fmt(o.get('housing'))} |",
+                             f"| 사업체 | {fmt(o.get('businesses'))} |", f"| 종사자 | {fmt(o.get('workers'))} |",
+                             f"| 65세 이상 비율 | {pct(o.get('elderly_pct'))} |", f"| 1인가구 비율 | {pct(o.get('single_household_pct'))} |",
+                             f"| 2000년 이전 준공 주택 비율 | {pct(o.get('old_housing_pct'))} |", f"| 아파트 비율 | {pct(o.get('apartment_pct'))} |"]),
+                  "공식 격자 통계(공공데이터포털, 기준시점 6월 30일)이며 비밀보호를 위해 5 미만 값은 0 또는 5로 확률 대체되고 그 이상은 최대 ±7의 잡음이 들어 있습니다. 통계가 없는 격자는 0이 아니라 통계 없음입니다."]
     lines += ["## 해석 범위", h.get("factor_basis", ""), "관측이 없는 연도는 0이 아니라 자료 없음입니다. 행정동 통계는 격자·반경에 배분하지 않았습니다.",
               "운영 단계 1차 추정이며 법적 적합성이나 넷제로 달성을 판정하지 않습니다."]
     if s.get("effort") and s["effort"].get("available"):

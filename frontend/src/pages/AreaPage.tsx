@@ -5,6 +5,7 @@ import { BeforeAfterChart, DevelopmentChart, EffortBars, EffortCurve, Electricit
 import { MetricCard } from '../components/MetricCard';
 import { PageHeader } from '../components/PageHeader';
 import { ProvenanceBadge } from '../components/ProvenanceBadge';
+import { SgisGridSummaryView } from '../components/SgisGridPanel';
 import { EmptyState, ErrorState, LoadingState } from '../components/Status';
 import { useApi } from '../hooks/useApi';
 import { api } from '../lib/api';
@@ -154,6 +155,7 @@ export function AreaPage() {
         <PopulationPanel analysis={analysis} />
         <RegisterPanel analysis={analysis} eventYear={activeEvent} />
       </div>
+      <SgisAreaPanel analysis={analysis} />
 
       <div className="section-label"><h2>개발 전후 영향</h2><span>개발 연도는 전환기라 제외하고 앞뒤 {windowSize}년 평균을 비교합니다</span></div>
       <BeforeAfterPanel comparison={analysis.before_after} candidates={eventYears(analysis.history)} eventYear={eventYear} setEventYear={setEventYear} windowSize={windowSize} setWindowSize={setWindowSize} />
@@ -221,6 +223,19 @@ function RegisterPanel({ analysis, eventYear }: { analysis: AreaAnalysis; eventY
       <RegisterChart history={analysis.history} eventYear={eventYear} />
       <p className="muted">구역 격자 안 건물 {formatMetric(reg.linked_in_area)}동의 사용승인일 기준입니다(아파트 외 상가·업무·공공 건물 포함).{reg.unknown_year ? ` 사용승인일을 읽을 수 없는 ${formatMetric(reg.unknown_year)}동은 뺐습니다.` : ''} 연면적이 비어 있는 건물은 0이 아니라 합계에서 빠집니다.</p>
     </> : <EmptyState title={reg?.available ? '이 구역에 연결된 대장 건물이 없습니다' : '건축물대장을 아직 수집하지 않았습니다'} description={reg?.available ? '대장 건물의 위치(격자)는 연속지적 전체 수집 뒤 연결됩니다.' : "수집 데이터 화면의 '빠진 자료 전부 수집'으로 받을 수 있습니다 (건축물대장 활용신청 승인 필요)."} />}
+  </section>;
+}
+
+/** 구역이 걸친 SGIS 1km 격자 전체의 합(관측)과, 면적 비례로 나눈 참고값(추정)을 나란히 둔다. */
+function SgisAreaPanel({ analysis }: { analysis: AreaAnalysis }) {
+  const sg = analysis.history.sgis_grid;
+  return <section className="panel area-sgis" aria-label="지역 특성 (SGIS 1km 격자)">
+    <div className="panel-title"><h3>지역 특성 (SGIS 1km 격자{sg ? ` ${sg.year}년` : ''})</h3><div className="badge-row"><ProvenanceBadge kind="observed" detail="1km 격자 합계" />{sg?.overlap && <ProvenanceBadge kind="estimated" detail="구역 면적 비례" />}</div></div>
+    {!sg ? <EmptyState title="SGIS 격자 통계를 아직 가져오지 않았습니다" description="공공데이터포털 'SGIS 격자 통계 및 경계' 파일을 잘라 두면 API 시작 때 자동으로 들어옵니다 (사용 방법 → SGIS 격자 통계)." />
+      : !sg.overlap ? <EmptyState title="이 구역이 걸친 1km 격자에는 공표된 통계가 없습니다" description="인구·사업체가 없거나 비공개인 격자이며 0이 아닙니다." />
+      : <SgisGridSummaryView summary={sg.overlap}
+          scope={<>구역이 걸친 1km 격자 <b>{sg.cells}개</b>(통계 있는 격자 {sg.cells_with_stats}개) 전체의 합계입니다. {sg.coverage_pct !== null && sg.coverage_pct < 99.9 ? <>구역은 이 격자 면적의 <b>{sg.coverage_pct.toFixed(1)}%</b>라 합계는 구역보다 넓은 범위입니다.</> : '구역이 이 격자들과 같은 범위입니다.'}</>}
+          extra={sg.coverage_pct !== null && sg.coverage_pct < 99.9 ? <div className="is-estimated"><dt>구역 인구 (면적 비례 추정)</dt><dd>{formatMetric(sg.estimated.population, '명')}<small>{sg.estimated.basis}</small></dd></div> : undefined} />}
   </section>;
 }
 

@@ -94,7 +94,36 @@ export interface GridContext {
   admin: Array<{ adm_code: string; adm_name: string; reference_year: number; grid_share_pct: number; population: number | null; population_status: string; households: number | null }>;
   complexes: { count: number; households: number | null; gross_floor_area_m2: number | null; with_floor_area: number; floor_area_excluded?: string[]; names: string[]; source: string } | null;
   buildings: (GridBuildings & { source: string }) | null;
+  /** Parent SGIS 1km grid cell (official statistics with disclosure noise, never divided into 500m). */
+  sgis_grid?: SgisGridCell | null;
 }
+
+/** SGIS 1km grid statistics for one cell or a sum of cells. null = no published value (not 0). */
+export interface SgisGridSummary {
+  population: number | null;
+  male: number | null;
+  female: number | null;
+  households: number | null;
+  housing: number | null;
+  businesses: number | null;
+  workers: number | null;
+  elderly_pct: number | null;
+  children_pct: number | null;
+  single_household_pct: number | null;
+  old_housing_pct: number | null;
+  apartment_pct: number | null;
+  housing_age: Record<string, number | null>;
+  housing_types: Record<string, number | null>;
+  housing_area: Record<string, number | null>;
+  household_types: Record<string, number | null>;
+  sectors: Array<{ name: string; businesses: number | null; workers: number | null }>;
+  small_flags: string[];
+}
+
+export type SgisGridCell = { year: number; code: string | null; source: string } & (
+  | ({ status: 'OBSERVED' } & SgisGridSummary)
+  | { status: 'NO_STAT' }
+);
 
 export interface GridBuildings {
   status: string;
@@ -159,6 +188,23 @@ export interface GridProps {
   complex_households: number | null;
   complex_gfa_m2: number | null;
   complex_gfa_excluded: number;
+  /** SGIS 1km parent cell (absent until the bundle is loaded). Densities are per km² of the 1km cell. */
+  sgis1k_code?: string | null;
+  sgis1k_year?: number;
+  sgis1k_status?: 'OBSERVED' | 'NO_STAT';
+  sgis1k_population?: number | null;
+  sgis1k_households?: number | null;
+  sgis1k_housing?: number | null;
+  sgis1k_businesses?: number | null;
+  sgis1k_workers?: number | null;
+  sgis_pop_density?: number | null;
+  sgis_housing_density?: number | null;
+  sgis_worker_density?: number | null;
+  sgis_elderly_pct?: number | null;
+  sgis_single_household_pct?: number | null;
+  sgis_old_housing_pct?: number | null;
+  sgis_apartment_pct?: number | null;
+  sgis1k_small?: string[];
   [key: string]: unknown;
 }
 
@@ -179,6 +225,7 @@ export interface MapData {
   grid_area_m2?: number;
   year?: number;
   offline_mode?: boolean;
+  sgis_grid?: { year: number | null; source: string; note: string } | null;
 }
 
 export interface BuildingViewport extends GeoJSON.FeatureCollection {

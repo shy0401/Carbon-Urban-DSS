@@ -4,6 +4,7 @@
  * JSON은 연도 키를 문자열로 바꾸므로("2025") 조회는 항상 at()으로 한다.
  */
 import { TOKENS } from '../theme/palette';
+import type { SgisGridSummary } from '../types';
 
 export type AreaMode = 'admin' | 'circle' | 'polygon' | 'zone' | 'grid';
 export type ZoneCategory = 'RESIDENTIAL' | 'COMMERCIAL' | 'INDUSTRIAL' | 'GREEN' | 'OTHER';
@@ -96,6 +97,18 @@ export interface AreaHistory {
   city_intensity: { year: number; kwh_per_m2: number; area_m2: number; parcels: number } | null;
   coverage: { energy_years: number[]; weather_years: number[]; population_years: number[]; grid_count: number; complex_count: number; register_buildings?: number };
   register?: RegisterHistory;
+  sgis_grid?: AreaSgisGrid | null;
+}
+
+/** SGIS 1km 격자 통계 (구역이 걸친 1km 격자 전체 합계 = 관측, 면적 비례 값 = 추정). */
+export interface AreaSgisGrid {
+  year: number;
+  cells: number;
+  cells_with_stats: number;
+  coverage_pct: number | null;
+  overlap: SgisGridSummary | null;
+  estimated: { population: number | null; households: number | null; data_class: 'ESTIMATED'; basis: string };
+  source: string;
 }
 
 /** 건축물대장 사용승인 (모든 용도, 격자 기준). */

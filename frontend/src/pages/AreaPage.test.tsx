@@ -49,5 +49,29 @@ describe('AreaPage', () => {
     expect(screen.getByText('164 % 필요 → 불가')).toBeInTheDocument();
     expect(screen.getByText('전후 기간에 12개월이 모두 관측된 전력 자료가 부족합니다 (과거 수집 필요)')).toBeInTheDocument();
     expect(screen.getAllByText('자료 없음').length).toBeGreaterThan(0);
+    expect(screen.getByText('SGIS 격자 통계를 아직 가져오지 않았습니다')).toBeInTheDocument();
+  });
+
+  it('SGIS 1km 격자 합계는 관측, 면적 비례 인구는 추정으로 따로 보여 준다', async () => {
+    const sgis = {
+      year: 2024, cells: 3, cells_with_stats: 2, coverage_pct: 33.3, source: 'SGIS',
+      estimated: { population: 12182, households: 6315, data_class: 'ESTIMATED', basis: '1km 격자 값 × (구역에 든 500m 격자 수 ÷ 4)' },
+      overlap: { population: 34609, male: null, female: null, households: 17644, housing: 11482, businesses: null, workers: 18697, elderly_pct: 20.7, children_pct: null, single_household_pct: 57.5, old_housing_pct: 58.5, apartment_pct: 47.7,
+        housing_age: {}, housing_types: {}, housing_area: {}, household_types: {}, sectors: [], small_flags: [] },
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.endsWith('/api/areas/options')) return new Response(JSON.stringify({ admin: [{ code: '35012650', name: '덕진구 송천1동' }], admin_geojson: { type: 'FeatureCollection', features: [] }, admin_year: 2024, zones: [], energy_years: [2025], default_grid: 'cell_1' }));
+      if (url.endsWith('/api/areas/collection')) return new Response(JSON.stringify({ items: {}, runs: [], summary: {} }));
+      if (url.endsWith('/api/areas/analyze')) return new Response(JSON.stringify({ ...analysis, history: { ...analysis.history, sgis_grid: sgis } }));
+      if (url.endsWith('/api/area-reports')) return new Response(JSON.stringify([]));
+      return new Response('{}', { status: 404 });
+    });
+    render(<AreaPage />);
+    expect(await screen.findByText('지역 특성 (SGIS 1km 격자 2024년)')).toBeInTheDocument();
+    expect(screen.getByText('34,609 명')).toBeInTheDocument();
+    expect(screen.getByText('구역 인구 (면적 비례 추정)')).toBeInTheDocument();
+    expect(screen.getByText('12,182 명')).toBeInTheDocument();
+    expect(screen.getByText('33.3%')).toBeInTheDocument();
   });
 });

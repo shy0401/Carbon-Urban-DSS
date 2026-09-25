@@ -35,7 +35,7 @@
 .empty-block dl div { display: flex; gap: var(--sp-3); font-size: var(--fs-label); }
 .empty-block dt { color: var(--ink-2); }
 .empty-block dd { margin: 0; font-weight: 500; }
-.weather-panel { margin-top: var(--sp-4); }
+.weather-panel, .sgis-panel { margin-top: var(--sp-4); }
 .chart-note { display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-5); margin: var(--sp-2) 0 0; font-size: var(--fs-caption); }
 .chart-note dt { color: var(--ink-3); }
 .chart-note dd { margin: 0; font-weight: 500; color: var(--ink); }

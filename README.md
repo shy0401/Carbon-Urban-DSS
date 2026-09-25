@@ -86,6 +86,7 @@ npm run build
 - [수집 및 수동 업로드](docs/DATA_COLLECTION.md), [후보 선정](docs/TESTBED_SELECTION.md)
 - [탄소 계산](docs/CARBON_METHOD.md), [모델 검증](docs/MODEL_VALIDATION.md), [시뮬레이션](docs/SIMULATION_METHOD.md)
 - [지역 개발 시뮬레이션·과거 수집·감축 노력·보고서 (/area)](docs/AREA_SIMULATION.md), [로컬 보고서 모델 학습](scripts/llm/README.md)
+- [SGIS 격자 통계 1km (2024) 적용: 인구·가구·주택·사업체 격자 지표](docs/SGIS_GRID.md)
 - 웹 메뉴 **사용 방법**(/guide): 처음 시작, 화면별 사용법, 값 읽는 법, 빠진 자료 전부 수집, 인증키 설정, 로컬 AI, 문제 해결
 - [알려진 한계](docs/LIMITATIONS.md), [5분 시연](docs/DEMO_SCRIPT.md)
 

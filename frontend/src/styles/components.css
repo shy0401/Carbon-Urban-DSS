@@ -130,3 +130,28 @@
 .share-legend i { width: 12px !important; height: 12px !important; }
 .share-legend b { font-weight: 500; }
 .share-legend small { color: var(--ink-3); }
+
+/* SGIS 1km 격자 통계 (대시보드·지도 상세·지역 시뮬레이션 공용) */
+.sgis-scope { margin-bottom: var(--sp-3); color: var(--ink-2); font-size: var(--fs-label); }
+.sgis-figures, .sgis-shares { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 0; margin: 0 0 var(--sp-3); overflow: hidden; border: 1px solid var(--line); border-radius: var(--r-map); }
+/* 칸마다 오른쪽·아래 선을 긋고 1px 밀어 바깥 선은 테두리와 겹치게 한다(줄바꿈돼도 안쪽 구분선만 남음). */
+.sgis-figures > div, .sgis-shares > div { padding: var(--sp-2) var(--sp-3); min-width: 0; margin: 0 -1px -1px 0; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.sgis-figures dt, .sgis-shares dt { font-size: var(--fs-caption); color: var(--ink-3); }
+.sgis-figures dd { margin: 2px 0 0; font-size: var(--fs-panel); font-weight: 600; font-variant-numeric: tabular-nums; }
+.sgis-shares dd { margin: 2px 0 0; font-size: var(--fs-body); font-weight: 600; font-variant-numeric: tabular-nums; }
+.sgis-shares dd small, .sgis-figures dd small { display: block; font-size: var(--fs-caption); font-weight: 400; color: var(--ink-3); }
+.sgis-shares .unit { margin-left: 2px; font-size: var(--fs-caption); font-weight: 400; color: var(--ink-2); }
+.sgis-dists { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: var(--sp-4) var(--sp-5); }
+.sgis-dist h4 { margin-bottom: var(--sp-2); font-size: var(--fs-label); font-weight: 600; }
+.sgis-dist ul { display: grid; gap: 5px; margin: 0; padding: 0; list-style: none; }
+.sgis-dist li { display: grid; grid-template-columns: minmax(84px, 1.1fr) minmax(40px, 1fr) auto; align-items: center; gap: var(--sp-2); font-size: var(--fs-caption); }
+.sgis-dist-label { color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sgis-dist-track { position: relative; height: 10px; background: var(--surface-sunk); border-radius: 1px; }
+.sgis-dist-track i { position: absolute; inset: 0 auto 0 0; background: var(--seq-4); border-radius: 0 2px 2px 0; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+.sgis-dist-value { min-width: 92px; text-align: right; font-variant-numeric: tabular-nums; color: var(--ink); }
+.sgis-dist-value small { display: inline-block; min-width: 42px; margin-left: 6px; color: var(--ink-3); }
+.sgis-dist li.no-stat .sgis-dist-track { background-color: var(--prov-missing-bg); background-image: var(--hatch-image); }
+.sgis-dist li.no-stat .sgis-dist-value { color: var(--ink-3); }
+.sgis-rule { margin-top: var(--sp-3); }
+.sgis-figures .is-estimated { background: var(--prov-estimated-bg); }
+.sgis-figures .is-estimated dt { color: var(--prov-estimated); }

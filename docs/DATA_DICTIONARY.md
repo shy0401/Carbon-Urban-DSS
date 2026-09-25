@@ -16,6 +16,8 @@
 |municipal_apartments_under_construction|원본 행 및 정규화 속성|시공 중 공동주택. 현재 기준과 분리|
 |building_register|parcel_code,attributes,raw_record|별도 활용 승인된 공식 건축물대장|
 |zoning_areas|source,properties,geojson|확보·입력된 용도지역. 현재 FAR로 법적 상한을 추측하지 않음|
+|sgis_grid_cells|id(연도:격자코드),year,grid_cd,size_m,x_min,y_min|SGIS 공식 1km 격자(전주 범위). 도형은 코드에서 계산|
+|sgis_grid_stats|id(연도:격자코드:항목),year,grid_cd,item,value,item_group|SGIS 1km 격자 통계값. 행 없음=통계 없음(0 아님), 비밀보호 잡음 포함|
 |population_grid|source,grid_id,population,reference_period|원본 격자와 집계 근거는 imported_records에 보존|
 |testbed_sectors|grid_id,reason,candidates,metadata_json|선정 이유·후보·관측과 매칭된 모델 기준면적|
 |scenarios / scenario_results|inputs / result|계획 입력·결과. 실측과 분리|

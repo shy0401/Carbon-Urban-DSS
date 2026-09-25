@@ -25,9 +25,14 @@ export interface MetricDef {
 const n = (value: unknown): number | null => (typeof value === 'number' && Number.isFinite(value) ? value : null);
 const fmt = (value: number | null | undefined, unit = '', digits = 0) => formatMetric(value, unit, digits);
 const GRID = '250,000 m²';
+export const SGIS_GROUP = '인구·주택 (SGIS 1km)';
+const SGIS_SOURCE = 'SGIS 격자 통계 1km (공공데이터포털 15141768)';
+const SGIS_NOTE = '이 500m 격자가 속한 1km 공식 격자의 값입니다. 같은 1km 격자의 500m 격자 4개는 같은 값이며, 500m로 나눈 값이 아닙니다. 비밀보호 잡음(인구 ±7)이 들어 있습니다.';
+const sgisBasis = (p: GridProps, extra: string | null) =>
+  p.sgis1k_status === 'OBSERVED' ? `1km 격자 ${p.sgis1k_code} · ${p.sgis1k_year}년${extra ? ` · ${extra}` : ''}` : null;
 export const PERCENT_BREAKS = [20, 40, 60, 80];
 
-export const METRIC_GROUPS = ['에너지 관측', '에너지 원단위', '탄소', '도시 형태', '토지이용', '데이터 품질'] as const;
+export const METRIC_GROUPS = ['에너지 관측', '에너지 원단위', '탄소', '도시 형태', '토지이용', SGIS_GROUP, '데이터 품질'] as const;
 
 export const METRICS: MetricDef[] = [
   {
@@ -141,6 +146,58 @@ export const METRICS: MetricDef[] = [
     formula: '주거용 건축면적 ÷ 전체 건축면적 × 100',
     basis: (p) => p.use_share_pct ? Object.entries(p.use_share_pct).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, v]) => `${USE_NAME[k] ?? k} ${v.toFixed(1)}%`).join(' · ') : null,
     source: 'VWorld 건물용도코드',
+  },
+  {
+    key: 'sgis_pop_density', label: '인구밀도', unit: '명/km²', group: SGIS_GROUP, ramp: 'seq', digits: 0,
+    value: (p) => n(p.sgis_pop_density),
+    definition: `${SGIS_NOTE} 1km 격자는 1km²이므로 총인구가 곧 인구밀도입니다. 통계가 없는 격자(인구가 없거나 비공개)는 0이 아니라 결측으로 둡니다.`,
+    formula: '1km 격자 총인구(to_in_001) ÷ 1 km²',
+    basis: (p) => sgisBasis(p, p.sgis1k_households != null ? `가구 ${fmt(p.sgis1k_households, '')}` : null),
+    breaks: [100, 1000, 5000, 10000], source: SGIS_SOURCE,
+  },
+  {
+    key: 'sgis_housing_density', label: '주택밀도', unit: '호/km²', group: SGIS_GROUP, ramp: 'seq', digits: 0,
+    value: (p) => n(p.sgis_housing_density),
+    definition: `${SGIS_NOTE} 주택은 총주택(거처) 수입니다.`,
+    formula: '1km 격자 총주택(to_ho_001) ÷ 1 km²',
+    basis: (p) => sgisBasis(p, null),
+    breaks: [50, 500, 2000, 4000], source: SGIS_SOURCE,
+  },
+  {
+    key: 'sgis_worker_density', label: '종사자밀도', unit: '명/km²', group: SGIS_GROUP, ramp: 'seq', digits: 0,
+    value: (p) => n(p.sgis_worker_density),
+    definition: `${SGIS_NOTE} 종사자는 사업체 종사자 수(사업체 부문 잡음 ±4)입니다. 상업·업무 활동의 크기를 봅니다.`,
+    formula: '1km 격자 총종사자(to_em_020) ÷ 1 km²',
+    basis: (p) => sgisBasis(p, p.sgis1k_businesses != null ? `사업체 ${fmt(p.sgis1k_businesses, '곳')}` : null),
+    breaks: [100, 500, 2000, 5000], source: SGIS_SOURCE,
+  },
+  {
+    key: 'sgis_elderly_pct', label: '65세 이상 비율', unit: '%', group: SGIS_GROUP, ramp: 'seq', digits: 1,
+    value: (p) => n(p.sgis_elderly_pct), breaks: [15, 25, 35, 45],
+    definition: `${SGIS_NOTE} 연령별 인구 합이 20명 미만이면 잡음이 커서 비율을 내지 않습니다.`,
+    formula: '65세 이상 인구(in_age_014~021) ÷ 연령별 인구 합 × 100',
+    basis: (p) => sgisBasis(p, null), source: SGIS_SOURCE,
+  },
+  {
+    key: 'sgis_single_household_pct', label: '1인가구 비율', unit: '%', group: SGIS_GROUP, ramp: 'seq', digits: 1,
+    value: (p) => n(p.sgis_single_household_pct), breaks: [25, 35, 45, 60],
+    definition: `${SGIS_NOTE} 총가구가 20 미만이면 비율을 내지 않습니다.`,
+    formula: '1인가구(ga_sd_005) ÷ 총가구(to_ga_001) × 100',
+    basis: (p) => sgisBasis(p, null), source: SGIS_SOURCE,
+  },
+  {
+    key: 'sgis_old_housing_pct', label: '2000년 이전 주택 비율', unit: '%', group: SGIS_GROUP, ramp: 'seq', digits: 1,
+    value: (p) => n(p.sgis_old_housing_pct), breaks: PERCENT_BREAKS,
+    definition: `${SGIS_NOTE} 1999년 이전에 지어진 주택의 비율입니다. 노후 주택이 많은 곳은 개보수 효과를 검토할 후보입니다.`,
+    formula: '건축연도 1999년 이전 주택(ho_yr_001~003) ÷ 건축연도별 주택 합 × 100',
+    basis: (p) => sgisBasis(p, null), source: SGIS_SOURCE,
+  },
+  {
+    key: 'sgis_apartment_pct', label: '아파트 비율', unit: '%', group: SGIS_GROUP, ramp: 'seq', digits: 1,
+    value: (p) => n(p.sgis_apartment_pct), breaks: PERCENT_BREAKS,
+    definition: `${SGIS_NOTE} K-apt 에너지 관측이 대표하는 범위(아파트)가 격자 주택의 얼마인지 볼 때 씁니다.`,
+    formula: '아파트(ho_gb_003) ÷ 주택 유형별 합 × 100',
+    basis: (p) => sgisBasis(p, null), source: SGIS_SOURCE,
   },
   {
     key: 'completeness', label: '에너지 관측 완전성', unit: '%', group: '데이터 품질', ramp: 'gain', digits: 0,

@@ -104,3 +104,4 @@
   .area-select, .area-select.narrow { min-width: 0; flex: 1 1 140px; }
   .area-map-legend { display: none; }
 }
+.area-sgis { margin-top: var(--sp-4); }

@@ -8,7 +8,7 @@ from .catalog import seed_sources
 from .settings import DATA_DIR,DEFAULT_YEAR
 
 def init_tables():
-    from . import official,kapt,kapt_energy,kma_asos,sgis,vworld
+    from . import official,kapt,kapt_energy,kma_asos,sgis,sgis_grid,vworld
     try:from . import imports
     except ImportError:pass
     with engine.begin() as c:c.execute(text('CREATE EXTENSION IF NOT EXISTS postgis'))
@@ -17,7 +17,7 @@ def init_tables():
     apply_migrations(engine)
 
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument('command',choices=['demo','online','status','enrich','collect','collect-history','collect-missing','validate-models','snapshot','llm-dataset','llm-eval']);parser.add_argument('--year',type=int,default=DEFAULT_YEAR)
+    parser=argparse.ArgumentParser();parser.add_argument('command',choices=['demo','online','status','enrich','collect','collect-history','collect-missing','validate-models','snapshot','llm-dataset','llm-eval','import-sgis-grid']);parser.add_argument('--year',type=int,default=DEFAULT_YEAR)
     parser.add_argument('--from',dest='from_year',type=int,default=2015);parser.add_argument('--to',dest='to_year',type=int,default=DEFAULT_YEAR)
     parser.add_argument('--datasets',default='',help='comma-separated: sgis,kma_asos,kapt_energy,energy,vworld_zoning,vworld_buildings,vworld_cadastral,building_register');parser.add_argument('--force',action='store_true')
     parser.add_argument('--source',choices=['energy','weather','kapt-energy','kma','sgis','vworld-zoning','vworld-cadastral'])
@@ -74,6 +74,10 @@ def main():
         elif args.command=='llm-eval':
             from .llm_dataset import evaluate
             print(json.dumps(evaluate(args.file,model=args.model,limit=args.limit,log=lambda m:print(m,flush=True)),ensure_ascii=False))
+        elif args.command=='import-sgis-grid':
+            from .sgis_grid import import_sgis_grid,meta
+            result=import_sgis_grid(db,args.file,force=args.force)
+            print(json.dumps(dict(result,loaded={k:meta(db)[k] for k in ('year','cells','stat_rows')}),ensure_ascii=False))
         elif args.command=='validate-models':
             from .model_service import model_status
             print(json.dumps(model_status(db,args.year,train=True),ensure_ascii=False,indent=2))

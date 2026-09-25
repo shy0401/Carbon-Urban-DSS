@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { TOKENS } from '../theme/palette';
-import { classIndex, classify, METRICS, quantileBounds, rangeLabel, stepColor, withMetricValues } from './mapMetrics';
+import { classIndex, classify, METRIC_GROUPS, METRICS, quantileBounds, rangeLabel, SGIS_GROUP, stepColor, withMetricValues } from './mapMetrics';
 import type { GridProps } from '../types';
 
 describe('map classification', () => {
@@ -55,6 +55,20 @@ describe('map classification', () => {
     expect(p.electricity_carbon_t).toBeCloseTo(2411.1116);
     expect(p.completeness).toBeNull();
     expect(p.electricity_kwh_per_m2).toBeNull();
+  });
+  it('SGIS 1km metrics read the parent cell, stay missing without a statistic and say they are not divided', () => {
+    const sgis = METRICS.filter((m) => m.group === SGIS_GROUP);
+    expect(METRIC_GROUPS).toContain(SGIS_GROUP);
+    expect(sgis.map((m) => m.key)).toEqual(['sgis_pop_density', 'sgis_housing_density', 'sgis_worker_density', 'sgis_elderly_pct', 'sgis_single_household_pct', 'sgis_old_housing_pct', 'sgis_apartment_pct']);
+    const pop = sgis[0];
+    const observed = { sgis1k_status: 'OBSERVED', sgis1k_code: '다마6862', sgis1k_year: 2024, sgis_pop_density: 13588, sgis1k_households: 5887 } as unknown as GridProps;
+    expect(pop.value(observed)).toBe(13588);
+    expect(pop.basis(observed)).toContain('1km 격자 다마6862 · 2024년');
+    const none = { sgis1k_status: 'NO_STAT', sgis1k_code: '다마0101', sgis1k_year: 2024 } as unknown as GridProps;
+    expect(pop.value(none)).toBeNull();
+    expect(pop.basis(none)).toBeNull();
+    expect(pop.value({} as GridProps)).toBeNull(); // bundle not loaded yet
+    for (const metric of sgis) expect(metric.definition).toContain('500m로 나눈 값이 아닙니다');
   });
   it('every metric states its formula and source (근거 유형 배지는 서버 필드가 없어 달지 않음)', () => {
     for (const metric of METRICS) {

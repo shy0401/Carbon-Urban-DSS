@@ -621,6 +621,9 @@ def build_history(area: dict[str, Any], years: list[int], inputs: dict[str, Any]
     ]
     history["stock"] = building_stock(area, complexes, years)
     history["register"] = register_events(area, inputs.get("register", []), years)
+    from .sgis_grid import area_block
+    sgis_year, sgis_values = inputs.get("sgis_grid") or (None, {})
+    history["sgis_grid"] = area_block(area["grid_ids"], sgis_year, sgis_values)
     city = inputs.get("city_intensity")
     history["city_intensity"] = city
     for year in years:
@@ -667,6 +670,24 @@ def area_facts(history: dict[str, Any], comparison: dict[str, Any] | None = None
         n_reg = sum(v["buildings"] for v in reg_years)
         gfa_reg = round(sum(v["gfa_m2"] for v in reg_years))
         add("register", f"건축물대장 기준으로 분석 기간에 사용승인된 건물은 {n_reg:,}동, 연면적 {gfa_reg:,}m²입니다(모든 용도).", n_reg, gfa_reg)
+    sg = history.get("sgis_grid") or {}
+    if sg.get("overlap"):
+        o = sg["overlap"]
+        parts = [f"인구 {o['population']:,.0f}명" if o.get("population") is not None else None,
+                 f"가구 {o['households']:,.0f}" if o.get("households") is not None else None,
+                 f"주택 {o['housing']:,.0f}호" if o.get("housing") is not None else None,
+                 f"사업체 종사자 {o['workers']:,.0f}명" if o.get("workers") is not None else None]
+        text = ", ".join(p for p in parts if p)
+        scope = ("구역이 이 격자들과 같은 범위이며" if sg["coverage_pct"] >= 99.9
+                 else f"구역은 이 격자 면적의 {sg['coverage_pct']:,.1f}%라 합계는 구역보다 넓은 범위이며")
+        add("sgis_grid", f"SGIS {sg['year']}년 1km 격자 기준으로 이 구역이 걸친 1km 격자 {sg['cells']}개(통계 있는 격자 {sg['cells_with_stats']}개)의 합계는 {text}입니다. "
+            f"{scope}, 공식 통계의 비밀보호 잡음이 들어 있습니다.",
+            sg["year"], sg["cells"], sg["cells_with_stats"], o.get("population"), o.get("households"), o.get("housing"), o.get("workers"), sg["coverage_pct"])
+        shares = [(label, o.get(key)) for label, key in (("65세 이상 인구", "elderly_pct"), ("1인가구", "single_household_pct"),
+                                                          ("2000년 이전 준공 주택", "old_housing_pct"), ("아파트", "apartment_pct"))]
+        shares = [(label, v) for label, v in shares if v is not None]
+        if shares:
+            add("sgis_grid_shares", "같은 1km 격자들에서 " + ", ".join(f"{label} 비율은 {v:,.1f}%" for label, v in shares) + "입니다.", *[v for _, v in shares])
     latest = cov["energy_years"][-1] if cov["energy_years"] else None
     if latest is not None:
         e = history["energy"][latest]["electricity"]
@@ -750,8 +771,9 @@ def load_inputs(db: Any, years: list[int]) -> dict[str, Any]:
     except Exception:  # noqa: BLE001 - register not collected yet (or columns not migrated)
         db.rollback()
     from .overlays import admin_features, grid_zoning_summary
+    from .sgis_grid import grid_values
     admin, admin_year = admin_features(db)
-    return {"register": register, "complexes": complexes, "energy": energy, "weather": weather, "population": population, "households": households,
+    return {"sgis_grid": grid_values(db), "register": register, "complexes": complexes, "energy": energy, "weather": weather, "population": population, "households": households,
             "factor": factors, "grids": grids, "admin": admin.get("features", []), "admin_year": admin_year, "zoning": grid_zoning_summary(db)}
 
 

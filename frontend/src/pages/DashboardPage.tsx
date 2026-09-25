@@ -7,6 +7,7 @@ import { MissingValue } from '../components/MissingValue';
 import { PageHeader } from '../components/PageHeader';
 import { ProvenanceBadge } from '../components/ProvenanceBadge';
 import { QualityBadge } from '../components/QualityBadge';
+import { SgisGridSummaryView } from '../components/SgisGridPanel';
 import { ShareBar } from '../components/ShareBar';
 import { EmptyState, ErrorState, LoadingState } from '../components/Status';
 import { WeatherChart } from '../components/WeatherChart';
@@ -103,8 +104,19 @@ export function DashboardPage() {
       <article className="panel"><div className="panel-title"><h3>건축면적 기준 건물 용도 구성</h3></div>{buildings && Object.keys(buildings.category_share_pct ?? {}).length > 0 ? <ShareBar shares={buildings.category_share_pct} names={USE_NAME} colors={Object.fromEntries(USE_COLORS)} counts={buildings.category_count} /> : <MissingValue reason="공식 건물 레이어(VWorld)를 아직 수집하지 않았습니다." />}</article>
       <article className="panel"><div className="panel-title"><h3>격자 면적 중 법정 용도지역</h3></div>{zoning && Object.keys(zoning.shares_pct).length > 0 ? <ShareBar shares={zoning.shares_pct} names={ZONE_NAME} colors={ZONE_GROUP_COLOR} rest="도시지역 외·미지정" /> : <MissingValue reason={zoning ? '이 격자에 도시지역 용도지역 도형이 없습니다.' : '용도지역(VWorld)을 아직 수집하지 않았습니다.'} />}</article>
     </section>
+    <SgisPanel context={context} />
     <WeatherPanel data={data} year={year} />
   </div>;
+}
+
+function SgisPanel({ context }: { context: DashboardData['context'] }) {
+  const cell = context?.sgis_grid;
+  return <section className="panel sgis-panel" aria-label="인구·주택 (SGIS 1km 격자)">
+    <div className="panel-title"><h3>인구·주택 (SGIS 1km 격자{cell ? ` ${cell.year}년` : ''})</h3><div className="badge-row"><ProvenanceBadge kind="observed" detail="공공데이터포털 격자 통계" /></div></div>
+    {!cell ? <MissingValue reason="SGIS 격자 통계를 아직 가져오지 않았습니다. 사용 방법 화면의 'SGIS 격자 통계' 절차를 따라 주세요." />
+      : cell.status === 'NO_STAT' ? <MissingValue reason={`이 격자가 속한 1km 격자(${cell.code})에는 공표된 통계가 없습니다. 인구·사업체가 없거나 비공개인 격자이며 0이 아닙니다.`} />
+      : <SgisGridSummaryView summary={cell} scope={<>이 500m 격자가 속한 1km 공식 격자 <code>{cell.code}</code> 전체 값입니다(면적 1km², 이 격자의 4배). 500m로 나누지 않았습니다.</>} />}
+  </section>;
 }
 
 function MonthRow({ label, months }: { label: string; months: boolean[] }) {

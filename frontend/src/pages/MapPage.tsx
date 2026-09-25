@@ -305,8 +305,31 @@ function GridDetail({ props: p, year, name, metric, classification, details, det
         <Fact label="연면적 합 (공표값)" value={p.complex_gfa_m2} unit="m²" why={p.complex_gfa_excluded ? `연면적 이상값 ${p.complex_gfa_excluded}개 단지 제외` : undefined} missingText="연면적 공표값 없음" />
       </dl>
     </section>
+    <SgisDetail p={p} />
     <div className="grid-actions"><Link className="button primary" to="/simulation">이 격자 시뮬레이션</Link><Link className="button secondary" to="/reports">보고서 작성</Link></div>
   </aside>;
+}
+
+/** 소속 SGIS 1km 격자 값. 500m로 나누지 않은 1km 격자 전체 값이다. */
+function SgisDetail({ p }: { p: GridProps }) {
+  const status = p.sgis1k_status;
+  return <section className="detail-section" aria-label="인구와 주택 (SGIS 1km 격자)">
+    <h3>인구·주택 (SGIS {p.sgis1k_year ? `${p.sgis1k_year}년 ` : ''}1km 격자{p.sgis1k_code ? ` ${p.sgis1k_code}` : ''})</h3>
+    {!status ? <MissingValue reason="SGIS 격자 통계를 아직 가져오지 않았습니다." />
+      : status === 'NO_STAT' ? <MissingValue reason="이 1km 격자에는 공표된 통계가 없습니다(인구·사업체 없음 또는 비공개). 0이 아닙니다." />
+      : <>
+        <dl className="fact-list">
+          <Fact label="인구 (1km 격자 전체)" value={p.sgis1k_population} unit="명" missingText="통계 없음" why={p.sgis1k_households != null ? `가구 ${formatMetric(p.sgis1k_households)}` : undefined} />
+          <Fact label="주택 (1km 격자 전체)" value={p.sgis1k_housing} unit="호" missingText="통계 없음" />
+          <Fact label="종사자 (1km 격자 전체)" value={p.sgis1k_workers} unit="명" missingText="통계 없음" why={p.sgis1k_businesses != null ? `사업체 ${formatMetric(p.sgis1k_businesses)}곳` : undefined} />
+          <Fact label="65세 이상 비율" value={p.sgis_elderly_pct} unit="%" digits={1} missingText="기준 20 미만 또는 통계 없음" />
+          <Fact label="1인가구 비율" value={p.sgis_single_household_pct} unit="%" digits={1} missingText="기준 20 미만 또는 통계 없음" />
+          <Fact label="2000년 이전 주택 비율" value={p.sgis_old_housing_pct} unit="%" digits={1} missingText="기준 20 미만 또는 통계 없음" />
+          <Fact label="아파트 비율" value={p.sgis_apartment_pct} unit="%" digits={1} missingText="기준 20 미만 또는 통계 없음" />
+        </dl>
+        <p className="muted">1km 격자(1km², 이 격자의 4배) 전체 값이며 500m로 나누지 않았습니다. 비밀보호 잡음(인구 ±7)이 들어 있습니다.{p.sgis1k_small?.length ? ' 0 또는 5인 총계는 5 미만일 수 있는 대체값입니다.' : ''}</p>
+      </>}
+  </section>;
 }
 
 function Fact({ label, value, unit, digits = 0, why, missingText }: { label: ReactNode; value: number | null | undefined; unit: string; digits?: number; why?: string; missingText?: string }) {

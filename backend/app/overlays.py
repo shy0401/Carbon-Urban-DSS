@@ -288,10 +288,14 @@ def grid_context(db: Any, grid_id: str | None) -> dict[str, Any]:
     * admin: SGIS 행정동 that overlap the grid, with the overlap share of the grid.
       Their population/households are administrative totals, never grid values.
     * complexes: K-apt complexes whose point lies in the grid (households, floor area)
+    * sgis_grid: the SGIS 1km grid cell that contains the 500m grid (official, noisy, not divided)
     """
-    context: dict[str, Any] = {"grid_id": grid_id, "zoning": None, "admin": [], "complexes": None, "buildings": None}
+    context: dict[str, Any] = {"grid_id": grid_id, "zoning": None, "admin": [], "complexes": None, "buildings": None, "sgis_grid": None}
     if not grid_id:
         return context
+    from .sgis_grid import grid_context_block
+    # Parent SGIS 1km cell: official grid statistics (with disclosure noise), never divided into 500m.
+    context["sgis_grid"] = grid_context_block(db, grid_id)
     zoning = grid_zoning_summary(db).get(grid_id)
     if zoning:
         context["zoning"] = {"status": zoning["zoning_status"], "shares_pct": zoning["shares"], "residential_pct": zoning["residential_zone_ratio"], "dominant": zoning["dominant_zone"], "source": "VWorld LT_C_UQ111"}
@@ -356,6 +360,10 @@ def context_facts(context: dict[str, Any]) -> list[dict[str, str]]:
             else f"{row['adm_name'].split()[-1]}(격자의 {row['grid_share_pct']:.0f}%, 인구 {'비공개' if row['population_status'] == 'SUPPRESSED' else '자료 없음'})"
             for row in admin[:4])
         facts.append({"id": "context_admin", "text": f"대상 격자는 행정동 {parts}에 걸쳐 있습니다. SGIS {admin[0]['reference_year']} 행정동 전체 통계이며 격자 인구가 아닙니다."})
+    from .sgis_grid import context_fact
+    sgis_fact = context_fact(context.get("sgis_grid"))
+    if sgis_fact:
+        facts.append(sgis_fact)
     buildings = context.get("buildings")
     if buildings and buildings.get("building_count"):
         floors = f", 지상층수 확인 {buildings['floors_known_pct']:.0f}% 기준 평균 {buildings['avg_floors']:.1f}층" if buildings.get("avg_floors") is not None else ""

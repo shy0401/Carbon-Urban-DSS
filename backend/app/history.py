@@ -41,8 +41,8 @@ SOURCE_ID = {"sgis": "sgis_admin", "kma_asos": "weather_kma", "building_register
 # Things no API call can fetch: the provider hands out a file after an application.
 MANUAL_SOURCES = (
     {"id": "sgis_grid", "label": "SGIS 공식 500m 격자 (경계·인구·비밀보호 표식)",
-     "why": "행정동 통계를 격자에 나누지 않고 격자 인구를 쓰려면 공식 격자 파일이 필요합니다.",
-     "how": "SGIS 자료제공 → 격자 통계 신청 → 받은 SHP/CSV를 '파일 업로드'로 가져오기",
+     "why": "1km 격자 통계(2024)는 공공데이터포털 파일로 적용되어 있습니다. 500m 격자 값이 필요하면 SGIS에 따로 신청해야 합니다(500m는 총괄 항목만 제공).",
+     "how": "SGIS 자료제공 → 격자 통계(500m) 신청 → 받은 SHP/CSV를 '파일 업로드'로 가져오기",
      "link": "https://sgis.kostat.go.kr/view/pss/openDataIntrcn"},
     {"id": "factors_gas", "label": "가스 배출계수·열량 기준 (CO₂·CH₄·N₂O, GWP)",
      "why": "가스 탄소를 계산에 넣으려면 공식 계수와 kWh 환산 기준이 필요합니다.",

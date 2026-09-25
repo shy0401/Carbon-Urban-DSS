@@ -41,6 +41,12 @@ async def lifespan(app):
                     db.rollback();s=db.get(DataSource,source);s.status='FAILED';s.quality='초기 수집 실패: '+type(exc).__name__;db.commit()
         from .emissions import collect_factors
         collect_factors(db)
+        # SGIS 1km grid statistics bundle(s) cut by scripts/sgis/extract_sgis_grid.py (skipped when already loaded).
+        try:
+            from .sgis_grid import import_sgis_grid
+            import_sgis_grid(db)
+        except Exception as exc:
+            db.rollback();print('SGIS 1km 격자 통계 가져오기 실패:',type(exc).__name__,exc)
         if not db.get(DataSource,'kapt') or db.scalar(select(func.count()).select_from(kapt.ApartmentComplex))==0:
             try:kapt.collect_kapt(db)
             except Exception:
@@ -63,6 +69,8 @@ from .area import router as area_router
 from .area_report import router as area_report_router
 app.include_router(area_router)
 app.include_router(area_report_router)
+from .sgis_grid import router as sgis_grid_router
+app.include_router(sgis_grid_router)
 
 @app.get('/api/health')
 @app.get('/health')
@@ -287,6 +295,8 @@ def map_data(year:int=Query(DEFAULT_YEAR,ge=2000,le=2100)):
         zoning=grid_zoning_summary(db)
         buildings=grid_building_summary(db)
         complexes=complex_features(db)
+        from .sgis_grid import grid_metric_properties
+        sgis_props=grid_metric_properties(db)
         by_grid={}
         for feature in complexes['features']:
             c=feature['properties'];item=by_grid.setdefault(c.get('grid_id'),{'complex_count':0,'complex_households':None,'complex_gfa_m2':None,'complex_gfa_excluded':0})
@@ -317,6 +327,8 @@ def map_data(year:int=Query(DEFAULT_YEAR,ge=2000,le=2100)):
                 # Fallback: OSM apartment outlines only (not every building).
                 p.update(building_source='OSM' if base.get('building_count') else None,building_status=None,building_count=base.get('building_count'),footprint_m2=None,coverage_pct=None,far_est_pct=None,floor_area_est_m2=None,avg_floors=None,max_floors=None,floors_known_pct=None,building_density=None,residential_building_share=None,dominant_use=None,use_share_pct=None)
             p.update(by_grid.get(grid_id,{'complex_count':0,'complex_households':None,'complex_gfa_m2':None,'complex_gfa_excluded':0}))
+            # Parent SGIS 1km cell densities/shares (official, noisy); absent when no bundle is loaded.
+            p.update(sgis_props.get(grid_id,{}))
             f['properties']=p;grids.append(f)
         official_buildings=any(b['building_count'] for b in buildings.values())
         spatial_path=DATA/'spatial.json';spatial=json.loads(spatial_path.read_text(encoding='utf-8')) if spatial_path.exists() else {}
@@ -331,6 +343,7 @@ def map_data(year:int=Query(DEFAULT_YEAR,ge=2000,le=2100)):
             'boundary':boundary,'boundary_source':official_boundary['features'][0]['properties']['source'] if official_boundary else 'OpenStreetMap 행정경계(대체 자료)',
             'complexes':complexes,'complex_floor_area_issues':sum(1 for f in complexes['features'] if f['properties'].get('floor_area_status')!='OK'),
             'factors':{'electricity':{'value':electricity_factor['factor'],'unit':electricity_factor['factor_unit'],'source':electricity_factor.get('source'),'reference_year':electricity_factor.get('reference_year')} if electricity_factor else None,'gas':None if not factors.get('GAS') else {'value':factors['GAS']['factor'],'unit':factors['GAS']['factor_unit']}},
+            'sgis_grid':{'year':next((v.get('sgis1k_year') for v in sgis_props.values()),None),'source':'SGIS 격자 통계 1km (공공데이터포털 15141768)','note':'소속 1km 공식 격자의 밀도·비율이며 500m로 나눈 값이 아닙니다. 비밀보호 잡음(±7) 포함.'} if sgis_props else None,
             'selected_sector':serialize(sector) if sector else None,'center':[127.148,35.8242],'crs':'EPSG:5179','grid_size_m':500,'grid_area_m2':250000,'year':year,'offline_mode':offline_mode(),
         }
 
