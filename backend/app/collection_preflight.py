@@ -17,6 +17,7 @@ REQUIRED_ENV = {
     "vworld_zoning": ("VWORLD_API_KEY", "VWORLD_DOMAIN"),
     "vworld_cadastral": ("VWORLD_API_KEY", "VWORLD_DOMAIN"),
     "vworld_buildings": ("VWORLD_API_KEY", "VWORLD_DOMAIN"),
+    "building_register": ("DATA_GO_KR_SERVICE_KEY",),
 }
 
 CREDENTIAL_CACHE = {
@@ -27,6 +28,14 @@ CREDENTIAL_CACHE = {
     "vworld_zoning": (("VWORLD_API_KEY",), "cache/vworld"),
     "vworld_cadastral": (("VWORLD_API_KEY",), "cache/vworld"),
     "vworld_buildings": (("VWORLD_API_KEY",), "cache/vworld"),
+    "building_register": (("DATA_GO_KR_SERVICE_KEY",), "cache"),
+}
+
+
+# Datasets sharing the generic cache folder, told apart by the provider operation.
+OPERATIONS = {
+    "energy": ("getBeElctyUsgInfo", "getBeGasUsgInfo"),
+    "building_register": ("getBrTitleInfo",),
 }
 
 
@@ -98,6 +107,9 @@ def collection_blockers(datasets: Iterable[str], *, data_dir: str | Path | None 
             # VWORLD_DOMAIN must allow an immediate retry.
             domain = os.getenv("VWORLD_DOMAIN", "http://localhost").strip()
             match = lambda meta, domain=domain: (meta.get("params") or {}).get("domain", domain) == domain
+        elif dataset in OPERATIONS:
+            # 건축HUB 에너지 and 건축물대장 share one cache folder but are approved separately.
+            match = lambda meta, ops=OPERATIONS[dataset]: meta.get("operation") in ops
         error = recent_credential_error(root / cache_path, credential, match=match)
         auth_markers = ("인증 실패", "INVALID_KEY", "SERVICE_KEY", "SERVICE_ACCESS", "30:", "20:")
         if error and any(marker in error for marker in auth_markers):

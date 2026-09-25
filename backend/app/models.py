@@ -36,6 +36,8 @@ class CollectionJob(Base):
     errors:Mapped[list]=mapped_column(JSON,default=list)
     created_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),default=now)
     finished_at:Mapped[datetime|None]=mapped_column(DateTime(timezone=True),nullable=True)
+    # Set while a long "collect everything missing" run waits for the provider's daily quota to reset.
+    resume_at:Mapped[datetime|None]=mapped_column(DateTime(timezone=True),nullable=True)
 
 class CollectionJobConfig(Base):
     __tablename__='collection_job_configs'

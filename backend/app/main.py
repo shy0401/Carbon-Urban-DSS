@@ -152,7 +152,7 @@ def source_detail(source_id:str):
         return dict(source=details,raw_preview=raw_preview(assets[0]) if assets else [],normalized_preview=preview,jobs=jobs,assets=asset_rows,errors=[a.error for a in assets if a.error]+[e for j in jobs for e in j['errors']],coverage={'period':source.reference_period,'geography':source.geographic_coverage,'raw_rows':source.raw_row_count,'normalized_rows':source.normalized_row_count,'missing':source.missing_count},fields=list(preview[0]) if preview else [],quality_scores=details.get('quality_scores'),license='ODbL' if source.source_type=='FALLBACK' and source_id in ('buildings','boundary') else '공급기관 원문 이용조건 참조',manual_import={'formats':['CSV','XLSX','GeoJSON','ZIP(SHP+SHX+DBF+PRJ)'],'upload_location':'수집 데이터 → 파일 업로드','source_url':source.source_url})
 
 class CollectionInput(BaseModel):
-    datasets:list[Literal['energy','weather','kapt_energy','kma_asos','sgis','vworld_zoning','vworld_cadastral','vworld_buildings']]=Field(min_length=1,max_length=8)
+    datasets:list[Literal['energy','weather','kapt_energy','kma_asos','sgis','vworld_zoning','vworld_cadastral','vworld_buildings','building_register']]=Field(min_length=1,max_length=9)
     start_month:str=Field(default='2025-01',pattern=r'^20\d{2}-(0[1-9]|1[0-2])$')
     end_month:str=Field(default='2025-12',pattern=r'^20\d{2}-(0[1-9]|1[0-2])$')
     region:str='전주시'
@@ -171,6 +171,39 @@ def create_collection(request:CollectionInput):
         with Session() as db:return serialize(queue_collection(db,request.datasets,request.start_month,request.end_month,request.scope))
     except CollectionBlockedError as exc:
         raise HTTPException(409,str(exc)) from None
+
+class MissingInput(BaseModel):
+    from_year:int=Field(default=2015,ge=2000,le=2100)
+    to_year:int=Field(default=DEFAULT_YEAR,ge=2000,le=2100)
+    @model_validator(mode='after')
+    def validate_years(self):
+        if self.from_year>self.to_year:raise ValueError('시작 연도가 끝 연도보다 늦습니다')
+        if self.to_year>=now().year:raise ValueError('끝나지 않은 올해는 아직 수집할 수 없습니다')
+        if self.to_year-self.from_year>20:raise ValueError('한 번에 최대 21년까지 수집합니다')
+        return self
+
+@app.get('/api/collection/missing')
+def missing_plan(from_year:int=2015,to_year:int=DEFAULT_YEAR):
+    """What is still missing, what is blocked by a key/approval, and what needs a provider file. No external calls."""
+    from .history import plan_missing
+    from .tasks import ALL_MISSING,resume_overdue
+    try:request=MissingInput(from_year=from_year,to_year=to_year)
+    except ValueError as exc:raise HTTPException(422,'연도 범위를 확인하세요 (끝 연도는 작년까지, 최대 21년)') from None
+    with Session() as db:
+        try: resume_overdue(db)
+        except Exception: db.rollback()
+        plan=plan_missing(db,request.from_year,request.to_year)
+        jobs=[j for j in db.scalars(select(CollectionJob).order_by(CollectionJob.created_at.desc()).limit(40)) if j.datasets==[ALL_MISSING]]
+        plan['job']=serialize(jobs[0]) if jobs else None
+        plan['offline']=offline_mode()
+        return plan
+
+@app.post('/api/collection/missing',status_code=202)
+def start_missing(request:MissingInput):
+    """Start (or, if it is waiting for a quota reset, restart now) the background 'collect everything missing' job."""
+    if offline_mode():raise HTTPException(409,'오프라인 모드에서는 외부 수집을 시작하지 않습니다')
+    from .tasks import queue_all_missing
+    with Session() as db:return serialize(queue_all_missing(db,request.from_year,request.to_year))
 
 @app.get('/api/collections')
 @app.get('/api/v1/collection-jobs')
@@ -197,7 +230,7 @@ def collection_detail(job_id:str):
         return serialize(job)
 
 class JobInput(BaseModel):
-    source:Literal['energy','weather','kapt_energy','kma_asos','sgis','vworld_zoning','vworld_cadastral','vworld_buildings']
+    source:Literal['energy','weather','kapt_energy','kma_asos','sgis','vworld_zoning','vworld_cadastral','vworld_buildings','building_register']
     start_month:str='2025-01'
     end_month:str='2025-12'
     region:str='전주시'

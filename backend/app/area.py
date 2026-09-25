@@ -563,6 +563,43 @@ def city_intensity(energy_rows: list[dict[str, Any]], complexes: dict[str, dict[
     return None
 
 
+REGISTER_USE_GROUPS = (
+    ("주거", ("공동주택", "단독주택")),
+    ("상업·업무", ("근린생활", "판매", "업무", "숙박", "위락")),
+    ("공공·교육·의료", ("교육", "연구", "노유자", "의료", "문화", "집회", "종교", "운동", "공공", "교정", "방송", "발전", "묘지", "장례", "관광")),
+    ("공업·창고·물류", ("공장", "창고", "위험물", "자동차", "동물", "식물", "자원순환", "분뇨")),
+)
+
+
+def register_use_group(use: str | None) -> str:
+    text = use or ""
+    for group, keywords in REGISTER_USE_GROUPS:
+        if any(k in text for k in keywords):
+            return group
+    return "기타·미상"
+
+
+def register_events(area: dict[str, Any], rows: list[dict[str, Any]], years: list[int]) -> dict[str, Any]:
+    """건축물대장 사용승인 per year inside the area (all building types, by 500m grid membership).
+
+    Buildings without a linked grid or a readable 사용승인일 are counted separately, never guessed.
+    """
+    members = set(area["grid_ids"])
+    inside = [r for r in rows if r.get("grid_id") in members]
+    out: dict[int, dict[str, Any]] = {}
+    for year in years:
+        built = [r for r in inside if r.get("approval_year") == year]
+        by_use: dict[str, float] = {}
+        for r in built:
+            group = register_use_group(r.get("use"))
+            by_use[group] = round(by_use.get(group, 0.0) + float(r.get("gfa") or 0), 1)
+        out[year] = {"year": year, "buildings": len(built), "gfa_m2": round(sum(float(r.get("gfa") or 0) for r in built), 1),
+                     "gfa_missing": sum(1 for r in built if not r.get("gfa")), "by_use": by_use}
+    return {"available": bool(rows), "linked_in_area": len(inside),
+            "unknown_year": sum(1 for r in inside if not r.get("approval_year")), "years": out,
+            "basis": "건축물대장 표제부 사용승인일 · 격자(500m) 기준 포함, 연면적은 대장 연면적"}
+
+
 def build_history(area: dict[str, Any], years: list[int], inputs: dict[str, Any]) -> dict[str, Any]:
     complexes = inputs["complexes"]
     history = {
@@ -583,6 +620,7 @@ def build_history(area: dict[str, Any], years: list[int], inputs: dict[str, Any]
         for c in area["complex_codes"] if c in complexes
     ]
     history["stock"] = building_stock(area, complexes, years)
+    history["register"] = register_events(area, inputs.get("register", []), years)
     city = inputs.get("city_intensity")
     history["city_intensity"] = city
     for year in years:
@@ -599,6 +637,7 @@ def build_history(area: dict[str, Any], years: list[int], inputs: dict[str, Any]
         "weather_years": [y for y in years if history["weather"][y]["complete"]],
         "population_years": [y for y in years if history["population"][y]["population"] is not None],
         "grid_count": len(area["grid_ids"]), "complex_count": len(area["complex_codes"]),
+        "register_buildings": history["register"]["linked_in_area"],
     }
     return history
 
@@ -622,6 +661,12 @@ def area_facts(history: dict[str, Any], comparison: dict[str, Any] | None = None
     if built:
         total_households = sum(e["households"] for _, e in built)
         add("development", f"분석 기간에 사용승인된 단지는 {sum(e['complexes'] for _, e in built)}개, {total_households:,}세대입니다.", sum(e["complexes"] for _, e in built), total_households)
+    reg = history.get("register") or {}
+    if reg.get("linked_in_area"):
+        reg_years = [v for v in reg["years"].values() if v["buildings"]]
+        n_reg = sum(v["buildings"] for v in reg_years)
+        gfa_reg = round(sum(v["gfa_m2"] for v in reg_years))
+        add("register", f"건축물대장 기준으로 분석 기간에 사용승인된 건물은 {n_reg:,}동, 연면적 {gfa_reg:,}m²입니다(모든 용도).", n_reg, gfa_reg)
     latest = cov["energy_years"][-1] if cov["energy_years"] else None
     if latest is not None:
         e = history["energy"][latest]["electricity"]
@@ -696,9 +741,17 @@ def load_inputs(db: Any, years: list[int]) -> dict[str, Any]:
         if f.factor_unit == "kgCO2eq/kWh":
             factors[f.energy_type.lower()] = f.factor
     grids = [{"id": g.id, "geometry": (g.geojson or {}).get("geometry")} for g in db.scalars(select(Grid))]
+    register = []
+    try:
+        from .official import BuildingRegister
+        for r in db.scalars(select(BuildingRegister).where(BuildingRegister.grid_id.is_not(None))):
+            attrs = r.attributes or {}
+            register.append({"grid_id": r.grid_id, "approval_year": r.approval_year, "gfa": attrs.get("gross_floor_area_m2"), "use": attrs.get("building_use")})
+    except Exception:  # noqa: BLE001 - register not collected yet (or columns not migrated)
+        db.rollback()
     from .overlays import admin_features, grid_zoning_summary
     admin, admin_year = admin_features(db)
-    return {"complexes": complexes, "energy": energy, "weather": weather, "population": population, "households": households,
+    return {"register": register, "complexes": complexes, "energy": energy, "weather": weather, "population": population, "households": households,
             "factor": factors, "grids": grids, "admin": admin.get("features", []), "admin_year": admin_year, "zoning": grid_zoning_summary(db)}
 
 

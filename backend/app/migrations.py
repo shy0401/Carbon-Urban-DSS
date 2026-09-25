@@ -14,6 +14,13 @@ MIGRATIONS: list[tuple[str, list[str]]] = [
     ("2026092302_energy_grid_month_index", [
         "CREATE INDEX IF NOT EXISTS ix_energy_monthly_grid_ym ON energy_monthly (grid_id, use_ym)",
     ]),
+    ("2026092501_collect_missing_and_register", [
+        "ALTER TABLE collection_jobs ADD COLUMN IF NOT EXISTS resume_at TIMESTAMPTZ",
+        "ALTER TABLE building_register ADD COLUMN IF NOT EXISTS grid_id TEXT",
+        "ALTER TABLE building_register ADD COLUMN IF NOT EXISTS approval_year INTEGER",
+        "CREATE INDEX IF NOT EXISTS ix_building_register_grid ON building_register (grid_id)",
+        "CREATE INDEX IF NOT EXISTS ix_building_register_pnu ON building_register (parcel_code)",
+    ]),
 ]
 
 
