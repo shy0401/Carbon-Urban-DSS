@@ -1,4 +1,4 @@
-import { Activity, BarChart3, BrainCircuit, Database, FileText, LandPlot, Leaf, Map, Menu, PlayCircle, X } from 'lucide-react';
+import { Activity, BarChart3, BookOpen, BrainCircuit, Database, FileText, LandPlot, Leaf, Map, Menu, PlayCircle, X } from 'lucide-react';
 import { useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { AnalysisScopeBar } from './AnalysisScopeBar';
@@ -14,6 +14,7 @@ const navigation = [
   { to: '/simulation', label: '시뮬레이션', icon: PlayCircle },
   { to: '/data', label: '수집 데이터', icon: Database },
   { to: '/reports', label: '검토 보고서', icon: FileText },
+  { to: '/guide', label: '사용 방법', icon: BookOpen },
 ];
 
 /** 앱 셸 (DESIGN.md 4.1): 220px 먹녹색 사이드바 + 표제란 머리. 1023px 이하에서는 드로어. */
