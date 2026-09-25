@@ -1,6 +1,6 @@
 import type { EChartsOption } from 'echarts';
 import { useMemo } from 'react';
-import { at, COHORT_COLOR, COHORT_LABEL, cohortSeries, type AreaHistory, type BeforeAfter, type Cohort, type EffortResult } from '../../lib/area';
+import { at, COHORT_COLOR, COHORT_LABEL, cohortSeries, REGISTER_GROUPS, type AreaHistory, type BeforeAfter, type Cohort, type EffortResult } from '../../lib/area';
 import { baseChart, compactAxis, lineSeries, missingBands } from '../../lib/chartTheme';
 import { formatMetric } from '../../lib/format';
 import { TOKENS } from '../../theme/palette';
@@ -168,4 +168,27 @@ export function EffortCurve({ effort }: { effort: EffortResult }) {
     <Chart option={option} height={240} ariaLabel="목표 감축률별 필요 효율 개선률" />
     {newOnlyPoints < 2 && zero != null && <p className="muted">신축 건물만 개선하는 방식은 그래프에서 뺐습니다. 기준 연도 수준을 유지(목표 0%)하는 데에도 신축 전력을 {zero.toLocaleString('ko-KR')}% 줄여야 해서, 100%를 넘는 목표는 신축만으로 달성할 수 없습니다.</p>}
   </>;
+}
+
+/** 건축물대장 사용승인 연면적을 용도군별로 쌓은 막대 (모든 건물, m²). 기타·미상은 해치. */
+export function RegisterChart({ history, eventYear }: { history: AreaHistory; eventYear: number | null | undefined }) {
+  const option = useMemo<EChartsOption>(() => {
+    const years = history.years.map(String);
+    const base = baseChart();
+    const colors: Record<string, unknown> = { '주거': TOKENS['seq-4'], '상업·업무': TOKENS['plan-b'], '공공·교육·의료': TOKENS.info, '공업·창고·물류': TOKENS['load-4'], '기타·미상': TOKENS.hatch };
+    const series = REGISTER_GROUPS.map((group, i) => ({
+      name: group, type: 'bar' as const, stack: 'gfa', barMaxWidth: 28,
+      data: history.years.map((y) => { const v = at(history.register?.years, y)?.by_use?.[group]; return v ? v : 0; }),
+      itemStyle: { color: colors[group] as string, borderColor: TOKENS.surface, borderWidth: 1, borderRadius: i === REGISTER_GROUPS.length - 1 ? [4, 4, 0, 0] : 0 },
+      ...(i === 0 ? { markLine: eventLine(eventYear) } : {}),
+    }));
+    return baseChart({
+      grid: { left: 64, right: 20, top: 48, bottom: 30 },
+      legend: { ...(base.legend as object), itemWidth: 12, itemHeight: 8 },
+      tooltip: { ...(base.tooltip as object), trigger: 'axis', axisPointer: { type: 'shadow' }, valueFormatter: (v: unknown) => (typeof v === 'number' ? formatMetric(v, 'm²') : '자료 없음') },
+      ...axis(base, years, 'm² (연면적)'),
+      series: series as EChartsOption['series'],
+    });
+  }, [history, eventYear]);
+  return <Chart option={option} height={240} ariaLabel="건축물대장 기준 연도별 사용승인 연면적(용도군별)" />;
 }

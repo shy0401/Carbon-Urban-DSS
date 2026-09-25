@@ -1,7 +1,8 @@
 import { AlertTriangle, ArrowRight, CheckCircle2, ChevronRight, CloudDownload, ExternalLink, FileUp, KeyRound, RefreshCw, X, BrainCircuit, Calculator, FileArchive, FileText } from 'lucide-react';
 import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { lastCompletedMonth, MonthRangePicker, rangeProblem } from '../components/MonthRangePicker';
+import { MissingCollection } from '../components/MissingCollection';
 import { MissingValue } from '../components/MissingValue';
 import { PageHeader } from '../components/PageHeader';
 import { QualityBadge } from '../components/QualityBadge';
@@ -14,6 +15,7 @@ import type { CollectionJob, DataSource, LocalEngineStatus, ReadinessData, Readi
 type ListResponse<T> = T[] | { items?: T[]; data?: T[]; jobs?: T[]; sources?: T[] };
 const collectionDatasets = [
   ['vworld_buildings', 'VWorld 건물', '도로명주소 건물 윤곽·층수·용도 · 기간 무관(수집 시점)'],
+  ['building_register', '건축물대장', '표제부: 연면적·구조·사용승인일·에너지등급 · 기간 무관(수집 시점)'],
   ['kapt_energy', 'K-apt 에너지', '단지별 월 사용량 · 시작 월의 연도 12개월'],
   ['energy', '건축HUB 에너지', '지번별 전력·가스 · 선택한 월 범위'],
   ['kma_asos', 'KMA ASOS', '전주 146 일자료 → 월 · 시작 월의 연도'],
@@ -23,7 +25,7 @@ const collectionDatasets = [
   ['weather', 'ERA5-Land 기상', '재분석 대체 자료 · 선택한 월 범위'],
 ] as const;
 const YEARLY = new Set(['kapt_energy', 'kma_asos']);
-const PERIODLESS = new Set(['vworld_buildings', 'sgis', 'vworld_zoning', 'vworld_cadastral']);
+const PERIODLESS = new Set(['vworld_buildings', 'building_register', 'sgis', 'vworld_zoning', 'vworld_cadastral']);
 const SCOPES = [['smoke', 'SMOKE', '최소 1건 검증'], ['limited', 'LIMITED', '제한 범위'], ['full', 'FULL', '전체 범위']] as const;
 
 export function DataPage() {
@@ -62,6 +64,9 @@ export function DataPage() {
   }, [year]);
 
   useEffect(() => { void load(); return () => requestRef.current?.abort(); }, [load]);
+  // Links such as /data#collect-missing open the matching panel once the page has rendered.
+  const { hash } = useLocation();
+  useEffect(() => { if (!loading && hash) window.setTimeout(() => document.getElementById(hash.slice(1))?.scrollIntoView({ block: 'start' }), 50); }, [loading, hash]);
   useEffect(() => {
     if (!readiness) return;
     const available = new Set(readiness.sources.filter((source) => source.collection_dataset && source.collectable_now).map((source) => source.collection_dataset as string));
@@ -99,7 +104,8 @@ export function DataPage() {
   const readinessByDataset = new globalThis.Map(readiness?.sources.filter((source) => source.collection_dataset).map((source) => [source.collection_dataset as string, source]));
   return <div className="page">
     <PageHeader title="수집 데이터" description="공식·대체 출처의 수집 범위와 원본에서 정규화까지의 이력을 확인합니다." action={<button className="button secondary" onClick={() => void load()}><RefreshCw size={15} />새로고침</button>} />
-    <p className="panel-description"><a href="https://github.com/shy0401/Carbon-Urban-DSS/blob/main/docs/DATA_SETUP_GUIDE.md" target="_blank" rel="noopener noreferrer">자료별 인증키 신청 · 다운로드 · 필드 매핑 안내</a></p>
+    <p className="panel-description"><a href="/guide#collect">이 화면 사용 방법</a> · <a href="https://github.com/shy0401/Carbon-Urban-DSS/blob/main/docs/DATA_SETUP_GUIDE.md" target="_blank" rel="noopener noreferrer">자료별 인증키 신청 · 다운로드 · 필드 매핑 안내</a></p>
+    <MissingCollection onChanged={() => void load(true)} />
     <section className="data-summary">{sourceSummary.map(([label, value, tone]) => <article className={tone} key={label}><span>{label}</span><strong>{value}</strong></article>)}<article><span>마지막 수집</span><strong>{latestCollection(sources)}</strong></article></section>
     <div className="data-layout">
       <form className="panel collection-form" onSubmit={submit}>
@@ -215,10 +221,10 @@ function History({ detail }: { detail: SourceDetail }) {
   return <div className="history-list">{detail.jobs?.length ? detail.jobs.map((job) => <article key={job.id}><span className={`history-icon ${qualityTone(job.status)}`}><CheckCircle2 size={17} /></span><div><strong>{statusLabel(job.status)}</strong><p>{job.message ?? job.error ?? '추가 메시지 없음'}</p><small>{formatDate(job.updated_at ?? job.created_at)}</small></div></article>) : <EmptyState title="수집 이력이 없습니다" />}{asRows(detail.errors).map((item, index) => <article key={`error-${index}`}><span className="history-icon bad"><AlertTriangle size={17} /></span><div><strong>수집 오류</strong><p>{renderCell(item.message ?? item.error ?? item)}</p></div></article>)}</div>;
 }
 
-function datasetLabel(value: string | undefined): string | undefined { if (!value) return undefined; return collectionDatasets.find(([key]) => key === value)?.[1] ?? value; }
+function datasetLabel(value: string | undefined): string | undefined { if (!value) return undefined; if (value === 'all_missing') return '빠진 자료 전부 수집'; return collectionDatasets.find(([key]) => key === value)?.[1] ?? value; }
 function listFrom<T>(response: ListResponse<T>, key: string): T[] { if (Array.isArray(response)) return response; const record = response as Record<string, unknown>; const value = record[key] ?? record.items ?? record.data; return Array.isArray(value) ? value as T[] : []; }
 function renderCell(value: unknown): string { if (value === null || value === undefined) return '자료 없음'; if (typeof value === 'object') return JSON.stringify(value); return String(value); }
-function statusLabel(status: string | null | undefined) { const value = status?.toUpperCase(); return ({ NOT_COLLECTED: '미수집', COLLECTED: '수집 완료', PARTIAL: '부분 수집', NEEDS_API_KEY: '인증키 필요', NEEDS_API_APPROVAL: '활용 승인 필요', MANUAL_DOWNLOAD_REQUIRED: '수동 자료 필요', COMPLETED: '완료', SUCCESS: '완료', RUNNING: '수집 중', STARTED: '수집 중', PENDING: '대기', QUEUED: '대기', FAILED: '실패', ERROR: '오류', ACTIVE: '활성' } as Record<string, string>)[value ?? ''] ?? status ?? '상태 없음'; }
+function statusLabel(status: string | null | undefined) { const value = status?.toUpperCase(); return ({ NOT_COLLECTED: '미수집', COLLECTED: '수집 완료', PARTIAL: '부분 수집', NEEDS_API_KEY: '인증키 필요', NEEDS_API_APPROVAL: '활용 승인 필요', MANUAL_DOWNLOAD_REQUIRED: '수동 자료 필요', COMPLETED: '완료', SUCCESS: '완료', RUNNING: '수집 중', STARTED: '수집 중', PENDING: '대기', QUEUED: '대기', WAITING: '한도 대기(자동 재개)', FAILED: '실패', ERROR: '오류', ACTIVE: '활성' } as Record<string, string>)[value ?? ''] ?? status ?? '상태 없음'; }
 function readinessLabel(state: string) { return ({ COLLECTED: '수집 완료', PARTIAL: '부분 확보', AVAILABLE: '수집 가능', RETRY_AVAILABLE: '재검증 가능', CREDENTIAL_REQUIRED: '키 설정 필요', APPROVAL_OR_FIX_REQUIRED: '승인·오류 확인', MANUAL_REQUIRED: '직접 수집 필요', REPLACED: '대체 출처 사용', NOT_COLLECTED: '미수집' } as Record<string, string>)[state] ?? state; }
 function readinessTone(state: string) { if (state === 'COLLECTED' || state === 'AVAILABLE' || state === 'RETRY_AVAILABLE') return 'ready'; if (state === 'PARTIAL') return 'partial'; if (state === 'MANUAL_REQUIRED') return 'manual'; return 'blocked'; }
 function acquisitionLabel(value: string) { return ({ API_KEY: '인증 API', MANUAL_DOWNLOAD: '공식 파일', OPEN_API: '공개 API', OPEN_FILE: '공개 파일', OPEN_WEB: '공개 웹', DERIVED: '프로젝트 파생', CATALOG: '카탈로그' } as Record<string, string>)[value] ?? value; }
@@ -251,7 +257,7 @@ function ManualUpload({ onImported }: { onImported: () => void }) {
     catch (reason) { setMessage(reason instanceof Error ? reason.message : '가져오기에 실패했습니다.'); }
     finally { setBusy(false); }
   };
-  return <section className="panel upload-panel"><div className="panel-title"><h3>수동 파일 업로드</h3></div><p className="panel-description">자동 접근이 어려운 공식 CSV, XLSX, GeoJSON, SHP ZIP을 먼저 분석한 뒤 열 매핑을 확인합니다.</p>
+  return <section className="panel upload-panel" id="manual-upload"><div className="panel-title"><h3>수동 파일 업로드</h3></div><p className="panel-description">자동 접근이 어려운 공식 CSV, XLSX, GeoJSON, SHP ZIP을 먼저 분석한 뒤 열 매핑을 확인합니다.</p>
     {!preview ? <form className="upload-start" onSubmit={makePreview}><select value={datasetType} onChange={(event) => setDatasetType(event.target.value)}><option value="building_register">건축물대장</option><option value="building_geometry">건물 공간정보</option><option value="zoning">용도지역</option><option value="population_grid">인구 통계격자</option><option value="energy">에너지</option></select><input type="file" accept=".csv,.xlsx,.geojson,.json,.zip" onChange={(event) => setFile(event.target.files?.[0] ?? null)} /><button className="button secondary" disabled={busy}><FileUp size={15} />{busy ? '분석 중…' : '파일 분석'}</button></form> : <div className="mapping-preview"><div className="detected-meta"><span>인코딩 <strong>{preview.encoding ?? '감지 안 됨'}</strong></span><span>좌표계 <strong>{preview.detected_crs ?? '감지 안 됨'}</strong></span><span>열 <strong>{preview.columns.length}개</strong></span></div>{preview.warnings?.map((warning) => <p className="form-error" key={warning}><AlertTriangle size={15} />{warning}</p>)}<div className="mapping-grid">{(preview.required_fields ?? Object.keys(preview.suggested_mapping ?? {})).map((field) => <label key={field}><span>{field}</span><select value={mapping[field] ?? ''} onChange={(event) => setMapping((old) => ({ ...old, [field]: event.target.value }))}><option value="">매핑 선택</option>{preview.columns.map((column) => <option key={column}>{column}</option>)}</select></label>)}</div><div className="mapping-grid metadata"><label><span>제공기관 *</span><input value={meta.provider} onChange={(event) => setMeta((old) => ({ ...old, provider: event.target.value }))} /></label><label><span>공식 URL</span><input value={meta.source_url} onChange={(event) => setMeta((old) => ({ ...old, source_url: event.target.value }))} /></label><label><span>기준기간 *</span><input placeholder="예: 2025" value={meta.reference_period} onChange={(event) => setMeta((old) => ({ ...old, reference_period: event.target.value }))} /></label><label><span>원본 좌표계</span><input placeholder="예: EPSG:5179" value={meta.source_crs} onChange={(event) => setMeta((old) => ({ ...old, source_crs: event.target.value }))} /></label></div><PreviewTable value={preview.rows} /><div className="form-actions"><button className="button ghost" onClick={() => setPreview(null)}>취소</button><button className="button primary" onClick={() => void importFile()} disabled={busy}>{busy ? '가져오는 중…' : '매핑 확인 및 가져오기'}</button></div></div>}
     {message && <p className="upload-message">{message}</p>}
   </section>;

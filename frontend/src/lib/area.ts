@@ -94,8 +94,20 @@ export interface AreaHistory {
   factor_basis: string;
   complexes: AreaComplex[];
   city_intensity: { year: number; kwh_per_m2: number; area_m2: number; parcels: number } | null;
-  coverage: { energy_years: number[]; weather_years: number[]; population_years: number[]; grid_count: number; complex_count: number };
+  coverage: { energy_years: number[]; weather_years: number[]; population_years: number[]; grid_count: number; complex_count: number; register_buildings?: number };
+  register?: RegisterHistory;
 }
+
+/** 건축물대장 사용승인 (모든 용도, 격자 기준). */
+export interface RegisterHistory {
+  available: boolean;
+  linked_in_area: number;
+  unknown_year: number;
+  basis: string;
+  years: YearTable<{ year: number; buildings: number; gfa_m2: number; gfa_missing: number; by_use: Record<string, number> }>;
+}
+
+export const REGISTER_GROUPS = ['주거', '상업·업무', '공공·교육·의료', '공업·창고·물류', '기타·미상'] as const;
 
 export interface CarrierComparison {
   before_total_kwh: number | null;

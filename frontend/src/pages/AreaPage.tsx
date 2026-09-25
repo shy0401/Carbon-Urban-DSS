@@ -1,7 +1,7 @@
 import { Download, FileText, Info, Pause, Play, RotateCcw, Undo2 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { AreaMap } from '../components/area/AreaMap';
-import { BeforeAfterChart, DevelopmentChart, EffortBars, EffortCurve, ElectricityChart, WeatherYearsChart } from '../components/area/AreaCharts';
+import { BeforeAfterChart, DevelopmentChart, EffortBars, EffortCurve, ElectricityChart, RegisterChart, WeatherYearsChart } from '../components/area/AreaCharts';
 import { MetricCard } from '../components/MetricCard';
 import { PageHeader } from '../components/PageHeader';
 import { ProvenanceBadge } from '../components/ProvenanceBadge';
@@ -118,7 +118,7 @@ export function AreaPage() {
   const o = options.data;
 
   return <div className="page area-page" data-testid="area-page">
-    <PageHeader title="지역 개발 시뮬레이션" description="행정동·반경·직접 그린 구역·용도지역 어디든 골라 과거와 현재를 비교하고, 개발 전후 영향과 앞으로 필요한 감축 노력을 계산합니다." action={<span className="badge warn"><Info size={13} />운영 단계 1차 추정</span>} />
+    <PageHeader title="지역 개발 시뮬레이션" description="행정동·반경·직접 그린 구역·용도지역 어디든 골라 과거와 현재를 비교하고, 개발 전후 영향과 앞으로 필요한 감축 노력을 계산합니다." action={<div className="badge-row"><span className="badge warn"><Info size={13} />운영 단계 1차 추정</span><a className="button ghost small" href="/guide#area">사용 방법</a></div>} />
 
     <section className="panel area-controls" aria-label="분석 구역 선택">
       <div className="area-modes" role="tablist" aria-label="구역 선택 방식">
@@ -152,6 +152,7 @@ export function AreaPage() {
         <section className="panel"><div className="panel-title"><h3>개발 이력 (사용승인 세대)</h3><ProvenanceBadge kind="computed" detail="K-apt 사용승인일" /></div><DevelopmentChart history={analysis.history} eventYear={activeEvent} /><p className="muted">호박색 막대가 전후 비교에 쓰는 개발 연도입니다. 막대에 마우스를 올리면 단지명이 보입니다.</p></section>
         <section className="panel"><div className="panel-title"><h3>기상 (난방도일·냉방도일)</h3><ProvenanceBadge kind="observed" detail="ASOS 전주" /></div><WeatherYearsChart history={analysis.history} /><p className="muted">12개월이 모두 있는 해만 그립니다. 전후 사용량 차이의 일부는 기상 차이일 수 있습니다.</p></section>
         <PopulationPanel analysis={analysis} />
+        <RegisterPanel analysis={analysis} eventYear={activeEvent} />
       </div>
 
       <div className="section-label"><h2>개발 전후 영향</h2><span>개발 연도는 전환기라 제외하고 앞뒤 {windowSize}년 평균을 비교합니다</span></div>
@@ -180,7 +181,7 @@ function CoverageStrip({ analysis, collection }: { analysis: AreaAnalysis | null
     </dl>}
     <p className="area-collect">{datasets.length
       ? <>과거 수집 진행: {datasets.map((d) => `${DATASET_LABEL[d] ?? d} ${Object.entries(summary[d]).map(([s, n]) => `${statusLabel(s)} ${n}`).join('·')}`).join(' / ')}</>
-      : <>과거 연도 자료는 아직 수집하지 않았습니다. PC에서 <code>scripts\dss.cmd CollectHistory -FromYear 2015 -ToYear 2025</code>를 한 번 실행하면 채워집니다(일일 한도에 걸리면 다음 날 이어서).</>}</p>
+      : <>과거 연도 자료는 아직 수집하지 않았습니다. <a href="/data#collect-missing">수집 데이터 → 빠진 자료 전부 수집</a> 버튼을 누르거나 PC에서 <code>scripts\dss.cmd CollectAll</code>을 실행하면 채워집니다 (일일 한도에 걸리면 다음 날 자동으로 이어서).</>}</p>
   </div>;
 }
 
@@ -210,6 +211,16 @@ function YearPanel({ analysis, year, setYear, playing, setPlaying, eventYear }: 
       <MetricCard dense title="인구" value={pop?.population} unit="명" provenance="observed" basis={pop?.basis} missingReason={`${year}년 SGIS 인구를 아직 수집하지 않았습니다.`} />
     </div>
     <p className="muted">{h.factor_basis}</p>
+  </section>;
+}
+
+function RegisterPanel({ analysis, eventYear }: { analysis: AreaAnalysis; eventYear: number | null }) {
+  const reg = analysis.history.register;
+  return <section className="panel area-register"><div className="panel-title"><h3>모든 건물의 개발 이력 (건축물대장)</h3><ProvenanceBadge kind="observed" detail="건축물대장 표제부" /></div>
+    {reg?.linked_in_area ? <>
+      <RegisterChart history={analysis.history} eventYear={eventYear} />
+      <p className="muted">구역 격자 안 건물 {formatMetric(reg.linked_in_area)}동의 사용승인일 기준입니다(아파트 외 상가·업무·공공 건물 포함).{reg.unknown_year ? ` 사용승인일을 읽을 수 없는 ${formatMetric(reg.unknown_year)}동은 뺐습니다.` : ''} 연면적이 비어 있는 건물은 0이 아니라 합계에서 빠집니다.</p>
+    </> : <EmptyState title={reg?.available ? '이 구역에 연결된 대장 건물이 없습니다' : '건축물대장을 아직 수집하지 않았습니다'} description={reg?.available ? '대장 건물의 위치(격자)는 연속지적 전체 수집 뒤 연결됩니다.' : "수집 데이터 화면의 '빠진 자료 전부 수집'으로 받을 수 있습니다 (건축물대장 활용신청 승인 필요)."} />}
   </section>;
 }
 

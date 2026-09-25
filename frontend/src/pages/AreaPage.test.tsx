@@ -43,7 +43,8 @@ describe('AreaPage', () => {
     await waitFor(() => expect(bodies.length).toBeGreaterThan(0));
     expect(bodies[0]).toMatchObject({ area: { type: 'admin', code: '35012650' }, from_year: 2015, to_year: 2025, target_pct: 40, plan: { added_floor_area_m2: 50000 } });
     expect(screen.getByText('과거 전력을 아직 수집하지 않았습니다.')).toBeInTheDocument();
-    expect(screen.getByText(/CollectHistory -FromYear 2015 -ToYear 2025/)).toBeInTheDocument();
+    expect(screen.getByText(/scripts\\dss.cmd CollectAll/)).toBeInTheDocument();
+    expect(screen.getByText("건축물대장을 아직 수집하지 않았습니다")).toBeInTheDocument();
     expect(screen.getByText(/지역 전체 건물의 전력 사용을 63.1% 줄이거나/)).toBeInTheDocument();
     expect(screen.getByText('164 % 필요 → 불가')).toBeInTheDocument();
     expect(screen.getByText('전후 기간에 12개월이 모두 관측된 전력 자료가 부족합니다 (과거 수집 필요)')).toBeInTheDocument();
