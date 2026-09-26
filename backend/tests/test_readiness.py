@@ -27,7 +27,9 @@ def test_readiness_explains_collection_scope_and_uses():
     assert kapt["collection_dataset"] == "kapt_energy"
     assert kapt["scopes"]["smoke"] == "1단지 × 1개월"
     assert "운영탄소" in " ".join(kapt["uses"])
-    assert sources["sgis_grid"]["acquisition"] == "MANUAL_DOWNLOAD"
+    grid = sources["sgis_grid"]
+    assert grid["acquisition"] == "API_KEY" and grid["collection_dataset"] == "sgis_grid_500m"  # boundary·code by API
+    assert any("자료신청" in item for item in grid["products"])  # the statistics still need an application
     assert sources["vworld_zoning"]["scopes"]["smoke"] == "분석격자 1개 bbox"
 
 

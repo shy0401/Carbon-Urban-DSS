@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 YEARLY = ("sgis", "kma_asos", "kapt_energy", "energy")
-ONCE = ("vworld_zoning", "vworld_buildings", "vworld_cadastral", "building_register")
+ONCE = ("vworld_zoning", "vworld_buildings", "vworld_cadastral", "building_register", "sgis_grid_500m")
 SLOW = ("kapt_energy",)
 KAPT_RETRY_ROUNDS = int(os.getenv("KAPT_RETRY_ROUNDS", "2"))
 KAPT_RETRY_WAIT_S = float(os.getenv("KAPT_RETRY_WAIT_S", "600"))
@@ -46,14 +46,15 @@ LABELS = {
     "vworld_buildings": "VWorld 도로명주소 건물",
     "vworld_cadastral": "VWorld 연속지적 (전체 필지)",
     "building_register": "건축물대장 표제부 (연면적·구조·사용승인일·에너지등급)",
+    "sgis_grid_500m": "SGIS 공식 500m 격자 경계·코드 (API)",
 }
-SOURCE_ID = {"sgis": "sgis_admin", "kma_asos": "weather_kma", "building_register": "building_official"}
+SOURCE_ID = {"sgis": "sgis_admin", "kma_asos": "weather_kma", "building_register": "building_official", "sgis_grid_500m": "sgis_grid"}
 
 # Things no API call can fetch: the provider hands out a file after an application.
 MANUAL_SOURCES = (
-    {"id": "sgis_grid", "label": "SGIS 공식 500m 격자 (경계·인구·비밀보호 표식)",
-     "why": "1km 격자 통계(2024)는 공공데이터포털 파일로 적용되어 있습니다. 500m 격자 값이 필요하면 SGIS에 따로 신청해야 합니다(500m는 총괄 항목만 제공).",
-     "how": "SGIS 자료제공 → 격자 통계(500m) 신청 → 받은 SHP/CSV를 '파일 업로드'로 가져오기",
+    {"id": "sgis_grid", "label": "SGIS 공식 500m 격자 통계값 (인구·가구 총괄)",
+     "why": "500m 격자의 경계·코드는 SGIS API로 자동 수집합니다(위 표). 1km 격자 통계(2024)는 공공데이터포털 파일로 적용되어 있습니다. 500m 격자의 통계값은 공개 API·파일에 없어 SGIS에 자료제공을 신청해야 합니다(500m는 총괄 항목만 제공).",
+     "how": "SGIS 자료제공 → 소지역 통계 → 격자(500m) 신청 (지역: 전북특별자치도 전주시, 항목: 인구·가구 총괄, 연도: 2015~2024) → 받은 CSV/SHP를 '파일 업로드'로 가져오기 (격자코드 예: 다마62a48a)",
      "link": "https://sgis.kostat.go.kr/view/pss/openDataIntrcn"},
     {"id": "factors_gas", "label": "가스 배출계수·열량 기준 (CO₂·CH₄·N₂O, GWP)",
      "why": "가스 탄소를 계산에 넣으려면 공식 계수와 kWh 환산 기준이 필요합니다.",
@@ -246,10 +247,16 @@ def _default_runners(db: Any, hooks: dict[str, Any] | None = None) -> dict[str, 
         result = collect_register(db, "full", report)
         return {"status": "PARTIAL" if result.get("failed") else "DONE", **result}
 
+    def sgis_grid_500m() -> dict[str, Any]:
+        from .sgis_grid_official import collect_sgis_grid_official
+        result = collect_sgis_grid_official(db)
+        return {"status": "DONE" if result.get("cells") else "PARTIAL", **result}
+
     return {
         "sgis": sgis, "kma_asos": kma_asos, "kapt_energy": kapt_energy, "energy": energy,
         "vworld_zoning": vworld("zoning"), "vworld_buildings": vworld("buildings"),
         "vworld_cadastral": vworld("cadastral"), "building_register": building_register,
+        "sgis_grid_500m": sgis_grid_500m,
     }
 
 
@@ -266,6 +273,10 @@ def db_satisfied(db: Any, dataset: str, year: int | None) -> str | None:
             rows = db.scalars(select(WeatherMonthly).where(WeatherMonthly.use_ym.like(f"{year}%"), WeatherMonthly.source_type == "OFFICIAL")).all()
             full = [r for r in rows if (r.days_observed or 0) >= (r.expected_days or 99)]
             return f"{year}년 ASOS 완전월 12개 보유" if len(full) >= 12 else None
+        if dataset == "sgis_grid_500m":
+            from .sgis_grid_official import SgisOfficialGridCell
+            n = db.scalar(select(func.count()).select_from(SgisOfficialGridCell)) or 0
+            return f"공식 500m 격자 {n:,}개 보유 (통계값은 신청 필요)" if n else None
         if dataset in ONCE:
             source = db.get(DataSource, SOURCE_ID.get(dataset, dataset))
             if source and source.status == "COLLECTED" and (source.normalized_row_count or 0) > 0:

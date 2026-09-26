@@ -18,6 +18,7 @@ REQUIRED_ENV = {
     "vworld_cadastral": ("VWORLD_API_KEY", "VWORLD_DOMAIN"),
     "vworld_buildings": ("VWORLD_API_KEY", "VWORLD_DOMAIN"),
     "building_register": ("DATA_GO_KR_SERVICE_KEY",),
+    "sgis_grid_500m": ("SGIS_CONSUMER_KEY", "SGIS_CONSUMER_SECRET"),
 }
 
 CREDENTIAL_CACHE = {
@@ -29,6 +30,7 @@ CREDENTIAL_CACHE = {
     "vworld_cadastral": (("VWORLD_API_KEY",), "cache/vworld"),
     "vworld_buildings": (("VWORLD_API_KEY",), "cache/vworld"),
     "building_register": (("DATA_GO_KR_SERVICE_KEY",), "cache"),
+    "sgis_grid_500m": (("SGIS_CONSUMER_KEY", "SGIS_CONSUMER_SECRET"), "cache/sgis-auth"),
 }
 
 

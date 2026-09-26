@@ -214,6 +214,8 @@ export interface GridProps {
   reg_old_gfa_pct?: number | null;
   reg_dominant_use?: string | null;
   reg_use_gfa_pct?: Record<string, number> | null;
+  /** Official SGIS 500m cell code with the same corner as this cell (API boundary; no statistics). */
+  sgis500_code?: string | null;
   /** SGIS 1km parent cell (absent until the bundle is loaded). Densities are per km² of the 1km cell. */
   sgis1k_code?: string | null;
   sgis1k_year?: number;

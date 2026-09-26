@@ -266,7 +266,7 @@ function GridDetail({ props: p, year, name, metric, classification, details, det
   const weather = details?.weather ?? [];
   const osm = p.building_source === 'OSM';
   return <aside className="map-detail" aria-label="선택 격자 상세">
-    <header className="detail-head"><div><h2>{name || '선택 격자'}</h2><code className="grid-id">{p.id}</code></div><div className="detail-actions"><button className="icon-link" aria-label="선택 격자로 확대" onClick={onFocus}><LocateFixed size={17} /></button><button className="icon-link" aria-label="상세 닫기" onClick={onClose}><X size={17} /></button></div></header>
+    <header className="detail-head"><div><h2>{name || '선택 격자'}</h2><code className="grid-id">{p.id}</code>{p.sgis500_code && <code className="grid-id official" title="SGIS 공식 500m 격자 코드 (경계 API). 통계값은 자료신청 후 결합">SGIS {p.sgis500_code}</code>}</div><div className="detail-actions"><button className="icon-link" aria-label="선택 격자로 확대" onClick={onFocus}><LocateFixed size={17} /></button><button className="icon-link" aria-label="상세 닫기" onClick={onClose}><X size={17} /></button></div></header>
     <section className="detail-section current-metric" aria-label="지도 지표 값">
       <h3>{metric.label}</h3>
       <p className="detail-figure">{value === null ? <MissingValue reason="이 격자에는 이 지표를 계산할 관측 자료가 없습니다." /> : <>{cls && <i className="class-swatch" style={{ background: cls.color }} aria-hidden="true" />}{formatMetric(value, '', metric.digits)}<span className="unit">{metric.unit}</span></>}</p>

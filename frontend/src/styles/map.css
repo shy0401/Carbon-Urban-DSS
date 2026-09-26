@@ -111,6 +111,7 @@
 .detail-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-2); }
 .detail-head h2 { font-size: var(--fs-panel); }
 .grid-id { display: inline-block; margin-top: 2px; font-family: var(--mono); font-size: var(--fs-caption); color: var(--ink-2); overflow-wrap: anywhere; }
+.grid-id.official { margin-left: var(--sp-2); color: var(--primary); }
 .detail-actions { display: flex; gap: var(--sp-1); }
 .detail-section { margin-top: var(--sp-4); padding-top: var(--sp-3); border-top: 1px solid var(--line); }
 .detail-section h3 { font-size: var(--fs-label); font-weight: 600; margin-bottom: var(--sp-2); }

@@ -188,11 +188,13 @@ def _is_transient(message: str) -> bool:
 # of the year in this pass: every attempt spends the 5,000-call daily quota. The skipped months
 # are stored as FAILED and requested again by a retry round or the next run.
 FAILED_STREAK_LIMIT = 2
-# Measured on 2026-09-26: the 04 answers come from some gateway backend nodes, and a kept-alive
-# connection stays on one node (0/20 on one connection, 20/20 on another, about half on fresh
-# ones), so failures come in long runs. Every retry opens a new connection; a run of consecutive
-# failures across complexes still pauses the collection instead of writing the rest of the city
-# off, and the months still FAILED after the pass are retried after a wait.
+# Measured on 2026-09-27 (PC, one kept-alive connection): 120/120 answers at 1 request/s;
+# at 2/s the same kind of connection answered 48 and then only "04 HTTP_ERROR"; at 4/s 38.
+# The provider throttles per connection, and a throttled connection stays bad, so requests
+# go out no faster than about one per second (REQUEST_DELAY_MS) and every retry opens a new
+# connection. A run of consecutive failures across complexes still pauses the collection, and
+# the months still FAILED after the pass are retried after a wait.
+REQUEST_DELAY_MS = 1100
 OUTAGE_RUN = 8
 
 
@@ -391,7 +393,7 @@ def collect_kapt_energy(
     root = Path(data_dir or os.getenv("DATA_DIR", "data"))
     raw_root = root / "raw" / "kapt-energy" / str(year)
     raw_root.mkdir(parents=True, exist_ok=True)
-    delay = max(float(os.getenv("KAPT_ENERGY_REQUEST_DELAY_MS", "250")) / 1000, 0)
+    delay = max(float(os.getenv("KAPT_ENERGY_REQUEST_DELAY_MS", str(REQUEST_DELAY_MS))) / 1000, 0)
     session = client or CachedClient(root / "cache" / "kapt-energy", min_interval=delay)
     base_url = os.getenv("KAPT_ENERGY_BASE_URL", KAPT_ENERGY_BASE_URL).rstrip("/")
     stats = {"requested": 0, "normalized": 0, "skipped": 0, "empty": 0, "not_reported": 0, "suspect": 0, "failed": 0, "before_approval": 0}

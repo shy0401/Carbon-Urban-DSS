@@ -79,6 +79,7 @@ app.include_router(area_report_router)
 from .sgis_grid import router as sgis_grid_router
 app.include_router(sgis_grid_router)
 from . import energy_parcels  # noqa: F401 - registers parcel_grid before create_all
+from . import sgis_grid_official  # noqa: F401 - registers sgis_official_grid_cells before create_all
 
 @app.get('/api/health')
 @app.get('/health')
@@ -320,6 +321,8 @@ def map_data(year:int=Query(DEFAULT_YEAR,ge=2000,le=2100)):
         register=grid_register_summary(db)
         from .energy_parcels import grid_building_energy,map_properties as building_energy_properties,year_complete
         building_energy=grid_building_energy(db,year)
+        from .sgis_grid_official import official_codes,meta as official_grid_meta
+        official=official_codes(db)
         e_factor=(factors.get('ELECTRICITY') or {}).get('factor')
         by_grid={}
         for feature in complexes['features']:
@@ -353,6 +356,8 @@ def map_data(year:int=Query(DEFAULT_YEAR,ge=2000,le=2100)):
             p.update(by_grid.get(grid_id,{'complex_count':0,'complex_households':None,'complex_gfa_m2':None,'complex_gfa_excluded':0}))
             # Parent SGIS 1km cell densities/shares (official, noisy); absent when no bundle is loaded.
             p.update(sgis_props.get(grid_id,{}))
+            # Official SGIS 500m cell code that coincides with this project cell (API boundary; no statistics).
+            p['sgis500_code']=official.get(grid_id)
             # 건축물대장 표제부 linked to this grid: official floor area, FAR floor area, use mix.
             p.update(register_properties(register.get(grid_id)))
             # Every metered building of the grid (건축HUB by 법정동, placed through the cadastral parcel).
@@ -374,6 +379,7 @@ def map_data(year:int=Query(DEFAULT_YEAR,ge=2000,le=2100)):
             'building_energy':{'grids':len(building_energy),'parcels':sum(v['parcels'] for v in building_energy.values()),'complete':year_complete(year),'source':'건축HUB 건물에너지 (법정동 단위 전 지번, 연속지적으로 격자 배치)'} if building_energy else None,
             'register':{'grids':len(register),'buildings':sum(r['buildings'] for r in register.values()),'source':'건축HUB 건축물대장 표제부 (격자 연결분)'} if register else None,
             'sgis_grid':{'year':next((v.get('sgis1k_year') for v in sgis_props.values()),None),'source':'SGIS 격자 통계 1km (공공데이터포털 15141768)','note':'소속 1km 공식 격자의 밀도·비율이며 500m로 나눈 값이 아닙니다. 비밀보호 잡음(±7) 포함.'} if sgis_props else None,
+            'sgis_grid_official':dict(official_grid_meta(db),source='SGIS OpenAPI grid/data.geojson (grid_level_div=500m)') if official else None,
             'selected_sector':serialize(sector) if sector else None,'center':[127.148,35.8242],'crs':'EPSG:5179','grid_size_m':500,'grid_area_m2':250000,'year':year,'offline_mode':offline_mode(),
         }
 
