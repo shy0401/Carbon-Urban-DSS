@@ -219,12 +219,19 @@ function Invoke-Backup([string]$Label) {
     $dir = Join-Path $Root "data\backups\$Stamp-$Label"
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
     Assert-Native (Compose-Main @('up', '-d', '--wait', 'postgres')) 'postgres start'
+    # Counts before and after the dump: a collection may be writing meanwhile (the dump itself is one
+    # consistent snapshot, the counts are not), so a restore is checked against that range.
+    $before = Get-TableCounts 'main'
     Assert-Native (Compose-Main @('exec', '-T', 'postgres', 'pg_dump', '-U', 'carbon', '-d', 'carbon', '-Fc', '-n', 'public', '-f', '/tmp/dss-backup.dump')) 'pg_dump'
     Assert-Native (Compose-Main @('cp', 'postgres:/tmp/dss-backup.dump', (Join-Path $dir 'db.dump'))) 'copy dump from container'
     Compose-Main @('exec', '-T', 'postgres', 'rm', '-f', '/tmp/dss-backup.dump') | Out-Null
     $counts = Get-TableCounts 'main'
     $countLines = @($counts.GetEnumerator() | ForEach-Object { "$($_.Key)|$($_.Value)" })
     Set-Content -LiteralPath (Join-Path $dir 'table-counts.tsv') -Value $countLines -Encoding UTF8
+    $changing = @($counts.Keys | Where-Object { -not $before.Contains($_) -or [int64]$before[$_] -ne [int64]$counts[$_] })
+    if ($changing.Count) {
+        Set-Content -LiteralPath (Join-Path $dir 'table-counts-before.tsv') -Value @($before.GetEnumerator() | ForEach-Object { "$($_.Key)|$($_.Value)" }) -Encoding UTF8
+    }
     $raw = Get-RawManifest
     $raw | Export-Csv -LiteralPath (Join-Path $dir 'raw-manifest.csv') -NoTypeInformation -Encoding UTF8
     $dumpHash = (Get-FileHash -LiteralPath (Join-Path $dir 'db.dump') -Algorithm SHA256).Hash.ToLower()
@@ -234,6 +241,7 @@ function Invoke-Backup([string]$Label) {
         created_at = (Get-Date).ToString('o'); label = $Label; git_commit = $commit
         dump = [ordered]@{ file = 'db.dump'; format = 'pg_dump custom, schema public'; sha256 = $dumpHash; bytes = (Get-Item -LiteralPath (Join-Path $dir 'db.dump')).Length }
         table_counts = $counts
+        tables_written_during_backup = $changing
         raw = [ordered]@{ files = $raw.Count; bytes = ($raw | Measure-Object -Property bytes -Sum).Sum }
         excluded = @('.env', '.secrets', 'data/cache', 'data/deployment', 'ollama models')
     }
@@ -243,11 +251,18 @@ function Invoke-Backup([string]$Label) {
     return "$dir (tables=$($counts.Count), raw files=$($raw.Count))"
 }
 
-function Compare-Counts($Expected, $Actual) {
+function Compare-Counts($Expected, $Actual, $Before = $null) {
+    # $Before: counts taken just before the dump. A table written during the backup must restore
+    # to a count between the two; every other table must match exactly.
     $problems = @()
     foreach ($key in $Expected.Keys) {
-        if (-not $Actual.Contains($key)) { $problems += "$key missing" }
-        elseif ([int64]$Actual[$key] -ne [int64]$Expected[$key]) { $problems += "$key expected $($Expected[$key]) got $($Actual[$key])" }
+        if (-not $Actual.Contains($key)) { $problems += "$key missing"; continue }
+        $got = [int64]$Actual[$key]; $want = [int64]$Expected[$key]
+        if ($Before -and $Before.Contains($key) -and [int64]$Before[$key] -ne $want) {
+            $lo = [Math]::Min([int64]$Before[$key], $want); $hi = [Math]::Max([int64]$Before[$key], $want)
+            if ($got -lt $lo -or $got -gt $hi) { $problems += "$key expected $lo..$hi got $got" }
+        }
+        elseif ($got -ne $want) { $problems += "$key expected $want got $got" }
     }
     return ,$problems
 }
@@ -271,6 +286,8 @@ function Invoke-VerifyRestore([string]$Dir) {
     }
     if (-not $Dir) { throw 'No backup with db.dump found. Run -Action Backup first.' }
     $expected = Read-CountFile (Join-Path $Dir 'table-counts.tsv')
+    $beforeFile = Join-Path $Dir 'table-counts-before.tsv'
+    $beforeCounts = if (Test-Path -LiteralPath $beforeFile) { Read-CountFile $beforeFile } else { $null }
     Remove-RestoreProject
     Assert-Native (Compose-Restore @('up', '-d', '--wait', 'postgres', 'redis')) 'restore-test postgres start'
     Wait-Postgres 'restore'
@@ -279,7 +296,7 @@ function Invoke-VerifyRestore([string]$Dir) {
     $restore = Compose-Restore @('exec', '-T', 'postgres', 'pg_restore', '-U', 'carbon', '-d', 'carbon', '--no-owner', '--no-privileges', '/tmp/restore.dump')
     Write-Log "    pg_restore exit $($restore.Code) (warnings such as 'schema public already exists' are expected)"
     $actual = Get-TableCounts 'restore'
-    $problems = Compare-Counts $expected $actual
+    $problems = Compare-Counts $expected $actual $beforeCounts
     $script:Summary.results.restore = [ordered]@{ backup = $Dir; tables = $expected.Count; mismatches = $problems; pg_restore_exit = $restore.Code }
     Save-Summary
     if ($problems.Count) { throw "Row count mismatch: $($problems -join '; ')" }
