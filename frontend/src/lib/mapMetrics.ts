@@ -37,7 +37,8 @@ const sgisBasis = (p: GridProps, extra: string | null) =>
 export const PERCENT_BREAKS = [20, 40, 60, 80];
 
 export const REGISTER_GROUP = '건축물대장';
-export const METRIC_GROUPS = ['에너지 관측', '에너지 원단위', '탄소', '도시 형태', REGISTER_GROUP, '토지이용', SGIS_GROUP, '데이터 품질'] as const;
+export const BUILDING_ENERGY_GROUP = '건물 전체 에너지 (건축HUB)';
+export const METRIC_GROUPS = ['에너지 관측', '에너지 원단위', '탄소', BUILDING_ENERGY_GROUP, '도시 형태', REGISTER_GROUP, '토지이용', SGIS_GROUP, '데이터 품질'] as const;
 
 export const METRICS: MetricDef[] = [
   {
@@ -102,6 +103,42 @@ export const METRICS: MetricDef[] = [
     basis: (p) => p.electricity_area_m2 ? `지번 ${p.electricity_area_parcels}곳 · 연면적 ${fmt(p.electricity_area_m2, 'm²')} 기준` : null,
     source: '전력 원단위 × GIR 계수',
     use: '연면적당 탄소로 효율을 비교하고, 신축에 요구할 목표 원단위를 정할 때 참고합니다.',
+  },
+  {
+    key: 'bldg_electricity_kwh', label: '건물 전체 연간 전력', unit: 'kWh/년', group: BUILDING_ENERGY_GROUP, ramp: 'load', digits: 0,
+    value: (p) => n(p.bldg_electricity_kwh),
+    definition: '격자 안에서 12개월 모두 계측된 모든 지번(상가·업무·학교·대형 공동주택 등)의 전력 합계입니다. 건축HUB가 단독주택, 200세대 미만 공동주택, 산업·수송·발전용은 제공하지 않으므로 격자 전체 소비는 아닙니다. 지번은 연속지적 필지의 대표점으로 격자에 놓습니다.',
+    formula: 'Σ 월별 전력(kWh), 12개월 계측 지번, 필지 대표점이 격자 안',
+    basis: (p) => (p.bldg_electricity_complete ? `12개월 계측 지번 ${p.bldg_electricity_complete}곳 · 계측 지번 전체 ${fmt(n(p.bldg_parcels), '곳')}` : null),
+    source: '건축HUB 건물에너지 (법정동 단위 전 지번)',
+    use: '공동주택만이 아닌 격자의 건물 전력 수요를 봅니다. 도시 탄소 지도의 기본 배출 규모이며, 상업·업무가 몰린 격자를 찾는 데 씁니다.',
+  },
+  {
+    key: 'bldg_gas_kwh', label: '건물 전체 연간 가스', unit: 'kWh/년', group: BUILDING_ENERGY_GROUP, ramp: 'load', digits: 0,
+    value: (p) => n(p.bldg_gas_kwh),
+    definition: '격자 안에서 12개월 모두 계측된 모든 지번의 도시가스 사용량(kWh 환산) 합계입니다.',
+    formula: 'Σ 월별 가스(kWh), 12개월 계측 지번',
+    basis: (p) => (p.bldg_gas_complete ? `12개월 계측 지번 ${p.bldg_gas_complete}곳` : null),
+    source: '건축HUB 건물에너지 (법정동 단위 전 지번)',
+    use: '건물 난방 수요가 큰 격자를 찾습니다. 가스 탄소는 배출계수를 확정한 뒤 계산합니다.',
+  },
+  {
+    key: 'bldg_kwh_per_m2', label: '건물 전체 전력 원단위', unit: 'kWh/m²·년', group: BUILDING_ENERGY_GROUP, ramp: 'load', digits: 1,
+    value: (p) => n(p.bldg_kwh_per_m2),
+    definition: '12개월 계측 지번의 전력을 같은 필지의 건축물대장 연면적으로 나눈 값입니다. 2~1,500 kWh/m² 밖(부분 계측·면적 불일치)인 지번은 뺍니다.',
+    formula: 'Σ 연간 전력 ÷ Σ 대장 연면적 (같은 지번 집합)',
+    basis: (p) => (p.bldg_area_parcels ? `지번 ${p.bldg_area_parcels}곳 · 연면적 ${fmt(n(p.bldg_area_m2), 'm²')}${p.bldg_suspect ? ` · 이상값 ${p.bldg_suspect}곳 제외` : ''}` : null),
+    source: '건축HUB 건물에너지 ÷ 건축물대장 연면적',
+    use: '용도가 섞인 격자끼리 전력 효율을 비교합니다. 주거 연면적 비율과 함께 보면 상업 비중 때문에 높은지 알 수 있습니다.',
+  },
+  {
+    key: 'bldg_carbon_t', label: '건물 전체 전력 탄소', unit: 'tCO₂eq/년', group: BUILDING_ENERGY_GROUP, ramp: 'load', digits: 1,
+    value: (p) => n(p.bldg_carbon_t),
+    definition: '건물 전체 연간 전력에 국가 승인 전력 배출계수를 곱한 운영탄소입니다. 가스 탄소는 포함하지 않습니다.',
+    formula: '건물 전체 연간 전력(kWh) × 0.4541 ÷ 1,000',
+    basis: (p) => (p.bldg_electricity_kwh ? `${fmt(n(p.bldg_electricity_kwh), 'kWh')} × 0.4541` : null),
+    source: 'GIR 2024 승인 국가 온실가스 배출계수',
+    use: '격자별 건물 전력 운영탄소 규모입니다. 도시 단위 감축 목표와 우선 지역을 정할 때 씁니다.',
   },
   {
     key: 'building_count', label: '건물 수', unit: '동', group: '도시 형태', ramp: 'seq', digits: 0,

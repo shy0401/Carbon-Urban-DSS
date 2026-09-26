@@ -192,6 +192,17 @@ export interface GridProps {
   electricity_suspect_parcels?: number;
   /** Share (%) of building footprint whose use is known. */
   use_known_pct?: number | null;
+  /** Every metered building of the grid (건축HUB by 법정동; null until collected city-wide). */
+  bldg_parcels?: number | null;
+  bldg_electricity_kwh?: number | null;
+  bldg_gas_kwh?: number | null;
+  bldg_electricity_complete?: number | null;
+  bldg_gas_complete?: number | null;
+  bldg_area_m2?: number | null;
+  bldg_area_parcels?: number | null;
+  bldg_kwh_per_m2?: number | null;
+  bldg_carbon_t?: number | null;
+  bldg_suspect?: number | null;
   /** 건축물대장 표제부 linked to the grid (null until collected). */
   reg_buildings?: number | null;
   reg_area_issues?: number | null;
@@ -240,6 +251,7 @@ export interface MapData {
   offline_mode?: boolean;
   sgis_grid?: { year: number | null; source: string; note: string } | null;
   register?: { grids: number; buildings: number; source: string } | null;
+  building_energy?: { grids: number; parcels: number; source: string } | null;
 }
 
 export interface BuildingViewport extends GeoJSON.FeatureCollection {

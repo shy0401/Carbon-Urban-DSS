@@ -300,6 +300,14 @@ function GridDetail({ props: p, year, name, metric, classification, details, det
       <h3>토지이용 (용도지역)</h3>
       {p.zone_shares && Object.keys(p.zone_shares).length ? <ShareBar shares={p.zone_shares} colors={ZONE_GROUP_COLOR} names={ZONE_NAME} rest="도시지역 외·미지정" /> : <MissingValue reason={p.zoning_status ? '조회했으나 이 격자에 도시지역 용도지역 도형이 없습니다.' : '용도지역 미수집 격자입니다.'} />}
       {p.use_share_pct && Object.keys(p.use_share_pct).length > 0 && <><h3 className="sub">건축면적 기준 건물 용도</h3><ShareBar shares={p.use_share_pct} colors={Object.fromEntries(USE_COLORS)} names={USE_NAME} /></>}
+      <h3 className="sub">건물 전체 에너지 (건축HUB 전 지번)</h3>
+      {p.bldg_parcels ? <dl className="fact-list">
+        <Fact label="계측 지번" value={p.bldg_parcels} unit="곳" why={p.bldg_electricity_complete ? `12개월 전력 ${p.bldg_electricity_complete}곳` : undefined} />
+        <Fact label="연간 전력" value={p.bldg_electricity_kwh} unit="kWh/년" missingText="12개월 계측 지번 없음" />
+        <Fact label="연간 가스" value={p.bldg_gas_kwh} unit="kWh/년" missingText="12개월 계측 지번 없음" />
+        <Fact label="전력 원단위 (대장 연면적)" value={p.bldg_kwh_per_m2} unit="kWh/m²·년" digits={1} missingText="대장 연면적이 있는 계측 지번 없음" />
+        <Fact label="전력 탄소" value={p.bldg_carbon_t} unit="tCO₂eq/년" digits={1} missingText="연간 전력 없음" />
+      </dl> : <MissingValue reason="건축HUB 전 지번 에너지를 아직 받지 않았거나, 이 격자에 계측 지번이 없습니다(단독주택 위주 등)." />}
       <h3 className="sub">건축물대장 (공식 연면적·용도)</h3>
       {p.reg_buildings ? <dl className="fact-list">
         <Fact label="대장 건물" value={p.reg_buildings} unit="동" why={p.reg_gfa_m2 != null ? `연면적 ${formatMetric(p.reg_gfa_m2, 'm²')}` : undefined} />

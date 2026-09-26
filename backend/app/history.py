@@ -25,14 +25,15 @@ from typing import Any, Callable
 
 YEARLY = ("sgis", "kma_asos", "kapt_energy", "energy")
 ONCE = ("vworld_zoning", "vworld_buildings", "vworld_cadastral", "building_register")
-SLOW = ("kapt_energy",)  # one request per complex-month: collected after everything else
+SLOW = ("kapt_energy",)
+ENERGY_SCOPE = "all_parcels"  # 건축HUB by 법정동 (every parcel); earlier per-apartment-parcel runs are redone once  # one request per complex-month: collected after everything else
 ALL_DATASETS = YEARLY + ONCE
 
 LABELS = {
     "sgis": "SGIS 행정동 인구·가구·경계",
     "kma_asos": "기상청 ASOS 전주 (없으면 ERA5-Land)",
     "kapt_energy": "K-apt 단지 월별 에너지",
-    "energy": "건축HUB 지번 월별 전력·가스",
+    "energy": "건축HUB 전 지번 월별 전력·가스",
     "vworld_zoning": "VWorld 용도지역",
     "vworld_buildings": "VWorld 도로명주소 건물",
     "vworld_cadastral": "VWorld 연속지적 (전체 필지)",
@@ -123,8 +124,21 @@ def _progress_path(data_dir: str | Path | None) -> Path:
     return Path(data_dir or os.getenv("DATA_DIR", "data")) / "ops" / "history-progress.json"
 
 
-def _default_runners(db: Any) -> dict[str, Callable[..., dict[str, Any]]]:
-    """Adapters around the production collectors (imported lazily so tests can inject fakes)."""
+def _default_runners(db: Any, hooks: dict[str, Any] | None = None) -> dict[str, Callable[..., dict[str, Any]]]:
+    """Adapters around the production collectors (imported lazily so tests can inject fakes).
+
+    ``hooks['progress']`` (set per item by collect_history) receives (fraction, message) from inside a
+    long item, so the web page shows e.g. which parcel of a year is being requested.
+    """
+    hooks = hooks if hooks is not None else {}
+
+    def report(fraction: float, message: str) -> None:
+        callback = hooks.get("progress")
+        if callback:
+            try:
+                callback(fraction, message)
+            except Exception:  # noqa: BLE001 - progress display must never stop a collection
+                pass
 
     def sgis(year: int) -> dict[str, Any]:
         from .sgis import collect_sgis_admin
@@ -153,29 +167,32 @@ def _default_runners(db: Any) -> dict[str, Callable[..., dict[str, Any]]]:
             # The reference complex answered with no data for January: treat the year as not published
             # instead of spending thousands of calls on empty answers. A later run can still retry with --force.
             return {"status": "NOT_PUBLISHED", "probe": smoke}
-        full = collect_kapt_energy(db, year, "full", history=True)
+        full = collect_kapt_energy(db, year, "full", history=True, progress=report)
         status = "DONE" if not full.get("failed") else "PARTIAL"
         return {"status": status, **full}
 
     def energy(year: int) -> dict[str, Any]:
         from sqlalchemy import func, select
-        from .collectors import collect_energy
+        from .collectors import update_source
+        from .energy_parcels import HUB, ParcelGrid, build_parcel_grid, collect_energy_all, probe_year
         from .kapt import merge_energy_coordinates
         from .models import EnergyMonthly
-        hub = "국토교통부 건축HUB"
 
         def rows(ym_from: str, ym_to: str) -> int:
             return db.scalar(select(func.count()).select_from(EnergyMonthly).where(
-                EnergyMonthly.source == hub, EnergyMonthly.use_ym.between(ym_from, ym_to))) or 0
+                EnergyMonthly.source == HUB, EnergyMonthly.use_ym.between(ym_from, ym_to))) or 0
 
-        if not rows(f"{year}01", f"{year}12"):
-            # Probe 3 parcels × July before spending ~7,000 calls: an unpublished year answers empty.
-            collect_energy(db, f"{year}-07", f"{year}-07", None, "limited")
-            if not rows(f"{year}07", f"{year}07"):
-                return {"status": "NOT_PUBLISHED", "probe": "건축HUB 3개 지번 7월 응답 없음"}
-        errors = collect_energy(db, f"{year}-01", f"{year}-12", None, "full", history=True)
+        if rows(f"{year}01", f"{year}12") < 1000 and not probe_year(db, year):
+            # 2 requests (one busy 법정동, July): 건축HUB has no data before 2024.
+            return {"status": "NOT_PUBLISHED", "scope": ENERGY_SCOPE, "probe": "건축HUB 법정동 7월 응답 없음"}
+        stats = collect_energy_all(db, year, report)
         merged = merge_energy_coordinates(db, year)
-        return {"status": "PARTIAL" if errors else "DONE", "errors": len(errors or []), "merged": merged, "rows": rows(f"{year}01", f"{year}12")}
+        linked = db.scalar(select(func.count()).select_from(ParcelGrid)) or build_parcel_grid(db)
+        total = db.scalar(select(func.count()).select_from(EnergyMonthly)) or 0
+        parcels = db.scalar(select(func.count(func.distinct(EnergyMonthly.sigungu_code + EnergyMonthly.bjdong_code + EnergyMonthly.lot_type + EnergyMonthly.bun + EnergyMonthly.ji))).where(EnergyMonthly.source == HUB)) or 0
+        update_source(db, "energy", total, status="COLLECTED",
+                      quality=f"{total:,} 관측 / 건축HUB 전 지번 {parcels:,}곳(법정동 단위 수집) / 공동주택 K-apt 매칭 {merged.get('matched', 0):,}행")
+        return {"status": "DONE", "scope": ENERGY_SCOPE, **stats, "merged": merged, "parcel_grid": linked, "rows": rows(f"{year}01", f"{year}12")}
 
     def vworld(dataset: str) -> Callable[[], dict[str, Any]]:
         def run() -> dict[str, Any]:
@@ -198,7 +215,7 @@ def _default_runners(db: Any) -> dict[str, Callable[..., dict[str, Any]]]:
     def building_register() -> dict[str, Any]:
         from .official import collect_register
         collect_register(db, "smoke")
-        result = collect_register(db, "full")
+        result = collect_register(db, "full", report)
         return {"status": "PARTIAL" if result.get("failed") else "DONE", **result}
 
     return {
@@ -298,7 +315,8 @@ def collect_history(
     unknown = sorted(set(datasets or []) - set(ALL_DATASETS))
     if unknown:
         raise ValueError(f"지원하지 않는 데이터셋: {', '.join(unknown)}")
-    runner = runners or _default_runners(db)
+    hooks: dict[str, Any] = {}
+    runner = runners or _default_runners(db, hooks)
     chosen = [d for d in ALL_DATASETS if (datasets is None or d in datasets) and d in runner]
     live = runners is None
     check_db = live if check_db is None else check_db
@@ -344,7 +362,8 @@ def collect_history(
                 kind = "QUOTA" if dataset in quota else "AUTH"
                 progress_file.set(dataset, year, "BLOCKED", kind=kind, reason=blocked[dataset][:200])
                 continue
-            if not force and progress_file.done(dataset, year):
+            redo_energy = dataset == "energy" and progress_file.state["items"].get(key, {}).get("scope") != ENERGY_SCOPE
+            if not force and progress_file.done(dataset, year) and not redo_energy:
                 log(f"skip {key} (이미 완료)")
                 continue
             reason = db_satisfied(db, dataset, year) if (check_db and not force) else None
@@ -353,6 +372,10 @@ def collect_history(
                 log(f"skip {key} ({reason})")
                 continue
             log(f"start {key}")
+            if progress:
+                label = f"{LABELS.get(dataset, dataset)}{f' {year}년' if year else ''} ({step + 1}/{len(plan)})"
+                hooks["progress"] = lambda fraction, message, step=step, label=label: progress(
+                    (step + max(0.0, min(1.0, fraction))) / max(1, len(plan)), f"{label} · {message}")
             try:
                 outcome = runner[dataset](year) if year is not None else runner[dataset]()
                 status = outcome.pop("status", "DONE")

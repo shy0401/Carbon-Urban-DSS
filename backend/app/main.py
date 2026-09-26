@@ -41,6 +41,13 @@ async def lifespan(app):
                     db.rollback();s=db.get(DataSource,source);s.status='FAILED';s.quality='초기 수집 실패: '+type(exc).__name__;db.commit()
         from .emissions import collect_factors
         collect_factors(db)
+        # Parcel → grid lookup for the city-wide 건축HUB energy (built once from the cadastral layer).
+        try:
+            from .energy_parcels import ParcelGrid,build_parcel_grid
+            if not db.scalar(select(func.count()).select_from(ParcelGrid)) and db.scalar(text("SELECT count(*) FROM cadastral_parcels")):
+                print('parcel_grid 생성:',build_parcel_grid(db),'필지')
+        except Exception as exc:
+            db.rollback();print('parcel_grid 생성 실패:',type(exc).__name__,exc)
         # SGIS 1km grid statistics bundle(s) cut by scripts/sgis/extract_sgis_grid.py (skipped when already loaded).
         try:
             from .sgis_grid import import_sgis_grid
@@ -71,6 +78,7 @@ app.include_router(area_router)
 app.include_router(area_report_router)
 from .sgis_grid import router as sgis_grid_router
 app.include_router(sgis_grid_router)
+from . import energy_parcels  # noqa: F401 - registers parcel_grid before create_all
 
 @app.get('/api/health')
 @app.get('/health')
@@ -300,6 +308,9 @@ def map_data(year:int=Query(DEFAULT_YEAR,ge=2000,le=2100)):
         sgis_props=grid_metric_properties(db)
         from .register_grid import grid_register_summary,map_properties as register_properties
         register=grid_register_summary(db)
+        from .energy_parcels import grid_building_energy,map_properties as building_energy_properties
+        building_energy=grid_building_energy(db,year)
+        e_factor=(factors.get('ELECTRICITY') or {}).get('factor')
         by_grid={}
         for feature in complexes['features']:
             c=feature['properties'];item=by_grid.setdefault(c.get('grid_id'),{'complex_count':0,'complex_households':None,'complex_gfa_m2':None,'complex_gfa_excluded':0})
@@ -334,6 +345,8 @@ def map_data(year:int=Query(DEFAULT_YEAR,ge=2000,le=2100)):
             p.update(sgis_props.get(grid_id,{}))
             # 건축물대장 표제부 linked to this grid: official floor area, FAR floor area, use mix.
             p.update(register_properties(register.get(grid_id)))
+            # Every metered building of the grid (건축HUB by 법정동, placed through the cadastral parcel).
+            p.update(building_energy_properties(building_energy.get(grid_id),e_factor))
             f['properties']=p;grids.append(f)
         official_buildings=any(b['building_count'] for b in buildings.values())
         spatial_path=DATA/'spatial.json';spatial=json.loads(spatial_path.read_text(encoding='utf-8')) if spatial_path.exists() else {}
@@ -348,6 +361,7 @@ def map_data(year:int=Query(DEFAULT_YEAR,ge=2000,le=2100)):
             'boundary':boundary,'boundary_source':official_boundary['features'][0]['properties']['source'] if official_boundary else 'OpenStreetMap 행정경계(대체 자료)',
             'complexes':complexes,'complex_floor_area_issues':sum(1 for f in complexes['features'] if f['properties'].get('floor_area_status')!='OK'),
             'factors':{'electricity':{'value':electricity_factor['factor'],'unit':electricity_factor['factor_unit'],'source':electricity_factor.get('source'),'reference_year':electricity_factor.get('reference_year')} if electricity_factor else None,'gas':None if not factors.get('GAS') else {'value':factors['GAS']['factor'],'unit':factors['GAS']['factor_unit']}},
+            'building_energy':{'grids':len(building_energy),'parcels':sum(v['parcels'] for v in building_energy.values()),'source':'건축HUB 건물에너지 (법정동 단위 전 지번, 연속지적으로 격자 배치)'} if building_energy else None,
             'register':{'grids':len(register),'buildings':sum(r['buildings'] for r in register.values()),'source':'건축HUB 건축물대장 표제부 (격자 연결분)'} if register else None,
             'sgis_grid':{'year':next((v.get('sgis1k_year') for v in sgis_props.values()),None),'source':'SGIS 격자 통계 1km (공공데이터포털 15141768)','note':'소속 1km 공식 격자의 밀도·비율이며 500m로 나눈 값이 아닙니다. 비밀보호 잡음(±7) 포함.'} if sgis_props else None,
             'selected_sector':serialize(sector) if sector else None,'center':[127.148,35.8242],'crs':'EPSG:5179','grid_size_m':500,'grid_area_m2':250000,'year':year,'offline_mode':offline_mode(),

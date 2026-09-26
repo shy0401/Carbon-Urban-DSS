@@ -574,7 +574,15 @@ def merge_energy_coordinates(db: Any, year: int = 2025) -> dict[str, int]:
     sector = db.get(TestbedSector, "prototype")
     observed_sets: dict[tuple[str, str], set[str]] = {}
     baseline_area_complete = True
-    for energy in db.scalars(select(EnergyMonthly)):
+    # Only parcels that can match a complex, plus rows linked before (to re-check them). The
+    # city-wide 건축HUB rows of every other parcel keep grid_id empty here: they are placed on the
+    # map through parcel_grid (energy_parcels.py), never as apartment observations.
+    from sqlalchemy import or_, tuple_
+    keys = [(bjd[:5], bjd[5:], bun, ji) for (bjd, bun, ji) in index]
+    candidates_filter = [tuple_(EnergyMonthly.sigungu_code, EnergyMonthly.bjdong_code, EnergyMonthly.bun, EnergyMonthly.ji).in_(keys[i:i + 500])
+                         for i in range(0, len(keys), 500)]
+    rows = db.scalars(select(EnergyMonthly).where(or_(EnergyMonthly.grid_id.is_not(None), EnergyMonthly.match_method.is_not(None), *candidates_filter)))
+    for energy in rows:
         if str(energy.lot_type or "0") not in {"", "0"}:
             energy.grid_id = None
             energy.match_method = "UNMATCHED_KAPT_MOUNTAIN_PARCEL"

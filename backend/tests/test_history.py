@@ -14,7 +14,7 @@ def test_back_fill_runs_every_year_then_the_once_layers_and_resumes(tmp_path):
     def runner(name):
         def run(year=None):
             calls.append((name, year))
-            return {'status': 'DONE', 'rows': 1}
+            return {'status': 'DONE', 'rows': 1, 'scope': 'all_parcels'}
         return run
 
     runners = {name: runner(name) for name in ('sgis', 'kma_asos', 'kapt_energy', 'energy', 'vworld_buildings', 'vworld_cadastral')}
@@ -104,3 +104,15 @@ def test_plan_lists_done_todo_blocked_and_manual_without_requests(tmp_path):
     assert rows['building_register']['cells'] == [{'year': None, 'state': 'BLOCKED', 'reason': '키 거절', 'at': None}]
     assert plan['summary']['manual'] == len(MANUAL_SOURCES) and plan['summary']['blocked'] == 1
     assert plan['summary']['todo'] == plan['summary']['states'].get('TODO', 0) + 1
+
+
+def test_energy_collected_per_apartment_parcel_is_redone_city_wide_once(tmp_path):
+    calls = []
+    ok = lambda year=None: calls.append(year) or {'status': 'DONE'}  # noqa: E731 - old per-parcel run: no scope
+    collect_history(FakeDb(), 2025, 2025, datasets=['energy'], data_dir=tmp_path, runners={'energy': ok}, log=lambda m: None)
+    collect_history(FakeDb(), 2025, 2025, datasets=['energy'], data_dir=tmp_path, runners={'energy': ok}, log=lambda m: None)
+    assert calls == [2025, 2025]
+    city = lambda year=None: calls.append(year) or {'status': 'DONE', 'scope': 'all_parcels'}  # noqa: E731
+    collect_history(FakeDb(), 2025, 2025, datasets=['energy'], data_dir=tmp_path, runners={'energy': city}, log=lambda m: None)
+    collect_history(FakeDb(), 2025, 2025, datasets=['energy'], data_dir=tmp_path, runners={'energy': city}, log=lambda m: None)
+    assert calls == [2025, 2025, 2025]  # done city-wide: not requested again

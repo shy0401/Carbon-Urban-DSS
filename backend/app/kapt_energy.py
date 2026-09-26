@@ -331,6 +331,7 @@ def approval_month(complex_row: Any) -> str | None:
 def collect_kapt_energy(
     db: Any, year: int, scope: str = "smoke", *, client: CachedClient | None = None,
     service_key: str | None = None, data_dir: str | Path | None = None, history: bool = False,
+    progress: Any = None,
 ) -> dict[str, int]:
     """Collect one year of K-apt monthly energy.
 
@@ -364,7 +365,9 @@ def collect_kapt_energy(
     base_url = os.getenv("KAPT_ENERGY_BASE_URL", KAPT_ENERGY_BASE_URL).rstrip("/")
     stats = {"requested": 0, "normalized": 0, "skipped": 0, "empty": 0, "not_reported": 0, "suspect": 0, "failed": 0, "before_approval": 0}
     url = f"{base_url}/{KAPT_ENERGY_OPERATION}"
-    for complex_row in targets:
+    for index, complex_row in enumerate(targets):
+        if progress:
+            progress(index / max(1, len(targets)), f"단지 {index + 1}/{len(targets)} {complex_row.name or complex_row.kapt_code}")
         mapping = db.get(ComplexGridMapping, complex_row.kapt_code) or ComplexGridMapping(complex_code=complex_row.kapt_code)
         mapping.grid_id = complex_row.grid_id
         mapping.method = "KAPT_POINT_PROJECT_GRID" if complex_row.grid_id else "UNMATCHED"
