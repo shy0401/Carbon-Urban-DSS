@@ -9,6 +9,8 @@ mix and floor area come from the register once it is collected and linked to gri
 * share of floor area approved before 2000 (older stock, retrofit candidates);
 * energy-efficiency grade coverage.
 
+Floor areas pass ``official.register_areas`` first (typing errors such as a moved decimal point).
+
 Buildings without a linked grid are not guessed into one. A blank value stays missing (never 0).
 """
 from __future__ import annotations
@@ -29,9 +31,11 @@ def summarize(rows: list[dict[str, Any]], grid_area_m2: float = GRID_AREA_M2) ->
         grid_id = row.get("grid_id")
         if not grid_id:
             continue
-        item = out.setdefault(grid_id, {"buildings": 0, "gfa_m2": 0.0, "gfa_known": 0, "far_gfa_m2": 0.0, "far_known": 0,
+        item = out.setdefault(grid_id, {"area_issues": 0, "buildings": 0, "gfa_m2": 0.0, "gfa_known": 0, "far_gfa_m2": 0.0, "far_known": 0,
                                         "use_gfa_m2": {}, "old_gfa_m2": 0.0, "dated_gfa_m2": 0.0, "graded": 0})
         item["buildings"] += 1
+        if row.get("area_issue"):
+            item["area_issues"] = item.get("area_issues", 0) + 1
         gfa = row.get("gfa")
         if isinstance(gfa, (int, float)) and gfa > 0:
             item["gfa_m2"] += gfa
@@ -68,7 +72,7 @@ def summarize(rows: list[dict[str, Any]], grid_area_m2: float = GRID_AREA_M2) ->
 def grid_register_summary(db: Any) -> dict[str, dict[str, Any]]:
     """Cached per row count (the register changes only when it is collected again)."""
     try:
-        from .official import BuildingRegister
+        from .official import BuildingRegister, register_areas
         count = db.scalar(select(func.count()).select_from(BuildingRegister).where(BuildingRegister.grid_id.is_not(None))) or 0
     except Exception:  # noqa: BLE001 - table not migrated yet
         db.rollback()
@@ -79,8 +83,9 @@ def grid_register_summary(db: Any) -> dict[str, dict[str, Any]]:
         rows = []
         for grid_id, attrs, year in db.execute(select(BuildingRegister.grid_id, BuildingRegister.attributes, BuildingRegister.approval_year).where(BuildingRegister.grid_id.is_not(None))):
             attrs = attrs or {}
-            rows.append({"grid_id": grid_id, "use": attrs.get("building_use"), "gfa": attrs.get("gross_floor_area_m2"),
-                         "far_gfa": attrs.get("far_assessment_floor_area_m2"), "approval_year": year, "energy_grade": attrs.get("energy_grade")})
+            gfa, far, issues = register_areas(attrs)
+            rows.append({"grid_id": grid_id, "use": attrs.get("building_use"), "gfa": gfa, "far_gfa": far,
+                         "approval_year": year, "energy_grade": attrs.get("energy_grade"), "area_issue": bool(issues)})
         _CACHE.clear()
         _CACHE[count] = summarize(rows)
     return _CACHE[count]
@@ -88,8 +93,8 @@ def grid_register_summary(db: Any) -> dict[str, dict[str, Any]]:
 
 def map_properties(summary: dict[str, Any] | None) -> dict[str, Any]:
     if not summary:
-        return {"reg_buildings": None, "reg_gfa_m2": None, "reg_far_pct": None, "reg_residential_gfa_pct": None,
+        return {"reg_buildings": None, "reg_area_issues": None, "reg_gfa_m2": None, "reg_far_pct": None, "reg_residential_gfa_pct": None,
                 "reg_old_gfa_pct": None, "reg_dominant_use": None, "reg_use_gfa_pct": None}
-    return {"reg_buildings": summary["buildings"], "reg_gfa_m2": summary["gfa_m2"], "reg_far_pct": summary["far_pct"],
+    return {"reg_buildings": summary["buildings"], "reg_area_issues": summary.get("area_issues", 0), "reg_gfa_m2": summary["gfa_m2"], "reg_far_pct": summary["far_pct"],
             "reg_residential_gfa_pct": summary["residential_gfa_pct"], "reg_old_gfa_pct": summary["old_gfa_pct"],
             "reg_dominant_use": summary["dominant_use"], "reg_use_gfa_pct": summary["use_gfa_pct"]}

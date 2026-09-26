@@ -151,9 +151,9 @@ export const METRICS: MetricDef[] = [
   {
     key: 'reg_far_pct', label: '용적률 (건축물대장)', unit: '%', group: REGISTER_GROUP, ramp: 'seq', digits: 1,
     value: (p) => n(p.reg_far_pct), breaks: [25, 50, 100, 200],
-    definition: `격자 안 건물의 공식 용적률산정연면적(건축물대장)을 격자 면적으로 나눈 값입니다. 필지 대지면적 기준의 법정 용적률과 다르지만, 층수로 추정한 용적률보다 정확합니다.`,
+    definition: `격자 안 건물의 공식 용적률산정연면적(건축물대장)을 격자 면적으로 나눈 값입니다. 필지 대지면적 기준의 법정 용적률과 다르지만, 층수로 추정한 용적률보다 정확합니다. 소수점이 밀린 오기처럼 건축면적×층수나 연면적과 맞지 않는 값은 빼고(0이 아님) 계산합니다.`,
     formula: `Σ 용적률산정연면적 ÷ ${GRID} × 100`,
-    basis: (p) => (p.reg_buildings ? `대장 건물 ${fmt(n(p.reg_buildings), '동')} · 연면적 ${fmt(n(p.reg_gfa_m2), 'm²')}` : null),
+    basis: (p) => (p.reg_buildings ? `대장 건물 ${fmt(n(p.reg_buildings), '동')} · 연면적 ${fmt(n(p.reg_gfa_m2), 'm²')}${p.reg_area_issues ? ` · 면적 오기 ${p.reg_area_issues}동 제외` : ''}` : null),
     source: '건축HUB 건축물대장 표제부',
     use: '공식 연면적으로 본 개발 밀도입니다. 추가 개발 여지와 에너지 부하 추정의 연면적 근거로 씁니다.',
   },

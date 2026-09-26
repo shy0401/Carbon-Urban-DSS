@@ -194,6 +194,7 @@ export interface GridProps {
   use_known_pct?: number | null;
   /** 건축물대장 표제부 linked to the grid (null until collected). */
   reg_buildings?: number | null;
+  reg_area_issues?: number | null;
   reg_gfa_m2?: number | null;
   reg_far_pct?: number | null;
   reg_residential_gfa_pct?: number | null;

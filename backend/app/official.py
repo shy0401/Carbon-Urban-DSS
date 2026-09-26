@@ -70,6 +70,35 @@ def register_pnu(raw,region=None):
     ji=re.sub(r'\D','',str(raw.get('ji') or '')).zfill(4)[-4:]
     return sigungu+bjdong+land+bun+ji
 
+def register_areas(attrs):
+    """(gross floor area, FAR floor area, issues) of one register building after consistency checks.
+
+    The register has typing errors such as a decimal point moved three places (26,406,329 m² for a
+    26,406.29 m² apartment block). A value is dropped (None, never 0) when it cannot be right:
+    * larger than 1.5 × 건축면적 × (지상+지하 층수) when those are known;
+    * 용적률산정연면적 larger than 연면적 (it excludes basements, so it can only be smaller);
+    * 연면적 more than 20 × 용적률산정연면적.
+    """
+    attrs=attrs or {}
+    def positive(key):
+        value=attrs.get(key)
+        return float(value) if isinstance(value,(int,float)) and value>0 else None
+    gfa,far,arch=positive('gross_floor_area_m2'),positive('far_assessment_floor_area_m2'),positive('building_area_m2')
+    floors=attrs.get('floors') if isinstance(attrs.get('floors'),(int,float)) and attrs.get('floors')>0 else None
+    under=attrs.get('underground_floors') if isinstance(attrs.get('underground_floors'),(int,float)) and attrs.get('underground_floors')>0 else 0
+    issues=[]
+    if arch and floors:
+        if gfa and gfa>arch*(floors+under)*1.5:
+            issues.append(f'연면적 {gfa:,.0f}m²가 건축면적×층수보다 훨씬 큼');gfa=None
+        if far and far>arch*floors*1.5:
+            issues.append(f'용적률산정연면적 {far:,.0f}m²가 건축면적×지상층수보다 훨씬 큼');far=None
+    # When the two disagree, the typical error is extra digits, so the larger value is dropped.
+    if gfa and far and far>gfa*1.05:
+        issues.append(f'용적률산정연면적 {far:,.0f}m²가 연면적 {gfa:,.0f}m²보다 큼');far=None
+    if gfa and far and gfa>far*20:
+        issues.append(f'연면적 {gfa:,.0f}m²가 용적률산정연면적의 20배 초과');gfa=None
+    return gfa,far,issues
+
 def approval_year_of(value):
     digits=re.sub(r'\D','',str(value or ''))
     if len(digits)<4:return None

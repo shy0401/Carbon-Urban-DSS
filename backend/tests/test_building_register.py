@@ -98,3 +98,16 @@ def test_grid_register_summary_uses_known_values_only():
     assert g["residential_gfa_pct"] == 75.0 and g["dominant_use"] == "주거"
     assert g["old_gfa_pct"] == 75.0  # 1995 building: 30,000 of 40,000 dated m²
     assert map_properties(None)["reg_far_pct"] is None  # no register: missing, not 0
+
+
+def test_register_floor_area_typing_errors_are_dropped_not_summed():
+    from app.official import register_areas
+    # decimal point moved: 26,406,329 m² against a 25,542 m² FAR area
+    gfa, far, issues = register_areas({'gross_floor_area_m2': 26406329.0, 'far_assessment_floor_area_m2': 25542.439})
+    assert gfa is None and far == 25542.439 and issues
+    # FAR area 954,618 m² larger than the 10,106.7 m² gross floor area
+    gfa, far, issues = register_areas({'gross_floor_area_m2': 10106.7, 'far_assessment_floor_area_m2': 954618.0})
+    assert gfa == 10106.7 and far is None
+    # impossible for 20 floors on 500 m²
+    assert register_areas({'gross_floor_area_m2': 90000.0, 'building_area_m2': 500.0, 'floors': 20})[0] is None
+    assert register_areas({'gross_floor_area_m2': 12000.0, 'far_assessment_floor_area_m2': 9800.0, 'building_area_m2': 700.0, 'floors': 15, 'underground_floors': 2}) == (12000.0, 9800.0, [])

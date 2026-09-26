@@ -775,10 +775,10 @@ def load_inputs(db: Any, years: list[int]) -> dict[str, Any]:
     grids = [{"id": g.id, "geometry": (g.geojson or {}).get("geometry")} for g in db.scalars(select(Grid))]
     register = []
     try:
-        from .official import BuildingRegister
+        from .official import BuildingRegister, register_areas
         for r in db.scalars(select(BuildingRegister).where(BuildingRegister.grid_id.is_not(None))):
             attrs = r.attributes or {}
-            register.append({"grid_id": r.grid_id, "approval_year": r.approval_year, "gfa": attrs.get("gross_floor_area_m2"), "use": attrs.get("building_use")})
+            register.append({"grid_id": r.grid_id, "approval_year": r.approval_year, "gfa": register_areas(attrs)[0], "use": attrs.get("building_use")})
     except Exception:  # noqa: BLE001 - register not collected yet (or columns not migrated)
         db.rollback()
     from .overlays import admin_features, grid_zoning_summary
