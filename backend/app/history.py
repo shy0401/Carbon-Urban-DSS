@@ -18,12 +18,14 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 
 YEARLY = ("sgis", "kma_asos", "kapt_energy", "energy")
 ONCE = ("vworld_zoning", "vworld_buildings", "vworld_cadastral", "building_register")
+SLOW = ("kapt_energy",)  # one request per complex-month: collected after everything else
 ALL_DATASETS = YEARLY + ONCE
 
 LABELS = {
@@ -156,11 +158,24 @@ def _default_runners(db: Any) -> dict[str, Callable[..., dict[str, Any]]]:
         return {"status": status, **full}
 
     def energy(year: int) -> dict[str, Any]:
+        from sqlalchemy import func, select
         from .collectors import collect_energy
         from .kapt import merge_energy_coordinates
-        errors = collect_energy(db, f"{year}-01", f"{year}-12", None, "full")
+        from .models import EnergyMonthly
+        hub = "국토교통부 건축HUB"
+
+        def rows(ym_from: str, ym_to: str) -> int:
+            return db.scalar(select(func.count()).select_from(EnergyMonthly).where(
+                EnergyMonthly.source == hub, EnergyMonthly.use_ym.between(ym_from, ym_to))) or 0
+
+        if not rows(f"{year}01", f"{year}12"):
+            # Probe 3 parcels × July before spending ~7,000 calls: an unpublished year answers empty.
+            collect_energy(db, f"{year}-07", f"{year}-07", None, "limited")
+            if not rows(f"{year}07", f"{year}07"):
+                return {"status": "NOT_PUBLISHED", "probe": "건축HUB 3개 지번 7월 응답 없음"}
+        errors = collect_energy(db, f"{year}-01", f"{year}-12", None, "full", history=True)
         merged = merge_energy_coordinates(db, year)
-        return {"status": "PARTIAL" if errors else "DONE", "errors": len(errors or []), "merged": merged}
+        return {"status": "PARTIAL" if errors else "DONE", "errors": len(errors or []), "merged": merged, "rows": rows(f"{year}01", f"{year}12")}
 
     def vworld(dataset: str) -> Callable[[], dict[str, Any]]:
         def run() -> dict[str, Any]:
@@ -225,18 +240,45 @@ def credential_blockers(datasets: list[str], data_dir: str | Path | None = None)
     return {item["dataset"]: item["message"] for item in collection_blockers(datasets, data_dir=data_dir)}
 
 
-def _lock(name: str = "carbon:collect-missing"):
-    """Cross-process guard so the web button and the PC command never run at the same time."""
+LOCK_NAME = "carbon:collect-missing"
+LOCK_TTL = 20 * 60  # the guard lives only while a run keeps renewing it (see _keep_lock)
+
+
+def _lock(name: str = LOCK_NAME):
+    """Cross-process guard so the web button and the PC command never run at the same time.
+
+    The lock expires LOCK_TTL seconds after the last renewal, so a run killed with its worker
+    (rebuild, restart) frees it by itself; ``lock_held`` then tells the job is gone.
+    """
     try:
         import redis
         connection = redis.Redis.from_url(os.getenv("REDIS_URL", "redis://redis:6379/0"))
-        lock = connection.lock(name, timeout=3 * 3600, blocking_timeout=1)
+        # thread_local=False: the keep-alive thread must be able to renew this token.
+        lock = connection.lock(name, timeout=LOCK_TTL, blocking_timeout=1, thread_local=False)
         if not lock.acquire(blocking=True):
             raise RuntimeError("다른 '빠진 자료 수집'이 이미 실행 중입니다")
         return lock
     except RuntimeError:
         raise
     except Exception:  # noqa: BLE001 - no Redis (tests, single process): no cross-process guard needed
+        return None
+
+
+def _keep_lock(lock: Any, stop: threading.Event, every: float = LOCK_TTL / 4) -> None:
+    """Renew the guard while the run is alive (one provider call can take many minutes)."""
+    while not stop.wait(every):
+        try:
+            lock.reacquire()
+        except Exception:  # noqa: BLE001 - lost to expiry; the run keeps going
+            pass
+
+
+def lock_held(name: str = LOCK_NAME) -> bool | None:
+    """Whether a 'collect everything missing' run is alive; None when Redis is unavailable."""
+    try:
+        import redis
+        return bool(redis.Redis.from_url(os.getenv("REDIS_URL", "redis://redis:6379/0")).exists(name))
+    except Exception:  # noqa: BLE001
         return None
 
 
@@ -260,9 +302,21 @@ def collect_history(
     chosen = [d for d in ALL_DATASETS if (datasets is None or d in datasets) and d in runner]
     live = runners is None
     check_db = live if check_db is None else check_db
-    if blockers is None:
-        blockers = credential_blockers(chosen, data_dir) if live else {}
     lock = _lock() if (live if use_lock is None else use_lock) else None
+    stop_keeper = threading.Event()
+    if lock is not None:
+        threading.Thread(target=_keep_lock, args=(lock, stop_keeper), daemon=True).start()
+    if blockers is None:
+        try:
+            blockers = credential_blockers(chosen, data_dir) if live else {}
+        except Exception:
+            stop_keeper.set()
+            if lock is not None:
+                try:
+                    lock.release()
+                except Exception:  # noqa: BLE001
+                    pass
+            raise
     progress_file = Progress(_progress_path(data_dir))
     run = {"started_at": _now(), "from": start_year, "to": end_year, "datasets": chosen}
     progress_file.state["runs"] = (progress_file.state["runs"] + [run])[-20:]
@@ -270,7 +324,12 @@ def collect_history(
     blocked: dict[str, str] = dict(blockers)
     quota: dict[str, str] = {}
     years = list(range(start_year, end_year + 1))
-    plan = [(d, y) for y in years for d in chosen if d in YEARLY] + [(d, None) for d in chosen if d in ONCE]
+    # Newest year first (most useful, most likely published). K-apt runs last: it needs one call per
+    # complex-month and a small daily quota, so it must not hold back the cheaper sources.
+    newest = sorted(years, reverse=True)
+    plan = ([(d, y) for y in newest for d in chosen if d in YEARLY and d not in SLOW]
+            + [(d, None) for d in chosen if d in ONCE]
+            + [(d, y) for d in chosen if d in SLOW for y in newest])
     try:
         for step, (dataset, year) in enumerate(plan):
             key = progress_file.key(dataset, year)
@@ -313,6 +372,7 @@ def collect_history(
                     if kind == "QUOTA":
                         quota[dataset] = message
     finally:
+        stop_keeper.set()
         if lock is not None:
             try:
                 lock.release()

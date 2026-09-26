@@ -514,6 +514,14 @@ def collect_municipal(db: Any, raw_dir: str | Path | None = None) -> dict[str, i
     return {"completed_rows": len(completed), "under_construction_rows": len(construction)}
 
 
+def _approval_month(value: Any) -> str | None:
+    """YYYYMM of a 사용승인일 such as '20190315' or '2019-03-15'; None when unreadable."""
+    digits = "".join(ch for ch in str(value or "") if ch.isdigit())
+    if len(digits) >= 6 and 1900 < int(digits[:4]) < 2100 and 1 <= int(digits[4:6]) <= 12:
+        return digits[:6]
+    return None
+
+
 def candidate_energy_parcels(db: Any, limit: int | None = 3, min_households: int | None = None) -> list[dict[str, Any]]:
     """Return unambiguous, exact K-apt parcel keys for MOLIT building-energy requests.
 
@@ -546,6 +554,7 @@ def candidate_energy_parcels(db: Any, limit: int | None = 3, min_households: int
             "longitude": row.longitude, "latitude": row.latitude,
             "gross_floor_area_m2": row.gross_floor_area_m2,
             "parcel_match_status": "EXACT_SINGLE_COMPLEX",
+            "approval_month": _approval_month(row.approval_date),
         })
         if limit and len(result) >= limit:
             break

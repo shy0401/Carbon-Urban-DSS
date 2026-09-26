@@ -137,7 +137,13 @@ def _energy_request(operation,params,attempts=3):
                 raise ExternalError(f'건축HUB 제공기관 일시 오류: {message[:60]}',cached) from None
             time.sleep(2*(attempt+1))
 
-def collect_energy(db,start='2025-01',end='2025-12',progress=None,scope='limited'):
+def collect_energy(db,start='2025-01',end='2025-12',progress=None,scope='limited',history=False):
+    """Monthly 건축HUB electricity/gas per parcel.
+
+    ``history=True`` (past-year back-fill) skips the months before each complex's 사용승인일:
+    a building that did not exist has nothing to report, and asking only spends the daily quota.
+    Skipped months create no rows (they are not 0).
+    """
     key=unquote(os.environ.get('DATA_GO_KR_SERVICE_KEY','').strip())
     if not key: raise ExternalError('API 인증 실패: DATA_GO_KR_SERVICE_KEY 미설정')
     operations={'ELECTRICITY':'getBeElctyUsgInfo','GAS':'getBeGasUsgInfo'}
@@ -157,8 +163,12 @@ def collect_energy(db,start='2025-01',end='2025-12',progress=None,scope='limited
     if not candidates: raise ExternalError('법정동 코드가 없습니다. 지역코드 수집 필요')
     client.min_interval=max(float(os.getenv('BUILDING_ENERGY_REQUEST_DELAY_MS','300'))/1000,0)
     periods=month_range(start,end);done=0;errors=[];failed=0;total_steps=len(candidates)*len(periods)*len(operations)
+    if history:
+        total_steps=sum(len(operations) for region in candidates for ym in periods if not (region.get('approval_month') and ym.replace('-','')<region['approval_month'])) or 1
     for region in candidates:
         for ym in periods:
+            if history and region.get('approval_month') and ym.replace('-','')<region['approval_month']:
+                continue
             for energy_type,operation in operations.items():
                 params=dict(serviceKey=key,**{name:region[name] for name in ('sigunguCd','bjdongCd','bun','ji')},useYm=ym,numOfRows=1000,pageNo=1)
                 page=1

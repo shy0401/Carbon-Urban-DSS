@@ -19,8 +19,10 @@ def test_back_fill_runs_every_year_then_the_once_layers_and_resumes(tmp_path):
 
     runners = {name: runner(name) for name in ('sgis', 'kma_asos', 'kapt_energy', 'energy', 'vworld_buildings', 'vworld_cadastral')}
     result = collect_history(FakeDb(), 2023, 2024, data_dir=tmp_path, runners=runners, log=lambda m: None)
-    assert calls[:4] == [('sgis', 2023), ('kma_asos', 2023), ('kapt_energy', 2023), ('energy', 2023)]
-    assert calls[-2:] == [('vworld_buildings', None), ('vworld_cadastral', None)]
+    assert calls[:3] == [('sgis', 2024), ('kma_asos', 2024), ('energy', 2024)]  # newest year first
+    assert calls[3:6] == [('sgis', 2023), ('kma_asos', 2023), ('energy', 2023)]
+    assert calls[6:8] == [('vworld_buildings', None), ('vworld_cadastral', None)]
+    assert calls[-2:] == [('kapt_energy', 2024), ('kapt_energy', 2023)]  # the slow per-complex source goes last
     assert all(item['status'] == 'DONE' for item in result['items'].values())
     calls.clear()
     collect_history(FakeDb(), 2023, 2024, data_dir=tmp_path, runners=runners, log=lambda m: None)
@@ -38,9 +40,10 @@ def test_quota_stops_only_that_dataset_and_is_retried_next_run(tmp_path):
     ok = lambda year=None: {'status': 'DONE'}  # noqa: E731
     runners = {'sgis': ok, 'kma_asos': ok, 'kapt_energy': quota, 'energy': ok}
     result = collect_history(FakeDb(), 2020, 2022, datasets=['sgis', 'kma_asos', 'kapt_energy', 'energy'], data_dir=tmp_path, runners=runners, log=lambda m: None)
-    assert result['items']['kapt_energy:2020']['status'] == 'FAILED'
-    assert result['items']['kapt_energy:2020']['kind'] == 'QUOTA'
-    assert result['items']['kapt_energy:2021']['status'] == 'BLOCKED'
+    # newest year first: the first K-apt year hits the quota, the older ones wait for the next run
+    assert result['items']['kapt_energy:2022']['status'] == 'FAILED'
+    assert result['items']['kapt_energy:2022']['kind'] == 'QUOTA'
+    assert result['items']['kapt_energy:2020']['status'] == 'BLOCKED'
     assert result['items']['energy:2022']['status'] == 'DONE'
     assert 'kapt_energy' in result['blocked']
     status = history_status(tmp_path)

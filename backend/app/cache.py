@@ -22,16 +22,53 @@ def recent_credential_error(root, credential, max_age=ERROR_CACHE_SECONDS, match
     if not credential:
         return None
     auth_hash=hashlib.sha256(str(credential).encode()).hexdigest()
-    for meta_path in Path(root).glob('*.json'):
+    for meta in _recent_error_metas(root,max_age):
         try:
-            meta=json.loads(meta_path.read_text(encoding='utf-8'))
-            if (meta.get('error') and meta.get('auth_hash')==auth_hash
+            if (meta.get('auth_hash')==auth_hash
                     and time.time()-float(meta.get('timestamp',0))<max_age
                     and (match is None or match(meta))):
                 return str(meta['error'])
-        except (OSError,ValueError,TypeError,json.JSONDecodeError):
+        except (ValueError,TypeError):
             continue
     return None
+
+_ERROR_SCAN={}
+_ERROR_SCAN_TTL=60
+
+def _recent_error_metas(root,max_age):
+    """Error metadata written within ``max_age`` seconds.
+
+    The cache folders hold tens of thousands of responses on a slow Windows bind mount, so
+    files are first filtered by modification time (a stat, no read) and the result is reused
+    for a minute. A new error written by this process clears the memo (see CachedClient).
+    """
+    key=(str(Path(root)),max_age)
+    hit=_ERROR_SCAN.get(key)
+    if hit and time.monotonic()-hit[0]<_ERROR_SCAN_TTL:
+        return hit[1]
+    cutoff=time.time()-max_age
+    found=[]
+    try:
+        entries=list(os.scandir(root))
+    except OSError:
+        entries=[]
+    for entry in entries:
+        if not entry.name.endswith('.json'):
+            continue
+        try:
+            if entry.stat().st_mtime<cutoff:
+                continue
+            meta=json.loads(Path(entry.path).read_text(encoding='utf-8'))
+        except (OSError,ValueError,TypeError,json.JSONDecodeError):
+            continue
+        if isinstance(meta,dict) and meta.get('error'):
+            found.append(meta)
+    _ERROR_SCAN[key]=(time.monotonic(),found)
+    return found
+
+def _forget_error_scan(root):
+    for key in [k for k in _ERROR_SCAN if k[0]==str(Path(root))]:
+        _ERROR_SCAN.pop(key,None)
 
 def record_credential_error(root, credential, message):
     """Persist only a credential digest and sanitized error for short cooldowns."""
@@ -42,13 +79,15 @@ def record_credential_error(root, credential, message):
         'auth_hash':hashlib.sha256(str(credential).encode()).hexdigest(),
     }
     (target/'credential-error.json').write_text(json.dumps(meta,ensure_ascii=False),encoding='utf-8')
+    _forget_error_scan(target)
 
 def clear_credential_error(root, credential):
     target=Path(root)/'credential-error.json'
     if not target.exists():return
     try:meta=json.loads(target.read_text(encoding='utf-8'))
     except (OSError,ValueError,TypeError,json.JSONDecodeError):return
-    if meta.get('auth_hash')==hashlib.sha256(str(credential).encode()).hexdigest():target.unlink(missing_ok=True)
+    if meta.get('auth_hash')==hashlib.sha256(str(credential).encode()).hexdigest():
+        target.unlink(missing_ok=True);_forget_error_scan(Path(root))
 
 class ExternalError(RuntimeError):
     def __init__(self,message,asset=None):
@@ -99,6 +138,7 @@ class CachedClient:
                     time.sleep(2**(attempt+1));continue
                 meta=dict(identity,timestamp=time.time(),status=status,error=error,auth_hash=auth_hash)
                 body_path.write_bytes(body);meta_path.write_text(json.dumps(meta,ensure_ascii=False),encoding='utf-8')
+                if error:_forget_error_scan(self.root)
                 result=dict(meta,body=body,cached=False,path=str(body_path),id=digest)
                 if error: raise ExternalError(error,result)
                 return result
@@ -122,6 +162,7 @@ class CachedClient:
         except (OSError,ValueError,TypeError,json.JSONDecodeError):return
         meta['timestamp']=time.time();meta['error']=str(message)
         meta_path.write_text(json.dumps(meta,ensure_ascii=False),encoding='utf-8')
+        _forget_error_scan(self.root)
 
 def parse_cached_response(client,result,parser):
     try:return parser(result['body'])

@@ -52,3 +52,25 @@ def test_a_run_already_in_progress_fails_this_job_cleanly(monkeypatch):
     tasks.run_all_missing(db, job)
     job = db.get(CollectionJob, 'j1')
     assert job.status == 'FAILED' and '이미 실행 중' in job.message
+
+
+def test_running_job_without_its_live_guard_is_restarted(monkeypatch):
+    db, job = make_job()
+    job.status = 'RUNNING'
+    db.commit()
+    sent = []
+    monkeypatch.setattr(history, 'lock_held', lambda *a, **k: False)
+    monkeypatch.setattr('time.sleep', lambda s: None)
+    monkeypatch.setattr(tasks.run_collection, 'delay', lambda job_id: sent.append(job_id))
+    restarted = tasks.resume_overdue(db)
+    assert restarted is not None and restarted.status == 'QUEUED' and sent == ['j1']
+
+
+def test_running_job_with_a_live_guard_is_left_alone(monkeypatch):
+    db, job = make_job()
+    job.status = 'RUNNING'
+    db.commit()
+    monkeypatch.setattr(history, 'lock_held', lambda *a, **k: True)
+    assert tasks.stale_running(db) is None
+    monkeypatch.setattr(history, 'lock_held', lambda *a, **k: None)  # no Redis: never guess
+    assert tasks.stale_running(db) is None

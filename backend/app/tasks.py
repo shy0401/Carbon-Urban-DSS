@@ -100,12 +100,29 @@ def run_all_missing(db,job):
     job.message='빠진 자료 수집을 마쳤습니다' if not failed else f'수집을 마쳤습니다. 키·승인 또는 제공기관 오류로 남은 항목 {len(failed)}개'
     db.commit()
 
+def stale_running(db):
+    """A RUNNING 'collect everything missing' job whose worker is gone (rebuild/restart).
+
+    The run holds a Redis guard it renews every few minutes; if the guard is absent twice,
+    a few seconds apart (start-up race), nothing is running that job any more.
+    """
+    import time
+    from .history import lock_held
+    job=db.scalar(select(CollectionJob).where(CollectionJob.status=='RUNNING'))
+    if not job or job.datasets!=[ALL_MISSING] or lock_held() is not False: return None
+    time.sleep(3)
+    db.refresh(job)
+    if job.status!='RUNNING' or lock_held() is not False: return None
+    return job
+
 def queue_all_missing(db,from_year,to_year):
     """One background job that collects every missing year and layer (no dataset preflight: the run skips blocked ones)."""
     import redis
     connection=redis.Redis.from_url(os.getenv('REDIS_URL','redis://redis:6379/0'))
     with connection.lock('carbon:collection-enqueue',timeout=15,blocking_timeout=5):
         existing=db.scalar(select(CollectionJob).where(CollectionJob.status.in_(['QUEUED','RUNNING','WAITING'])))
+        if existing and existing.status=='RUNNING' and existing.datasets==[ALL_MISSING] and stale_running(db):
+            existing.status='WAITING'  # restarted below like a waiting run
         if existing and existing.status=='WAITING' and existing.datasets==[ALL_MISSING]:
             # The user asked again: try now instead of waiting for the scheduled resume.
             existing.status='QUEUED';existing.resume_at=None;existing.message='다시 시작 요청';db.commit()
@@ -123,6 +140,12 @@ def queue_all_missing(db,from_year,to_year):
 def resume_overdue(db):
     """Re-queue a waiting run whose resume time has passed (e.g. the worker restarted and lost its timer)."""
     from datetime import timedelta
+    stale=stale_running(db)
+    if stale:
+        stale.status='QUEUED';stale.message='작업자가 다시 시작되어 이어서 수집합니다';db.commit()
+        try: run_collection.delay(stale.id)
+        except Exception: pass
+        return stale
     job=db.scalar(select(CollectionJob).where(CollectionJob.status=='WAITING'))
     if job and job.resume_at and job.resume_at+timedelta(minutes=10)<now():
         job.resume_at=now()+timedelta(hours=1);db.commit()  # avoid re-queuing on every poll
