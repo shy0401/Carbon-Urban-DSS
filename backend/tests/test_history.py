@@ -159,3 +159,21 @@ def test_kapt_year_left_with_many_gateway_gaps_is_partial_until_the_last_pass(tm
     assert last['provider_retry'] == [] and last['provider_retry_at'] is None
     run()
     assert len(passes) == KAPT_MAX_PASSES and all(r and r > 0 for r in passes)  # done after the last pass: not asked again
+
+
+def test_provider_outage_stops_the_dataset_for_this_run_and_asks_for_a_later_one(tmp_path):
+    from app.kapt_energy import ProviderOutageError
+    calls = []
+
+    def down(year=None):
+        calls.append(year)
+        raise ProviderOutageError('K-apt 제공기관 장애: 3분씩 20번 쉬어도 요청이 계속 실패(04)')
+
+    result = collect_history(FakeDb(), 2024, 2025, datasets=['kapt_energy'], data_dir=tmp_path, runners={'kapt_energy': down}, log=lambda m: None)
+    assert calls == [2025]  # 2024 is not asked while the provider is down
+    assert result['items']['kapt_energy:2025']['status'] == 'PARTIAL' and result['items']['kapt_energy:2025']['kind'] == 'PROVIDER'
+    assert result['items']['kapt_energy:2024']['status'] == 'BLOCKED' and result['items']['kapt_energy:2024']['kind'] == 'PROVIDER'
+    assert result['provider_retry'] == ['kapt_energy:2024', 'kapt_energy:2025'] and result['provider_retry_at']
+    up = lambda year=None: calls.append(year) or {'status': 'DONE', 'failed': 0, 'retry_rounds': 2}  # noqa: E731
+    later = collect_history(FakeDb(), 2024, 2025, datasets=['kapt_energy'], data_dir=tmp_path, runners={'kapt_energy': up}, log=lambda m: None)
+    assert calls == [2025, 2025, 2024] and later['provider_retry'] == []

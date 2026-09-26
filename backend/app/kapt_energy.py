@@ -37,6 +37,10 @@ MIN_PLAUSIBLE_KWH_PER_HOUSEHOLD = 20.0
 class TransientProviderError(ExternalError):
     """Temporary provider failure; safe to retry."""
 
+
+class ProviderOutageError(ExternalError):
+    """The gateway kept failing after every pause: stop this run and come back later."""
+
 FIELD_MAP = {
     "helect": "electricity_quantity", "elect": "electricity_amount_krw",
     "hgas": "gas_quantity", "gas": "gas_amount_krw",
@@ -403,6 +407,10 @@ def collect_kapt_energy(
 
     def after_request(ok: bool) -> None:
         outage["run"] = 0 if ok else outage["run"] + 1
+        if not ok and outage_pause_s > 0 and outage["run"] >= OUTAGE_RUN and outage["pauses"] >= max_outage_pauses:
+            # Still failing after every pause: asking the remaining complexes would only spend the
+            # daily quota on errors. The caller records the year for a later run.
+            raise ProviderOutageError(f"K-apt 제공기관 장애: {outage_pause_s / 60:.0f}분씩 {max_outage_pauses}번 쉬어도 요청이 계속 실패(04)")
         if not ok and outage_pause_s > 0 and outage["run"] >= OUTAGE_RUN and outage["pauses"] < max_outage_pauses:
             outage["run"] = 0
             outage["pauses"] += 1

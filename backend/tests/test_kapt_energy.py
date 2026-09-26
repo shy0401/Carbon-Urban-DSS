@@ -332,3 +332,24 @@ def test_cached_client_reopens_only_its_own_connection(tmp_path):
     borrowed = CachedClient(tmp_path / 'b', client=injected)
     borrowed.reset_connection()
     assert borrowed.client is injected
+
+
+def test_an_outage_that_outlasts_every_pause_stops_the_year(tmp_path, monkeypatch):
+    import time
+    import pytest
+    from app.kapt_energy import ProviderOutageError
+    monkeypatch.setattr(time, 'sleep', lambda seconds: None)
+    db = make_db()
+    for code in ('A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7', 'A8', 'A9'):
+        add_complex(db, code=code, households=300)
+    db.add(ApartmentEnergyMonthly(id='A1:202501:K-apt', complex_code='A1', year_month='202501', source='K-apt', quality_status='SUCCESS',
+                                  electricity_quantity=60000.0, units={}, raw_record={}))
+    db.commit()
+    waits = []
+    client = SequenceClient([GATEWAY_04])
+    with pytest.raises(ProviderOutageError):
+        collect_kapt_energy(db, 2025, 'full', client=client, service_key='valid-test-key', data_dir=tmp_path,
+                            outage_pause_s=180, max_outage_pauses=1, sleep=waits.append)
+    assert waits == [180]
+    # 4 complexes before the pause, 4 more after it, then the run stops: A9 is never asked
+    assert not [call for call in client.calls if call['kaptCode'] == 'A9']

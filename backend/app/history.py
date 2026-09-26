@@ -369,6 +369,7 @@ def collect_history(
     progress_file.save()
     blocked: dict[str, str] = dict(blockers)
     quota: dict[str, str] = {}
+    outage: dict[str, str] = {}
     years = list(range(start_year, end_year + 1))
     # Newest year first (most useful, most likely published). K-apt runs last: it needs one call per
     # complex-month and a small daily quota, so it must not hold back the cheaper sources.
@@ -387,7 +388,7 @@ def collect_history(
             if progress:
                 progress(step / max(1, len(plan)), f"{LABELS.get(dataset, dataset)}{f' {year}년' if year else ''} ({step + 1}/{len(plan)})")
             if dataset in blocked:
-                kind = "QUOTA" if dataset in quota else "AUTH"
+                kind = "QUOTA" if dataset in quota else ("PROVIDER" if dataset in outage else "AUTH")
                 progress_file.set(dataset, year, "BLOCKED", kind=kind, reason=blocked[dataset][:200])
                 continue
             item = progress_file.state["items"].get(key, {})
@@ -419,6 +420,15 @@ def collect_history(
                     db.rollback()
                 except Exception:  # noqa: BLE001
                     pass
+                if type(exc).__name__ == "ProviderOutageError":
+                    # A provider-wide outage: keep what was received, skip this dataset for the rest of
+                    # the run and let the job come back later (not counted as one of the passes).
+                    previous = hooks.get("previous") or {}
+                    progress_file.set(dataset, year, "PARTIAL", kind="PROVIDER", reason=str(exc)[:200], passes=previous.get("passes", 0),
+                                      retry_rounds=previous.get("retry_rounds", 0))
+                    blocked[dataset] = outage[dataset] = str(exc)[:200]
+                    log(f"PARTIAL {key} PROVIDER: {exc}")
+                    continue
                 message = str(exc)[:300] if type(exc).__name__ in {"ExternalError", "ValueError", "TransientProviderError", "CollectionBlockedError"} else f"처리 실패: {type(exc).__name__}"
                 kind = classify_error(message)
                 progress_file.set(dataset, year, "FAILED", kind=kind, reason=message)
@@ -439,7 +449,7 @@ def collect_history(
     progress_file.save()
     if progress:
         progress(1.0, "완료")
-    provider = sorted(k for k, item in progress_file.state["items"].items() if item.get("status") == "PARTIAL" and item.get("kind") == "PROVIDER")
+    provider = sorted(k for k, item in progress_file.state["items"].items() if item.get("status") in {"PARTIAL", "BLOCKED"} and item.get("kind") == "PROVIDER")
     return {"items": progress_file.state["items"], "blocked": blocked, "quota": quota,
             "resume_at": next_quota_reset().isoformat() if quota else None,
             "provider_retry": provider,
