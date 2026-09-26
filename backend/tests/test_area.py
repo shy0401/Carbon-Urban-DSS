@@ -128,8 +128,9 @@ def test_facts_carry_their_numbers_for_verification():
     assert all(isinstance(n, (int, float)) for f in facts for n in f['numbers'])
 
 
-def test_building_energy_block_sums_the_area_grids_per_year():
+def test_building_energy_block_sums_the_area_grids_per_year(tmp_path, monkeypatch):
     from app.area import building_energy_block
+    monkeypatch.setenv('DATA_DIR', str(tmp_path))  # no finished city-wide run recorded here
     grids = {'g1': {'parcels': 10, 'electricity_complete': 8, 'electricity_kwh': 1000000.0, 'gas_complete': 3, 'gas_kwh': 400000.0,
                     'area_parcels': 5, 'area_m2': 20000.0, 'kwh_per_m2': 40.0},
              'g2': {'parcels': 2, 'electricity_complete': 0, 'electricity_kwh': None, 'gas_complete': 0, 'gas_kwh': None,
@@ -138,7 +139,10 @@ def test_building_energy_block_sums_the_area_grids_per_year():
                     'area_parcels': 0, 'area_m2': None, 'kwh_per_m2': None}}
     block = building_energy_block(['g1', 'g2'], {2025: grids}, 0.5)
     y = block['years'][2025]
-    assert y['complete'] is False  # no finished city-wide run recorded in this test
+    assert y['complete'] is False
+    (tmp_path / 'ops').mkdir()
+    (tmp_path / 'ops' / 'history-progress.json').write_text('{"items": {"energy:2025": {"status": "DONE", "scope": "all_parcels"}}}', encoding='utf-8')
+    assert building_energy_block(['g1'], {2025: grids}, 0.5)['years'][2025]['complete'] is True
     assert y['parcels'] == 12 and y['electricity_complete'] == 8 and y['electricity_kwh'] == 1000000.0
     assert y['kwh_per_m2'] == 40.0 and y['electricity_carbon_kgco2eq'] == 500000.0
     assert building_energy_block(['g3'], {2025: grids}, 0.5) == {'years': {}, 'available': False, 'basis': block['basis']}
