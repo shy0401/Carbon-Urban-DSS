@@ -65,6 +65,9 @@
 .training-progress .score-track { height: 6px; margin-top: var(--sp-1); border: 1px solid var(--hatch); border-radius: var(--r-map); }
 .prior-validation { margin-top: var(--sp-5); }
 .prior-validation h4 { margin-top: var(--sp-3); font-size: var(--fs-label); }
+.model-scope { margin: 0 0 var(--sp-3); font-size: var(--fs-label); color: var(--ink-2); }
+.model-best { margin-left: var(--sp-1); font-size: var(--fs-label); color: var(--primary); font-weight: 500; }
+.model-metric-note { margin-top: var(--sp-2); font-size: var(--fs-label); color: var(--ink-2); }
 
 /* 시뮬레이션 */
 .simulation-context { display: flex; justify-content: space-between; gap: var(--sp-3); flex-wrap: wrap; margin-bottom: var(--sp-3); color: var(--ink-2); font-size: var(--fs-label); }

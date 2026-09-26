@@ -1,35 +1,79 @@
 import math,uuid
-from sqlalchemy import select,func
-from .models import EnergyMonthly,TestbedSector,WeatherMonthly,ModelRun,Building
+from collections import defaultdict
+from sqlalchemy import select
+from .models import EnergyMonthly,WeatherMonthly,ModelRun
 from .modeling import fit_candidates,model_eligibility
 
+FEATURE_LABELS={'floor_area_m2':'연면적(분모)','month_sin':'월(계절)','month_cos':'월(계절)','hdd':'난방도일 HDD','cdd':'냉방도일 CDD',
+                'area_per_household':'세대당 연면적','age':'사용승인 후 경과연수'}
+
+
+def _approval_year(value):
+    text=str(value or '')[:4]
+    return int(text) if text.isdigit() and 1900<int(text)<2100 else None
+
+
 def model_rows(db,year,typ):
-    """Use only documented energy-matched floor area, not every OSM polygon in a cell."""
-    from .scope import matched_areas
-    # Floor area is matched per energy type: K-apt electricity covers every complex in a grid while
-    # 건축HUB gas may cover one parcel, so a shared complex set across types would drop every grid.
-    # Only grid-matched (K-apt parcel) rows can carry a matched floor area; the city-wide 건축HUB rows
-    # of other parcels have no grid here and would only slow the scan.
-    observed=db.scalars(select(EnergyMonthly).where(EnergyMonthly.use_ym.between(f'{year}01',f'{year}12'),EnergyMonthly.energy_type==typ,EnergyMonthly.grid_id.is_not(None))).all()
-    areas=matched_areas(observed)
-    # Kapt collector may save comparable exact parcel-area groups in additional sector records.
+    """Grid-month rows for spatial validation, with the same parcel rule as the map intensities.
+
+    Per grid only the K-apt parcels observed in all 12 months count, their published floor area must
+    pass ``floor_area_status`` (e.g. 152,757,779 m² for one complex is a typing error), and for
+    electricity the per-household consumption must be plausible (a meter that covers only the common
+    areas is left out). Energy and floor area of a grid come from exactly those parcels in every month,
+    so the intensity is never "all parcels ÷ some areas".
+
+    Grid features describe the same parcels: floor area per household (unit size) and years since
+    approval (floor-area weighted). Nothing is filled in: a grid without the value leaves that
+    feature out of the comparison (``fit_candidates`` uses a feature only when every row has it).
+    """
+    from .grid_metrics import electricity_plausibility,validated_complex_areas,MONTHS_PER_YEAR
+    from .kapt import ApartmentComplex
+    complexes={c.kapt_code:c for c in db.scalars(select(ApartmentComplex))}
+    areas,_=validated_complex_areas(complexes.values())
+    within=EnergyMonthly.use_ym.between(f'{year}01',f'{year}12')
+    parcels=defaultdict(dict)
+    for grid,ym,kwh,raw in db.execute(select(EnergyMonthly.grid_id,EnergyMonthly.use_ym,EnergyMonthly.usage_kwh,EnergyMonthly.raw_record)
+                                      .where(within,EnergyMonthly.energy_type==typ,EnergyMonthly.grid_id.is_not(None),EnergyMonthly.usage_kwh.is_not(None))):
+        code=(raw or {}).get('kapt_code')
+        if code:
+            months=parcels[(grid,code)];months[ym]=months.get(ym,0.0)+float(kwh)
+    chosen=defaultdict(list)
+    for (grid,code),months in parcels.items():
+        area=areas.get(code);info=complexes.get(code)
+        if len(months)<MONTHS_PER_YEAR or not area:
+            continue
+        if typ=='ELECTRICITY' and electricity_plausibility(sum(months.values()),info.households if info else None)[0]=='SUSPECT':
+            continue
+        chosen[grid].append((months,float(area),info))
     weather={r.use_ym:r for r in db.scalars(select(WeatherMonthly).where(WeatherMonthly.use_ym.between(f'{year}01',f'{year}12')))}
-    aggregate=db.execute(select(EnergyMonthly.grid_id,EnergyMonthly.use_ym,func.sum(EnergyMonthly.usage_kwh)).where(EnergyMonthly.energy_type==typ,EnergyMonthly.use_ym.between(f'{year}01',f'{year}12'),EnergyMonthly.usage_kwh.is_not(None),EnergyMonthly.grid_id.is_not(None)).group_by(EnergyMonthly.grid_id,EnergyMonthly.use_ym)).all()
     rows=[]
-    for grid,ym,kwh in aggregate:
-        if grid not in areas:continue
+    for grid,items in sorted(chosen.items()):
+        area=sum(a for _,a,_ in items)
+        with_households=[(a,i.households) for _,a,i in items if i and i.households and i.households>0]
+        per_household=round(sum(a for a,_ in with_households)/sum(h for _,h in with_households),1) if len(with_households)==len(items) else None
+        dated=[(a,_approval_year(i.approval_date)) for _,a,i in items if i and _approval_year(i.approval_date)]
+        age=round(year-sum(a*y for a,y in dated)/sum(a for a,_ in dated),1) if len(dated)==len(items) else None
         parts=grid.split('_')
         block=f'{int(parts[-2])//2000}:{int(parts[-1])//2000}' if len(parts)==3 and parts[-2].isdigit() else None
-        month=int(ym[-2:]);w=weather.get(ym)
-        rows.append(dict(grid_id=grid,spatial_block=block,use_ym=ym,usage_kwh=kwh,floor_area_m2=areas[grid],month_sin=math.sin(2*math.pi*month/12),month_cos=math.cos(2*math.pi*month/12),hdd=w.hdd if w else None,cdd=w.cdd if w else None))
+        for ym in sorted(items[0][0]):
+            month=int(ym[-2:]);w=weather.get(ym)
+            rows.append(dict(grid_id=grid,spatial_block=block,use_ym=ym,usage_kwh=sum(m[ym] for m,_,_ in items),floor_area_m2=area,parcels=len(items),
+                             month_sin=math.sin(2*math.pi*month/12),month_cos=math.cos(2*math.pi*month/12),hdd=w.hdd if w else None,cdd=w.cdd if w else None,
+                             area_per_household=per_household,age=age))
     return rows
+
 
 def model_status(db,year,train=False):
     results=[]
     for typ in ['ELECTRICITY','GAS']:
         rows=model_rows(db,year,typ)
         result=fit_candidates(rows) if train else dict(model_eligibility(rows),models=[])
-        result.update(energy_type=typ,training_period=f'{year}-01 ~ {year}-12',features=['floor_area_m2','month','HDD','CDD'],unavailable_features=['population','households','building_age','floors','FAR','BCR'],method='INTENSITY_ESTIMATE',name='관측 월별 연면적 원단위',validation_method='미검증' if not result['validated'] else 'Spatial Block Cross Validation',metrics=None)
+        used=result['models'][0]['features'] if result.get('models') else ['floor_area_m2','month_sin','month_cos']+[f for f in ['hdd','cdd','area_per_household','age'] if rows and all(r.get(f) is not None for r in rows)]
+        labels=list(dict.fromkeys(FEATURE_LABELS.get(f,f) for f in used))
+        result.update(energy_type=typ,training_period=f'{year}-01 ~ {year}-12',features=labels,
+                      unavailable_features=['인구','층수','용적률·건폐율(단지별 공식 값 미연계)','난방방식(전주 단지 97%가 개별난방이라 구분력 없음)'],
+                      scope='K-apt 공동주택 지번 중 12개월 모두 관측되고 연면적·세대당 전력이 타당한 지번만 (격자별 같은 지번 집합)',
+                      method='INTENSITY_ESTIMATE',name='관측 월별 연면적 원단위',validation_method='미검증' if not result['validated'] else 'Spatial Block Cross Validation',metrics=None)
         results.append(result)
     status='SPATIALLY_EVALUATED' if all(r['validated'] for r in results) else ('READY_FOR_SPATIAL_VALIDATION' if all(r['status']=='READY_FOR_SPATIAL_VALIDATION' for r in results) else 'INSUFFICIENT_TRAINING_DATA')
     report={'year':year,'status':status,'models':results,'limitations':['OBSERVED 자료는 모델 출력으로 덮어쓰지 않습니다.','현 단계 시뮬레이션은 월별 관측 원단위만 사용합니다. ML 비교는 참고 검증 결과이며 자동 승격하지 않습니다.']}

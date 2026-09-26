@@ -28,7 +28,7 @@ def fit_candidates(rows):
     from sklearn.preprocessing import StandardScaler,SplineTransformer
     from sklearn.pipeline import make_pipeline
     features=['month_sin','month_cos']
-    for feature in ['hdd','cdd','households','age','floors','far','bcr','population']:
+    for feature in ['hdd','cdd','area_per_household','households','age','floors','far','bcr','population']:
         if all(r.get(feature) is not None for r in rows):features.append(feature)
     x=np.asarray([[r[f] for f in features] for r in rows],dtype=float)
     area=np.asarray([r['floor_area_m2'] for r in rows]);y=np.asarray([r['usage_kwh'] for r in rows])/area
@@ -51,7 +51,11 @@ def fit_candidates(rows):
                 estimator=build();estimator.fit(x[train],y[train]);pred=estimator.predict(x[test])
             prediction[test]=np.maximum(pred,0)*area[test]
             folds.append({'train_rows':len(train),'test_rows':len(test),'test_blocks':sorted(set(groups[test].tolist()))})
-        models.append(dict(name=name,features=['floor_area_m2']+features,validation_method='Spatial Block Cross Validation / 2km blocks',metrics=validation_metrics([r['usage_kwh'] for r in rows],prediction.tolist()),folds=folds,observations=len(rows),limitations=['고정 하이퍼파라미터. 검증결과는 공간 분할된 기존 표본 내 성능이며 미래 시점 성능은 검증하지 않았습니다.']))
+        metrics=validation_metrics([r['usage_kwh'] for r in rows],prediction.tolist())
+        # R² of kWh totals is inflated by floor area alone (a big grid uses more); the intensity R² says
+        # how much of the kWh/m² difference between grids the model explains out of fold.
+        metrics['intensity_r2']=validation_metrics(y.tolist(),(prediction/area).tolist())['r2']
+        models.append(dict(name=name,features=['floor_area_m2']+features,validation_method='Spatial Block Cross Validation / 2km blocks',metrics=metrics,folds=folds,observations=len(rows),limitations=['고정 하이퍼파라미터. 검증결과는 공간 분할된 기존 표본 내 성능이며 미래 시점 성능은 검증하지 않았습니다.']))
     return dict(eligibility,status='SPATIALLY_EVALUATED',validated=True,models=models)
 
 def optimize(params,baseline,baseline_floor_area,factors,legal=None):
