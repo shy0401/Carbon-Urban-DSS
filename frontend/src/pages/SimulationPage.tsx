@@ -8,6 +8,7 @@ import { useAnalysisScope } from '../hooks/useAnalysisScope';
 import { Chart } from '../components/Chart';
 import { PageHeader } from '../components/PageHeader';
 import { ProvenanceBadge } from '../components/ProvenanceBadge';
+import { Massing3D } from '../components/Massing3D';
 import { QualityBadge } from '../components/QualityBadge';
 import { EmptyState, ErrorState } from '../components/Status';
 import { api } from '../lib/api';
@@ -81,6 +82,14 @@ export function SimulationPage() {
     finally { setOptimizing(false); }
   };
   const preset = (floors: number) => setInput((old) => ({ ...old, ...applyFloorPreset(old, floors) }));
+  const [sceneSaved, setSceneSaved] = useState<string | null>(null);
+  useEffect(() => { setSceneSaved(null); }, [result?.id]);
+  // The 3D scene is stored with the saved scenario so the report can show it (PNG from the browser canvas).
+  const saveScene = async (dataUrl: string) => {
+    if (!result?.id) return;
+    try { await api(`/scenarios/${result.id}/image`, { method: 'PUT', body: JSON.stringify({ data_url: dataUrl }) }); setSceneSaved(result.id); }
+    catch (reason) { setRequestError(reason instanceof Error ? reason.message : '3D 장면 저장에 실패했습니다.'); }
+  };
 
   return <div className="page simulation-page">
     <PageHeader title="탄소 시뮬레이션" description="관측 원단위를 적용해 개발 조건 변화의 1차 추정치를 비교합니다." action={<span className="badge warn"><Info size={13} />의사결정 전 검토 필요</span>} />
@@ -96,12 +105,13 @@ export function SimulationPage() {
         <div className="panel-title"><h3>에너지·탄소 비교</h3>{result && <div className="badge-row">{provenanceFromCode(result.data_class) && <ProvenanceBadge kind={provenanceFromCode(result.data_class)!} />}{result.quality && <QualityBadge value={result.quality} />}</div>}</div>
         {requestError && <ErrorState message={requestError} onRetry={() => void submit()} />}
         {!requestError && !result && <div className="scenario-empty"><ScenarioMassing input={input} /><h3>조건을 입력하고 계산을 시작하세요</h3><p>서버가 보유한 관측 원단위를 이용하며, 근거 자료가 없으면 임의의 결과를 만들지 않습니다.</p></div>}
-        {result && <><ScenarioMassing input={input}/>{result.id && <Link className="button secondary report-from-scenario" to={`/reports?scenario=${result.id}`}>이 계획안으로 보고서 작성</Link>}{result.total_footprint !== undefined && <div className="calculation-strip"><div><span>건축면적 합계</span><strong>{formatMetric(result.total_footprint, 'm²')}</strong></div><div><span>연면적</span><strong>{formatMetric(result.gross_floor_area, 'm²')}</strong></div><div><span>용적률</span><strong>{formatMetric(result.far, '%', 1)}</strong></div><div><span>건폐율</span><strong>{formatMetric(result.bcr, '%', 1)}</strong></div></div>}<div className="tabs" role="tablist">{(['current', 'scenario', 'difference'] as const).map((tab) => <button key={tab} role="tab" aria-selected={active === tab} onClick={() => setActive(tab)}>{activeLabel(tab)}</button>)}</div>
+        {result && <><ScenarioMassing input={input}/>{result.id && <Link className="button secondary report-from-scenario" to={`/reports?scenario=${result.id}`}>이 계획안으로 보고서 작성{sceneSaved === result.id ? ' (3D 장면 포함)' : ''}</Link>}{result.total_footprint !== undefined && <div className="calculation-strip"><div><span>건축면적 합계</span><strong>{formatMetric(result.total_footprint, 'm²')}</strong></div><div><span>연면적</span><strong>{formatMetric(result.gross_floor_area, 'm²')}</strong></div><div><span>용적률</span><strong>{formatMetric(result.far, '%', 1)}</strong></div><div><span>건폐율</span><strong>{formatMetric(result.bcr, '%', 1)}</strong></div></div>}<div className="tabs" role="tablist">{(['current', 'scenario', 'difference'] as const).map((tab) => <button key={tab} role="tab" aria-selected={active === tab} onClick={() => setActive(tab)}>{activeLabel(tab)}</button>)}</div>
           <div className="result-metrics">{metricEntries(annualFor(result, active)).map(([key, value]) => <div key={key}><span>{metricLabel(key)}</span><strong>{formatMetric(value, metricUnit(key), 1)}</strong></div>)}</div>
           {allMissing(annualFor(result, active)) ? <div className="missing-reason"><Info size={18} /><div><strong>기준 자료가 없어 추정할 수 없습니다</strong><p>{result.quality ?? '공간 매칭된 기준 에너지 또는 기준 연면적이 없습니다.'}</p></div></div> : series.length > 0 && <Chart option={chartOption} height={270} ariaLabel={`${activeLabel(active)} 월별 시나리오 차트`} />}
           <div className="assumption-note"><strong>해석 범위</strong><p>{result.limitation ?? `${result.label ?? '원단위 기반 1차 추정'} 결과이며, 설계·인허가 수치로 사용할 수 없습니다.`}</p>{result.assumptions?.length ? <ul>{result.assumptions.map((assumption) => <li key={assumption}>{assumption}</li>)}</ul> : null}</div></>}
       </section>
     </div>
+    <section className="panel massing-panel"><div className="panel-title"><h3>3D 개념 배치</h3><span className="status-tag neutral">규모 비교용</span></div><p className="panel-description">선택 격자 위에 기존 공식 건물(층당 3m)과 계획 블록을 같은 축척으로 세웁니다. 드래그로 회전·기울기를 바꾸고, 계산한 계획안이 있으면 장면을 저장해 보고서에 넣습니다.</p><Massing3D gridId={gridId || result?.grid_id || null} input={input} onCapture={result?.id ? saveScene : undefined} captureLabel="보고서용 3D 장면 저장" /></section>
     <section className="panel optimization-panel"><div className="panel-title"><h3>도시구조 최적화</h3><span className="status-tag neutral">결정론적 계산</span></div><p className="panel-description">최소 수용 목표를 충족하는 후보를 같은 입력과 제약에서 항상 같은 순서로 탐색합니다. 법적 상한 자료가 없으면 에너지 최적안으로만 표시합니다.</p><div className="optimization-controls"><label><span>최소 세대수</span><input type="number" min="0" value={constraints.min_households} onChange={(event) => setConstraints((old) => ({ ...old, min_households: Number(event.target.value) }))} /></label><label><span>최소 인구</span><input type="number" min="0" value={constraints.min_population} onChange={(event) => setConstraints((old) => ({ ...old, min_population: Number(event.target.value) }))} /></label><button className="button secondary" onClick={() => void optimize()} disabled={optimizing}>{optimizing ? '탐색 중…' : '최적안 탐색'}</button></div>{optimization && <OptimizationResults result={optimization} />}</section>
   </div>;
 }

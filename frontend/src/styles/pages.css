@@ -455,3 +455,12 @@
 .missing-manual li a { display: inline-flex; align-items: center; gap: 2px; }
 @media (max-width: 1100px) { .missing-once { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 560px) { .missing-once { grid-template-columns: 1fr; } }
+
+/* 3D 개념 배치 (MapLibre fill-extrusion, 배경지도 없음) */
+.massing-panel { margin-top: var(--sp-4); }
+.massing-3d-head { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; margin-bottom: var(--sp-2); font-size: var(--fs-label); color: var(--ink-2); }
+.massing-3d-head strong { display: inline-flex; align-items: center; gap: 6px; color: var(--ink); }
+.massing-3d-actions { margin-left: auto; display: flex; gap: var(--sp-2); align-items: center; }
+.massing-3d-canvas { width: 100%; height: 380px; border: 1px solid var(--line); border-radius: var(--r-map); overflow: hidden; background: var(--canvas); }
+.massing-3d > small { display: block; margin-top: var(--sp-2); color: var(--ink-3); font-size: var(--fs-caption); }
+@media (max-width: 720px) { .massing-3d-canvas { height: 280px; } }

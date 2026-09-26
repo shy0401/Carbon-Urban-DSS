@@ -61,3 +61,28 @@ def test_invalid_scenario_geometry_rejected():
 def test_collection_range_prevents_reckless_requests():
     c=TestClient(app)
     assert c.post('/api/collections',json={'datasets':['energy'],'start_month':'2020-01','end_month':'2025-12'}).status_code==422
+
+def test_scenario_3d_scene_is_stored_only_as_png_for_a_saved_scenario():
+    import base64,uuid
+    from app.db import Session,engine
+    from app.models import Base,Scenario,ScenarioImage
+    Base.metadata.create_all(engine,tables=[Scenario.__table__,ScenarioImage.__table__])  # the app does this at startup
+    c=TestClient(app)
+    png=base64.b64encode(b'\x89PNG\r\n\x1a\n'+b'\x00'*32).decode()
+    assert c.put('/api/scenarios/none/image',json={'data_url':'data:image/png;base64,'+png}).status_code==404
+    sid=str(uuid.uuid4())
+    with Session() as db:db.add(Scenario(id=sid,inputs={'floors':12,'building_count':4}));db.commit()
+    try:
+        assert c.put(f'/api/scenarios/{sid}/image',json={'data_url':'data:image/jpeg;base64,'+png}).status_code==422
+        assert c.put(f'/api/scenarios/{sid}/image',json={'data_url':'data:image/png;base64,'+base64.b64encode(b'not png at all').decode()}).status_code==422
+        assert c.get(f'/api/scenarios/{sid}/image').status_code==404
+        ok=c.put(f'/api/scenarios/{sid}/image',json={'data_url':'data:image/png;base64,'+png})
+        assert ok.status_code==200 and ok.json()['bytes']==40
+        shown=c.get(f'/api/scenarios/{sid}/image')
+        assert shown.status_code==200 and shown.headers['content-type']=='image/png' and shown.content.startswith(b'\x89PNG')
+        assert any(s['id']==sid and s['has_image'] for s in c.get('/api/scenarios').json())
+    finally:
+        with Session() as db:
+            img=db.get(ScenarioImage,sid)
+            if img:db.delete(img)
+            db.delete(db.get(Scenario,sid));db.commit()

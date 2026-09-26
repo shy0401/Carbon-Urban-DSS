@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SimulationPage } from './SimulationPage';
 
 vi.mock('../components/Chart', () => ({ Chart: () => <div role="img" aria-label="시나리오 차트" /> }));
+vi.mock('../components/Massing3D', () => ({ Massing3D: () => <div aria-label="3D 개념 배치" /> }));  // WebGL is not available in jsdom
 
 describe('SimulationPage', () => {
   afterEach(() => vi.restoreAllMocks());

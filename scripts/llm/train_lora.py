@@ -50,6 +50,9 @@ def main() -> None:
     parser.add_argument("--max-len", type=int, default=2048)
     parser.add_argument("--batch", type=int, default=2)
     parser.add_argument("--accum", type=int, default=8)
+    parser.add_argument("--limit", type=int, default=None, help="use only the first N training rows (smoke test)")
+    parser.add_argument("--load-4bit", action="store_true", help="QLoRA: 4-bit base weights (bitsandbytes) for GPUs with 6 GB VRAM")
+    parser.add_argument("--no-merge", action="store_true", help="save the adapter only")
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
@@ -62,23 +65,41 @@ def main() -> None:
     out.mkdir(parents=True, exist_ok=True)
     manifest = json.loads((data / "manifest.json").read_text(encoding="utf-8"))
     train_rows, eval_rows = read_jsonl(data / "train.jsonl"), read_jsonl(data / "eval.jsonl")
-    if len(train_rows) < 50:
+    if len(train_rows) < 50 and not args.limit:
         raise SystemExit(f"학습 예시가 {len(train_rows)}개뿐입니다. 과거 수집 후 llm-dataset을 다시 실행하세요.")
 
     tokenizer = AutoTokenizer.from_pretrained(args.base)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
+    if args.limit:
+        train_rows = train_rows[: args.limit]
     train = [e for e in (encode(tokenizer, r["messages"], args.max_len) for r in train_rows) if e]
     held = [e for e in (encode(tokenizer, r["messages"], args.max_len) for r in eval_rows) if e]
-    print(f"train {len(train)}/{len(train_rows)}  eval {len(held)}/{len(eval_rows)}  (dataset {manifest['created_at']})")
+    lengths = sorted(len(e["input_ids"]) for e in train)
+    print(f"train {len(train)}/{len(train_rows)}  eval {len(held)}/{len(eval_rows)}  (dataset {manifest['created_at']})"
+          + (f"  tokens min/median/max {lengths[0]}/{lengths[len(lengths) // 2]}/{lengths[-1]}" if lengths else ""))
 
     use_bf16 = torch.cuda.is_available() and torch.cuda.is_bf16_supported()
-    model = AutoModelForCausalLM.from_pretrained(args.base, torch_dtype=torch.bfloat16 if use_bf16 else torch.float16 if torch.cuda.is_available() else torch.float32)
-    model.gradient_checkpointing_enable()
-    model.enable_input_require_grads()
+    if args.load_4bit:
+        from peft import prepare_model_for_kbit_training
+        from transformers import BitsAndBytesConfig
+        model = AutoModelForCausalLM.from_pretrained(args.base, device_map={"": 0}, quantization_config=BitsAndBytesConfig(
+            load_in_4bit=True, bnb_4bit_quant_type="nf4", bnb_4bit_use_double_quant=True,
+            bnb_4bit_compute_dtype=torch.bfloat16 if use_bf16 else torch.float16))
+        model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=True)
+    else:
+        model = AutoModelForCausalLM.from_pretrained(args.base, torch_dtype=torch.bfloat16 if use_bf16 else torch.float16 if torch.cuda.is_available() else torch.float32)
+        model.gradient_checkpointing_enable()
+        model.enable_input_require_grads()
     model = get_peft_model(model, LoraConfig(
         r=args.rank, lora_alpha=args.rank * 2, lora_dropout=0.05, bias="none", task_type="CAUSAL_LM",
         target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]))
+    if torch.cuda.is_available() and not use_bf16:
+        # fp16 base weights (Turing/Pascal GPUs without bf16): the trainable LoRA weights must be fp32,
+        # otherwise the fp16 grad scaler refuses to unscale them ("Attempting to unscale FP16 gradients").
+        for parameter in model.parameters():
+            if parameter.requires_grad:
+                parameter.data = parameter.data.float()
     model.print_trainable_parameters()
 
     steps_per_epoch = math.ceil(len(train) / (args.batch * args.accum))
@@ -100,11 +121,23 @@ def main() -> None:
     tokenizer.save_pretrained(adapter)
 
     merged = out / "merged"
-    model.merge_and_unload().save_pretrained(merged, safe_serialization=True)
-    tokenizer.save_pretrained(merged)
+    if args.no_merge:
+        merged = None
+    elif args.load_4bit:
+        # A 4-bit base cannot be merged in place: reload it in fp16 on the CPU and merge the adapter there.
+        from peft import PeftModel
+        del model
+        torch.cuda.empty_cache()
+        base = AutoModelForCausalLM.from_pretrained(args.base, torch_dtype=torch.float16, low_cpu_mem_usage=True)
+        PeftModel.from_pretrained(base, adapter).merge_and_unload().save_pretrained(merged, safe_serialization=True)
+        tokenizer.save_pretrained(merged)
+    else:
+        model.merge_and_unload().save_pretrained(merged, safe_serialization=True)
+        tokenizer.save_pretrained(merged)
     (out / "training.json").write_text(json.dumps({
         "base": args.base, "dataset_created_at": manifest["created_at"], "train": len(train), "eval": len(held),
-        "epochs": args.epochs, "lr": args.lr, "rank": args.rank, "final_eval": final_eval,
+        "epochs": args.epochs, "lr": args.lr, "rank": args.rank, "final_eval": final_eval, "load_4bit": args.load_4bit,
+        "max_len": args.max_len, "limit": args.limit,
     }, ensure_ascii=False, indent=1), encoding="utf-8")
     print(f"adapter → {adapter}\nmerged  → {merged}\n다음 단계: scripts/llm/README.md 의 GGUF 변환·Ollama 등록·llm-eval")
 

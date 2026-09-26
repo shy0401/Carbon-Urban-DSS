@@ -11,7 +11,8 @@ What this buys:
 * the code to put on an SGIS application and to join the statistics file when it arrives.
 
 Nothing is estimated: a project cell with no matching official cell simply has no code.
-Measured 2026-09-27: 완산구 433 cells, 덕진구 ~? cells (see ``collect_sgis_grid_official``).
+Measured 2026-09-27 (PC): 완산구 433 + 덕진구 532 features, 49 border cells listed twice → 916 official
+cells, of which 910 coincide with the 916 project cells (the other 6 on each side are edge cells).
 """
 from __future__ import annotations
 
@@ -41,7 +42,7 @@ class SgisOfficialGridCell(Base):
     size_m: Mapped[int] = mapped_column(Integer)
     x_min: Mapped[float] = mapped_column(Float)
     y_min: Mapped[float] = mapped_column(Float)
-    adm_cd: Mapped[str] = mapped_column(String, index=True)   # 시군구 the API was asked for
+    adm_cd: Mapped[str] = mapped_column(String, index=True)   # 시군구 the API listed it under ("35011,35012" on the border)
     grid_id: Mapped[str | None] = mapped_column(String, index=True, nullable=True)  # matching project cell
     collected_at: Mapped[datetime] = mapped_column(String, default=lambda: datetime.now(timezone.utc).isoformat())
 
@@ -124,7 +125,9 @@ def collect_sgis_grid_official(db: Any, *, client: Any | None = None, token_mana
         db.add(asset)
         for cell in parsed["cells"]:
             if cell["size_m"] == SIZE_M and cell["grid_cd"]:
-                cells[cell["grid_cd"]] = dict(cell, adm_cd=adm_cd)
+                known = cells.get(cell["grid_cd"])
+                # A cell on the 완산구/덕진구 border is listed by both districts: keep both codes.
+                cells[cell["grid_cd"]] = dict(cell, adm_cd=f"{known['adm_cd']},{adm_cd}" if known else adm_cd)
     # The sub-cell letters must agree with the geometry (a = lower/left half, b = upper/right).
     mismatched = 0
     for cell in cells.values():

@@ -5,3 +5,4 @@ peft>=0.13
 accelerate>=0.34
 safetensors>=0.4
 sentencepiece
+bitsandbytes>=0.43  # --load-4bit (Linux/CUDA)

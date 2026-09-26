@@ -58,10 +58,11 @@ def test_official_cells_link_to_project_cells_with_the_same_corner(tmp_path):
     db.add(SgisPopulationAdmin(id='p2', adm_code='3501256', adm_name='동', reference_year=2024, value_status='OK', source='SGIS', raw_record={}))
     db.commit()
     client = FakeClient({'35011': geojson([('다마62a48a', 962000, 1748000), ('다마62b48a', 962500, 1748000)]),
-                         '35012': geojson([('다마70a53b', 970000, 1753500)])})
+                         '35012': geojson([('다마70a53b', 970000, 1753500), ('다마62b48a', 962500, 1748000)])})  # border cell in both
     result = collect_sgis_grid_official(db, client=client, token_manager=FakeTokens(), data_dir=tmp_path)
     assert client.calls == ['35011', '35012']
     assert result == {'requests': 2, 'districts': ['35011', '35012'], 'cells': 3, 'linked': 2, 'project_cells': 3, 'code_mismatch': 0}
+    assert db.scalar(select(SgisOfficialGridCell.adm_cd).where(SgisOfficialGridCell.grid_cd == '다마62b48a')) == '35011,35012'
     assert official_codes(db) == {'cell_962000_1748000': '다마62a48a', 'cell_962500_1748000': '다마62b48a'}
     source = db.get(DataSource, 'sgis_grid')
     assert source.status == 'PARTIAL' and '자료신청' in source.quality and source.normalized_row_count == 3

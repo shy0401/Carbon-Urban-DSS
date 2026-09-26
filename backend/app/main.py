@@ -420,7 +420,8 @@ def scenario(request:ScenarioInput):
         result['calculations']={key:result[key] for key in ['total_footprint','gross_floor_area','far','bcr','households','population','green_area_m2']}
         result['baseline']={k:baseline.get(k) for k in ['current_far','current_bcr','households','population','gross_floor_area_m2','developable_site_area_m2']}
         result['legal_status']='법적 상한 미확정'
-        db.add(Scenario(id=result['id'],inputs=dict(request.model_dump(),grid_id=baseline['selected_sector']['grid_id'] if baseline['selected_sector'] else None)));db.flush();db.add(ScenarioResult(id=result['id'],result=result));db.commit();return result
+        result['grid_id']=baseline['selected_sector']['grid_id'] if baseline['selected_sector'] else None
+        db.add(Scenario(id=result['id'],inputs=dict(request.model_dump(),grid_id=result['grid_id'])));db.flush();db.add(ScenarioResult(id=result['id'],result=result));db.commit();return result
 
 class OptimizationInput(ScenarioInput):
     min_households:int=Field(default=500,ge=0,le=100000)
@@ -443,7 +444,34 @@ def models(year:int=Query(DEFAULT_YEAR,ge=2000,le=2100)):
 @app.get('/api/scenarios')
 def scenario_history():
     with Session() as db:
-        return [dict(serialize(s),result=db.get(ScenarioResult,s.id).result if db.get(ScenarioResult,s.id) else None) for s in db.scalars(select(Scenario).order_by(Scenario.created_at.desc()).limit(30))]
+        images={row for row in db.scalars(select(ScenarioImage.scenario_id))}
+        return [dict(serialize(s),result=db.get(ScenarioResult,s.id).result if db.get(ScenarioResult,s.id) else None,has_image=s.id in images) for s in db.scalars(select(Scenario).order_by(Scenario.created_at.desc()).limit(30))]
+
+class ScenarioImageInput(BaseModel):
+    data_url:str=Field(min_length=32,max_length=6_000_000)
+
+@app.put('/api/scenarios/{scenario_id}/image')
+def put_scenario_image(scenario_id:str,request:ScenarioImageInput):
+    """Store the browser's PNG of the 3D concept massing for a saved scenario (replaces an older one)."""
+    import base64,binascii
+    prefix='data:image/png;base64,'
+    if not request.data_url.startswith(prefix):raise HTTPException(422,'PNG data URL만 받습니다')
+    try:png=base64.b64decode(request.data_url[len(prefix):],validate=True)
+    except (binascii.Error,ValueError):raise HTTPException(422,'이미지 인코딩 오류') from None
+    if not png.startswith(b'\x89PNG'):raise HTTPException(422,'PNG가 아닙니다')
+    with Session() as db:
+        if not db.get(Scenario,scenario_id):raise HTTPException(404,'시나리오를 찾을 수 없습니다')
+        row=db.get(ScenarioImage,scenario_id) or ScenarioImage(scenario_id=scenario_id,png=png)
+        row.png=png;row.created_at=now();db.add(row);db.commit()
+        return {'scenario_id':scenario_id,'bytes':len(png)}
+
+@app.get('/api/scenarios/{scenario_id}/image')
+def get_scenario_image(scenario_id:str):
+    from fastapi.responses import Response
+    with Session() as db:
+        row=db.get(ScenarioImage,scenario_id)
+        if not row:raise HTTPException(404,'저장된 3D 장면이 없습니다')
+        return Response(row.png,media_type='image/png',headers={'Cache-Control':'private, max-age=60'})
 
 @app.post('/api/model/validate')
 def validate_models(year:int=Query(DEFAULT_YEAR,ge=2000,le=2100)):

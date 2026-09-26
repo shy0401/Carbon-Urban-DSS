@@ -369,6 +369,8 @@ export interface ScenarioSeries {
 
 export interface ScenarioResult {
   id?: string;
+  /** Grid the scenario was saved for (the selected one, or the default sector). */
+  grid_id?: string | null;
   calculations?: Record<string, unknown>;
   monthly: Array<Record<string, unknown>>;
   annual: {

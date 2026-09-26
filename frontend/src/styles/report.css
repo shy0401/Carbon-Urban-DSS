@@ -79,3 +79,15 @@
   .report-title-block, .plan-col, .prov-badge, .is-missing, .missing-value, .table-wrap th { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
   a { color: inherit; text-decoration: none; }
 }
+
+/* 보고서 목록·3D 그림 (2026-09-27) */
+.report-list { margin: 0; padding-left: 1.2em; }
+.report-list li + li { margin-top: var(--sp-1); }
+.report-list code { font-family: var(--mono); font-size: 0.95em; }
+.report-figures { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: var(--sp-3); margin-top: var(--sp-3); }
+.report-figures figure { margin: 0; border: 1px solid var(--line); border-top: 3px solid var(--line-strong); border-radius: var(--r-map); overflow: hidden; background: var(--surface); }
+.report-figures figure.plan-a { border-top-color: var(--plan-a); }
+.report-figures figure.plan-b { border-top-color: var(--plan-b); }
+.report-figures figure.plan-c { border-top-color: var(--plan-c); }
+.report-figures img { display: block; width: 100%; height: auto; }
+.report-figures figcaption { padding: var(--sp-2) var(--sp-3); font-size: var(--fs-caption); color: var(--ink-2); }

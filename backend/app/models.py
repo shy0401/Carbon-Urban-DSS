@@ -1,5 +1,5 @@
 from datetime import datetime,timezone
-from sqlalchemy import String,Float,Integer,DateTime,JSON,Text,UniqueConstraint,ForeignKey
+from sqlalchemy import String,Float,Integer,DateTime,JSON,Text,UniqueConstraint,ForeignKey,LargeBinary
 from sqlalchemy.orm import Mapped,mapped_column
 from geoalchemy2 import Geometry
 from .db import Base
@@ -170,6 +170,13 @@ class ScenarioResult(Base):
     __tablename__='scenario_results'
     id:Mapped[str]=mapped_column(ForeignKey('scenarios.id'),primary_key=True)
     result:Mapped[dict]=mapped_column(JSON)
+
+class ScenarioImage(Base):
+    """PNG of the 3D concept massing captured in the browser for a saved scenario (data URL body)."""
+    __tablename__='scenario_images'
+    scenario_id:Mapped[str]=mapped_column(ForeignKey('scenarios.id'),primary_key=True)
+    png:Mapped[bytes]=mapped_column(LargeBinary)
+    created_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),default=now)
 
 class ModelRun(Base):
     __tablename__='model_runs'
