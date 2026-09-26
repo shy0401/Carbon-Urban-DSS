@@ -19,6 +19,7 @@ def run_collection(job_id):
         job=db.get(CollectionJob,job_id)
         if not job or job.status not in ('QUEUED','RUNNING','WAITING'): return
         if job.datasets==[ALL_MISSING]:
+            if _outdated_trigger(job): return
             return run_all_missing(db,job)
         job.status='RUNNING';job.message='실제 공공 데이터 수집 중';db.commit()
         config=db.get(CollectionJobConfig,job.id)
@@ -68,6 +69,22 @@ def run_collection(job_id):
             job=db.get(CollectionJob,job_id);job.progress=(i+1)/len(job.datasets)*100;db.commit()
         job.status=('PARTIAL' if successes else 'FAILED') if errors else 'SUCCESS'
         job.errors=errors;job.finished_at=now();job.message='수집 완료' if not errors else '일부 자료 수집 불가 — 오류 내역 확인';db.commit()
+
+def _outdated_trigger(job):
+    """True when this delivery must not start a run.
+
+    Every wait schedules its own timed task, and the worker runs one task at a time, so an older
+    timer can arrive after the job was restarted by hand and is waiting again for a later time,
+    or while another run of it is alive. Starting then would ignore the new resume time or fail
+    the running job on its lock."""
+    from datetime import timedelta,timezone
+    if job.status=='WAITING' and job.resume_at:
+        resume=job.resume_at if job.resume_at.tzinfo else job.resume_at.replace(tzinfo=timezone.utc)
+        if resume>now()+timedelta(seconds=60): return True
+    if job.status=='RUNNING':
+        from .history import lock_held
+        if lock_held(): return True
+    return False
 
 def run_all_missing(db,job):
     """Background 'collect everything missing' run. On a daily quota it waits and resumes by itself."""

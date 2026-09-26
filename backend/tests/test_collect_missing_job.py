@@ -88,3 +88,26 @@ def test_running_job_with_a_live_guard_is_left_alone(monkeypatch):
     assert tasks.stale_running(db) is None
     monkeypatch.setattr(history, 'lock_held', lambda *a, **k: None)  # no Redis: never guess
     assert tasks.stale_running(db) is None
+
+
+def test_an_older_timer_does_not_start_a_job_that_waits_for_a_later_time(monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    db, job = make_job()
+    started = []
+    monkeypatch.setattr(tasks, 'run_all_missing', lambda db, job: started.append(job.id))
+    monkeypatch.setattr(tasks, 'Session', lambda: db)
+    monkeypatch.setattr(db, 'close', lambda: None, raising=False)
+    job.status = 'WAITING'
+    job.resume_at = datetime.now(timezone.utc) + timedelta(hours=1)
+    db.commit()
+    tasks.run_collection('j1')
+    assert started == []  # the timer for the later time will start it
+    job.resume_at = datetime.now(timezone.utc) - timedelta(minutes=1)
+    db.commit()
+    tasks.run_collection('j1')
+    assert started == ['j1']
+    job.status = 'RUNNING'
+    db.commit()
+    monkeypatch.setattr(history, 'lock_held', lambda *a, **k: True)
+    tasks.run_collection('j1')
+    assert started == ['j1']  # a live run holds the guard: this delivery does nothing
