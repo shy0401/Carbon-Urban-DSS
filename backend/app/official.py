@@ -28,7 +28,7 @@ class BuildingRegister(Base):
 def official_spec(dataset_id,name):
     path=RAW/(name+'-swagger.json')
     if path.exists():return json.loads(path.read_text(encoding='utf-8'))
-    result=client.get('data.go.kr',name+'-definition',f'https://www.data.go.kr/data/{dataset_id}/openapi.do')
+    result=client.get('data.go.kr',name+'-definition',f'https://www.data.go.kr/data/{dataset_id}/openapi.do',api=False)
     html=result['body'].decode('utf-8');(RAW/(name+'-definition.html')).write_text(html,encoding='utf-8')
     match=re.search(r'const swaggerJson = `(.+?)`;',html,re.S)
     if not match:raise ExternalError('공식 API Swagger 명세를 확인할 수 없습니다')

@@ -99,7 +99,10 @@ class CachedClient:
         self.client=client or httpx.Client(timeout=60,follow_redirects=True,headers={'User-Agent':'CarbonUrbanDSS/0.1 educational capstone'})
         self.min_interval=min_interval;self.last_request=0
 
-    def get(self,provider,operation,url,params=None):
+    def get(self,provider,operation,url,params=None,api=True):
+        """``api=False`` for a plain web page (e.g. a data.go.kr API description page): only the HTTP
+        status decides failure. Such pages list the provider error codes (SERVICE_KEY_IS_NOT_REGISTERED,
+        LIMITED_NUMBER...) in their text, which must not be read as an answer from the API itself."""
         params=params or {}
         public={k:v for k,v in params.items() if not _is_secret(k)}
         identity=dict(provider=provider,operation=operation,url=url,params=public)
@@ -112,7 +115,7 @@ class CachedClient:
         if meta_path.exists() and body_path.exists():
             meta=json.loads(meta_path.read_text(encoding='utf-8'))
             same_credential=not credential_values or meta.get('auth_hash')==auth_hash
-            if same_credential and (not meta.get('error') or time.time()-meta['timestamp']<ERROR_CACHE_SECONDS):
+            if same_credential and (not meta.get('error') or (api and time.time()-meta['timestamp']<ERROR_CACHE_SECONDS)):
                 result=dict(meta,body=body_path.read_bytes(),cached=True,path=str(body_path),id=digest)
                 if meta.get('error'): raise ExternalError(meta['error'],result)
                 return result
@@ -130,9 +133,9 @@ class CachedClient:
                         body=body.replace(str(v).encode(),b'[REDACTED]')
                 status=response.status_code
                 error=None
-                if status in (401,403) or b'SERVICE_KEY_IS_NOT_REGISTERED' in body or b'SERVICE_ACCESS_DENIED' in body:
+                if status in (401,403) or (api and (b'SERVICE_KEY_IS_NOT_REGISTERED' in body or b'SERVICE_ACCESS_DENIED' in body)):
                     error='API 인증 실패: 서비스 승인 및 DATA_GO_KR_SERVICE_KEY 확인 필요 (30/20)'
-                elif status==429 or b'LIMITED_NUMBER' in body: error='공공데이터 호출 제한'
+                elif status==429 or (api and b'LIMITED_NUMBER' in body): error='공공데이터 호출 제한'
                 elif status>=400: error=f'외부 데이터 HTTP {status}'
                 if status>=500 and attempt<2:
                     time.sleep(2**(attempt+1));continue

@@ -76,3 +76,14 @@ def test_http_200_provider_auth_error_is_recorded_for_preflight(tmp_path):
     with pytest.raises(ExternalError,match='인증'):
         client.get('VWorld','zoning','https://example.org/api',{'key':'bad-key'})
     assert len(calls)==1
+
+def test_a_provider_description_page_listing_error_codes_is_not_an_api_failure(tmp_path):
+    page=b'<html>const swaggerJson = `{}`; error codes: SERVICE_KEY_IS_NOT_REGISTERED LIMITED_NUMBER</html>'
+    calls=[]
+    def send(request):
+        calls.append(request)
+        return httpx.Response(200,content=page)
+    client=CachedClient(tmp_path,httpx.Client(transport=httpx.MockTransport(send)),min_interval=0)
+    assert client.get('data.go.kr','definition','https://www.data.go.kr/data/1/openapi.do',api=False)['body']==page
+    with pytest.raises(ExternalError):  # the same text inside an API answer is a real failure
+        client.get('data.go.kr','api','https://apis.example.org/x',{'serviceKey':'k'})

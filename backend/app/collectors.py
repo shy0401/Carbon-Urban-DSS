@@ -150,7 +150,7 @@ def collect_energy(db,start='2025-01',end='2025-12',progress=None,scope='limited
     # Only declared operations in the downloaded official Swagger may be used.
     spec_path=RAW/'energy-swagger.json'
     if not spec_path.exists():
-        definition=client.get('molit','definition','https://www.data.go.kr/data/15135963/openapi.do')
+        definition=client.get('molit','definition','https://www.data.go.kr/data/15135963/openapi.do',api=False)
         match=re.search(r'const swaggerJson = `(.+?)`;',definition['body'].decode(),re.S)
         if not match: raise ExternalError('공식 API 명세 검증 실패')
         spec=json.loads(match.group(1).replace('\\\\','\\'));spec_path.write_text(json.dumps(spec,ensure_ascii=False),encoding='utf-8')
