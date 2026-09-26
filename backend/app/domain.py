@@ -83,6 +83,8 @@ def scenario_calculation(params,baseline,baseline_floor_area,factors):
     monthly=[]
     for row in baseline:
         current={k:row.get(k) for k in ['electricity_kwh','gas_kwh','carbon_kg']}
+        # Electricity-only carbon stays available while the gas factor is unregistered (total carbon then None).
+        current['electricity_carbon_kg']=row.get('electricity_carbon_kg') if row.get('electricity_carbon_kg') is not None else carbon_kg(current['electricity_kwh'],factors.get('ELECTRICITY'))
         sc={}
         for key in ['electricity_kwh','gas_kwh']:
             ratio=gfa/baseline_floor_area if baseline_floor_area and baseline_floor_area>0 else None
@@ -90,8 +92,9 @@ def scenario_calculation(params,baseline,baseline_floor_area,factors):
             sc[key]=value*ratio*params['efficiency_factor']*(1-params['pv_ratio'] if key=='electricity_kwh' else 1) if value is not None and ratio is not None else None
         e=carbon_kg(sc['electricity_kwh'],factors.get('ELECTRICITY'));g=carbon_kg(sc['gas_kwh'],factors.get('GAS'))
         sc['carbon_kg']=e+g if e is not None and g is not None else None
+        sc['electricity_carbon_kg']=e
         monthly.append(dict(use_ym=row['use_ym'],current=current,scenario=sc,difference={k:sc[k]-current[k] if sc[k] is not None and current[k] is not None else None for k in sc}))
-    annual={side:{k:nullable_sum(row[side][k] for row in monthly) for k in ['electricity_kwh','gas_kwh','carbon_kg']} for side in ['current','scenario','difference']}
+    annual={side:{k:nullable_sum(row[side][k] for row in monthly) for k in ['electricity_kwh','gas_kwh','carbon_kg','electricity_carbon_kg']} for side in ['current','scenario','difference']}
     decomposition={}
     for key in ['electricity_kwh','gas_kwh']:
         value=annual['current'][key]

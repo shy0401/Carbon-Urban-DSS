@@ -86,7 +86,7 @@ def create_snapshot(db,year,grid_id,scenario_ids):
         sc['has_image']=db.get(ScenarioImage,sc['id']) is not None
         if sc['has_image']:sc['image_url']=f"/api/scenarios/{sc['id']}/image"
     sources=[{k:s.get(k) for k in ['id','name','source_url','reference_period','collected_at','status','source_type','normalized_row_count','limitation']} for s in data['sources']]
-    snapshot={'version':2,'year':year,'grid_id':actual_grid,'title':'도시계획 의사결정 검토 보고서','created_at':now().isoformat(),'sector':sector,'facts':facts,'sources':sources,'scenarios':scenarios,'context':context,'monthly':data['monthly'],'coverage':data['coverage'],'annual_complete':data['annual_complete'],'totals':{k:data[k] for k in ['electricity_kwh','gas_kwh','carbon_kg']},'scope':data['scope'],
+    snapshot={'version':2,'year':year,'grid_id':actual_grid,'title':'도시계획 의사결정 검토 보고서','created_at':now().isoformat(),'sector':sector,'facts':facts,'sources':sources,'scenarios':scenarios,'context':context,'monthly':data['monthly'],'coverage':data['coverage'],'annual_complete':data['annual_complete'],'totals':{k:data.get(k) for k in ['electricity_kwh','gas_kwh','carbon_kg','electricity_carbon_kg']},'scope':data['scope'],
               'cautions':report_cautions(data,detail,scenarios)}
     snapshot['evidence_hash']=hashlib.sha256(json.dumps(snapshot,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
     return snapshot
@@ -179,7 +179,7 @@ def report_markdown(s):
         if f['id'] in ('context_admin','context_zoning','context_complexes','context_buildings','register','context_sgis_grid','official_grid'):lines.append('- '+f['text'])
     lines+=['## 3. 에너지·탄소 현황']
     totals=s.get('totals') or {}
-    lines+=[f'- 공동주택 관측 전력 {_num(totals.get("electricity_kwh"),"kWh")}, 가스 {_num(totals.get("gas_kwh"),"kWh")}, 전력 탄소 {_num(totals.get("carbon_kg"),"kgCO2eq")} (12개월 관측 지번 합계)']
+    lines+=[f'- 공동주택 관측 전력 {_num(totals.get("electricity_kwh"),"kWh")}, 가스 {_num(totals.get("gas_kwh"),"kWh")}, 전력 탄소 {_num(totals.get("electricity_carbon_kg"),"kgCO2eq")} (12개월 관측 지번 합계; 가스 탄소는 계수 미확정)']
     for f in s['facts']:
         if f['id'] in ('electricity_intensity','annual','missing'):lines.append('- '+f['text'])
     for f in context.get('facts') or []:
@@ -189,8 +189,9 @@ def report_markdown(s):
         table=['| 항목 | '+' | '.join(f'대안 {i}' for i in range(1,len(s['scenarios'])+1))+' |','|---|'+'---:|'*len(s['scenarios'])]
         rows=[('층수',lambda sc:_num(sc['inputs'].get('floors'),'층')),('동수',lambda sc:_num(sc['inputs'].get('building_count'),'동')),('연면적',lambda sc:_num(sc['result'].get('gross_floor_area'),'m²')),
               ('용적률',lambda sc:_num(sc['result'].get('far'),'%',1)),('건폐율',lambda sc:_num(sc['result'].get('bcr'),'%',1)),('세대수',lambda sc:_num(sc['inputs'].get('households'),'세대')),('계획 인구',lambda sc:_num(sc['inputs'].get('population'),'명')),
-              ('계획 연간 전력',lambda sc:_num((sc['result'].get('annual') or {}).get('scenario',{}).get('electricity_kwh'),'kWh')),('계획 연간 탄소',lambda sc:_num((sc['result'].get('annual') or {}).get('scenario',{}).get('carbon_kg'),'kgCO2eq',1)),
-              ('기준 대비 탄소 변화',lambda sc:_num((sc['result'].get('annual') or {}).get('difference',{}).get('carbon_kg'),'kgCO2eq',1))]
+              ('계획 연간 전력',lambda sc:_num((sc['result'].get('annual') or {}).get('scenario',{}).get('electricity_kwh'),'kWh')),('계획 연간 가스',lambda sc:_num((sc['result'].get('annual') or {}).get('scenario',{}).get('gas_kwh'),'kWh')),
+              ('계획 연간 전력 탄소',lambda sc:_num((sc['result'].get('annual') or {}).get('scenario',{}).get('electricity_carbon_kg'),'kgCO2eq',1)),('기준 대비 전력 탄소 변화',lambda sc:_num((sc['result'].get('annual') or {}).get('difference',{}).get('electricity_carbon_kg'),'kgCO2eq',1)),
+              ('계획 연간 전체 탄소 (전력+가스)',lambda sc:_num((sc['result'].get('annual') or {}).get('scenario',{}).get('carbon_kg'),'kgCO2eq',1))]
         for label,fn in rows:table.append(f'| {label} | '+' | '.join(fn(sc) for sc in s['scenarios'])+' |')
         lines.append('\n'.join(table))
         for i,sc in enumerate(s['scenarios'],1):
