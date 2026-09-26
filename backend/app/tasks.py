@@ -96,6 +96,18 @@ def run_all_missing(db,job):
         try: run_collection.apply_async((job.id,),eta=resume)
         except Exception: pass  # the status endpoint re-queues an overdue waiting job
         return
+    if result.get('provider_retry'):
+        # K-apt years left with many gateway "04" months: wait and ask for those months again.
+        resume=datetime.fromisoformat(result['provider_retry_at'])
+        from datetime import timedelta,timezone
+        kst=resume.astimezone(timezone(timedelta(hours=9))).strftime('%m월 %d일 %H:%M')
+        years=', '.join(key.split(':')[1] for key in result['provider_retry'])
+        job.status='WAITING';job.resume_at=resume;job.progress=100.0
+        job.message=f"K-apt 제공기관 일시 오류로 남은 달({years}년)을 {kst}(한국 시간)에 다시 요청합니다. 그때 PC와 Docker가 켜져 있어야 합니다."
+        db.commit()
+        try: run_collection.apply_async((job.id,),eta=resume)
+        except Exception: pass
+        return
     job.status='PARTIAL' if failed else 'SUCCESS';job.finished_at=now();job.progress=100.0
     job.message='빠진 자료 수집을 마쳤습니다' if not failed else f'수집을 마쳤습니다. 키·승인 또는 제공기관 오류로 남은 항목 {len(failed)}개'
     db.commit()

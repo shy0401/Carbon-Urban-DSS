@@ -31,6 +31,20 @@ def test_quota_makes_the_job_wait_and_schedules_its_own_resume(monkeypatch):
     assert job.errors[0]['dataset'] == 'kapt_energy'
 
 
+def test_kapt_gateway_gaps_make_the_job_wait_and_ask_again(monkeypatch):
+    db, job = make_job()
+    scheduled = []
+    monkeypatch.setattr(history, 'collect_missing', lambda db, a, b, **k: {
+        'items': {'kapt_energy:2025': {'status': 'PARTIAL', 'kind': 'PROVIDER'}, 'sgis:2025': {'status': 'DONE'}},
+        'blocked': {}, 'quota': {}, 'resume_at': None,
+        'provider_retry': ['kapt_energy:2025'], 'provider_retry_at': '2026-09-26T13:00:00+00:00'})
+    monkeypatch.setattr(tasks.run_collection, 'apply_async', lambda args, eta: scheduled.append((args, eta)))
+    tasks.run_all_missing(db, job)
+    job = db.get(CollectionJob, 'j1')
+    assert job.status == 'WAITING' and '2025년' in job.message and '09월 26일 22:00' in job.message
+    assert scheduled and scheduled[0][0] == ('j1',)
+
+
 def test_finished_run_reports_what_is_left(monkeypatch):
     db, job = make_job()
     monkeypatch.setattr(history, 'collect_missing', lambda db, a, b, **k: {

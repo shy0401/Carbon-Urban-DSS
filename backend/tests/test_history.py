@@ -131,3 +131,31 @@ def test_kapt_year_with_failures_from_before_the_retry_rounds_is_asked_again_onc
     collect_history(FakeDb(), 2024, 2024, datasets=['kapt_energy'], data_dir=clean, runners={'kapt_energy': ok}, log=lambda m: None)
     collect_history(FakeDb(), 2024, 2024, datasets=['kapt_energy'], data_dir=clean, runners={'kapt_energy': ok}, log=lambda m: None)
     assert calls == [2025, 2025, 2024]  # nothing failed: never redone
+
+
+def test_kapt_year_left_with_many_gateway_gaps_is_partial_until_the_last_pass(tmp_path, monkeypatch):
+    import app.kapt_energy as kapt_energy
+    from app.history import KAPT_MAX_PASSES
+
+    passes = []
+
+    def fake(db, year, scope, **kwargs):
+        if scope == 'smoke':
+            return {'normalized': 1}
+        passes.append(kwargs.get('retry_rounds'))
+        return {'skipped': 50, 'normalized': 20, 'failed': 30, 'provider_gaps': 20, 'skipped_after_errors': 10}
+
+    monkeypatch.setattr(kapt_energy, 'collect_kapt_energy', fake)
+    run = lambda: collect_history(FakeDb(), 2025, 2025, datasets=['kapt_energy'], data_dir=tmp_path, check_db=False,  # noqa: E731
+                                  blockers={}, use_lock=False, log=lambda m: None)
+    first = run()
+    item = first['items']['kapt_energy:2025']
+    assert item['status'] == 'PARTIAL' and item['kind'] == 'PROVIDER' and item['passes'] == 1
+    assert first['provider_retry'] == ['kapt_energy:2025'] and first['provider_retry_at']
+    for _ in range(KAPT_MAX_PASSES - 1):
+        last = run()
+    item = last['items']['kapt_energy:2025']
+    assert item['status'] == 'DONE' and item['passes'] == KAPT_MAX_PASSES and 'FAILED(0 아님)' in item['reason']
+    assert last['provider_retry'] == [] and last['provider_retry_at'] is None
+    run()
+    assert len(passes) == KAPT_MAX_PASSES and all(r and r > 0 for r in passes)  # done after the last pass: not asked again

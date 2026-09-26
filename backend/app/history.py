@@ -29,6 +29,11 @@ SLOW = ("kapt_energy",)
 KAPT_RETRY_ROUNDS = int(os.getenv("KAPT_RETRY_ROUNDS", "2"))
 KAPT_RETRY_WAIT_S = float(os.getenv("KAPT_RETRY_WAIT_S", "600"))
 KAPT_OUTAGE_PAUSE_S = float(os.getenv("KAPT_OUTAGE_PAUSE_S", "180"))
+# A year with more than this share of months still failing goes back in the queue (at most
+# KAPT_MAX_PASSES passes in all); the job then waits KAPT_PROVIDER_RETRY_H hours and resumes.
+KAPT_GAP_TOLERANCE = float(os.getenv("KAPT_GAP_TOLERANCE", "0.05"))
+KAPT_MAX_PASSES = int(os.getenv("KAPT_MAX_PASSES", "3"))
+KAPT_PROVIDER_RETRY_H = float(os.getenv("KAPT_PROVIDER_RETRY_H", "2"))
 ENERGY_SCOPE = "all_parcels"  # 건축HUB by 법정동 (every parcel); earlier per-apartment-parcel runs are redone once  # one request per complex-month: collected after everything else
 ALL_DATASETS = YEARLY + ONCE
 
@@ -177,8 +182,22 @@ def _default_runners(db: Any, hooks: dict[str, Any] | None = None) -> dict[str, 
         # Months still answering "04" after the retries are left FAILED (a later run asks again).
         # Only other failures (network, 5xx) leave the year PARTIAL.
         other_failures = full.get("failed", 0) - full.get("provider_gaps", 0) - full.get("skipped_after_errors", 0)
-        status = "DONE" if other_failures <= 0 else "PARTIAL"
-        return {"status": status, "retry_rounds": KAPT_RETRY_ROUNDS, **full}
+        passes = int((hooks.get("previous") or {}).get("passes") or 0) + 1
+        months = sum(full.get(k, 0) for k in ("skipped", "normalized", "empty", "not_reported", "suspect", "failed"))
+        gap_share = full.get("failed", 0) / months if months else 0.0
+        if other_failures > 0:
+            status = "PARTIAL"
+        elif gap_share > KAPT_GAP_TOLERANCE and passes < KAPT_MAX_PASSES:
+            # A long gateway burst outlasted the pauses and retries: come back later (the job waits
+            # and resumes by itself) instead of recording the year as finished.
+            status = "PARTIAL"
+            full["kind"] = "PROVIDER"
+            full["reason"] = f"제공기관 04 오류로 {full.get('failed', 0):,}개 월이 남음 ({gap_share:.0%}) — {KAPT_PROVIDER_RETRY_H:g}시간 뒤 다시 요청 ({passes}/{KAPT_MAX_PASSES}회차)"
+        else:
+            status = "DONE"
+            if full.get("failed"):
+                full["reason"] = f"{KAPT_MAX_PASSES}회 시도 후에도 제공기관 오류로 남은 {full['failed']:,}개 월은 FAILED(0 아님)" if passes >= KAPT_MAX_PASSES else f"제공기관 오류로 남은 {full['failed']:,}개 월은 FAILED(0 아님)"
+        return {"status": status, "retry_rounds": KAPT_RETRY_ROUNDS, "passes": passes, **full}
 
     def energy(year: int) -> dict[str, Any]:
         from sqlalchemy import func, select
@@ -389,6 +408,7 @@ def collect_history(
                 label = f"{LABELS.get(dataset, dataset)}{f' {year}년' if year else ''} ({step + 1}/{len(plan)})"
                 hooks["progress"] = lambda fraction, message, step=step, label=label: progress(
                     (step + max(0.0, min(1.0, fraction))) / max(1, len(plan)), f"{label} · {message}")
+            hooks["previous"] = progress_file.state["items"].get(key, {})
             try:
                 outcome = runner[dataset](year) if year is not None else runner[dataset]()
                 status = outcome.pop("status", "DONE")
@@ -419,8 +439,11 @@ def collect_history(
     progress_file.save()
     if progress:
         progress(1.0, "완료")
+    provider = sorted(k for k, item in progress_file.state["items"].items() if item.get("status") == "PARTIAL" and item.get("kind") == "PROVIDER")
     return {"items": progress_file.state["items"], "blocked": blocked, "quota": quota,
-            "resume_at": next_quota_reset().isoformat() if quota else None}
+            "resume_at": next_quota_reset().isoformat() if quota else None,
+            "provider_retry": provider,
+            "provider_retry_at": (datetime.now(timezone.utc) + timedelta(hours=KAPT_PROVIDER_RETRY_H)).isoformat() if provider else None}
 
 
 collect_missing = collect_history
