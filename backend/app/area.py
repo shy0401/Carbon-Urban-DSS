@@ -617,6 +617,7 @@ def building_energy_block(grid_ids: list[str], by_year: dict[int, dict[str, dict
     Complements the apartment series: offices, shops, schools and large apartment blocks together.
     Parcels are placed on grids through the cadastral point, so a grid-based area gets whole parcels.
     """
+    from .energy_parcels import year_complete
     members = set(grid_ids)
     years: dict[int, dict[str, Any]] = {}
     for year, grids in sorted(by_year.items()):
@@ -634,6 +635,7 @@ def building_energy_block(grid_ids: list[str], by_year: dict[int, dict[str, dict
             "gas_complete": sum(g["gas_complete"] for g in inside), "gas_kwh": round(sum(gas), 1) if gas else None,
             "area_m2": round(area_m2, 1) if area_m2 else None, "kwh_per_m2": round(area_kwh / area_m2, 2) if area_m2 else None,
             "electricity_carbon_kgco2eq": round(electricity * factor, 1) if electricity is not None and factor else None,
+            "complete": year_complete(year),
         }
     return {"years": years, "available": bool(years),
             "basis": "건축HUB 건물에너지 법정동 단위 전 지번(단독주택·200세대 미만 공동주택·산업용 등 제외), 12개월 계측 지번 합계, 연속지적 대표점으로 격자 배치"}
@@ -711,7 +713,7 @@ def area_facts(history: dict[str, Any], comparison: dict[str, Any] | None = None
         gfa_reg = round(sum(v["gfa_m2"] for v in reg_years))
         add("register", f"건축물대장 기준으로 분석 기간에 사용승인된 건물은 {n_reg:,}동, 연면적 {gfa_reg:,}m²입니다(모든 용도).", n_reg, gfa_reg)
     be = (history.get("building_energy") or {}).get("years") or {}
-    latest_be = max((y for y, v in be.items() if v.get("electricity_kwh") is not None), default=None)
+    latest_be = max((y for y, v in be.items() if v.get("electricity_kwh") is not None and v.get("complete", True)), default=None)
     if latest_be is not None:
         v = be[latest_be]
         carbon = f", 전력 탄소 {v['electricity_carbon_kgco2eq']:,.0f} kgCO2eq" if v.get("electricity_carbon_kgco2eq") is not None else ""
@@ -836,6 +838,23 @@ def load_inputs(db: Any, years: list[int]) -> dict[str, Any]:
             "factor": factors, "grids": grids, "admin": admin.get("features", []), "admin_year": admin_year, "zoning": grid_zoning_summary(db)}
 
 
+_INPUTS: dict[tuple[int, ...], tuple[float, dict[str, Any]]] = {}
+INPUTS_TTL = 300.0  # seconds: new collections show up within five minutes
+
+
+def cached_inputs(db: Any, years: list[int]) -> dict[str, Any]:
+    """DB inputs for ``years`` reused for a few minutes (changing the target or the plan re-analyses often)."""
+    import time
+    key = tuple(years)
+    hit = _INPUTS.get(key)
+    if hit and time.monotonic() - hit[0] < INPUTS_TTL:
+        return hit[1]
+    inputs = prepare_inputs(db, years)
+    _INPUTS.clear()
+    _INPUTS[key] = (time.monotonic(), inputs)
+    return inputs
+
+
 def prepare_inputs(db: Any, years: list[int]) -> dict[str, Any]:
     """DB rows for ``years`` plus the city-wide observed intensity (reusable across many areas)."""
     inputs = load_inputs(db, years)
@@ -851,7 +870,7 @@ def analyze(db: Any, spec: dict[str, Any], from_year: int, to_year: int, event_y
         raise ValueError("분석 기간을 확인하세요 (최대 31년)")
     years = list(range(from_year, to_year + 1))
     if inputs is None or inputs.get("years") != years:
-        inputs = prepare_inputs(db, years)
+        inputs = cached_inputs(db, years)
     complex_points = [{"kapt_code": c["kapt_code"], "lon": c["lon"], "lat": c["lat"], "grid_id": c["grid_id"]} for c in inputs["complexes"].values()]
     area = resolve_area(spec, inputs["grids"], complex_points, inputs["admin"], inputs["zoning"])
     history = build_history(area, years, inputs)

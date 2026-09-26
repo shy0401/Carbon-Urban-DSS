@@ -83,7 +83,7 @@ export interface DashboardData {
   floor_area_issues?: Array<{ kapt_code: string; name: string; status: string; reason: string | null }>;
   context?: GridContext | null;
   /** Every metered building of the selected grid (bldg_* map fields + year); null before city-wide collection. */
-  building_energy?: (Partial<GridProps> & { year: number }) | null;
+  building_energy?: (Partial<GridProps> & { year: number; complete?: boolean }) | null;
   /** 월별 관측 에너지의 근거 유형 코드 (서버 고정값 'OBSERVED'). */
   observations_label?: string;
   /** 메타데이터 파생값의 근거 유형 코드 (서버 고정값 'CALCULATED'). */
@@ -253,7 +253,7 @@ export interface MapData {
   offline_mode?: boolean;
   sgis_grid?: { year: number | null; source: string; note: string } | null;
   register?: { grids: number; buildings: number; source: string } | null;
-  building_energy?: { grids: number; parcels: number; source: string } | null;
+  building_energy?: { grids: number; parcels: number; complete: boolean; source: string } | null;
 }
 
 export interface BuildingViewport extends GeoJSON.FeatureCollection {

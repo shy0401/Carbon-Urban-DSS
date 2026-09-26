@@ -138,6 +138,7 @@ def test_building_energy_block_sums_the_area_grids_per_year():
                     'area_parcels': 0, 'area_m2': None, 'kwh_per_m2': None}}
     block = building_energy_block(['g1', 'g2'], {2025: grids}, 0.5)
     y = block['years'][2025]
+    assert y['complete'] is False  # no finished city-wide run recorded in this test
     assert y['parcels'] == 12 and y['electricity_complete'] == 8 and y['electricity_kwh'] == 1000000.0
     assert y['kwh_per_m2'] == 40.0 and y['electricity_carbon_kgco2eq'] == 500000.0
     assert building_energy_block(['g3'], {2025: grids}, 0.5) == {'years': {}, 'available': False, 'basis': block['basis']}

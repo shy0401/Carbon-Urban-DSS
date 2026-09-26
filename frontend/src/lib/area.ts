@@ -105,7 +105,7 @@ export interface AreaHistory {
 export interface AreaBuildingEnergy {
   available: boolean;
   basis: string;
-  years: YearTable<{ year: number; parcels: number; electricity_complete: number; electricity_kwh: number | null; gas_complete: number; gas_kwh: number | null; area_m2: number | null; kwh_per_m2: number | null; electricity_carbon_kgco2eq: number | null }>;
+  years: YearTable<{ year: number; parcels: number; electricity_complete: number; electricity_kwh: number | null; gas_complete: number; gas_kwh: number | null; area_m2: number | null; kwh_per_m2: number | null; electricity_carbon_kgco2eq: number | null; complete?: boolean }>;
 }
 
 /** SGIS 1km 격자 통계 (구역이 걸친 1km 격자 전체 합계 = 관측, 면적 비례 값 = 추정). */

@@ -243,6 +243,7 @@ export function MapPage() {
         </div>
         <div className="map-notices">
         {data.buildings_mode === 'viewport' && visible.buildings && viewport && <div className="building-count" role="status">{viewport.needZoom ? `건물은 확대(${BUILDING_MIN_ZOOM} 이상)하면 표시됩니다` : `화면 안 건물 ${viewport.total.toLocaleString('ko-KR')}동${viewport.truncated ? ` 중 큰 건물 ${viewport.shown.toLocaleString('ko-KR')}동 표시` : ''}`}</div>}
+        {metric.group === '건물 전체 에너지 (건축HUB)' && data.building_energy?.complete === false && <div className="map-toast" role="status">{data.year}년 건축HUB 전 지번 수집이 아직 진행 중이라 일부 법정동만 채워져 있습니다.</div>}
         {basemapFailed && !offline && basemapEnabled && <div className="map-toast" role="status">배경지도를 불러오지 못했습니다. 분석 도형은 도면지 바탕 위에 그대로 표시됩니다.</div>}
         </div>
         {selected && !detailOpen && <button className="detail-tab" onClick={() => setDetailOpen(true)}>격자 상세 <code>{selected.id}</code></button>}

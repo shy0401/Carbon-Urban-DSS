@@ -203,6 +203,17 @@ def collect_energy_all(db: Any, year: int, progress: Callable[[float, str], None
     return stats
 
 
+def year_complete(year: int) -> bool:
+    """Whether the city-wide collection of ``year`` has finished (history progress says DONE)."""
+    import json
+    path = Path(os.getenv("DATA_DIR", "data")) / "ops" / "history-progress.json"
+    try:
+        item = json.loads(path.read_text(encoding="utf-8"))["items"].get(f"energy:{year}") or {}
+    except (OSError, ValueError, KeyError):
+        return False
+    return item.get("status") == "DONE" and item.get("scope") == "all_parcels"
+
+
 # --------------------------------------------------------------------------- grid aggregates
 _GRID_CACHE: dict[tuple[Any, ...], dict[str, dict[str, Any]]] = {}
 _PARCEL_GRID: dict[int, dict[str, str]] = {}

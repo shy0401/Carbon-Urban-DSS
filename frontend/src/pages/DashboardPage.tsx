@@ -113,7 +113,7 @@ export function DashboardPage() {
 function BuildingEnergyPanel({ data }: { data: DashboardData }) {
   const b = data.building_energy;
   return <section className="panel sgis-panel" aria-label="건물 전체 에너지 (건축HUB 전 지번)">
-    <div className="panel-title"><h3>건물 전체 에너지 (건축HUB 전 지번{b ? `, ${b.year}년` : ''})</h3><div className="badge-row"><ProvenanceBadge kind="observed" detail="12개월 계측 지번" /></div></div>
+    <div className="panel-title"><h3>건물 전체 에너지 (건축HUB 전 지번{b ? `, ${b.year}년` : ''})</h3><div className="badge-row">{b?.complete === false && <span className="status-tag warn">수집 중 · 일부 법정동</span>}<ProvenanceBadge kind="observed" detail="12개월 계측 지번" /></div></div>
     {!b ? <MissingValue reason="이 격자에는 건축HUB 계측 지번이 없거나 전 지번 수집이 아직 끝나지 않았습니다(건축HUB는 2024년부터 제공)." /> : <>
       <dl className="sgis-figures">
         <div><dt>계측 지번</dt><dd>{formatMetric(b.bldg_parcels as number | null, '곳')}<small>12개월 전력 {formatMetric(b.bldg_electricity_complete as number | null, '곳')}</small></dd></div>
