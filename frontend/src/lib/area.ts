@@ -98,6 +98,14 @@ export interface AreaHistory {
   coverage: { energy_years: number[]; weather_years: number[]; population_years: number[]; grid_count: number; complex_count: number; register_buildings?: number };
   register?: RegisterHistory;
   sgis_grid?: AreaSgisGrid | null;
+  building_energy?: AreaBuildingEnergy;
+}
+
+/** 건축HUB 법정동 단위 전 지번 (2024-): 구역 격자 안 계측 건물 전체. */
+export interface AreaBuildingEnergy {
+  available: boolean;
+  basis: string;
+  years: YearTable<{ year: number; parcels: number; electricity_complete: number; electricity_kwh: number | null; gas_complete: number; gas_kwh: number | null; area_m2: number | null; kwh_per_m2: number | null; electricity_carbon_kgco2eq: number | null }>;
 }
 
 /** SGIS 1km 격자 통계 (구역이 걸친 1km 격자 전체 합계 = 관측, 면적 비례 값 = 추정). */

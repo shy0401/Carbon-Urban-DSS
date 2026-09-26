@@ -105,3 +105,5 @@
   .area-map-legend { display: none; }
 }
 .area-sgis { margin-top: var(--sp-4); }
+.area-building-energy { margin-top: var(--sp-4); }
+.area-building-energy td small { color: var(--ink-3); }

@@ -155,6 +155,7 @@ export function AreaPage() {
         <PopulationPanel analysis={analysis} />
         <RegisterPanel analysis={analysis} eventYear={activeEvent} />
       </div>
+      <BuildingEnergyPanel analysis={analysis} />
       <SgisAreaPanel analysis={analysis} />
 
       <div className="section-label"><h2>개발 전후 영향</h2><span>개발 연도는 전환기라 제외하고 앞뒤 {windowSize}년 평균을 비교합니다</span></div>
@@ -223,6 +224,21 @@ function RegisterPanel({ analysis, eventYear }: { analysis: AreaAnalysis; eventY
       <RegisterChart history={analysis.history} eventYear={eventYear} />
       <p className="muted">구역 격자 안 건물 {formatMetric(reg.linked_in_area)}동의 사용승인일 기준입니다(아파트 외 상가·업무·공공 건물 포함).{reg.unknown_year ? ` 사용승인일을 읽을 수 없는 ${formatMetric(reg.unknown_year)}동은 뺐습니다.` : ''} 연면적이 비어 있는 건물은 0이 아니라 합계에서 빠집니다.</p>
     </> : <EmptyState title={reg?.available ? '이 구역에 연결된 대장 건물이 없습니다' : '건축물대장을 아직 수집하지 않았습니다'} description={reg?.available ? '대장 건물의 위치(격자)는 연속지적 전체 수집 뒤 연결됩니다.' : "수집 데이터 화면의 '빠진 자료 전부 수집'으로 받을 수 있습니다 (건축물대장 활용신청 승인 필요)."} />}
+  </section>;
+}
+
+/** 구역 격자 안 건축HUB 계측 건물 전체(2024-). 공동주택 시계열과 따로 둔다. */
+function BuildingEnergyPanel({ analysis }: { analysis: AreaAnalysis }) {
+  const be = analysis.history.building_energy;
+  const years = be ? Object.values(be.years).sort((a, b) => a.year - b.year) : [];
+  return <section className="panel area-building-energy" aria-label="건물 전체 에너지">
+    <div className="panel-title"><h3>건물 전체 에너지 (건축HUB 전 지번)</h3><ProvenanceBadge kind="observed" detail="12개월 계측 지번" /></div>
+    {years.length ? <><div className="table-wrap"><table>
+      <thead><tr><th>연도</th><th className="num">계측 지번</th><th className="num">전력 kWh</th><th className="num">가스 kWh</th><th className="num">전력 원단위 kWh/m²</th><th className="num">전력 탄소 tCO₂eq</th></tr></thead>
+      <tbody>{years.map((v) => <tr key={v.year}><td>{v.year}</td><td className="num">{formatMetric(v.parcels)}<small> (12개월 {formatMetric(v.electricity_complete)})</small></td><td className="num">{formatMetric(v.electricity_kwh)}</td><td className="num">{formatMetric(v.gas_kwh)}</td><td className="num">{formatMetric(v.kwh_per_m2, '', 1)}</td><td className="num">{v.electricity_carbon_kgco2eq === null ? '자료 없음' : formatMetric(v.electricity_carbon_kgco2eq / 1000, '', 1)}</td></tr>)}</tbody>
+    </table></div>
+    <p className="muted">상가·업무·학교·대형 공동주택 등 건축HUB가 계측하는 모든 지번의 합계입니다(연속지적 대표점으로 격자 배치). 단독주택, 200세대 미만 공동주택, 산업·수송용은 제공 범위 밖이라 빠집니다. 건축HUB는 2024년 1월부터 제공합니다. 원단위는 같은 필지의 건축물대장 연면적 기준입니다.</p></>
+      : <EmptyState title="이 구역의 건물 전체 에너지가 아직 없습니다" description="건축HUB 전 지번 수집(2024년~)이 끝나면 채워집니다. 구역 격자 안에 계측 지번이 없을 수도 있습니다(단독주택 위주)." />}
   </section>;
 }
 

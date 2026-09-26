@@ -126,3 +126,18 @@ def test_facts_carry_their_numbers_for_verification():
     change = next(f for f in facts if f['id'] == 'change')
     assert change['numbers'] == [50.0] and '+50.0%' in change['text']
     assert all(isinstance(n, (int, float)) for f in facts for n in f['numbers'])
+
+
+def test_building_energy_block_sums_the_area_grids_per_year():
+    from app.area import building_energy_block
+    grids = {'g1': {'parcels': 10, 'electricity_complete': 8, 'electricity_kwh': 1000000.0, 'gas_complete': 3, 'gas_kwh': 400000.0,
+                    'area_parcels': 5, 'area_m2': 20000.0, 'kwh_per_m2': 40.0},
+             'g2': {'parcels': 2, 'electricity_complete': 0, 'electricity_kwh': None, 'gas_complete': 0, 'gas_kwh': None,
+                    'area_parcels': 0, 'area_m2': None, 'kwh_per_m2': None},
+             'g9': {'parcels': 99, 'electricity_complete': 99, 'electricity_kwh': 9.0, 'gas_complete': 0, 'gas_kwh': None,
+                    'area_parcels': 0, 'area_m2': None, 'kwh_per_m2': None}}
+    block = building_energy_block(['g1', 'g2'], {2025: grids}, 0.5)
+    y = block['years'][2025]
+    assert y['parcels'] == 12 and y['electricity_complete'] == 8 and y['electricity_kwh'] == 1000000.0
+    assert y['kwh_per_m2'] == 40.0 and y['electricity_carbon_kgco2eq'] == 500000.0
+    assert building_energy_block(['g3'], {2025: grids}, 0.5) == {'years': {}, 'available': False, 'basis': block['basis']}

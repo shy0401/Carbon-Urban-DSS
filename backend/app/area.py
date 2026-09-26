@@ -611,6 +611,34 @@ def register_events(area: dict[str, Any], rows: list[dict[str, Any]], years: lis
             "basis": "건축물대장 표제부 사용승인일 · 격자(500m) 기준 포함, 연면적은 대장 연면적"}
 
 
+def building_energy_block(grid_ids: list[str], by_year: dict[int, dict[str, dict[str, Any]]], factor: float | None) -> dict[str, Any]:
+    """Every metered building of the area's grids (건축HUB by 법정동), per year with data (2024-).
+
+    Complements the apartment series: offices, shops, schools and large apartment blocks together.
+    Parcels are placed on grids through the cadastral point, so a grid-based area gets whole parcels.
+    """
+    members = set(grid_ids)
+    years: dict[int, dict[str, Any]] = {}
+    for year, grids in sorted(by_year.items()):
+        inside = [grids[g] for g in members if g in grids]
+        if not inside:
+            continue
+        kwh = [g["electricity_kwh"] for g in inside if g["electricity_kwh"] is not None]
+        gas = [g["gas_kwh"] for g in inside if g["gas_kwh"] is not None]
+        area_m2 = sum(g["area_m2"] or 0 for g in inside if g["area_parcels"])
+        area_kwh = sum((g["kwh_per_m2"] or 0) * (g["area_m2"] or 0) for g in inside if g["area_parcels"])
+        electricity = round(sum(kwh), 1) if kwh else None
+        years[year] = {
+            "year": year, "parcels": sum(g["parcels"] for g in inside),
+            "electricity_complete": sum(g["electricity_complete"] for g in inside), "electricity_kwh": electricity,
+            "gas_complete": sum(g["gas_complete"] for g in inside), "gas_kwh": round(sum(gas), 1) if gas else None,
+            "area_m2": round(area_m2, 1) if area_m2 else None, "kwh_per_m2": round(area_kwh / area_m2, 2) if area_m2 else None,
+            "electricity_carbon_kgco2eq": round(electricity * factor, 1) if electricity is not None and factor else None,
+        }
+    return {"years": years, "available": bool(years),
+            "basis": "건축HUB 건물에너지 법정동 단위 전 지번(단독주택·200세대 미만 공동주택·산업용 등 제외), 12개월 계측 지번 합계, 연속지적 대표점으로 격자 배치"}
+
+
 def build_history(area: dict[str, Any], years: list[int], inputs: dict[str, Any]) -> dict[str, Any]:
     complexes = inputs["complexes"]
     history = {
@@ -635,6 +663,7 @@ def build_history(area: dict[str, Any], years: list[int], inputs: dict[str, Any]
     from .sgis_grid import area_block
     sgis_year, sgis_values = inputs.get("sgis_grid") or (None, {})
     history["sgis_grid"] = area_block(area["grid_ids"], sgis_year, sgis_values)
+    history["building_energy"] = building_energy_block(area["grid_ids"], inputs.get("building_energy") or {}, factor)
     city = inputs.get("city_intensity")
     history["city_intensity"] = city
     for year in years:
@@ -681,6 +710,13 @@ def area_facts(history: dict[str, Any], comparison: dict[str, Any] | None = None
         n_reg = sum(v["buildings"] for v in reg_years)
         gfa_reg = round(sum(v["gfa_m2"] for v in reg_years))
         add("register", f"건축물대장 기준으로 분석 기간에 사용승인된 건물은 {n_reg:,}동, 연면적 {gfa_reg:,}m²입니다(모든 용도).", n_reg, gfa_reg)
+    be = (history.get("building_energy") or {}).get("years") or {}
+    latest_be = max((y for y, v in be.items() if v.get("electricity_kwh") is not None), default=None)
+    if latest_be is not None:
+        v = be[latest_be]
+        carbon = f", 전력 탄소 {v['electricity_carbon_kgco2eq']:,.0f} kgCO2eq" if v.get("electricity_carbon_kgco2eq") is not None else ""
+        add("building_energy", f"건축HUB가 계측하는 구역 안 건물 전체(상가·업무·학교·대형 공동주택 등, 12개월 계측 지번 {v['electricity_complete']}곳)의 {latest_be}년 전력은 {v['electricity_kwh']:,.0f} kWh{carbon}입니다. 단독주택과 200세대 미만 공동주택은 제공 범위 밖입니다.",
+            latest_be, v["electricity_complete"], v["electricity_kwh"], v.get("electricity_carbon_kgco2eq"))
     sg = history.get("sgis_grid") or {}
     if sg.get("overlap"):
         o = sg["overlap"]
@@ -784,8 +820,19 @@ def load_inputs(db: Any, years: list[int]) -> dict[str, Any]:
         db.rollback()
     from .overlays import admin_features, grid_zoning_summary
     from .sgis_grid import grid_values
+    from .energy_parcels import grid_building_energy
     admin, admin_year = admin_features(db)
-    return {"sgis_grid": grid_values(db), "register": register, "complexes": complexes, "energy": energy, "weather": weather, "population": population, "households": households,
+    building_energy = {}
+    for year in years:
+        if year >= 2024:  # 건축HUB has no data before 2024-01
+            try:
+                grids = grid_building_energy(db, year)
+            except Exception:  # noqa: BLE001 - parcel_grid not built yet
+                db.rollback()
+                grids = {}
+            if grids:
+                building_energy[year] = grids
+    return {"building_energy": building_energy, "sgis_grid": grid_values(db), "register": register, "complexes": complexes, "energy": energy, "weather": weather, "population": population, "households": households,
             "factor": factors, "grids": grids, "admin": admin.get("features", []), "admin_year": admin_year, "zoning": grid_zoning_summary(db)}
 
 

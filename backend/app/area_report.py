@@ -206,6 +206,15 @@ def area_markdown(s: dict[str, Any]) -> str:
         elec = e.get("electricity", {})
         table.append(f"| {y} | {fmt(elec.get('kwh'))} ({elec.get('complete_parcels', 0)}곳) | {fmt(e.get('electricity_carbon_kgco2eq'))} | {fmt(w.get('hdd'))} | {fmt(w.get('cdd'))} | {fmt(p.get('population'))} | {int(ev.get('households') or 0):,} |")
     lines.append("\n".join(table))
+    be = (h.get("building_energy") or {}).get("years") or {}
+    if be:
+        rows = ["| 연도 | 계측 지번 | 12개월 전력 지번 | 전력 kWh | 가스 kWh | 전력 원단위 kWh/m² | 전력 탄소 kgCO2eq |", "| --- | --- | --- | --- | --- | --- | --- |"]
+        for year in sorted(be, key=lambda y: int(y)):
+            v = be[year]
+            rows.append(f"| {year} | {v['parcels']:,} | {v['electricity_complete']:,} | {fmt(v.get('electricity_kwh'))} | {fmt(v.get('gas_kwh'))} | "
+                        f"{'자료 없음' if v.get('kwh_per_m2') is None else format(v['kwh_per_m2'], ',.1f')} | {fmt(v.get('electricity_carbon_kgco2eq'))} |")
+        lines += ["## 건물 전체 에너지 (건축HUB 전 지번)", "\n".join(rows),
+                  "상가·업무·학교·대형 공동주택 등 건축HUB가 계측하는 모든 지번의 합계입니다. 단독주택, 200세대 미만 공동주택, 산업·수송용은 제공 범위 밖입니다. 원단위는 같은 필지의 건축물대장 연면적 기준입니다."]
     sg = h.get("sgis_grid") or {}
     if sg.get("overlap"):
         o = sg["overlap"]
