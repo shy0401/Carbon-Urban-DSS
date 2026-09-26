@@ -116,3 +116,18 @@ def test_energy_collected_per_apartment_parcel_is_redone_city_wide_once(tmp_path
     collect_history(FakeDb(), 2025, 2025, datasets=['energy'], data_dir=tmp_path, runners={'energy': city}, log=lambda m: None)
     collect_history(FakeDb(), 2025, 2025, datasets=['energy'], data_dir=tmp_path, runners={'energy': city}, log=lambda m: None)
     assert calls == [2025, 2025, 2025]  # done city-wide: not requested again
+
+
+def test_kapt_year_with_failures_from_before_the_retry_rounds_is_asked_again_once(tmp_path):
+    calls = []
+    old = lambda year=None: calls.append(year) or {'status': 'DONE', 'failed': 2435, 'provider_gaps': 300}  # noqa: E731
+    collect_history(FakeDb(), 2025, 2025, datasets=['kapt_energy'], data_dir=tmp_path, runners={'kapt_energy': old}, log=lambda m: None)
+    new = lambda year=None: calls.append(year) or {'status': 'DONE', 'failed': 12, 'retry_rounds': 2}  # noqa: E731
+    collect_history(FakeDb(), 2025, 2025, datasets=['kapt_energy'], data_dir=tmp_path, runners={'kapt_energy': new}, log=lambda m: None)
+    collect_history(FakeDb(), 2025, 2025, datasets=['kapt_energy'], data_dir=tmp_path, runners={'kapt_energy': new}, log=lambda m: None)
+    assert calls == [2025, 2025]  # the old result is redone once; a result with retries stays done
+    clean = tmp_path / 'clean'
+    ok = lambda year=None: calls.append(year) or {'status': 'DONE', 'failed': 0}  # noqa: E731
+    collect_history(FakeDb(), 2024, 2024, datasets=['kapt_energy'], data_dir=clean, runners={'kapt_energy': ok}, log=lambda m: None)
+    collect_history(FakeDb(), 2024, 2024, datasets=['kapt_energy'], data_dir=clean, runners={'kapt_energy': ok}, log=lambda m: None)
+    assert calls == [2025, 2025, 2024]  # nothing failed: never redone

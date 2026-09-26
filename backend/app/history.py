@@ -178,7 +178,7 @@ def _default_runners(db: Any, hooks: dict[str, Any] | None = None) -> dict[str, 
         # Only other failures (network, 5xx) leave the year PARTIAL.
         other_failures = full.get("failed", 0) - full.get("provider_gaps", 0) - full.get("skipped_after_errors", 0)
         status = "DONE" if other_failures <= 0 else "PARTIAL"
-        return {"status": status, **full}
+        return {"status": status, "retry_rounds": KAPT_RETRY_ROUNDS, **full}
 
     def energy(year: int) -> dict[str, Any]:
         from sqlalchemy import func, select
@@ -371,8 +371,12 @@ def collect_history(
                 kind = "QUOTA" if dataset in quota else "AUTH"
                 progress_file.set(dataset, year, "BLOCKED", kind=kind, reason=blocked[dataset][:200])
                 continue
-            redo_energy = dataset == "energy" and progress_file.state["items"].get(key, {}).get("scope") != ENERGY_SCOPE
-            if not force and progress_file.done(dataset, year) and not redo_energy:
+            item = progress_file.state["items"].get(key, {})
+            redo_energy = dataset == "energy" and item.get("scope") != ENERGY_SCOPE
+            # A K-apt year finished before the retry rounds existed still has months that failed
+            # during a gateway burst; asking for those again costs only the failed months.
+            redo_kapt = dataset == "kapt_energy" and item.get("status") == "DONE" and (item.get("failed") or 0) > 0 and "retry_rounds" not in item
+            if not force and progress_file.done(dataset, year) and not (redo_energy or redo_kapt):
                 log(f"skip {key} (이미 완료)")
                 continue
             reason = db_satisfied(db, dataset, year) if (check_db and not force) else None
