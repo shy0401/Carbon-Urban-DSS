@@ -104,9 +104,27 @@ export function DashboardPage() {
       <article className="panel"><div className="panel-title"><h3>건축면적 기준 건물 용도 구성</h3></div>{buildings && Object.keys(buildings.category_share_pct ?? {}).length > 0 ? <ShareBar shares={buildings.category_share_pct} names={USE_NAME} colors={Object.fromEntries(USE_COLORS)} counts={buildings.category_count} /> : <MissingValue reason="공식 건물 레이어(VWorld)를 아직 수집하지 않았습니다." />}</article>
       <article className="panel"><div className="panel-title"><h3>격자 면적 중 법정 용도지역</h3></div>{zoning && Object.keys(zoning.shares_pct).length > 0 ? <ShareBar shares={zoning.shares_pct} names={ZONE_NAME} colors={ZONE_GROUP_COLOR} rest="도시지역 외·미지정" /> : <MissingValue reason={zoning ? '이 격자에 도시지역 용도지역 도형이 없습니다.' : '용도지역(VWorld)을 아직 수집하지 않았습니다.'} />}</article>
     </section>
+    <BuildingEnergyPanel data={data} />
     <SgisPanel context={context} />
     <WeatherPanel data={data} year={year} />
   </div>;
+}
+
+function BuildingEnergyPanel({ data }: { data: DashboardData }) {
+  const b = data.building_energy;
+  return <section className="panel sgis-panel" aria-label="건물 전체 에너지 (건축HUB 전 지번)">
+    <div className="panel-title"><h3>건물 전체 에너지 (건축HUB 전 지번{b ? `, ${b.year}년` : ''})</h3><div className="badge-row"><ProvenanceBadge kind="observed" detail="12개월 계측 지번" /></div></div>
+    {!b ? <MissingValue reason="이 격자에는 건축HUB 계측 지번이 없거나 전 지번 수집이 아직 끝나지 않았습니다(건축HUB는 2024년부터 제공)." /> : <>
+      <dl className="sgis-figures">
+        <div><dt>계측 지번</dt><dd>{formatMetric(b.bldg_parcels as number | null, '곳')}<small>12개월 전력 {formatMetric(b.bldg_electricity_complete as number | null, '곳')}</small></dd></div>
+        <div className={b.bldg_electricity_kwh == null ? 'is-missing' : undefined}><dt>연간 전력</dt><dd>{b.bldg_electricity_kwh == null ? <MissingValue inline reason="12개월 계측 지번 없음" /> : formatMetric(b.bldg_electricity_kwh as number, 'kWh')}</dd></div>
+        <div className={b.bldg_gas_kwh == null ? 'is-missing' : undefined}><dt>연간 가스</dt><dd>{b.bldg_gas_kwh == null ? <MissingValue inline reason="12개월 계측 지번 없음" /> : formatMetric(b.bldg_gas_kwh as number, 'kWh')}</dd></div>
+        <div className={b.bldg_kwh_per_m2 == null ? 'is-missing' : undefined}><dt>전력 원단위 (대장 연면적)</dt><dd>{b.bldg_kwh_per_m2 == null ? <MissingValue inline reason="연면적 있는 지번 없음" /> : formatMetric(b.bldg_kwh_per_m2 as number, 'kWh/m²·년', 1)}</dd></div>
+        <div className={b.bldg_carbon_t == null ? 'is-missing' : undefined}><dt>전력 탄소</dt><dd>{b.bldg_carbon_t == null ? <MissingValue inline /> : formatMetric(b.bldg_carbon_t as number, 'tCO₂eq', 1)}</dd></div>
+      </dl>
+      <p className="muted">격자 안 상가·업무·학교·대형 공동주택 등 건축HUB가 계측하는 모든 지번의 합계입니다(위 핵심 지표는 공동주택 단지만). 단독주택, 200세대 미만 공동주택, 산업·수송용은 제공 범위 밖입니다.</p>
+    </>}
+  </section>;
 }
 
 function SgisPanel({ context }: { context: DashboardData['context'] }) {

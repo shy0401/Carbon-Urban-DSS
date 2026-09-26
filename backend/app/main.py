@@ -94,7 +94,16 @@ def get_dashboard(year:int=Query(DEFAULT_YEAR,ge=2000,le=2100),grid_id:str|None=
     with Session() as db:
         data=dashboard(db,grid_id,year)
         # Official context of the same grid (zoning, overlapping 행정동, buildings, K-apt complexes).
-        data['context']=grid_context(db,data['selected_sector']['grid_id'] if data['selected_sector'] else None)
+        selected=data['selected_sector']['grid_id'] if data['selected_sector'] else None
+        data['context']=grid_context(db,selected)
+        # Every metered building of the same grid (건축HUB by 법정동, 2024-), next to the apartment figures.
+        try:
+            from .energy_parcels import grid_building_energy,map_properties as building_energy_properties
+            factor=(factors_for(db,year).get('ELECTRICITY') or {}).get('factor')
+            item=grid_building_energy(db,year).get(selected) if selected else None
+            data['building_energy']=dict(building_energy_properties(item,factor),year=year) if item else None
+        except Exception:
+            db.rollback();data['building_energy']=None
         return data
 
 @app.get('/api/sources')
