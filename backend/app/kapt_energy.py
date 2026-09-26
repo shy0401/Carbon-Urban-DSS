@@ -180,11 +180,15 @@ def _is_transient(message: str) -> bool:
     return any(marker in message for marker in ("일시 오류", "provider_code=UNKNOWN", "외부 데이터 HTTP 5", "외부 서비스 연결 실패"))
 
 
-# A complex whose months keep failing at the gateway (K-apt answers "04 HTTP_ERROR" for complexes
-# without energy records, occasionally with an all-zero body instead) is not asked for the rest
-# of the year in this run: every attempt spends the 5,000-call daily quota. The skipped months
-# are stored as FAILED and requested again on the next run.
+# A complex whose months keep failing at the gateway ("04 HTTP_ERROR") is not asked for the rest
+# of the year in this pass: every attempt spends the 5,000-call daily quota. The skipped months
+# are stored as FAILED and requested again by a retry round or the next run.
 FAILED_STREAK_LIMIT = 2
+# Measured on 2026-09-26: the 04 answers come in bursts. During a burst most complexes fail
+# (218 of 311 in one hour); 20 minutes later the same complex-months answered on the first try.
+# So a run of consecutive failures across complexes pauses the collection instead of writing
+# the rest of the city off, and the months still FAILED after the pass are retried after a wait.
+OUTAGE_RUN = 8
 
 
 def _fetch_month(session: Any, url: str, key: str, code: str, month: str, attempts: int = 2, sleep: Any = None) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -338,14 +342,22 @@ def approval_month(complex_row: Any) -> str | None:
 def collect_kapt_energy(
     db: Any, year: int, scope: str = "smoke", *, client: CachedClient | None = None,
     service_key: str | None = None, data_dir: str | Path | None = None, history: bool = False,
-    progress: Any = None,
+    progress: Any = None, retry_rounds: int = 0, retry_wait_s: float = 0.0, outage_pause_s: float = 0.0,
+    max_outage_pauses: int = 20, sleep: Any = None,
 ) -> dict[str, int]:
     """Collect one year of K-apt monthly energy.
 
     ``history=True`` (past-year back-fill) skips months before each complex's 사용승인일:
     a building that did not exist yet has no energy to report, and asking would only
     spend the daily call quota. Skipped months create no rows (they are not "0").
+
+    ``outage_pause_s``: after ``OUTAGE_RUN`` failed requests in a row (any complexes) wait this
+    long before going on (at most ``max_outage_pauses`` times). ``retry_rounds``: after the pass,
+    wait ``retry_wait_s`` and ask again for the months of this year still FAILED. Both are off by
+    default (direct collection); the history back-fill turns them on.
     """
+    import time
+    pause = sleep or time.sleep
     if scope not in {"smoke", "limited", "full"}:
         raise ValueError("scope must be smoke, limited, or full")
     key = (service_key or os.getenv("DATA_GO_KR_SERVICE_KEY", "")).strip()
@@ -372,9 +384,58 @@ def collect_kapt_energy(
     base_url = os.getenv("KAPT_ENERGY_BASE_URL", KAPT_ENERGY_BASE_URL).rstrip("/")
     stats = {"requested": 0, "normalized": 0, "skipped": 0, "empty": 0, "not_reported": 0, "suspect": 0, "failed": 0, "before_approval": 0}
     url = f"{base_url}/{KAPT_ENERGY_OPERATION}"
+    outage = {"run": 0, "pauses": 0}
+    shown = [0.0]
+
+    def tell(fraction: float | None, message: str) -> None:
+        if fraction is not None:
+            shown[0] = fraction
+        if progress:
+            progress(shown[0], message)
+
+    def after_request(ok: bool) -> None:
+        outage["run"] = 0 if ok else outage["run"] + 1
+        if not ok and outage_pause_s > 0 and outage["run"] >= OUTAGE_RUN and outage["pauses"] < max_outage_pauses:
+            outage["run"] = 0
+            outage["pauses"] += 1
+            stats["outage_pauses"] = outage["pauses"]
+            if progress:
+                tell(None, f"제공기관 오류가 {OUTAGE_RUN}번 연속 — {outage_pause_s / 60:.0f}분 쉬었다가 계속 ({outage['pauses']}/{max_outage_pauses})")
+            pause(outage_pause_s)
+
+    retry_months: dict[str, set[str]] | None = None  # None = first pass over every target month
+    for round_ in range(retry_rounds + 1):
+        if round_:
+            failed_rows = db.execute(select(ApartmentEnergyMonthly.complex_code, ApartmentEnergyMonthly.year_month).where(
+                ApartmentEnergyMonthly.year_month.in_(months), ApartmentEnergyMonthly.quality_status == "FAILED")).all()
+            if not failed_rows:
+                break
+            retry_months = {}
+            for code, month in failed_rows:
+                retry_months.setdefault(code, set()).add(month)
+            if progress:
+                tell(None, f"재시도 {round_}/{retry_rounds} 대기 — 오류로 남은 {len(failed_rows)}개 월을 {retry_wait_s / 60:.0f}분 뒤 다시 요청")
+            pause(retry_wait_s)
+        _collect_pass(db, source, session, url, key, raw_root, targets, months, history, stats, tell if progress else None, after_request,
+                      retry_months, f"재시도 {round_}/{retry_rounds} · " if round_ else "")
+    if retry_rounds:
+        # Final state of this year after the retries (a recovered month is no longer a failure).
+        final = db.execute(select(ApartmentEnergyMonthly.provider_code).where(
+            ApartmentEnergyMonthly.year_month.in_(months), ApartmentEnergyMonthly.quality_status == "FAILED")).scalars().all()
+        stats["failed"] = len(final)
+        stats["provider_gaps"] = sum(1 for code in final if code and "provider_code=04" in code)
+        stats["skipped_after_errors"] = sum(1 for code in final if code and "건너뜀" in code)
+    return _finish(db, source, year, scope, stats)
+
+
+def _collect_pass(db: Any, source: Any, session: Any, url: str, key: str, raw_root: Path, targets: list[Any], months: list[str], history: bool,
+                  stats: dict[str, int], progress: Any, after_request: Any, only: dict[str, set[str]] | None, label: str) -> None:
+    """One pass over the targets. ``only``: {kapt_code: months} to re-request (retry round)."""
+    if only is not None:
+        targets = [row for row in targets if row.kapt_code in only]
     for index, complex_row in enumerate(targets):
         if progress:
-            progress(index / max(1, len(targets)), f"단지 {index + 1}/{len(targets)} {complex_row.name or complex_row.kapt_code}")
+            progress(index / max(1, len(targets)), f"{label}단지 {index + 1}/{len(targets)} {complex_row.name or complex_row.kapt_code}")
         mapping = db.get(ComplexGridMapping, complex_row.kapt_code) or ComplexGridMapping(complex_code=complex_row.kapt_code)
         mapping.grid_id = complex_row.grid_id
         mapping.method = "KAPT_POINT_PROJECT_GRID" if complex_row.grid_id else "UNMATCHED"
@@ -385,6 +446,8 @@ def collect_kapt_energy(
         built = approval_month(complex_row) if history else None
         failed_streak = 0
         for month in months:
+            if only is not None and month not in only[complex_row.kapt_code]:
+                continue
             if built and month < built:
                 stats["before_approval"] += 1
                 continue
@@ -420,8 +483,12 @@ def collect_kapt_energy(
                 if "provider_code=04" in str(exc):
                     stats["provider_gaps"] = stats.get("provider_gaps", 0) + 1
                 failed_streak += 1
+                after_request(False)
                 continue
             failed_streak = 0
+            after_request(True)
+            if only is not None:
+                stats["recovered"] = stats.get("recovered", 0) + 1
             raw_dir = raw_root / complex_row.kapt_code
             raw_dir.mkdir(parents=True, exist_ok=True)
             raw_path = raw_dir / f"{month}.json"
@@ -435,6 +502,9 @@ def collect_kapt_energy(
             row.collected_at = datetime.now(timezone.utc)
             db.add(row)
             db.commit()
+
+
+def _finish(db: Any, source: Any, year: int, scope: str, stats: dict[str, int]) -> dict[str, int]:
     total = db.scalar(select(func.count()).select_from(ApartmentEnergyMonthly)) or 0
     complexes = db.scalar(select(func.count(func.distinct(ApartmentEnergyMonthly.complex_code)))) or 0
     by_status = dict(db.execute(select(ApartmentEnergyMonthly.quality_status, func.count()).group_by(ApartmentEnergyMonthly.quality_status)).all())

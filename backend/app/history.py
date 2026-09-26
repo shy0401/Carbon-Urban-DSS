@@ -26,6 +26,9 @@ from typing import Any, Callable
 YEARLY = ("sgis", "kma_asos", "kapt_energy", "energy")
 ONCE = ("vworld_zoning", "vworld_buildings", "vworld_cadastral", "building_register")
 SLOW = ("kapt_energy",)
+KAPT_RETRY_ROUNDS = int(os.getenv("KAPT_RETRY_ROUNDS", "2"))
+KAPT_RETRY_WAIT_S = float(os.getenv("KAPT_RETRY_WAIT_S", "600"))
+KAPT_OUTAGE_PAUSE_S = float(os.getenv("KAPT_OUTAGE_PAUSE_S", "180"))
 ENERGY_SCOPE = "all_parcels"  # 건축HUB by 법정동 (every parcel); earlier per-apartment-parcel runs are redone once  # one request per complex-month: collected after everything else
 ALL_DATASETS = YEARLY + ONCE
 
@@ -167,9 +170,12 @@ def _default_runners(db: Any, hooks: dict[str, Any] | None = None) -> dict[str, 
             # The reference complex answered with no data for January: treat the year as not published
             # instead of spending thousands of calls on empty answers. A later run can still retry with --force.
             return {"status": "NOT_PUBLISHED", "probe": smoke}
-        full = collect_kapt_energy(db, year, "full", history=True, progress=report)
-        # Complexes the gateway keeps answering with "04 HTTP_ERROR" have no records to give; re-asking
-        # them every run would eat the quota. Only other failures (network, 5xx) leave the year PARTIAL.
+        # The gateway's "04 HTTP_ERROR" comes in bursts: pause on a run of failures and ask again for
+        # the months still failing after the pass (the waits keep the daily quota for real answers).
+        full = collect_kapt_energy(db, year, "full", history=True, progress=report,
+                                   retry_rounds=KAPT_RETRY_ROUNDS, retry_wait_s=KAPT_RETRY_WAIT_S, outage_pause_s=KAPT_OUTAGE_PAUSE_S)
+        # Months still answering "04" after the retries are left FAILED (a later run asks again).
+        # Only other failures (network, 5xx) leave the year PARTIAL.
         other_failures = full.get("failed", 0) - full.get("provider_gaps", 0) - full.get("skipped_after_errors", 0)
         status = "DONE" if other_failures <= 0 else "PARTIAL"
         return {"status": status, **full}

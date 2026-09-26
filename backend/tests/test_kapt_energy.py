@@ -264,3 +264,41 @@ def test_a_complex_failing_every_month_is_not_asked_for_the_rest_of_the_year(tmp
     assert stats['failed'] == 11 and stats['skipped_after_errors'] == 9 and stats['provider_gaps'] == 2
     skipped = db.get(ApartmentEnergyMonthly, 'A1:202512:K-apt')
     assert skipped.quality_status == 'FAILED' and '건너뜀' in skipped.provider_code  # retried on the next run
+
+
+def test_months_failed_during_a_provider_burst_are_retried_after_a_wait(tmp_path, monkeypatch):
+    import time
+    monkeypatch.setattr(time, 'sleep', lambda seconds: None)
+    db = make_db()
+    add_complex(db, households=300)
+    db.add(ApartmentEnergyMonthly(id='A1:202501:K-apt', complex_code='A1', year_month='202501', source='K-apt', quality_status='SUCCESS',
+                                  electricity_quantity=60000.0, units={}, raw_record={}))
+    db.commit()
+    ok = response({'kaptCode': 'A1', 'helect': '60000'})
+    client = SequenceClient([GATEWAY_04] * 4 + [ok])  # the burst ends after the first pass
+    waits = []
+    stats = collect_kapt_energy(db, 2025, 'full', client=client, service_key='valid-test-key', data_dir=tmp_path,
+                                retry_rounds=2, retry_wait_s=600, sleep=waits.append)
+    assert waits == [600]  # one retry round was enough; the second found nothing left
+    assert len(client.calls) == 4 + 11 and stats['recovered'] == 11
+    assert stats['failed'] == 0 and stats['provider_gaps'] == 0 and stats['skipped_after_errors'] == 0
+    assert db.scalar(select(func.count()).select_from(ApartmentEnergyMonthly).where(ApartmentEnergyMonthly.quality_status == 'SUCCESS')) == 12
+
+
+def test_a_run_of_failures_across_complexes_pauses_instead_of_writing_them_off(tmp_path, monkeypatch):
+    import time
+    from app.kapt_energy import OUTAGE_RUN
+    monkeypatch.setattr(time, 'sleep', lambda seconds: None)
+    db = make_db()
+    for code in ('A1', 'A2', 'A3', 'A4', 'A5'):
+        add_complex(db, code=code, households=300)
+    db.add(ApartmentEnergyMonthly(id='A1:202501:K-apt', complex_code='A1', year_month='202501', source='K-apt', quality_status='SUCCESS',
+                                  electricity_quantity=60000.0, units={}, raw_record={}))
+    db.commit()
+    waits = []
+    stats = collect_kapt_energy(db, 2025, 'full', client=SequenceClient([GATEWAY_04]), service_key='valid-test-key', data_dir=tmp_path,
+                                outage_pause_s=180, max_outage_pauses=1, sleep=waits.append)
+    # each complex fails twice before its other months are skipped: after 4 complexes (8 failed
+    # requests in a row) the collection waits once; the cap stops a second wait for the 5th.
+    assert OUTAGE_RUN == 8 and waits == [180] and stats['outage_pauses'] == 1
+    assert stats['requested'] == 10
