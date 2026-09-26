@@ -184,18 +184,24 @@ def _is_transient(message: str) -> bool:
 # of the year in this pass: every attempt spends the 5,000-call daily quota. The skipped months
 # are stored as FAILED and requested again by a retry round or the next run.
 FAILED_STREAK_LIMIT = 2
-# Measured on 2026-09-26: the 04 answers come in bursts. During a burst most complexes fail
-# (218 of 311 in one hour); 20 minutes later the same complex-months answered on the first try.
-# So a run of consecutive failures across complexes pauses the collection instead of writing
-# the rest of the city off, and the months still FAILED after the pass are retried after a wait.
+# Measured on 2026-09-26: the 04 answers come from some gateway backend nodes, and a kept-alive
+# connection stays on one node (0/20 on one connection, 20/20 on another, about half on fresh
+# ones), so failures come in long runs. Every retry opens a new connection; a run of consecutive
+# failures across complexes still pauses the collection instead of writing the rest of the city
+# off, and the months still FAILED after the pass are retried after a wait.
 OUTAGE_RUN = 8
 
 
-def _fetch_month(session: Any, url: str, key: str, code: str, month: str, attempts: int = 2, sleep: Any = None) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Request one complex-month, retrying temporary provider failures without reusing a cached failure."""
+def _fetch_month(session: Any, url: str, key: str, code: str, month: str, attempts: int = 3, sleep: Any = None) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Request one complex-month, retrying temporary provider failures without reusing a cached failure.
+
+    Each retry goes out on a new connection (``reset_connection``): the gateway pins a kept-alive
+    connection to one backend node, and a failing node answers 04 to everything sent on it.
+    """
     import time
     pause = sleep or time.sleep
     forget = getattr(session, "forget", None)
+    reset = getattr(session, "reset_connection", None)
     for attempt in range(attempts):
         result = None
         try:
@@ -207,9 +213,11 @@ def _fetch_month(session: Any, url: str, key: str, code: str, month: str, attemp
             cached = result or exc.asset
             if forget and isinstance(cached, dict):
                 forget(cached)
+            if reset:
+                reset()
             if attempt == attempts - 1:
                 raise TransientProviderError(str(exc)) from None
-            pause(2 * (attempt + 1))
+            pause(1 + attempt)
     raise TransientProviderError("K-apt 제공기관 일시 오류")
 
 

@@ -89,6 +89,8 @@ def _request(session: Any, operation: str, params: dict[str, Any], attempts: int
                 raise ExternalError(f"건축HUB 응답 오류: {message[:80]}") from None
             if isinstance(cached, dict) and hasattr(session, "forget"):
                 session.forget(cached)
+            if hasattr(session, "reset_connection"):
+                session.reset_connection()  # the gateway pins a kept-alive connection to one backend node
             if attempt == attempts - 1:
                 raise ExternalError(f"건축HUB 제공기관 일시 오류: {message[:60]}") from None
             time.sleep(2 * (attempt + 1))

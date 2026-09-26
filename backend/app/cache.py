@@ -96,8 +96,28 @@ class ExternalError(RuntimeError):
 class CachedClient:
     def __init__(self,root,client=None,min_interval=1.1):
         self.root=Path(root);self.root.mkdir(parents=True,exist_ok=True)
-        self.client=client or httpx.Client(timeout=60,follow_redirects=True,headers={'User-Agent':'CarbonUrbanDSS/0.1 educational capstone'})
+        self._own_client=client is None
+        self.client=client or self._new_client()
         self.min_interval=min_interval;self.last_request=0
+
+    @staticmethod
+    def _new_client():
+        return httpx.Client(timeout=60,follow_redirects=True,headers={'User-Agent':'CarbonUrbanDSS/0.1 educational capstone'})
+
+    def reset_connection(self):
+        """Open a new connection for the next request.
+
+        The data.go.kr gateway keeps a connection on one backend node; when that node answers
+        "04 HTTP_ERROR" every request on the connection fails (measured 2026-09-26: 0/20 on one
+        kept-alive connection, 20/20 on another, about half on fresh ones). A retry on a new
+        connection can reach a healthy node."""
+        if not self._own_client:
+            return
+        try:
+            self.client.close()
+        except Exception:  # noqa: BLE001
+            pass
+        self.client=self._new_client()
 
     def get(self,provider,operation,url,params=None,api=True):
         """``api=False`` for a plain web page (e.g. a data.go.kr API description page): only the HTTP
