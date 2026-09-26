@@ -222,7 +222,7 @@ export function MapPage() {
             {classification.classes.length ? <ul className="legend-classes">{classification.classes.map((c, i) => <li key={i}><i style={{ background: c.color }} /><span>{rangeLabel(c, metric.digits, i === classification.classes.length - 1)}</span><em>{c.count.toLocaleString('ko-KR')}격자</em></li>)}</ul> : <p className="map-empty-hint">이 지표는 아직 계산할 관측 자료가 없습니다. 모든 격자를 자료 미확보(해치)로 표시합니다.</p>}
             {classification.missing > 0 && <div className="legend-missing"><i className="is-missing" /><span>자료 미확보 (0 아님)</span><em>{classification.missing.toLocaleString('ko-KR')}격자</em></div>}
             <div className="legend-coverage"><span>값 있는 격자 {classification.valued.toLocaleString('ko-KR')}/{total.toLocaleString('ko-KR')}</span><b>{formatMetric(classification.valued / Math.max(total, 1) * 100, '%', 1)}</b></div>
-            <details className="legend-def"><summary>정의와 산식</summary><p>{metric.definition}</p><code>{metric.formula}</code><p className="legend-source">출처: {metric.source}</p></details>
+            <details className="legend-def"><summary>정의·산식·활용</summary><p>{metric.definition}</p><code>{metric.formula}</code><p className="legend-use"><b>활용</b> {metric.use}</p><p className="legend-source">출처: {metric.source}</p></details>
             <p className="legend-selected"><i aria-hidden="true" />선택 격자</p>
             {visible.zoning && <div className="overlay-legend" aria-label="용도지역 범례"><div className="overlay-head"><strong>용도지역</strong>{zoningQuality && <ProvenanceBadge kind={zoningQuality} />}</div>{zoningCount ? <><ul className="zone-legend">{ZONE_LEGEND.map(([key, label, color]) => { const km2 = overlayMeta?.zoning_area_km2_by_category?.[key]; return <li key={key}><i style={{ borderColor: color }} />{label}{km2 !== undefined && <b>{km2.toFixed(1)}km², {formatMetric(zoningTotal ? km2 / zoningTotal * 100 : null, '%', 1)}</b>}</li>; })}<li><i className="is-missing" />미분류·미지정</li></ul><small>외곽선 색은 세부 용도지역(제1·2·3종 일반주거 등)을 명도로 구분합니다. VWorld LT_C_UQ111, 도형 {zoningCount.toLocaleString('ko-KR')}개, 분석 격자 내 면적.</small></> : <p className="overlay-missing" role="status">{MISSING_NOTICE.zoning}</p>}</div>}
             {visible.admin && <div className="overlay-legend" aria-label="행정동 인구 범례"><div className="overlay-head"><strong>행정동 인구밀도</strong>{adminQuality && <ProvenanceBadge kind={adminQuality} />}</div>{adminCount ? <><ul className="legend-classes compact">{densitySteps(adminMax).map(([from, to], i) => <li key={i}><i style={{ background: SEQ_RAMP[i] }} /><span>{formatMetric(from, '', 0)} ~ {formatMetric(to, '', 0)}{i < 4 ? ' 미만' : ''}</span><em>명/km²</em></li>)}</ul><small>SGIS {overlayMeta?.admin_reference_year ?? ''} 행정통계, 공식 행정동 경계. 격자로 배분하지 않습니다.</small>{adminInfo && <dl className="admin-info"><div><dt>행정동</dt><dd>{String(adminInfo.adm_name ?? '—')}</dd></div><div><dt>인구</dt><dd>{statValue(adminInfo.population, adminInfo.population_status, '명')}</dd></div><div><dt>가구</dt><dd>{statValue(adminInfo.households, adminInfo.household_status, '가구')}</dd></div><div><dt>인구밀도</dt><dd>{typeof adminInfo.population_density === 'number' ? formatMetric(adminInfo.population_density, '명/km²', 0) : '자료 없음'}</dd></div></dl>}</> : <p className="overlay-missing" role="status">{MISSING_NOTICE.admin}</p>}</div>}
@@ -270,6 +270,7 @@ function GridDetail({ props: p, year, name, metric, classification, details, det
       <h3>{metric.label}</h3>
       <p className="detail-figure">{value === null ? <MissingValue reason="이 격자에는 이 지표를 계산할 관측 자료가 없습니다." /> : <>{cls && <i className="class-swatch" style={{ background: cls.color }} aria-hidden="true" />}{formatMetric(value, '', metric.digits)}<span className="unit">{metric.unit}</span></>}</p>
       {value !== null && metric.basis(p) && <p className="muted">{metric.basis(p)}</p>}
+      <p className="metric-use"><b>활용</b> {metric.use}</p>
     </section>
     <section className="detail-section" aria-label="격자 지표">
       <h3>격자 지표 8개</h3>
@@ -299,6 +300,13 @@ function GridDetail({ props: p, year, name, metric, classification, details, det
       <h3>토지이용 (용도지역)</h3>
       {p.zone_shares && Object.keys(p.zone_shares).length ? <ShareBar shares={p.zone_shares} colors={ZONE_GROUP_COLOR} names={ZONE_NAME} rest="도시지역 외·미지정" /> : <MissingValue reason={p.zoning_status ? '조회했으나 이 격자에 도시지역 용도지역 도형이 없습니다.' : '용도지역 미수집 격자입니다.'} />}
       {p.use_share_pct && Object.keys(p.use_share_pct).length > 0 && <><h3 className="sub">건축면적 기준 건물 용도</h3><ShareBar shares={p.use_share_pct} colors={Object.fromEntries(USE_COLORS)} names={USE_NAME} /></>}
+      <h3 className="sub">건축물대장 (공식 연면적·용도)</h3>
+      {p.reg_buildings ? <dl className="fact-list">
+        <Fact label="대장 건물" value={p.reg_buildings} unit="동" why={p.reg_gfa_m2 != null ? `연면적 ${formatMetric(p.reg_gfa_m2, 'm²')}` : undefined} />
+        <Fact label="용적률 (격자 기준)" value={p.reg_far_pct} unit="%" digits={1} missingText="용적률산정연면적 없음" />
+        <Fact label="주거 연면적 비율" value={p.reg_residential_gfa_pct} unit="%" digits={1} missingText="주용도 확인 건물 없음" />
+        <Fact label="2000년 이전 준공 연면적" value={p.reg_old_gfa_pct} unit="%" digits={1} missingText="사용승인일 확인 건물 없음" />
+      </dl> : <MissingValue reason="건축물대장을 아직 받지 않았거나 이 격자에 연결된 대장 건물이 없습니다." />}
       <h3 className="sub">공동주택 (K-apt)</h3>
       <dl className="fact-list">
         <Fact label="단지·세대" value={p.complex_count ? p.complex_households : null} unit="세대" missingText="격자 안 단지 없음" why={p.complex_count ? `단지 ${p.complex_count}개` : undefined} />

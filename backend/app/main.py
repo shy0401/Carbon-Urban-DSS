@@ -272,6 +272,7 @@ def grid_energy_properties(db,year,factors):
         e=intensity.get(grid_id,{}).get('ELECTRICITY') or {};g=intensity.get(grid_id,{}).get('GAS') or {}
         p['electricity_months']=len(p['electricity_months']);p['gas_months']=len(p['gas_months']);p['energy_parcels']=len(p.pop('parcels'))
         p['electricity_complete_parcels']=e.get('complete_parcels') or 0;p['electricity_observed_parcels']=e.get('observed_parcels') or 0
+        p['electricity_suspect_parcels']=e.get('suspect_parcels') or 0
         p['electricity_area_parcels']=e.get('area_parcels') or 0;p['electricity_household_parcels']=e.get('household_parcels') or 0
         p['electricity_kwh_per_m2']=e.get('kwh_per_m2');p['electricity_kwh_per_household']=e.get('kwh_per_household')
         p['electricity_area_m2']=e.get('area_m2');p['electricity_households']=e.get('households')
@@ -297,6 +298,8 @@ def map_data(year:int=Query(DEFAULT_YEAR,ge=2000,le=2100)):
         complexes=complex_features(db)
         from .sgis_grid import grid_metric_properties
         sgis_props=grid_metric_properties(db)
+        from .register_grid import grid_register_summary,map_properties as register_properties
+        register=grid_register_summary(db)
         by_grid={}
         for feature in complexes['features']:
             c=feature['properties'];item=by_grid.setdefault(c.get('grid_id'),{'complex_count':0,'complex_households':None,'complex_gfa_m2':None,'complex_gfa_excluded':0})
@@ -305,7 +308,7 @@ def map_data(year:int=Query(DEFAULT_YEAR,ge=2000,le=2100)):
             # Only plausible published floor areas are summed; the rest are counted as excluded.
             if c.get('floor_area_status')=='OK':item['complex_gfa_m2']=(item['complex_gfa_m2'] or 0)+c['gross_floor_area_m2']
             else:item['complex_gfa_excluded']+=1
-        empty_energy={'electricity_kwh':None,'gas_kwh':None,'electricity_months':0,'gas_months':0,'energy_parcels':0,'electricity_complete_parcels':0,'electricity_observed_parcels':0,'electricity_area_parcels':0,'electricity_household_parcels':0,'electricity_kwh_per_m2':None,'electricity_kwh_per_household':None,'electricity_area_m2':None,'electricity_households':None,'gas_kwh_per_m2':None,'gas_complete_parcels':0,'gas_observed_parcels':0,'gas_area_parcels':0,'gas_area_m2':None,'electricity_kwh_annual':None,'gas_kwh_annual':None,'electricity_carbon_kg_annual':None,'electricity_carbon_kg':None,'electricity_carbon_kg_per_m2':None}
+        empty_energy={'electricity_kwh':None,'gas_kwh':None,'electricity_months':0,'gas_months':0,'energy_parcels':0,'electricity_complete_parcels':0,'electricity_observed_parcels':0,'electricity_suspect_parcels':0,'electricity_area_parcels':0,'electricity_household_parcels':0,'electricity_kwh_per_m2':None,'electricity_kwh_per_household':None,'electricity_area_m2':None,'electricity_households':None,'gas_kwh_per_m2':None,'gas_complete_parcels':0,'gas_observed_parcels':0,'gas_area_parcels':0,'gas_area_m2':None,'electricity_kwh_annual':None,'gas_kwh_annual':None,'electricity_carbon_kg_annual':None,'electricity_carbon_kg':None,'electricity_carbon_kg_per_m2':None}
         grids=[]
         for r in db.scalars(select(Grid)):
             f=dict(r.geojson);base=dict(r.properties);grid_id=base.get('id',r.id)
@@ -322,13 +325,15 @@ def map_data(year:int=Query(DEFAULT_YEAR,ge=2000,le=2100)):
             p['zone_shares']=z['shares'] if z else None
             b=buildings.get(grid_id)
             if b:
-                p.update(building_source='VWORLD',building_status=b['status'],building_count=b['building_count'],footprint_m2=b['footprint_m2'],coverage_pct=b['coverage_pct'],far_est_pct=b['far_est_pct'],floor_area_est_m2=b['floor_area_est_m2'],avg_floors=b['avg_floors'],max_floors=b['max_floors'],floors_known_pct=b['floors_known_pct'],building_density=b['density_per_km2'],residential_building_share=b['residential_share_pct'],dominant_use=b['dominant_use'],use_share_pct=b['category_share_pct'])
+                p.update(building_source='VWORLD',building_status=b['status'],building_count=b['building_count'],footprint_m2=b['footprint_m2'],coverage_pct=b['coverage_pct'],far_est_pct=b['far_est_pct'],floor_area_est_m2=b['floor_area_est_m2'],avg_floors=b['avg_floors'],max_floors=b['max_floors'],floors_known_pct=b['floors_known_pct'],building_density=b['density_per_km2'],residential_building_share=b['residential_share_pct'],dominant_use=b['dominant_use'],use_share_pct=b['category_share_pct'],use_known_pct=b.get('use_known_pct'))
             else:
                 # Fallback: OSM apartment outlines only (not every building).
-                p.update(building_source='OSM' if base.get('building_count') else None,building_status=None,building_count=base.get('building_count'),footprint_m2=None,coverage_pct=None,far_est_pct=None,floor_area_est_m2=None,avg_floors=None,max_floors=None,floors_known_pct=None,building_density=None,residential_building_share=None,dominant_use=None,use_share_pct=None)
+                p.update(building_source='OSM' if base.get('building_count') else None,building_status=None,building_count=base.get('building_count'),footprint_m2=None,coverage_pct=None,far_est_pct=None,floor_area_est_m2=None,avg_floors=None,max_floors=None,floors_known_pct=None,building_density=None,residential_building_share=None,dominant_use=None,use_share_pct=None,use_known_pct=None)
             p.update(by_grid.get(grid_id,{'complex_count':0,'complex_households':None,'complex_gfa_m2':None,'complex_gfa_excluded':0}))
             # Parent SGIS 1km cell densities/shares (official, noisy); absent when no bundle is loaded.
             p.update(sgis_props.get(grid_id,{}))
+            # 건축물대장 표제부 linked to this grid: official floor area, FAR floor area, use mix.
+            p.update(register_properties(register.get(grid_id)))
             f['properties']=p;grids.append(f)
         official_buildings=any(b['building_count'] for b in buildings.values())
         spatial_path=DATA/'spatial.json';spatial=json.loads(spatial_path.read_text(encoding='utf-8')) if spatial_path.exists() else {}
@@ -343,6 +348,7 @@ def map_data(year:int=Query(DEFAULT_YEAR,ge=2000,le=2100)):
             'boundary':boundary,'boundary_source':official_boundary['features'][0]['properties']['source'] if official_boundary else 'OpenStreetMap 행정경계(대체 자료)',
             'complexes':complexes,'complex_floor_area_issues':sum(1 for f in complexes['features'] if f['properties'].get('floor_area_status')!='OK'),
             'factors':{'electricity':{'value':electricity_factor['factor'],'unit':electricity_factor['factor_unit'],'source':electricity_factor.get('source'),'reference_year':electricity_factor.get('reference_year')} if electricity_factor else None,'gas':None if not factors.get('GAS') else {'value':factors['GAS']['factor'],'unit':factors['GAS']['factor_unit']}},
+            'register':{'grids':len(register),'buildings':sum(r['buildings'] for r in register.values()),'source':'건축HUB 건축물대장 표제부 (격자 연결분)'} if register else None,
             'sgis_grid':{'year':next((v.get('sgis1k_year') for v in sgis_props.values()),None),'source':'SGIS 격자 통계 1km (공공데이터포털 15141768)','note':'소속 1km 공식 격자의 밀도·비율이며 500m로 나눈 값이 아닙니다. 비밀보호 잡음(±7) 포함.'} if sgis_props else None,
             'selected_sector':serialize(sector) if sector else None,'center':[127.148,35.8242],'crs':'EPSG:5179','grid_size_m':500,'grid_area_m2':250000,'year':year,'offline_mode':offline_mode(),
         }

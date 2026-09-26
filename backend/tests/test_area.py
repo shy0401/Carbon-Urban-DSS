@@ -24,13 +24,14 @@ YEARS = list(range(2017, 2024))
 
 
 def energy_rows():
+    # realistic magnitudes: 100,000 kWh/month for 500 households = 2,400 kWh per household-year
     rows = []
     for year in range(2018, 2023):
         for month in range(1, 13):
-            rows.append({'use_ym': f'{year}{month:02d}', 'energy_type': 'ELECTRICITY', 'usage_kwh': 100.0, 'grid_id': 'g1', 'kapt_code': 'OLD', 'parcel': 'p-old'})
+            rows.append({'use_ym': f'{year}{month:02d}', 'energy_type': 'ELECTRICITY', 'usage_kwh': 100000.0, 'grid_id': 'g1', 'kapt_code': 'OLD', 'parcel': 'p-old'})
     for year in (2020, 2021, 2022):
         for month in range(7 if year == 2020 else 1, 13):
-            rows.append({'use_ym': f'{year}{month:02d}', 'energy_type': 'ELECTRICITY', 'usage_kwh': 50.0, 'grid_id': 'g2', 'kapt_code': 'NEW', 'parcel': 'p-new'})
+            rows.append({'use_ym': f'{year}{month:02d}', 'energy_type': 'ELECTRICITY', 'usage_kwh': 50000.0, 'grid_id': 'g2', 'kapt_code': 'NEW', 'parcel': 'p-new'})
     return rows
 
 
@@ -68,11 +69,11 @@ def test_annual_values_use_only_complete_parcels_and_never_fill_missing_years():
     history = build_history(area, YEARS, inputs())
     energy = history['energy']
     assert energy[2017]['electricity']['kwh'] is None  # no observation: missing, not 0
-    assert energy[2020]['electricity']['kwh'] == 1200.0  # NEW has 6 months only → excluded
+    assert energy[2020]['electricity']['kwh'] == 1200000.0  # NEW has 6 months only → excluded
     assert energy[2020]['electricity']['partial_parcels'] == 1
-    assert energy[2021]['electricity']['by_cohort'] == {'2010': 1200.0, '2020': 600.0}
-    assert energy[2021]['electricity']['intensity_kwh_per_m2'] == pytest.approx(1800 / 80000, abs=1e-3)
-    assert energy[2021]['electricity_carbon_kgco2eq'] == 900.0
+    assert energy[2021]['electricity']['by_cohort'] == {'2010': 1200000.0, '2020': 600000.0}
+    assert energy[2021]['electricity']['intensity_kwh_per_m2'] == pytest.approx(1800000 / 80000, abs=1e-3)
+    assert energy[2021]['electricity_carbon_kgco2eq'] == 900000.0
     assert history['population'][2021]['population'] == 1500  # 행정동 row only, 구 합계 excluded
     assert history['population'][2020]['population'] is None
     assert history['stock'][2019]['gfa_m2'] == 50000.0 and history['stock'][2020]['gfa_m2'] == 80000.0
@@ -84,10 +85,10 @@ def test_before_after_separates_existing_buildings_from_the_new_development():
     result = before_after(history, 2020, 3)
     m = result['metrics']['electricity']
     assert result['before_years'] == [2017, 2018, 2019] and result['after_years'] == [2021, 2022, 2023]
-    assert m['before_total_kwh'] == 1200.0 and m['after_total_kwh'] == 1800.0
+    assert m['before_total_kwh'] == 1200000.0 and m['after_total_kwh'] == 1800000.0
     assert m['total_change_pct'] == 50.0
     assert m['existing_change_pct'] == 0.0
-    assert m['new_development_kwh'] == 600.0 and m['new_share_pct'] == pytest.approx(33.3, abs=0.1)
+    assert m['new_development_kwh'] == 600000.0 and m['new_share_pct'] == pytest.approx(33.3, abs=0.1)
     est = result['metrics']['estimated']
     assert est['added_gfa_m2'] == 30000.0 and est['event_change_pct'] == 60.0
 
@@ -96,9 +97,9 @@ def test_effort_is_the_exact_gap_to_the_target():
     area = resolve_area({'type': 'admin', 'code': '35012650'}, GRIDS, POINTS, ADMIN, ZONING)
     history = build_history(area, YEARS, inputs())
     result = effort(history, {'added_floor_area_m2': 40000}, 40)
-    intensity = 1800 / 80000
-    base_c = 1800 * 0.5
-    bau_c = (1800 + intensity * 40000) * 0.5
+    intensity = 1800000 / 80000
+    base_c = 1800000 * 0.5
+    bau_c = (1800000 + intensity * 40000) * 0.5
     need = bau_c - base_c * 0.6
     assert result['baseline_mode'] == 'OBSERVED' and result['baseline_year'] == 2022
     assert result['required_reduction_kgco2eq'] == pytest.approx(need, abs=0.1)

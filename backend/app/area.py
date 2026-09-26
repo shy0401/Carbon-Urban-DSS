@@ -23,6 +23,8 @@ from typing import Any, Iterable
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from .grid_metrics import electricity_plausibility
+
 ZONE_LABEL = {"RESIDENTIAL": "주거지역", "COMMERCIAL": "상업지역", "INDUSTRIAL": "공업지역", "GREEN": "녹지지역", "OTHER": "관리·농림·기타"}
 EARTH_RADIUS_M = 6_371_008.8
 
@@ -245,6 +247,14 @@ def yearly_energy(rows: Iterable[dict[str, Any]], area: dict[str, Any], complexe
         for etype, key in (("ELECTRICITY", "electricity"), ("GAS", "gas")):
             parcels = {p: m for (p, t, y), m in months.items() if t == etype and y == year}
             complete = {p: m for p, m in parcels.items() if len(m) == 12}
+            suspect = []
+            if etype == "ELECTRICITY":
+                # Partial meters (common areas only) or meters with other buildings: kept out of totals.
+                for parcel, m in list(complete.items()):
+                    info = complexes.get(parcel_code.get(parcel) or "")
+                    if info and electricity_plausibility(sum(m.values()), info.get("households"))[0] == "SUSPECT":
+                        suspect.append(parcel)
+                        del complete[parcel]
             total = sum(sum(m.values()) for m in complete.values()) if complete else None
             by_cohort: dict[str, float] = defaultdict(float)
             area_m2 = 0.0
@@ -265,7 +275,8 @@ def yearly_energy(rows: Iterable[dict[str, Any]], area: dict[str, Any], complexe
             entry[key] = {
                 "kwh": round(total, 1) if total is not None else None,
                 "observed_parcels": len(parcels), "complete_parcels": len(complete),
-                "partial_parcels": len(parcels) - len(complete),
+                "partial_parcels": len(parcels) - len(complete) - len(suspect),
+                "suspect_parcels": len(suspect),
                 "months_max": max((len(m) for m in parcels.values()), default=0),
                 "by_cohort": {k: round(v, 1) for k, v in sorted(by_cohort.items())},
                 "intensity_kwh_per_m2": round(area_kwh / area_m2, 6) if area_m2 else None,

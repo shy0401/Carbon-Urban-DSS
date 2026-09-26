@@ -19,6 +19,8 @@ export interface MetricDef {
   /** Fixed class lower bounds (after the first class). Default: quantiles of the data. */
   breaks?: number[];
   source: string;
+  /** 활용: 이 지표로 무엇을 판단하고 어디에 쓰는지. */
+  use: string;
   note?: string;
 }
 
@@ -28,20 +30,24 @@ const GRID = '250,000 m²';
 export const SGIS_GROUP = '인구·주택 (SGIS 1km)';
 const SGIS_SOURCE = 'SGIS 격자 통계 1km (공공데이터포털 15141768)';
 const SGIS_NOTE = '이 500m 격자가 속한 1km 공식 격자의 값입니다. 같은 1km 격자의 500m 격자 4개는 같은 값이며, 500m로 나눈 값이 아닙니다. 비밀보호 잡음(인구 ±7)이 들어 있습니다.';
+const suspectCount = (p: GridProps) => (typeof p.electricity_suspect_parcels === 'number' ? p.electricity_suspect_parcels : 0);
+const suspectNote = (p: GridProps) => (suspectCount(p) ? ` · 이상값 지번 ${suspectCount(p)}곳 제외` : '');
 const sgisBasis = (p: GridProps, extra: string | null) =>
   p.sgis1k_status === 'OBSERVED' ? `1km 격자 ${p.sgis1k_code} · ${p.sgis1k_year}년${extra ? ` · ${extra}` : ''}` : null;
 export const PERCENT_BREAKS = [20, 40, 60, 80];
 
-export const METRIC_GROUPS = ['에너지 관측', '에너지 원단위', '탄소', '도시 형태', '토지이용', SGIS_GROUP, '데이터 품질'] as const;
+export const REGISTER_GROUP = '건축물대장';
+export const METRIC_GROUPS = ['에너지 관측', '에너지 원단위', '탄소', '도시 형태', REGISTER_GROUP, '토지이용', SGIS_GROUP, '데이터 품질'] as const;
 
 export const METRICS: MetricDef[] = [
   {
     key: 'electricity_kwh_annual', label: '연간 전력 사용량', unit: 'kWh/년', group: '에너지 관측', ramp: 'load', digits: 0,
     value: (p) => n(p.electricity_kwh_annual),
-    definition: '격자 안에서 12개월 모두 관측된 지번(공동주택 단지)의 전력 사용량 합계입니다. 격자 안 모든 건물의 합이 아닙니다.',
+    definition: '격자 안에서 12개월 모두 관측된 지번(공동주택 단지)의 전력 사용량 합계입니다. 격자 안 모든 건물의 합이 아닙니다. 세대당 연 600kWh 미만(공용부만 계측) 또는 18,000kWh 초과(다른 건물 포함)인 지번은 이상값으로 빼고 원자료에만 남깁니다.',
     formula: 'Σ 월별 전력(kWh), 12개월 관측 지번만',
-    basis: (p) => p.electricity_complete_parcels ? `12개월 관측 지번 ${p.electricity_complete_parcels}곳 합계${p.electricity_observed_parcels > p.electricity_complete_parcels ? ` · 일부 월만 관측된 ${p.electricity_observed_parcels - p.electricity_complete_parcels}곳 제외` : ''}` : null,
+    basis: (p) => p.electricity_complete_parcels ? `12개월 관측 지번 ${p.electricity_complete_parcels}곳 합계${suspectNote(p)}${p.electricity_observed_parcels > p.electricity_complete_parcels + suspectCount(p) ? ` · 일부 월만 관측된 ${p.electricity_observed_parcels - p.electricity_complete_parcels - suspectCount(p)}곳 제외` : ''}` : null,
     source: '건축HUB 건물에너지 · K-apt 월별 에너지',
+    use: '전력 수요가 큰 격자를 찾고 격자끼리 운영탄소 규모를 비교합니다. 관측된 단지만의 합이라 격자 전체 수요가 아니므로 원단위와 함께 봅니다.',
   },
   {
     key: 'gas_kwh_annual', label: '연간 가스 사용량', unit: 'kWh/년', group: '에너지 관측', ramp: 'load', digits: 0,
@@ -50,6 +56,7 @@ export const METRICS: MetricDef[] = [
     formula: 'Σ 월별 가스(kWh), 12개월 관측 지번만',
     basis: (p) => p.gas_complete_parcels ? `12개월 관측 지번 ${p.gas_complete_parcels}곳 합계` : null,
     source: '건축HUB 건물에너지',
+    use: '난방(가스) 수요가 큰 격자를 찾습니다. 가스 탄소는 배출계수를 확정한 뒤 계산합니다.',
   },
   {
     key: 'electricity_kwh_per_m2', label: '전력 원단위', unit: 'kWh/m²·년', group: '에너지 원단위', ramp: 'load', digits: 1,
@@ -58,14 +65,16 @@ export const METRICS: MetricDef[] = [
     formula: 'Σ 연간 전력 ÷ Σ 연면적 (같은 지번 집합)',
     basis: (p) => p.electricity_area_m2 ? `지번 ${p.electricity_area_parcels}곳 · 연면적 ${fmt(p.electricity_area_m2, 'm²')} 기준` : null,
     source: '에너지 관측 ÷ K-apt 연면적',
+    use: '규모를 뺀 전력 효율을 비교해 개선 우선순위를 정합니다. 계획 연면적에 곱하면 신축 전력 부하가 나오며, 지역 시뮬레이션의 추정 기준값으로 쓰입니다.',
   },
   {
     key: 'electricity_kwh_per_household', label: '세대당 전력', unit: 'kWh/세대·년', group: '에너지 원단위', ramp: 'load', digits: 0,
     value: (p) => n(p.electricity_kwh_per_household),
     definition: '공동주택 1세대당 연간 전력 사용량(공용 포함)입니다. 월평균은 이 값 ÷ 12입니다.',
     formula: 'Σ 연간 전력 ÷ Σ 세대수 (같은 지번 집합)',
-    basis: (p) => p.electricity_households ? `지번 ${p.electricity_household_parcels}곳 · ${fmt(p.electricity_households, '세대')} 기준 · 월평균 ${fmt((p.electricity_kwh_per_household ?? 0) / 12, 'kWh', 0)}` : null,
+    basis: (p) => p.electricity_households ? `지번 ${p.electricity_household_parcels}곳 · ${fmt(p.electricity_households, '세대')} 기준 · 월평균 ${fmt((p.electricity_kwh_per_household ?? 0) / 12, 'kWh', 0)}${suspectNote(p)}` : null,
     source: '에너지 관측 ÷ K-apt 세대수',
+    use: '세대 규모가 다른 단지를 같은 기준으로 비교합니다. 계획 세대수에 곱해 신규 개발의 전력 수요를 가늠합니다.',
   },
   {
     key: 'gas_kwh_per_m2', label: '가스 원단위', unit: 'kWh/m²·년', group: '에너지 원단위', ramp: 'load', digits: 1,
@@ -74,6 +83,7 @@ export const METRICS: MetricDef[] = [
     formula: 'Σ 연간 가스 ÷ Σ 연면적 (같은 지번 집합)',
     basis: (p) => p.gas_area_m2 ? `지번 ${p.gas_area_parcels}곳 · 연면적 ${fmt(n(p.gas_area_m2), 'm²')} 기준` : null,
     source: '건축HUB ÷ K-apt 연면적',
+    use: '난방 효율을 비교합니다. 노후 주택 비율과 함께 보면 단열 개보수 후보를 고를 수 있습니다.',
   },
   {
     key: 'electricity_carbon_t', label: '전력 탄소배출량', unit: 'tCO₂eq/년', group: '탄소', ramp: 'load', digits: 1,
@@ -82,6 +92,7 @@ export const METRICS: MetricDef[] = [
     formula: '연간 전력(kWh) × 0.4541 kgCO₂eq/kWh ÷ 1,000',
     basis: (p) => p.electricity_kwh_annual ? `${fmt(n(p.electricity_kwh_annual), 'kWh')} × 0.4541 (GIR 2024 소비단)` : null,
     source: 'GIR 2024 승인 국가 온실가스 배출계수',
+    use: '격자의 전력 운영탄소 규모입니다. 감축 목표를 세울 때 기준 배출량으로 씁니다.',
   },
   {
     key: 'electricity_carbon_kg_per_m2', label: '전력 탄소 원단위', unit: 'kgCO₂eq/m²·년', group: '탄소', ramp: 'load', digits: 1,
@@ -90,6 +101,7 @@ export const METRICS: MetricDef[] = [
     formula: '전력 원단위(kWh/m²) × 0.4541',
     basis: (p) => p.electricity_area_m2 ? `지번 ${p.electricity_area_parcels}곳 · 연면적 ${fmt(p.electricity_area_m2, 'm²')} 기준` : null,
     source: '전력 원단위 × GIR 계수',
+    use: '연면적당 탄소로 효율을 비교하고, 신축에 요구할 목표 원단위를 정할 때 참고합니다.',
   },
   {
     key: 'building_count', label: '건물 수', unit: '동', group: '도시 형태', ramp: 'seq', digits: 0,
@@ -98,6 +110,7 @@ export const METRICS: MetricDef[] = [
     formula: '격자 안 건물 대표점 개수',
     basis: (p) => p.building_source === 'OSM' ? 'OSM 공동주택 윤곽만 포함 (전체 건물 아님)' : p.building_count !== null ? `밀도 ${fmt(n(p.building_density), '동/km²', 0)}` : null,
     source: 'VWorld LT_C_SPBD (대체: OSM)',
+    use: '개발 밀도와 필지가 얼마나 잘게 나뉘었는지 봅니다. 건물은 많은데 에너지 관측이 없으면 소규모 건물 위주라 관측 공백입니다.',
   },
   {
     key: 'coverage_pct', label: '건폐율 근사', unit: '%', group: '도시 형태', ramp: 'seq', digits: 1,
@@ -106,6 +119,7 @@ export const METRICS: MetricDef[] = [
     formula: `Σ 건축면적 ÷ ${GRID} × 100`,
     basis: (p) => p.footprint_m2 !== null ? `건축면적 ${fmt(p.footprint_m2, 'm²')} ÷ ${GRID}` : null,
     source: 'VWorld 건물 윤곽 면적',
+    use: '땅을 건물이 얼마나 덮었는지 보고 추가 개발이나 녹지 여력을 가늠합니다.',
   },
   {
     key: 'far_est_pct', label: '추정 용적률', unit: '%', group: '도시 형태', ramp: 'seq', digits: 1,
@@ -114,6 +128,7 @@ export const METRICS: MetricDef[] = [
     formula: `Σ(건축면적 × 지상층수) ÷ ${GRID} × 100`,
     basis: (p) => p.floor_area_est_m2 !== null ? `추정 연면적 ${fmt(p.floor_area_est_m2, 'm²')} · 층수 확인 ${fmt(p.floors_known_pct, '%', 0)}` : null,
     source: 'VWorld 건물 윤곽 × 지상층수',
+    use: '연면적 규모로 본 개발 밀도입니다. 추가 개발 여지를 가늠하는 데 씁니다. 건축물대장이 있으면 공식 연면적 기반 용적률을 우선 봅니다.',
   },
   {
     key: 'avg_floors', label: '평균 지상층수', unit: '층', group: '도시 형태', ramp: 'seq', digits: 1,
@@ -122,6 +137,7 @@ export const METRICS: MetricDef[] = [
     formula: 'Σ 지상층수 ÷ 층수 확인 건물 수',
     basis: (p) => p.avg_floors !== null ? `최고 ${fmt(p.max_floors, '층')} · 층수 확인 ${fmt(p.floors_known_pct, '%', 0)}` : null,
     source: 'VWorld 건물 지상층수',
+    use: '고층 공동주택 지역과 저층 주거지를 구분하고 스카이라인·일조 검토에 씁니다.',
   },
   {
     key: 'complex_households', label: '공동주택 세대수', unit: '세대', group: '도시 형태', ramp: 'seq', digits: 0,
@@ -130,6 +146,34 @@ export const METRICS: MetricDef[] = [
     formula: 'Σ 단지 세대수',
     basis: (p) => p.complex_count ? `단지 ${p.complex_count}개` : null,
     source: 'K-apt 공동주택 기본정보',
+    use: '공동주택 세대 규모를 보고, 인구 대신 세대 기준으로 부하를 추정합니다.',
+  },
+  {
+    key: 'reg_far_pct', label: '용적률 (건축물대장)', unit: '%', group: REGISTER_GROUP, ramp: 'seq', digits: 1,
+    value: (p) => n(p.reg_far_pct), breaks: [25, 50, 100, 200],
+    definition: `격자 안 건물의 공식 용적률산정연면적(건축물대장)을 격자 면적으로 나눈 값입니다. 필지 대지면적 기준의 법정 용적률과 다르지만, 층수로 추정한 용적률보다 정확합니다.`,
+    formula: `Σ 용적률산정연면적 ÷ ${GRID} × 100`,
+    basis: (p) => (p.reg_buildings ? `대장 건물 ${fmt(n(p.reg_buildings), '동')} · 연면적 ${fmt(n(p.reg_gfa_m2), 'm²')}` : null),
+    source: '건축HUB 건축물대장 표제부',
+    use: '공식 연면적으로 본 개발 밀도입니다. 추가 개발 여지와 에너지 부하 추정의 연면적 근거로 씁니다.',
+  },
+  {
+    key: 'reg_residential_gfa_pct', label: '주거 연면적 비율', unit: '%', group: REGISTER_GROUP, ramp: 'seq', digits: 1,
+    value: (p) => n(p.reg_residential_gfa_pct), breaks: PERCENT_BREAKS,
+    definition: '주용도가 확인된 대장 건물의 연면적 중 단독·공동주택의 비율입니다.',
+    formula: '주거 연면적 ÷ 용도 확인 연면적 × 100',
+    basis: (p) => (p.reg_use_gfa_pct && typeof p.reg_use_gfa_pct === 'object' ? Object.entries(p.reg_use_gfa_pct as Record<string, number>).slice(0, 3).map(([k, v]) => `${k} ${v.toFixed(1)}%`).join(' · ') : null),
+    source: '건축HUB 건축물대장 표제부',
+    use: '주거와 상업·업무가 얼마나 섞였는지 봅니다. 상업이 섞인 격자는 전력 원단위가 높게 나오므로 해석할 때 함께 봅니다.',
+  },
+  {
+    key: 'reg_old_gfa_pct', label: '2000년 이전 준공 연면적 비율', unit: '%', group: REGISTER_GROUP, ramp: 'seq', digits: 1,
+    value: (p) => n(p.reg_old_gfa_pct), breaks: PERCENT_BREAKS,
+    definition: '사용승인일이 확인된 대장 건물의 연면적 중 1999년 이전에 사용승인된 비율입니다(모든 용도).',
+    formula: '1999년 이전 사용승인 연면적 ÷ 사용승인일 확인 연면적 × 100',
+    basis: (p) => (p.reg_buildings ? `대장 건물 ${fmt(n(p.reg_buildings), '동')}` : null),
+    source: '건축HUB 건축물대장 표제부',
+    use: '노후 건물이 많은 곳, 곧 그린리모델링·개보수 우선 지역을 찾습니다.',
   },
   {
     key: 'residential_zone_ratio', label: '주거지역 비율', unit: '%', group: '토지이용', ramp: 'seq', digits: 1,
@@ -138,14 +182,16 @@ export const METRICS: MetricDef[] = [
     formula: `주거지역 ∩ 격자 면적 ÷ ${GRID} × 100`,
     basis: (p) => p.zone_shares ? Object.entries(p.zone_shares).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${ZONE_NAME[k] ?? k} ${v.toFixed(1)}%`).join(' · ') : null,
     source: 'VWorld LT_C_UQ111 용도지역',
+    use: '법정 용도지역 구성으로 허용되는 개발 유형을 1차로 확인합니다(법적 판단은 별도). 주거지역인데 원단위가 높은 곳은 주거 에너지 개선 대상입니다.',
   },
   {
     key: 'residential_building_share', label: '주거용 건물 비중', unit: '%', group: '토지이용', ramp: 'seq', digits: 1,
     value: (p) => n(p.residential_building_share), breaks: PERCENT_BREAKS,
-    definition: '격자 안 건물 건축면적 중 주거용(단독·공동주택) 건물의 비율입니다.',
-    formula: '주거용 건축면적 ÷ 전체 건축면적 × 100',
+    definition: '용도가 확인된 건물의 건축면적 중 주거용(단독·공동주택)의 비율입니다. VWorld 도로명주소 건물 레이어에는 용도코드가 없어 대부분 결측이며, 건축물대장을 받으면 "주거 연면적 비율"을 대신 씁니다.',
+    formula: '주거용 건축면적 ÷ 용도 확인 건축면적 × 100',
     basis: (p) => p.use_share_pct ? Object.entries(p.use_share_pct).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, v]) => `${USE_NAME[k] ?? k} ${v.toFixed(1)}%`).join(' · ') : null,
     source: 'VWorld 건물용도코드',
+    use: '실제 건물 쓰임을 용도지역과 비교합니다.',
   },
   {
     key: 'sgis_pop_density', label: '인구밀도', unit: '명/km²', group: SGIS_GROUP, ramp: 'seq', digits: 0,
@@ -154,6 +200,7 @@ export const METRICS: MetricDef[] = [
     formula: '1km 격자 총인구(to_in_001) ÷ 1 km²',
     basis: (p) => sgisBasis(p, p.sgis1k_households != null ? `가구 ${fmt(p.sgis1k_households, '')}` : null),
     breaks: [100, 1000, 5000, 10000], source: SGIS_SOURCE,
+    use: '인구가 많은 곳의 생활 에너지 수요와 공공시설 배치를 검토합니다. 에너지 관측이 없는 격자에서도 수요 규모를 가늠할 수 있습니다.',
   },
   {
     key: 'sgis_housing_density', label: '주택밀도', unit: '호/km²', group: SGIS_GROUP, ramp: 'seq', digits: 0,
@@ -162,6 +209,7 @@ export const METRICS: MetricDef[] = [
     formula: '1km 격자 총주택(to_ho_001) ÷ 1 km²',
     basis: (p) => sgisBasis(p, null),
     breaks: [50, 500, 2000, 4000], source: SGIS_SOURCE,
+    use: '주택이 얼마나 밀집했는지로 주거 에너지 수요 규모를 봅니다.',
   },
   {
     key: 'sgis_worker_density', label: '종사자밀도', unit: '명/km²', group: SGIS_GROUP, ramp: 'seq', digits: 0,
@@ -170,6 +218,7 @@ export const METRICS: MetricDef[] = [
     formula: '1km 격자 총종사자(to_em_020) ÷ 1 km²',
     basis: (p) => sgisBasis(p, p.sgis1k_businesses != null ? `사업체 ${fmt(p.sgis1k_businesses, '곳')}` : null),
     breaks: [100, 500, 2000, 5000], source: SGIS_SOURCE,
+    use: '상업·업무 활동의 크기입니다. 주간 전력 수요, 그리고 주거 원단위에 상업이 섞였는지 판단할 때 씁니다.',
   },
   {
     key: 'sgis_elderly_pct', label: '65세 이상 비율', unit: '%', group: SGIS_GROUP, ramp: 'seq', digits: 1,
@@ -177,6 +226,7 @@ export const METRICS: MetricDef[] = [
     definition: `${SGIS_NOTE} 연령별 인구 합이 20명 미만이면 잡음이 커서 비율을 내지 않습니다.`,
     formula: '65세 이상 인구(in_age_014~021) ÷ 연령별 인구 합 × 100',
     basis: (p) => sgisBasis(p, null), source: SGIS_SOURCE,
+    use: '냉난방 취약계층이 많은 곳을 찾아 에너지 복지 우선 지역을 정합니다.',
   },
   {
     key: 'sgis_single_household_pct', label: '1인가구 비율', unit: '%', group: SGIS_GROUP, ramp: 'seq', digits: 1,
@@ -184,6 +234,7 @@ export const METRICS: MetricDef[] = [
     definition: `${SGIS_NOTE} 총가구가 20 미만이면 비율을 내지 않습니다.`,
     formula: '1인가구(ga_sd_005) ÷ 총가구(to_ga_001) × 100',
     basis: (p) => sgisBasis(p, null), source: SGIS_SOURCE,
+    use: '세대당 에너지를 해석할 때 참고합니다(1인가구는 세대당 사용량이 낮음). 소형 주택 수요도 봅니다.',
   },
   {
     key: 'sgis_old_housing_pct', label: '2000년 이전 주택 비율', unit: '%', group: SGIS_GROUP, ramp: 'seq', digits: 1,
@@ -191,6 +242,7 @@ export const METRICS: MetricDef[] = [
     definition: `${SGIS_NOTE} 1999년 이전에 지어진 주택의 비율입니다. 노후 주택이 많은 곳은 개보수 효과를 검토할 후보입니다.`,
     formula: '건축연도 1999년 이전 주택(ho_yr_001~003) ÷ 건축연도별 주택 합 × 100',
     basis: (p) => sgisBasis(p, null), source: SGIS_SOURCE,
+    use: '노후 주택이 많은 곳은 단열 개보수(그린리모델링) 우선 지역입니다.',
   },
   {
     key: 'sgis_apartment_pct', label: '아파트 비율', unit: '%', group: SGIS_GROUP, ramp: 'seq', digits: 1,
@@ -198,6 +250,7 @@ export const METRICS: MetricDef[] = [
     definition: `${SGIS_NOTE} K-apt 에너지 관측이 대표하는 범위(아파트)가 격자 주택의 얼마인지 볼 때 씁니다.`,
     formula: '아파트(ho_gb_003) ÷ 주택 유형별 합 × 100',
     basis: (p) => sgisBasis(p, null), source: SGIS_SOURCE,
+    use: 'K-apt·건축HUB 관측(아파트)이 격자 주택을 얼마나 대표하는지 봅니다. 낮으면 관측이 격자를 잘 대표하지 못합니다.',
   },
   {
     key: 'completeness', label: '에너지 관측 완전성', unit: '%', group: '데이터 품질', ramp: 'gain', digits: 0,
@@ -206,6 +259,7 @@ export const METRICS: MetricDef[] = [
     formula: '(전력 관측 월 + 가스 관측 월) ÷ 24 × 100',
     basis: (p) => `전력 ${p.electricity_months}/12개월 · 가스 ${p.gas_months}/12개월`,
     source: '에너지 관측 월 수',
+    use: '이 격자 에너지 값의 신뢰도입니다. 낮으면 에너지 지표를 조심해서 해석합니다.',
   },
 ];
 

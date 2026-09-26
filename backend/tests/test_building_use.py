@@ -33,6 +33,10 @@ def test_grid_indicators_keep_numerators_and_only_use_known_floors():
     assert g1["avg_floors"] == 9.0 and g1["max_floors"] == 15
     assert g1["category_share_pct"] == {"RESIDENTIAL": 75.0, "COMMERCIAL": 25.0}
     assert g1["dominant_use"] == "RESIDENTIAL"
+    assert g1["residential_share_pct"] == 75.0 and g1["use_known_pct"] == 100.0
+    # No use code at all (VWorld LT_C_SPBD): unknown, not "0% residential".
+    unknown = summarize_grid_buildings([{"grid_id": "g", "footprint_m2": 300, "above_floors": 1, "use_category": None}])["g"]
+    assert unknown["residential_share_pct"] is None and unknown["dominant_use"] is None and unknown["use_known_pct"] == 0.0
     # Requested without buildings: zeros; never requested: absent.
     assert summary["g2"]["building_count"] == 0 and summary["g2"]["far_est_pct"] is None
     assert "g3" not in summary

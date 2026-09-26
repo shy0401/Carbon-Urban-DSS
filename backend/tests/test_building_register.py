@@ -82,3 +82,19 @@ def test_unapproved_service_stops_with_an_auth_message(monkeypatch, tmp_path):
     with pytest.raises(ExternalError):
         collect_register(db, 'smoke')
     assert db.get(DataSource, 'building_official').status == 'NEEDS_API_APPROVAL'
+
+
+def test_grid_register_summary_uses_known_values_only():
+    from app.register_grid import map_properties, summarize
+    rows = [
+        {"grid_id": "g", "use": "공동주택", "gfa": 30000.0, "far_gfa": 24000.0, "approval_year": 1995, "energy_grade": None},
+        {"grid_id": "g", "use": "제2종근린생활시설", "gfa": 10000.0, "far_gfa": 9000.0, "approval_year": 2015, "energy_grade": "1+"},
+        {"grid_id": "g", "use": None, "gfa": None, "far_gfa": None, "approval_year": None, "energy_grade": None},
+        {"grid_id": None, "use": "공동주택", "gfa": 99999.0, "far_gfa": 1.0, "approval_year": 2000, "energy_grade": None},
+    ]
+    g = summarize(rows)["g"]
+    assert g["buildings"] == 3 and g["gfa_m2"] == 40000.0 and g["far_gfa_m2"] == 33000.0
+    assert g["far_pct"] == 13.2  # 33,000 / 250,000
+    assert g["residential_gfa_pct"] == 75.0 and g["dominant_use"] == "주거"
+    assert g["old_gfa_pct"] == 75.0  # 1995 building: 30,000 of 40,000 dated m²
+    assert map_properties(None)["reg_far_pct"] is None  # no register: missing, not 0

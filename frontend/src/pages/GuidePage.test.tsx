@@ -2,6 +2,8 @@ import { render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 import { GUIDE_SECTIONS, GuidePage } from './GuidePage';
+import { MAP_LAYERS } from '../lib/mapLayers';
+import { METRICS } from '../lib/mapMetrics';
 
 describe('GuidePage', () => {
   it('목차의 모든 절이 본문에 있고, 목차 링크는 해당 절을 가리킨다', () => {
@@ -21,5 +23,12 @@ describe('GuidePage', () => {
     expect(screen.getAllByText(/0으로 채우지 않습니다/).length).toBeGreaterThan(0);
     expect(screen.getByRole('link', { name: '지역 시뮬레이션 열기' })).toHaveAttribute('href', '/area');
     expect(screen.getByText('DATA_GO_KR_SERVICE_KEY')).toBeInTheDocument();
+  });
+
+  it('지도의 모든 지표와 레이어를 무엇인지·어떻게 쓰는지와 함께 나열한다', () => {
+    render(<MemoryRouter><GuidePage /></MemoryRouter>);
+    const section = document.getElementById('map-info') as HTMLElement;
+    for (const metric of METRICS) expect(within(section).getAllByText(metric.use).length).toBeGreaterThan(0);
+    for (const layer of MAP_LAYERS) expect(within(section).getByText(layer.what)).toBeInTheDocument();
   });
 });

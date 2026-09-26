@@ -15,6 +15,25 @@ MIN_GFA_PER_HOUSEHOLD = 20.0
 MAX_GFA_PER_HOUSEHOLD = 400.0
 
 
+# Annual electricity of a whole apartment parcel per household. Below the floor the meter covers only
+# part of the complex (typically common areas, households billed separately); above the ceiling it
+# includes other buildings. Such parcel-years stay in the raw data but not in totals or intensities.
+MIN_ELECTRICITY_KWH_PER_HOUSEHOLD_YEAR = 600.0     # 50 kWh/세대·월
+MAX_ELECTRICITY_KWH_PER_HOUSEHOLD_YEAR = 18000.0   # 1,500 kWh/세대·월
+
+
+def electricity_plausibility(annual_kwh: float | None, households: int | None) -> tuple[str, str | None]:
+    """('OK' | 'UNKNOWN' | 'SUSPECT', reason) for one parcel's 12-month electricity."""
+    if annual_kwh is None or not households or households <= 0:
+        return "UNKNOWN", None
+    per = annual_kwh / households
+    if per < MIN_ELECTRICITY_KWH_PER_HOUSEHOLD_YEAR:
+        return "SUSPECT", f"세대당 연간 전력 {per:,.0f} kWh < {MIN_ELECTRICITY_KWH_PER_HOUSEHOLD_YEAR:,.0f} (단지 일부만 계측된 것으로 보임)"
+    if per > MAX_ELECTRICITY_KWH_PER_HOUSEHOLD_YEAR:
+        return "SUSPECT", f"세대당 연간 전력 {per:,.0f} kWh > {MAX_ELECTRICITY_KWH_PER_HOUSEHOLD_YEAR:,.0f} (다른 건물 포함 가능)"
+    return "OK", None
+
+
 def floor_area_status(gross_floor_area: float | None, households: int | None, management_area: float | None = None) -> tuple[str, str | None]:
     """('OK' | 'MISSING' | 'IMPLAUSIBLE', reason) for a complex's published gross floor area."""
     if not gross_floor_area or gross_floor_area <= 0:
@@ -48,12 +67,15 @@ def grid_energy_intensity(rows: Iterable[dict[str, Any]], households_by_code: di
         item["months"][row.get("use_ym")] = row.get("usage_kwh")
     result: dict[str, dict[str, dict[str, Any]]] = {}
     for (grid_id, energy_type, code), item in parcels.items():
-        target = result.setdefault(grid_id, {}).setdefault(energy_type, {"observed_parcels": 0, "complete_parcels": 0, "kwh": 0.0, "area_m2": 0.0, "area_parcels": 0, "kwh_with_area": 0.0, "households": 0, "household_parcels": 0, "kwh_with_households": 0.0})
+        target = result.setdefault(grid_id, {}).setdefault(energy_type, {"observed_parcels": 0, "complete_parcels": 0, "suspect_parcels": 0, "kwh": 0.0, "area_m2": 0.0, "area_parcels": 0, "kwh_with_area": 0.0, "households": 0, "household_parcels": 0, "kwh_with_households": 0.0})
         target["observed_parcels"] += 1
         values = item["months"]
         if len(values) < MONTHS_PER_YEAR or any(value is None for value in values.values()):
             continue
         annual = float(sum(values.values()))
+        if energy_type == "ELECTRICITY" and electricity_plausibility(annual, households_by_code.get(code))[0] == "SUSPECT":
+            target["suspect_parcels"] += 1
+            continue
         target["complete_parcels"] += 1
         target["kwh"] += annual
         area = item["area"]
@@ -80,7 +102,8 @@ def grid_energy_intensity(rows: Iterable[dict[str, Any]], households_by_code: di
     return result
 
 
-def consistent_baseline(rows: Iterable[dict[str, Any]], months: list[str], area_by_code: dict[str, float | None] | None = None) -> dict[str, Any] | None:
+def consistent_baseline(rows: Iterable[dict[str, Any]], months: list[str], area_by_code: dict[str, float | None] | None = None,
+                        households_by_code: dict[str, int | None] | None = None) -> dict[str, Any] | None:
     """Monthly baseline and floor area for one fixed set of parcels.
 
     A scenario scales observed energy by (planned floor area / baseline floor area), so the
@@ -100,6 +123,11 @@ def consistent_baseline(rows: Iterable[dict[str, Any]], months: list[str], area_
             item[row["energy_type"]][row["use_ym"]] = float(row["usage_kwh"])
     with_area = {code: item for code, item in parcels.items() if isinstance(item["area"], (int, float)) and item["area"] > 0}
     need = len(months)
+    if households_by_code and need == MONTHS_PER_YEAR:
+        # A parcel whose meter covers only part of the complex would scale the plan wrongly.
+        with_area = {code: item for code, item in with_area.items()
+                     if len(item["ELECTRICITY"]) < need
+                     or electricity_plausibility(sum(item["ELECTRICITY"].values()), households_by_code.get(code))[0] != "SUSPECT"}
     both = sorted(code for code, item in with_area.items() if len(item["ELECTRICITY"]) == need and len(item["GAS"]) == need)
     electricity_only = sorted(code for code, item in with_area.items() if len(item["ELECTRICITY"]) == need)
     chosen, types = (both, ("ELECTRICITY", "GAS")) if both else (electricity_only, ("ELECTRICITY",))

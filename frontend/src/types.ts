@@ -188,6 +188,18 @@ export interface GridProps {
   complex_households: number | null;
   complex_gfa_m2: number | null;
   complex_gfa_excluded: number;
+  /** Parcels left out of energy totals/ratios as implausible (partial or mixed meters). */
+  electricity_suspect_parcels?: number;
+  /** Share (%) of building footprint whose use is known. */
+  use_known_pct?: number | null;
+  /** 건축물대장 표제부 linked to the grid (null until collected). */
+  reg_buildings?: number | null;
+  reg_gfa_m2?: number | null;
+  reg_far_pct?: number | null;
+  reg_residential_gfa_pct?: number | null;
+  reg_old_gfa_pct?: number | null;
+  reg_dominant_use?: string | null;
+  reg_use_gfa_pct?: Record<string, number> | null;
   /** SGIS 1km parent cell (absent until the bundle is loaded). Densities are per km² of the 1km cell. */
   sgis1k_code?: string | null;
   sgis1k_year?: number;
@@ -226,6 +238,7 @@ export interface MapData {
   year?: number;
   offline_mode?: boolean;
   sgis_grid?: { year: number | null; source: string; note: string } | null;
+  register?: { grids: number; buildings: number; source: string } | null;
 }
 
 export interface BuildingViewport extends GeoJSON.FeatureCollection {

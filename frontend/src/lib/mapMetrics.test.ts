@@ -56,6 +56,13 @@ describe('map classification', () => {
     expect(p.completeness).toBeNull();
     expect(p.electricity_kwh_per_m2).toBeNull();
   });
+  it('flags implausible parcels in the basis and keeps register metrics missing until collected', () => {
+    const byKey = Object.fromEntries(METRICS.map((m) => [m.key, m]));
+    const p = { electricity_complete_parcels: 2, electricity_observed_parcels: 3, electricity_suspect_parcels: 1, electricity_kwh_annual: 1 } as unknown as GridProps;
+    expect(byKey.electricity_kwh_annual.basis(p)).toBe('12개월 관측 지번 2곳 합계 · 이상값 지번 1곳 제외');
+    expect(byKey.reg_far_pct.value({} as GridProps)).toBeNull();
+    expect(byKey.reg_far_pct.value({ reg_far_pct: 132.5 } as unknown as GridProps)).toBe(132.5);
+  });
   it('SGIS 1km metrics read the parent cell, stay missing without a statistic and say they are not divided', () => {
     const sgis = METRICS.filter((m) => m.group === SGIS_GROUP);
     expect(METRIC_GROUPS).toContain(SGIS_GROUP);
@@ -74,6 +81,7 @@ describe('map classification', () => {
     for (const metric of METRICS) {
       expect(metric.formula.length).toBeGreaterThan(3);
       expect(metric.source.length).toBeGreaterThan(3);
+      expect(metric.use.length).toBeGreaterThan(10); // 활용: 무엇을 판단하는 데 쓰는지
       expect('dataClass' in metric).toBe(false);
     }
   });

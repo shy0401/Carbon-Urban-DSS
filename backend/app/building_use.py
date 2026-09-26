@@ -114,8 +114,13 @@ def summarize_grid_aggregates(aggregates: Iterable[dict[str, Any]], requested: d
         item["floor_area_est_m2"] = round(item["floor_area_est_m2"], 1) if item["floors_known_count"] else None
         item["far_est_pct"] = round(item["floor_area_est_m2"] / grid_area_m2 * 100, 2) if item["floor_area_est_m2"] is not None else None
         item["category_share_pct"] = {key: round(value / footprint * 100, 1) for key, value in item["category_footprint_m2"].items()} if footprint else {}
-        item["residential_share_pct"] = item["category_share_pct"].get("RESIDENTIAL", 0.0) if footprint else None
-        item["dominant_use"] = max(item["category_footprint_m2"], key=item["category_footprint_m2"].get) if item["category_footprint_m2"] else None
+        # Use shares only count buildings whose use is known: a layer without use codes (VWorld
+        # LT_C_SPBD returns none) must read as "unknown", never as "0% residential".
+        known = {key: value for key, value in item["category_footprint_m2"].items() if key != "UNKNOWN"}
+        known_footprint = sum(known.values())
+        item["use_known_pct"] = round(known_footprint / footprint * 100, 1) if footprint else None
+        item["residential_share_pct"] = round(known.get("RESIDENTIAL", 0.0) / known_footprint * 100, 1) if known_footprint else None
+        item["dominant_use"] = max(known, key=known.get) if known else None
         item["footprint_m2"] = round(footprint, 1)
         item["floors_known_footprint_m2"] = round(item["floors_known_footprint_m2"], 1)
         item["category_footprint_m2"] = {key: round(value, 1) for key, value in item["category_footprint_m2"].items()}

@@ -3,11 +3,14 @@ import { useEffect, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { PageHeader } from '../components/PageHeader';
 import { ProvenanceBadge } from '../components/ProvenanceBadge';
+import { MAP_LAYERS } from '../lib/mapLayers';
+import { METRIC_GROUPS, METRICS } from '../lib/mapMetrics';
 
 /** 목차: 해시(#id)로 바로 열 수 있다. 다른 화면의 "사용 방법" 링크가 이 id를 쓴다. */
 export const GUIDE_SECTIONS = [
   ['start', '처음 시작하기'],
   ['screens', '화면 구성'],
+  ['map-info', '지도 정보와 활용'],
   ['rules', '값 읽는 법'],
   ['area', '지역 시뮬레이션'],
   ['grid', '격자 분석·계획안·검토 보고서'],
@@ -98,6 +101,36 @@ export function GuidePage() {
             <thead><tr><th>메뉴</th><th>할 수 있는 일</th><th>알아 둘 점</th></tr></thead>
             <tbody>{SCREENS.map(([to, label, what, tip]) => <tr key={to}><td><Link to={to}><strong>{label}</strong></Link></td><td>{what}</td><td><small>{tip}</small></td></tr>)}</tbody>
           </table></div>
+        </Section>
+
+        <Section id="map-info" title="지도 정보와 활용" lead="지도 분석 화면에서 고를 수 있는 지표와 레이어 전부입니다. 지도 범례의 '정의·산식·활용'과 격자 상세에도 같은 설명이 나옵니다.">
+          <h3>지표 ({METRICS.length}개)</h3>
+          <p className="guide-p">격자 색은 고른 지표 하나의 값입니다. 빗금 격자는 그 지표를 계산할 자료가 없는 곳이며 0이 아닙니다. 에너지는 관측된 공동주택 단지만의 값이라, 격자 안 모든 건물의 합이 아닙니다.</p>
+          <div className="table-wrap guide-table guide-metrics"><table>
+            <thead><tr><th>지표 (단위)</th><th>무엇인가</th><th>어떻게 쓰나</th><th>산식 · 출처</th></tr></thead>
+            {METRIC_GROUPS.map((group) => <tbody key={group}>
+              <tr className="guide-group-row"><th colSpan={4}>{group}</th></tr>
+              {METRICS.filter((m) => m.group === group).map((m) => <tr key={m.key}>
+                <td><strong>{m.label}</strong><small>{m.unit}</small></td>
+                <td>{m.definition}</td>
+                <td>{m.use}</td>
+                <td><code>{m.formula}</code><small>{m.source}</small></td>
+              </tr>)}
+            </tbody>)}
+          </table></div>
+          <h3>레이어 ({MAP_LAYERS.length}개)</h3>
+          <div className="table-wrap guide-table"><table>
+            <thead><tr><th>레이어</th><th>무엇인가</th><th>어떻게 쓰나</th><th>출처</th></tr></thead>
+            <tbody>{MAP_LAYERS.map((l) => <tr key={l.key}><td><strong>{l.label}</strong></td><td>{l.what}</td><td>{l.use}</td><td><small>{l.source}</small></td></tr>)}</tbody>
+          </table></div>
+          <h3>이렇게 조합해서 봅니다</h3>
+          <ul className="guide-list">
+            <li><b>개선 우선 지역</b>: 전력·가스 원단위가 높고, 2000년 이전 주택 비율(SGIS)이나 2000년 이전 준공 연면적 비율(건축물대장)이 높은 격자.</li>
+            <li><b>에너지 복지</b>: 65세 이상 비율이 높고 가스 원단위가 높은 격자. 난방비 부담이 큰 곳입니다.</li>
+            <li><b>개발 여지</b>: 주거지역 비율은 높은데 용적률(건축물대장)이나 추정 용적률이 낮은 격자. 신축 부하는 전력 원단위 × 계획 연면적으로 가늠합니다(시뮬레이션·지역 시뮬레이션).</li>
+            <li><b>값의 대표성</b>: 에너지 관측 완전성이 낮거나 아파트 비율(SGIS)이 낮은 격자는 관측 단지가 격자를 잘 대표하지 못합니다.</li>
+          </ul>
+          <Go to="/map">지도 분석 열기</Go>
         </Section>
 
         <Section id="rules" title="값 읽는 법" lead="모든 값에는 어디서 왔는지 표시가 붙습니다. 없는 값을 0으로 채우지 않습니다.">

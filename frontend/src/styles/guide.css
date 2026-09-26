@@ -70,3 +70,10 @@
 }
 .guide-badges > div > .prov-badge { justify-self: start; }
 .guide-table td:first-child { white-space: nowrap; }
+.guide-metrics td { vertical-align: top; font-size: var(--fs-label); }
+.guide-metrics td:first-child { white-space: normal; min-width: 128px; }
+.guide-metrics td strong, .guide-metrics td small { display: block; }
+.guide-metrics td small { margin-top: 2px; }
+.guide-metrics td code { display: block; font-size: var(--fs-caption); overflow-wrap: anywhere; }
+.guide-metrics td:nth-child(2), .guide-metrics td:nth-child(3) { min-width: 220px; }
+.guide-group-row th { padding-top: var(--sp-3); background: var(--surface-sunk); color: var(--ink); font-size: var(--fs-label); text-align: left; }
