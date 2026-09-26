@@ -81,5 +81,5 @@ def model_status(db,year,train=False):
         row=ModelRun(id=str(uuid.uuid4()),year=year,result=report);db.add(row);db.commit();report['run_id']=row.id
     else:
         latest=db.scalar(select(ModelRun).where(ModelRun.year==year).order_by(ModelRun.created_at.desc()))
-        if latest:report['last_validation']=latest.result;report['last_run_id']=latest.id
+        if latest:report['last_validation']=latest.result;report['last_run_id']=latest.id;report['last_run_at']=latest.created_at.isoformat() if latest.created_at else None
     return report
