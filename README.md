@@ -43,9 +43,14 @@ scripts\dss.cmd ImportBundle -BundlePath <zip>
 
 ## 데이터와 한계
 
-현재 확보한 실데이터, 정확한 개수, 실패한 API는 [DATA_SOURCE_DISCOVERY](docs/DATA_SOURCE_DISCOVERY.md)와 [검증 보고서](docs/FINAL_REPORT.md)에 기록합니다. API 화면은 문서의 숫자를 복제하지 않고 **현재 DB**를 조회합니다.
+**최신 수집·정제·결과 현황과 지도 지표별 의미·활용은 [RESULTS_2026-09-26](docs/RESULTS_2026-09-26.md)** 에 있습니다(PC Docker 실측 숫자). 요약:
 
-초기 제공된 서비스키로 건물에너지 API가 등록되지 않은 키 오류(30)를 반환했습니다. 이 상태에서는 월별 에너지, 전체 운영탄소, 에너지 최적안을 계산 완료했다고 표시하지 않습니다. 원단위 추정과 최적화 코드는 매칭된 관측 데이터가 확보되면 사용 가능합니다.
+- 건축HUB 전 지번 월별 전력·가스 2024·2025년, 건축물대장 73,147동, VWorld 건물·용도지역·연속지적, SGIS 2015~2024 행정통계와 1km 격자(2024), ASOS 2015~2025를 수집·정제했습니다.
+- 2025년 건물 전체 전력 약 2.08TWh, 전력 탄소 약 94.6만tCO₂eq(617개 격자). 가스 탄소는 열량 기준 확인 전이라 계산하지 않습니다.
+- 과거 에너지(2015~2023)는 K-apt 단지 자료만 있어 PC에서 자동으로 수집 중입니다(일일 한도 5,000건, 00:20 자동 재개). 건축HUB는 2024-01부터만 제공합니다.
+- 모델은 공간 블록 교차검증으로 전력 nMAE 9%, 가스 11~12%입니다([모델 검증](docs/MODEL_VALIDATION.md)).
+
+API 화면은 문서의 숫자를 복제하지 않고 **현재 DB**를 조회합니다. 초기 조사 기록은 [DATA_SOURCE_DISCOVERY](docs/DATA_SOURCE_DISCOVERY.md)와 [검증 보고서](docs/FINAL_REPORT.md)에 남아 있습니다.
 
 ## 오프라인 시연
 
@@ -87,7 +92,7 @@ npm run build
 - [탄소 계산](docs/CARBON_METHOD.md), [모델 검증](docs/MODEL_VALIDATION.md), [시뮬레이션](docs/SIMULATION_METHOD.md)
 - [지역 개발 시뮬레이션·과거 수집·감축 노력·보고서 (/area)](docs/AREA_SIMULATION.md), [로컬 보고서 모델 학습](scripts/llm/README.md)
 - [SGIS 격자 통계 1km (2024) 적용: 인구·가구·주택·사업체 격자 지표](docs/SGIS_GRID.md)
-- 웹 메뉴 **사용 방법**(/guide): 처음 시작, 화면별 사용법, 값 읽는 법, 빠진 자료 전부 수집, 인증키 설정, 로컬 AI, 문제 해결
+- 웹 메뉴 **사용 방법**(/guide): 처음 시작, 화면별 사용법, **지도 정보와 활용**, 값 읽는 법, 빠진 자료 전부 수집, 인증키 설정, 로컬 AI, 문제 해결
 - [알려진 한계](docs/LIMITATIONS.md), [5분 시연](docs/DEMO_SCRIPT.md)
 
 ## 계획서 기반 최신 보완

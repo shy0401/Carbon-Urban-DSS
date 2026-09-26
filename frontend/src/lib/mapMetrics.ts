@@ -27,6 +27,7 @@ export interface MetricDef {
 const n = (value: unknown): number | null => (typeof value === 'number' && Number.isFinite(value) ? value : null);
 const fmt = (value: number | null | undefined, unit = '', digits = 0) => formatMetric(value, unit, digits);
 const GRID = '250,000 m²';
+const FACTOR_YEARS = ' 배출계수(2020~2022년 평균, 2025-03-31 공표)는 2025년 이후 연도에만 적용하므로 2024년 이전을 고르면 비어 있습니다(0 아님). 여러 해를 같은 계수로 비교하려면 지역 시뮬레이션을 씁니다.';
 export const SGIS_GROUP = '인구·주택 (SGIS 1km)';
 const SGIS_SOURCE = 'SGIS 격자 통계 1km (공공데이터포털 15141768)';
 const SGIS_NOTE = '이 500m 격자가 속한 1km 공식 격자의 값입니다. 같은 1km 격자의 500m 격자 4개는 같은 값이며, 500m로 나눈 값이 아닙니다. 비밀보호 잡음(인구 ±7)이 들어 있습니다.';
@@ -89,7 +90,7 @@ export const METRICS: MetricDef[] = [
   {
     key: 'electricity_carbon_t', label: '전력 탄소배출량', unit: 'tCO₂eq/년', group: '탄소', ramp: 'load', digits: 1,
     value: (p) => { const kg = n(p.electricity_carbon_kg_annual); return kg === null ? null : kg / 1000; },
-    definition: '연간 전력 사용량에 국가 승인 전력 배출계수를 곱한 운영탄소입니다. 가스 탄소는 계수 확정 전이라 포함하지 않습니다.',
+    definition: `연간 전력 사용량에 국가 승인 전력 배출계수를 곱한 운영탄소입니다. 가스 탄소는 계수 확정 전이라 포함하지 않습니다.${FACTOR_YEARS}`,
     formula: '연간 전력(kWh) × 0.4541 kgCO₂eq/kWh ÷ 1,000',
     basis: (p) => p.electricity_kwh_annual ? `${fmt(n(p.electricity_kwh_annual), 'kWh')} × 0.4541 (GIR 2024 소비단)` : null,
     source: 'GIR 2024 승인 국가 온실가스 배출계수',
@@ -98,7 +99,7 @@ export const METRICS: MetricDef[] = [
   {
     key: 'electricity_carbon_kg_per_m2', label: '전력 탄소 원단위', unit: 'kgCO₂eq/m²·년', group: '탄소', ramp: 'load', digits: 1,
     value: (p) => n(p.electricity_carbon_kg_per_m2),
-    definition: '연면적 1m²당 연간 전력 탄소배출량입니다.',
+    definition: `연면적 1m²당 연간 전력 탄소배출량입니다.${FACTOR_YEARS}`,
     formula: '전력 원단위(kWh/m²) × 0.4541',
     basis: (p) => p.electricity_area_m2 ? `지번 ${p.electricity_area_parcels}곳 · 연면적 ${fmt(p.electricity_area_m2, 'm²')} 기준` : null,
     source: '전력 원단위 × GIR 계수',
@@ -134,7 +135,7 @@ export const METRICS: MetricDef[] = [
   {
     key: 'bldg_carbon_t', label: '건물 전체 전력 탄소', unit: 'tCO₂eq/년', group: BUILDING_ENERGY_GROUP, ramp: 'load', digits: 1,
     value: (p) => n(p.bldg_carbon_t),
-    definition: '건물 전체 연간 전력에 국가 승인 전력 배출계수를 곱한 운영탄소입니다. 가스 탄소는 포함하지 않습니다.',
+    definition: `건물 전체 연간 전력에 국가 승인 전력 배출계수를 곱한 운영탄소입니다. 가스 탄소는 포함하지 않습니다.${FACTOR_YEARS}`,
     formula: '건물 전체 연간 전력(kWh) × 0.4541 ÷ 1,000',
     basis: (p) => (p.bldg_electricity_kwh ? `${fmt(n(p.bldg_electricity_kwh), 'kWh')} × 0.4541` : null),
     source: 'GIR 2024 승인 국가 온실가스 배출계수',
