@@ -248,3 +248,19 @@ def test_approval_month_ignores_unreadable_dates():
     assert approval_month(SimpleNamespace(approval_date='19951130')) == '199511'
     assert approval_month(SimpleNamespace(approval_date=None)) is None
     assert approval_month(SimpleNamespace(approval_date='2025-13-01')) is None
+
+
+def test_a_complex_failing_every_month_is_not_asked_for_the_rest_of_the_year(tmp_path, monkeypatch):
+    import time
+    monkeypatch.setattr(time, 'sleep', lambda seconds: None)
+    db = make_db()
+    add_complex(db, households=300)
+    db.add(ApartmentEnergyMonthly(id='A1:202501:K-apt', complex_code='A1', year_month='202501', source='K-apt', quality_status='SUCCESS',
+                                  electricity_quantity=60000.0, units={}, raw_record={}))
+    db.commit()
+    client = SequenceClient([GATEWAY_04])
+    stats = collect_kapt_energy(db, 2025, 'full', client=client, service_key='valid-test-key', data_dir=tmp_path)
+    assert len(client.calls) == 4  # Feb and Mar, one retry each; Apr–Dec are not requested
+    assert stats['failed'] == 11 and stats['skipped_after_errors'] == 9 and stats['provider_gaps'] == 2
+    skipped = db.get(ApartmentEnergyMonthly, 'A1:202512:K-apt')
+    assert skipped.quality_status == 'FAILED' and '건너뜀' in skipped.provider_code  # retried on the next run

@@ -180,7 +180,14 @@ def _is_transient(message: str) -> bool:
     return any(marker in message for marker in ("일시 오류", "provider_code=UNKNOWN", "외부 데이터 HTTP 5", "외부 서비스 연결 실패"))
 
 
-def _fetch_month(session: Any, url: str, key: str, code: str, month: str, attempts: int = 3, sleep: Any = None) -> tuple[dict[str, Any], dict[str, Any]]:
+# A complex whose months keep failing at the gateway (K-apt answers "04 HTTP_ERROR" for complexes
+# without energy records, occasionally with an all-zero body instead) is not asked for the rest
+# of the year in this run: every attempt spends the 5,000-call daily quota. The skipped months
+# are stored as FAILED and requested again on the next run.
+FAILED_STREAK_LIMIT = 2
+
+
+def _fetch_month(session: Any, url: str, key: str, code: str, month: str, attempts: int = 2, sleep: Any = None) -> tuple[dict[str, Any], dict[str, Any]]:
     """Request one complex-month, retrying temporary provider failures without reusing a cached failure."""
     import time
     pause = sleep or time.sleep
@@ -376,6 +383,7 @@ def collect_kapt_energy(
         mapping.matched_at = datetime.now(timezone.utc)
         db.add(mapping)
         built = approval_month(complex_row) if history else None
+        failed_streak = 0
         for month in months:
             if built and month < built:
                 stats["before_approval"] += 1
@@ -385,8 +393,18 @@ def collect_kapt_energy(
             if existing and existing.quality_status in ANSWERED:
                 stats["skipped"] += 1
                 continue
-            stats["requested"] += 1
             row = existing or ApartmentEnergyMonthly(id=ident, complex_code=complex_row.kapt_code, year_month=month, source="K-apt")
+            if failed_streak >= FAILED_STREAK_LIMIT:
+                row.quality_status = "FAILED"
+                row.provider_code = "건너뜀: 같은 단지의 앞선 달이 연속으로 제공기관 오류"
+                row.units = row.units or dict(UNITS)
+                row.raw_record = row.raw_record or {}
+                row.collected_at = datetime.now(timezone.utc)
+                db.add(row)
+                stats["failed"] += 1
+                stats["skipped_after_errors"] = stats.get("skipped_after_errors", 0) + 1
+                continue
+            stats["requested"] += 1
             try:
                 result, parsed = _fetch_month(session, url, key, complex_row.kapt_code, month)
             except TransientProviderError as exc:
@@ -399,7 +417,11 @@ def collect_kapt_energy(
                 db.add(row)
                 db.commit()
                 stats["failed"] += 1
+                if "provider_code=04" in str(exc):
+                    stats["provider_gaps"] = stats.get("provider_gaps", 0) + 1
+                failed_streak += 1
                 continue
+            failed_streak = 0
             raw_dir = raw_root / complex_row.kapt_code
             raw_dir.mkdir(parents=True, exist_ok=True)
             raw_path = raw_dir / f"{month}.json"

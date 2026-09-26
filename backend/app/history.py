@@ -168,7 +168,10 @@ def _default_runners(db: Any, hooks: dict[str, Any] | None = None) -> dict[str, 
             # instead of spending thousands of calls on empty answers. A later run can still retry with --force.
             return {"status": "NOT_PUBLISHED", "probe": smoke}
         full = collect_kapt_energy(db, year, "full", history=True, progress=report)
-        status = "DONE" if not full.get("failed") else "PARTIAL"
+        # Complexes the gateway keeps answering with "04 HTTP_ERROR" have no records to give; re-asking
+        # them every run would eat the quota. Only other failures (network, 5xx) leave the year PARTIAL.
+        other_failures = full.get("failed", 0) - full.get("provider_gaps", 0) - full.get("skipped_after_errors", 0)
+        status = "DONE" if other_failures <= 0 else "PARTIAL"
         return {"status": status, **full}
 
     def energy(year: int) -> dict[str, Any]:
