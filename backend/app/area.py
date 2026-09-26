@@ -756,7 +756,8 @@ def load_inputs(db: Any, years: list[int]) -> dict[str, Any]:
         }
     lo, hi = f"{years[0]}01", f"{years[-1]}12"
     energy = []
-    for r in db.scalars(select(EnergyMonthly).where(EnergyMonthly.use_ym.between(lo, hi), EnergyMonthly.usage_kwh.is_not(None))):
+    # Rows without a grid (city-wide 건축HUB parcels that are not K-apt complexes) never belong to an area here.
+    for r in db.scalars(select(EnergyMonthly).where(EnergyMonthly.use_ym.between(lo, hi), EnergyMonthly.usage_kwh.is_not(None), EnergyMonthly.grid_id.is_not(None))):
         energy.append({"use_ym": r.use_ym, "energy_type": r.energy_type, "usage_kwh": r.usage_kwh, "grid_id": r.grid_id,
                        "kapt_code": (r.raw_record or {}).get("kapt_code"), "parcel": f"{r.sigungu_code}{r.bjdong_code}-{r.lot_type}-{r.bun}-{r.ji}"})
     weather = [{"use_ym": w.use_ym, "hdd": w.hdd, "cdd": w.cdd, "mean_temperature": w.mean_temperature, "source_type": w.source_type}

@@ -14,15 +14,18 @@ def factors_for(db,year=2025):
     return {r.energy_type:serialize(r) for r in db.scalars(select(EmissionFactor).where(EmissionFactor.effective_from<=f'{year}-12-31').order_by(EmissionFactor.reference_year,EmissionFactor.effective_from))}
 
 def monthly_energy(db,grid_id=None,year=2025):
-    query=select(EnergyMonthly).where(EnergyMonthly.use_ym.between(f'{year}01',f'{year}12'))
+    # Summed in SQL: the city-wide 건축HUB collection holds hundreds of thousands of rows per year.
+    # SUM ignores NULL and returns NULL when no value is known, like nullable_sum.
+    query=select(EnergyMonthly.use_ym,EnergyMonthly.energy_type,func.sum(EnergyMonthly.usage_kwh),func.count()).where(EnergyMonthly.use_ym.between(f'{year}01',f'{year}12'))
     if grid_id: query=query.where(EnergyMonthly.grid_id==grid_id)
-    rows=db.scalars(query).all();factors=factors_for(db,year);result=[]
+    sums={(ym,typ):(total,count) for ym,typ,total,count in db.execute(query.group_by(EnergyMonthly.use_ym,EnergyMonthly.energy_type))}
+    factors=factors_for(db,year);result=[]
     for ym in month_range(f'{year}-01',f'{year}-12'):
         record={'use_ym':ym}
         for typ,key in [('ELECTRICITY','electricity_kwh'),('GAS','gas_kwh')]:
-            values=[r.usage_kwh for r in rows if r.use_ym==ym and r.energy_type==typ]
-            record[key]=nullable_sum(values)
-            record[typ.lower()+'_records']=len(values)
+            total,count=sums.get((ym,typ),(None,0))
+            record[key]=float(total) if total is not None else None
+            record[typ.lower()+'_records']=int(count)
         e=carbon_kg(record['electricity_kwh'],factors.get('ELECTRICITY'));g=carbon_kg(record['gas_kwh'],factors.get('GAS'))
         record['electricity_carbon_kg']=e;record['gas_carbon_kg']=g
         record['carbon_kg']=e+g if e is not None and g is not None else None

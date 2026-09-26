@@ -8,7 +8,9 @@ def model_rows(db,year,typ):
     from .scope import matched_areas
     # Floor area is matched per energy type: K-apt electricity covers every complex in a grid while
     # 건축HUB gas may cover one parcel, so a shared complex set across types would drop every grid.
-    observed=db.scalars(select(EnergyMonthly).where(EnergyMonthly.use_ym.between(f'{year}01',f'{year}12'),EnergyMonthly.energy_type==typ)).all()
+    # Only grid-matched (K-apt parcel) rows can carry a matched floor area; the city-wide 건축HUB rows
+    # of other parcels have no grid here and would only slow the scan.
+    observed=db.scalars(select(EnergyMonthly).where(EnergyMonthly.use_ym.between(f'{year}01',f'{year}12'),EnergyMonthly.energy_type==typ,EnergyMonthly.grid_id.is_not(None))).all()
     areas=matched_areas(observed)
     # Kapt collector may save comparable exact parcel-area groups in additional sector records.
     weather={r.use_ym:r for r in db.scalars(select(WeatherMonthly).where(WeatherMonthly.use_ym.between(f'{year}01',f'{year}12')))}
