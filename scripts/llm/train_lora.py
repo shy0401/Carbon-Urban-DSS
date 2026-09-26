@@ -102,14 +102,32 @@ def main() -> None:
                 parameter.data = parameter.data.float()
     model.print_trainable_parameters()
 
+    class AnswerOnlyTrainer(Trainer):
+        """Cross-entropy only on the answer tokens, computing logits only there.
+
+        The prompt (the engine's facts) is ~1,000 tokens and the answer ~250; asking the model for
+        logits at every position costs 152k-vocab × prompt-length floats three times over (logits,
+        softmax, gradient), which does not fit next to the base weights on a 6 GB card. With
+        ``logits_to_keep`` the head runs only on the positions whose next token is a label."""
+
+        def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
+            labels = inputs.pop("labels")
+            shifted = labels[:, 1:]
+            keep = (shifted != -100).any(dim=0).nonzero(as_tuple=False).squeeze(-1)  # positions t whose target is token t+1
+            outputs = model(**inputs, logits_to_keep=keep)
+            logits = outputs.logits.float()
+            targets = shifted[:, keep]
+            loss = torch.nn.functional.cross_entropy(logits.reshape(-1, logits.size(-1)), targets.reshape(-1), ignore_index=-100)
+            return (loss, outputs) if return_outputs else loss
+
     steps_per_epoch = math.ceil(len(train) / (args.batch * args.accum))
-    trainer = Trainer(
+    trainer = AnswerOnlyTrainer(
         model=model,
         args=TrainingArguments(
             output_dir=str(out / "checkpoints"), num_train_epochs=args.epochs, learning_rate=args.lr,
             per_device_train_batch_size=args.batch, per_device_eval_batch_size=args.batch, gradient_accumulation_steps=args.accum,
             lr_scheduler_type="cosine", warmup_ratio=0.05, logging_steps=max(1, steps_per_epoch // 5),
-            eval_strategy="epoch", save_strategy="epoch", save_total_limit=1, load_best_model_at_end=True,
+            eval_strategy="epoch", save_strategy="epoch", save_total_limit=1, load_best_model_at_end=True, prediction_loss_only=True,
             bf16=use_bf16, fp16=torch.cuda.is_available() and not use_bf16, seed=args.seed, report_to=[]),
         train_dataset=train, eval_dataset=held or None,
         data_collator=DataCollatorForSeq2Seq(tokenizer, padding=True, label_pad_token_id=-100),
