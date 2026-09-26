@@ -34,8 +34,8 @@ export function Massing3D({ gridId, input, onCapture, captureLabel = '3D 장면 
     if (!gridId) { setNote('지도에서 격자를 고르면 그 격자 위에 3D 배치를 그립니다.'); return; }
     (async () => {
       try {
-        const grid = await api<GridFeature>(`/grids/${encodeURIComponent(gridId)}`);
-        const geometry = grid.geojson?.geometry;
+        const detail = await api<{ grid?: GridFeature }>(`/grids/${encodeURIComponent(gridId)}`);
+        const geometry = detail.grid?.geojson?.geometry;
         const bounds = geometry ? polygonBounds(geometry) : null;
         if (!geometry || !bounds) { if (!cancelled) setNote('격자 도형이 없습니다.'); return; }
         if (cancelled) return;
