@@ -86,8 +86,21 @@ docker compose -p carbon-urban-dss -f compose.yaml -f compose.demo.yaml --profil
 
 되돌리려면 그 줄을 지우면 됩니다 (기본 `qwen2.5:1.5b`).
 
-## 상태 (2026-09-25)
+## 6GB GPU(RTX 2060)에서 Docker로 학습하기 (2026-09-27, 실제 실행)
 
-- 자료 생성기(`llm-dataset`)와 평가(`llm-eval`)는 미리보기 DB와 단위 테스트로 확인했습니다.
-- 실제 Ollama 모델을 대상으로 한 평가는 아직 하지 않았습니다.
-- `train_lora.py`는 문법 검사만 했습니다. GPU가 없어 학습, GGUF 변환, Ollama 등록은 아직 실행하지 않았습니다.
+PC에 파이썬이 없어도 Docker Desktop의 GPU 지원(WSL2)으로 학습합니다. `data/ops/claude-runner/train.sh`·`convert.sh`가 그 절차입니다.
+
+```powershell
+docker run --rm --gpus all -v "${PWD}:/work" -v claude-hf-cache:/root/.cache -w /work pytorch/pytorch:2.4.1-cuda12.4-cudnn9-runtime bash -lc "pip install -q 'transformers>=4.46,<5' 'peft>=0.13' 'accelerate>=0.34' safetensors sentencepiece 'bitsandbytes>=0.43' gguf; python scripts/llm/train_lora.py --data data/llm/area-narrative --out scripts/llm/out --epochs 2 --batch 1 --accum 16 --load-4bit"
+```
+
+- `--load-4bit`: 기본 가중치를 4bit(QLoRA)로 올립니다. 학습 뒤 CPU에서 fp16 기본 모델에 어댑터를 합칩니다.
+- 손실은 답변 토큰 위치의 logits만 계산합니다(`logits_to_keep`). 152k 어휘 × 1,250 토큰 logits 3벌이 6GB를 넘겨 첫 스텝이 진행되지 않던 문제의 해결책입니다.
+- 실측: 예시 8개 연습 실행에서 스텝(4예시)당 31초. 319예시 × 2 epoch ≈ 1.5시간.
+- GGUF 변환은 같은 컨테이너에서 llama.cpp `convert_hf_to_gguf.py`(q8_0)로 하고, `docker compose cp`로 Ollama 컨테이너에 넣어 `ollama create` 합니다.
+
+## 상태 (2026-09-27)
+
+- 학습 자료: PC DB로 `llm-dataset --from 2015 --to 2025` → 학습 319, 평가 54 (관측 연도 2024·2025).
+- 기준 모델 `qwen2.5:1.5b` 평가(54개): 통과 45, 불합격 1(근거에 없는 숫자), 응답 오류 8(JSON 파싱 실패). 통과율(응답 중) 97.8%. 응답 시간 중앙값 23초(CPU Ollama).
+- QLoRA 학습·GGUF 변환·Ollama 등록·평가를 PC에서 자동 실행합니다. 새 모델은 응답 오류가 줄고 통과율이 같거나 높을 때만 `.env`의 `OLLAMA_MODEL`로 씁니다.
