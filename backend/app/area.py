@@ -826,12 +826,12 @@ def load_inputs(db: Any, years: list[int]) -> dict[str, Any]:
     for year in years:
         if year >= 2024:  # 건축HUB has no data before 2024-01
             try:
-                grids = grid_building_energy(db, year)
+                by_grid = grid_building_energy(db, year)
             except Exception:  # noqa: BLE001 - parcel_grid not built yet
                 db.rollback()
-                grids = {}
-            if grids:
-                building_energy[year] = grids
+                by_grid = {}
+            if by_grid:
+                building_energy[year] = by_grid
     return {"building_energy": building_energy, "sgis_grid": grid_values(db), "register": register, "complexes": complexes, "energy": energy, "weather": weather, "population": population, "households": households,
             "factor": factors, "grids": grids, "admin": admin.get("features", []), "admin_year": admin_year, "zoning": grid_zoning_summary(db)}
 
