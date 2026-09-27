@@ -20,3 +20,11 @@ describe('AnalysisPage official context', () => {
     expect(shortAdminName('효자4동')).toBe('효자4동');
   });
 });
+
+describe('shortAdminName outside Jeonju', () => {
+  it('keeps the district and the dong of any region', () => {
+    expect(shortAdminName('경기도 수원시 장안구 파장동')).toBe('장안구 파장동');
+    expect(shortAdminName('서울특별시 종로구 청운효자동')).toBe('종로구 청운효자동');
+    expect(shortAdminName('세종특별자치시 조치원읍')).toBe('세종특별자치시 조치원읍');
+  });
+});

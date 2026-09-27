@@ -24,6 +24,7 @@ export function DashboardPage() {
   const { year, query } = useAnalysisScope();
   const { data, loading, error, reload } = useApi<DashboardData>(`/dashboard?${query}`);
   const monthly = data?.monthly ?? [];
+  const regionName = data?.region?.short_name ?? '전주시';
   // 근거 배지는 서버 필드만 쓴다: observations_label = 'OBSERVED' (월별 관측 에너지).
   const observed = provenanceFromCode(data?.observations_label);
   const chartOption = useMemo<EChartsOption>(() => {
@@ -81,7 +82,7 @@ export function DashboardPage() {
       <MetricCard title="주거지역 비율" value={zoning?.residential_pct ?? null} unit="%" digits={1} ratio={zoning?.residential_pct} basis={zoning ? Object.entries(zoning.shares_pct).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${ZONE_NAME[k] ?? k} ${v.toFixed(1)}%`).join(', ') || '도시지역 용도지역 없음' : undefined} missingReason="용도지역(VWorld)을 아직 수집하지 않았습니다." />
     </section>
 
-    {data.regional_totals && <section className="panel regional-totals" aria-label="전주시 전체 수집 합계"><div><h3>전주시 전체 수집 합계</h3><p className="caveat">공간 미매칭 자료를 포함한 수집 합계이며 전주시 전체 소비량이 아닙니다.</p></div><dl><div><dt>전력</dt><dd>{formatMetric(data.regional_totals.electricity_kwh, 'kWh')}</dd></div><div><dt>가스</dt><dd>{formatMetric(data.regional_totals.gas_kwh, 'kWh')}</dd></div><div><dt>탄소 (전력+가스)</dt><dd>{data.regional_totals.carbon_kg === null ? <MissingValue inline reason="가스 계수 확정 전" /> : formatMetric(data.regional_totals.carbon_kg, 'kgCO₂eq')}</dd></div></dl></section>}
+    {data.regional_totals && <section className="panel regional-totals" aria-label={`${regionName} 전체 수집 합계`}><div><h3>{regionName} 전체 수집 합계</h3><p className="caveat">공간 미매칭 자료를 포함한 수집 합계이며 {regionName} 전체 소비량이 아닙니다.</p></div><dl><div><dt>전력</dt><dd>{formatMetric(data.regional_totals.electricity_kwh, 'kWh')}</dd></div><div><dt>가스</dt><dd>{formatMetric(data.regional_totals.gas_kwh, 'kWh')}</dd></div><div><dt>탄소 (전력+가스)</dt><dd>{data.regional_totals.carbon_kg === null ? <MissingValue inline reason="가스 계수 확정 전" /> : formatMetric(data.regional_totals.carbon_kg, 'kgCO₂eq')}</dd></div></dl></section>}
 
     <p className="scope-notice"><span>시뮬레이션 기준: {data.baseline_scope ? `${data.baseline_scope.parcel_names.join(', ')} (연면적 ${formatMetric(data.baseline_scope.area_m2, 'm²')}, ${data.baseline_scope.energy_types.map((t) => (t === 'GAS' ? '가스' : '전력')).join('·')} 12개월)${data.baseline_scope.excluded_names.length ? `. 제외: ${data.baseline_scope.excluded_names.join(', ')}` : ''}` : '12개월 관측과 연면적이 모두 있는 지번이 없어 기준을 만들지 않았습니다.'}</span><Link to="/analysis">이 결과의 데이터 보기</Link></p>
     <section className="content-grid dashboard-grid">

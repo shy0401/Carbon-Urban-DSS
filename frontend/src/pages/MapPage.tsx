@@ -40,10 +40,11 @@ const MISSING_NOTICE: Record<'zoning' | 'admin', string> = {
 };
 
 export function MapPage() {
-  const { year, gridId, query, setScope } = useAnalysisScope();
-  const { data, loading, error, reload } = useApi<MapData>(`/map?year=${year}`);
+  const { year, gridId, query, regionQuery, setScope } = useAnalysisScope();
+  const { data, loading, error, reload } = useApi<MapData>(`/map?year=${year}${regionQuery}`);
   const details = useApi<DashboardData>(`/dashboard?${query}`);
-  const overlays = useApi<OverlayData>(`/map/overlays?year=${year}`);
+  const overlays = useApi<OverlayData>(`/map/overlays?year=${year}${regionQuery}`);
+  const regionName = data?.region?.short_name ?? '전주시';
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const hoverPopup = useRef<maplibregl.Popup | null>(null);
@@ -91,6 +92,7 @@ export function MapPage() {
     const withBasemap = !offline && basemapEnabled;
     const map = new maplibregl.Map({
       container: container.current, center: data.center || [127.148, 35.824], zoom: 11.5, attributionControl: false,
+      ...(data.bbox ? { bounds: data.bbox as [number, number, number, number], fitBoundsOptions: { padding: 24 } } : {}),
       style: { version: 8, sources: withBasemap ? { basemap: { type: 'raster', tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'], tileSize: 256, attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a>' } } : {}, layers: [{ id: 'background', type: 'background', paint: { 'background-color': TOKENS.canvas } }, ...(withBasemap ? [{ id: 'basemap', type: 'raster' as const, source: 'basemap', paint: { 'raster-opacity': 0.55, 'raster-saturation': -0.7 } }] : [])] },
     });
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
@@ -207,7 +209,7 @@ export function MapPage() {
     <PageHeader title="도시 탄소 지도" description={`500m 분석 격자 ${total.toLocaleString('ko-KR')}개, 격자당 250,000m². 격자를 누르면 모든 분석 화면의 대상지가 바뀝니다.`} action={<button className="button secondary" onClick={reload}><RefreshCw size={15} />새로고침</button>} />
     <div className={`map-workspace${detailShown ? ' has-detail' : ''}`}>
       <div className="map-stage">
-        <div ref={container} className={`map-canvas${showBasemap ? '' : ' no-basemap'}`} aria-label="전주시 탄소 공간 지도" />
+        <div ref={container} className={`map-canvas${showBasemap ? '' : ' no-basemap'}`} aria-label={`${regionName} 탄소 공간 지도`} />
         <div className="map-rail">
           <div className="metric-picker">
             <button className="metric-trigger" aria-haspopup="listbox" aria-expanded={pickerOpen} onClick={() => setPickerOpen(!pickerOpen)}>
@@ -236,7 +238,7 @@ export function MapPage() {
             <LayerToggle label="분석 격자 (500m)" checked={visible.grids} onChange={(v) => setVisible({ ...visible, grids: v })} />
             <LayerToggle label={data.buildings_mode === 'viewport' ? '건물 (도로명주소 건물)' : '건물 (OSM 공동주택, 대체)'} checked={visible.buildings} onChange={(v) => setVisible({ ...visible, buildings: v })} hint={data.buildings_mode === 'viewport' ? `확대 ${BUILDING_MIN_ZOOM} 이상에서 표시` : '공식 건물 수집 전 대체 자료'} />
             <LayerToggle label={`공동주택 단지 (K-apt ${data.complexes?.features.length ?? 0})`} checked={visible.complexes} onChange={(v) => setVisible({ ...visible, complexes: v })} hint="원 크기 = 세대수" />
-            <LayerToggle label="전주시 경계" checked={visible.boundary} onChange={(v) => setVisible({ ...visible, boundary: v })} hint={data.boundary_source} />
+            <LayerToggle label={`${regionName} 경계`} checked={visible.boundary} onChange={(v) => setVisible({ ...visible, boundary: v })} hint={data.boundary_source} />
             {([['zoning', '용도지역 (VWorld)', zoningCount], ['admin', '행정동 인구 (SGIS)', adminCount]] as const).map(([key, label, count]) => <LayerToggle key={key} label={label} checked={visible[key]} onChange={(v) => setVisible({ ...visible, [key]: v })} badge={!count ? (overlays.loading ? '확인 중' : '자료 미확보') : undefined} hint={key === 'zoning' ? '외곽선으로 표시' : undefined} />)}
             <hr />
             <LayerToggle label="배경지도 (OpenStreetMap)" checked={basemapEnabled && !offline} disabled={!!offline} onChange={(v) => setBasemapEnabled(v)} hint={offline ? '오프라인 모드: 외부 타일을 요청하지 않음. 도면지 바탕과 1km 참조 격자로 표시' : basemapFailed ? '연결 실패. 도면지 바탕과 1km 참조 격자로 표시' : undefined} />
@@ -295,7 +297,7 @@ function GridDetail({ props: p, year, name, metric, classification, details, det
     <section className="detail-section" aria-label="월별 관측">
       <h3>월별 관측 ({months.length ? `${String(months[0]?.use_ym).slice(0, 4)}년` : `${year}년`})</h3>
       {months.length > 0 ? <><MonthRow label="전력" months={months.map((r) => r.electricity_kwh !== null)} /><MonthRow label="가스" months={months.map((r) => r.gas_kwh !== null)} /></> : detailsLoading ? <p className="muted">월별 관측 확인 중…</p> : <MissingValue reason="이 격자에는 월별 에너지 관측이 없습니다." />}
-      <h3 className="sub">월평균 기온 (전주, 격자 공통)</h3>
+      <h3 className="sub">월평균 기온 ({(details?.region?.short_name ?? '전주시').replace(/시$|군$/, '')}, 격자 공통)</h3>
       {weather.length ? <WeatherChart year={year} rows={weather} height={170} ariaLabel="선택 연도 월평균 기온 차트" /> : <MissingValue reason={detailsLoading ? '확인 중' : '이 연도의 기상 자료가 없습니다.'} />}
     </section>
     <section className="detail-section" aria-label="토지이용과 건물 용도">

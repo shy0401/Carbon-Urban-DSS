@@ -28,6 +28,7 @@ export interface AreaOptions {
   zones: Array<{ category: string; label: string; grids: number }>;
   energy_years: number[];
   default_grid: string | null;
+  region?: { code: string; name: string; short_name: string; center: [number, number] | null; bbox: [number, number, number, number] | null };
 }
 
 export interface CarrierYear {
@@ -74,6 +75,8 @@ type YearTable<T> = Record<string, T>;
 
 export interface AreaHistory {
   years: number[];
+  /** '전주' for the original region, else the region's short name (used in 'x 관측 원단위'). */
+  region_label?: string;
   area: {
     type: AreaMode;
     label: string;

@@ -12,9 +12,9 @@ interface Candidate{name:string;metrics:Record<string,number|null>}
 interface ModelInfo {name:string;energy_type?:string;status?:string;training_period?:string;observations?:number;grid_count?:number;spatial_blocks?:number;months?:number;requirements?:Record<string,number>;validation_method?:string;models?:Candidate[];limitations?:string[];features?:string[];unavailable_features?:string[];scope?:string;}
 interface ModelResponse {status:string;reason?:string;models:ModelInfo[];last_validation?:ModelResponse;last_run_at?:string;}
 export function ModelPage(){
- const {year}=useAnalysisScope();const {data,loading,error,reload,setData}=useApi<ModelResponse>(`/model?year=${year}`);
+ const {year,regionQuery}=useAnalysisScope();const {data,loading,error,reload,setData}=useApi<ModelResponse>(`/model?year=${year}${regionQuery}`);
  const [busy,setBusy]=useState(false);const [failure,setFailure]=useState<string|null>(null);
- const validate=async()=>{setBusy(true);setFailure(null);try{setData(await api<ModelResponse>(`/model/validate?year=${year}`,{method:'POST'}));}catch(e){setFailure(e instanceof Error?e.message:'검증 실패');}finally{setBusy(false);}};
+ const validate=async()=>{setBusy(true);setFailure(null);try{setData(await api<ModelResponse>(`/model/validate?year=${year}${regionQuery}`,{method:'POST'}));}catch(e){setFailure(e instanceof Error?e.message:'검증 실패');}finally{setBusy(false);}};
  if(loading)return <div className="page"><LoadingState/></div>;
  if(error||!data)return <div className="page"><ErrorState message={error} onRetry={reload}/></div>;
  const insufficient=data.status==='INSUFFICIENT_TRAINING_DATA';

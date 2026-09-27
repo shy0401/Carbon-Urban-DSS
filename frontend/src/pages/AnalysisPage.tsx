@@ -17,17 +17,18 @@ import type { DashboardData, OverlayData } from '../types';
 
 const ZONE_LABELS: Record<string, string> = { RESIDENTIAL: '주거지역', COMMERCIAL: '상업지역', INDUSTRIAL: '공업지역', GREEN: '녹지지역', OTHER: '관리·농림·기타', UNKNOWN: '미분류·미지정' };
 
-// SGIS returns full names such as '전북특별자치도 전주시 덕진구 송천1동'; charts show '덕진구 송천1동'.
-export function shortAdminName(name: string) { return name.replace(/^.*?전주시\s*/, '').trim() || name; }
+// SGIS returns full names such as '전북특별자치도 전주시 덕진구 송천1동'; charts show the last two parts ('덕진구 송천1동',
+// '종로구 청운효자동', '가평군 가평읍').
+export function shortAdminName(name: string) { const parts = name.trim().split(/\s+/).filter(Boolean); return parts.length >= 3 ? parts.slice(-2).join(' ') : name.trim(); }
 
 export function adminRows(overlays: OverlayData | null) {
   return (overlays?.admin.features ?? []).map((feature) => feature.properties ?? {}).map((p) => ({ name: shortAdminName(String(p.adm_name ?? p.adm_code ?? '')), population: typeof p.population === 'number' ? p.population : null, households: typeof p.households === 'number' ? p.households : null, density: typeof p.population_density === 'number' ? p.population_density : null, status: String(p.population_status ?? '') })).sort((a, b) => (b.population ?? -1) - (a.population ?? -1));
 }
 
 export function AnalysisPage() {
-  const {query}=useAnalysisScope();
+  const {query,regionQuery}=useAnalysisScope();
   const { data, loading, error, reload } = useApi<DashboardData>(`/dashboard?${query}`);
-  const overlays = useApi<OverlayData>('/map/overlays');
+  const overlays = useApi<OverlayData>(`/map/overlays${regionQuery.replace('&', '?')}`);
   const admin = useMemo(() => adminRows(overlays.data), [overlays.data]);
   const zoningArea = overlays.data?.meta.zoning_area_km2_by_category ?? {};
   const populationOption = useMemo<EChartsOption>(() => {

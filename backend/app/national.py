@@ -137,6 +137,15 @@ def _pick_year(sgis: _Sgis, requested: int) -> tuple[int, dict[str, Any]]:
     raise last or ExternalError("SGIS가 최근 6개 연도에 공표 자료를 제공하지 않습니다")
 
 
+def full_name(sido: str | None, name: str | None) -> str | None:
+    """'경기도' + '수원시 장안구' → '경기도 수원시 장안구' (unchanged when the 시도 is already there)."""
+    if not name:
+        return name
+    if not sido or name.startswith(sido):
+        return name
+    return f"{sido} {name}"
+
+
 def _upsert_unit(db: Any, year: int, level: str, row: dict[str, Any], parent: str | None, *, households: dict[str, Any] | None = None) -> Any:
     key = f"{year}:{row['adm_code']}"
     unit = db.get(NationalUnit, key) or NationalUnit(id=key, year=year, level=level, adm_code=row["adm_code"])
@@ -193,6 +202,8 @@ def collect_national_sgis(db: Any, year: int | None = None, *, include_emd: bool
         households = sgis.get(f"household-{used}-{code}", "stats/household.json", {"year": used, "adm_cd": code, "low_search": 1}, hh)
         by_code = {row["adm_code"]: row for row in households["rows"]}
         for row in districts["rows"]:
+            # SGIS names a 시군구 without its 시도 ("수원시 장안구"); keep the full name so it can be matched.
+            row = dict(row, adm_name=full_name(sido.get("adm_name"), row.get("adm_name")))
             _upsert_unit(db, used, "SIGUNGU", row, code, households=by_code.get(row["adm_code"], {}))
             sigungu_rows.append(row)
             counts["SIGUNGU"] += 1
@@ -231,7 +242,13 @@ def collect_national_sgis(db: Any, year: int | None = None, *, include_emd: bool
 
 def assign_units_to_regions(db: Any, year: int) -> dict[str, Any]:
     """Tag SGIS 시군구/행정동 rows with the 법정 study region of the same name (never guessed)."""
-    sigungu = [{"adm_code": u.adm_code, "adm_name": u.adm_name} for u in db.scalars(select(NationalUnit).where(NationalUnit.year == year, NationalUnit.level == "SIGUNGU"))]
+    sido_names = {u.adm_code: u.adm_name for u in db.scalars(select(NationalUnit).where(NationalUnit.year == year, NationalUnit.level == "SIDO"))}
+    sigungu = []
+    for u in db.scalars(select(NationalUnit).where(NationalUnit.year == year, NationalUnit.level == "SIGUNGU")):
+        name = full_name(sido_names.get(u.parent_code or ""), u.adm_name)
+        if name != u.adm_name:
+            u.adm_name = name
+        sigungu.append({"adm_code": u.adm_code, "adm_name": name})
     code_to_region: dict[str, str] = {}
     for region in catalog(db):
         for code in match_sgis(region["name"], sigungu):
@@ -265,12 +282,11 @@ def sgis_codes_for(db: Any, region_code: str) -> list[str]:
 # --------------------------------------------------------------------------- K-apt 단지 목록 (전국)
 def collect_national_complexes(db: Any, search_month: str | None = None, *, log: Log = print, delay_s: float = 0.6) -> dict[str, Any]:
     """K-apt 공동주택 단지 목록 for every 법정 시·군·구 (≈ 260 list requests, no detail pages)."""
-    import re
 
     import httpx
 
     from .collectors import update_source
-    from .kapt import KAPT_LIST_URL, KAPT_MAIN_URL, _coordinates
+    from .kapt import KAPT_LIST_URL, KAPT_MAIN_URL, _coordinates, csrf_token
     from .settings import offline_mode
     if offline_mode():
         raise ExternalError("오프라인 모드: K-apt 목록을 받지 않습니다")
@@ -279,10 +295,9 @@ def collect_national_complexes(db: Any, search_month: str | None = None, *, log:
     db.commit()
     client = httpx.Client(timeout=30, follow_redirects=True, headers={"User-Agent": "Carbon-Urban-DSS/1.0 public-data-research", "Accept-Language": "ko-KR,ko;q=0.9"})
     landing = client.get(KAPT_MAIN_URL)
-    match = re.search(r'<meta\s+name="_csrf"\s+content="([^"]+)"', landing.text)
-    if not match:
+    token = csrf_token(landing.text)
+    if not token:
         raise ExternalError("K-apt 첫 화면에 CSRF 토큰이 없습니다")
-    token = match.group(1)
     headers = {"X-CSRF-TOKEN": token, "X-Requested-With": "XMLHttpRequest"}
     raw_dir = _root() / "raw" / "kapt-national" / month
     raw_dir.mkdir(parents=True, exist_ok=True)

@@ -36,7 +36,7 @@ const fieldGroups: Array<{ title: string; keys: Array<keyof ScenarioInput> }> = 
 interface OptimizationResult { status?: string; objective?: string; legal_status?: string; method?: string; explanation?: string; reason?: string; limitations?: string[]; alternatives?: Array<Record<string, unknown>>; candidates?: Array<Record<string, unknown>>; }
 
 export function SimulationPage() {
-  const {year,gridId}=useAnalysisScope();
+  const {year,gridId,region}=useAnalysisScope();
   const revision=useRef(0);
   const [input, setInput] = useState(initial);
   const [errors, setErrors] = useState<ScenarioErrors>({});
@@ -50,7 +50,7 @@ export function SimulationPage() {
   const [site, setSite] = useState<SitePlacement | null>(null);
   const [liveZoning, setLiveZoning] = useState<ZoningCheck | null>(null);
   const system = useSystemInfo();
-  useEffect(()=>{revision.current++;setResult(null);setOptimization(null);setRequestError(null);},[input,year,gridId,site]);
+  useEffect(()=>{revision.current++;setResult(null);setOptimization(null);setRequestError(null);},[input,year,gridId,site,region]);
   useEffect(()=>{setSite(null);},[gridId]);
   const sitePayload = site ? { site_lon: site.lon, site_lat: site.lat, site_rotation: Math.min(89.9, Math.max(0, site.rotation)) } : {};
   const massingGrid = gridId || result?.grid_id || system?.default_grid_id || null;
@@ -82,14 +82,14 @@ export function SimulationPage() {
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length) return;
     setSubmitting(true); setRequestError(null);const current=revision.current;
-    try { const next=await api<ScenarioResult>('/scenarios', { method: 'POST', body: JSON.stringify({...input,...sitePayload,year,grid_id:gridId}) });if(current===revision.current)setResult(next); }
+    try { const next=await api<ScenarioResult>('/scenarios', { method: 'POST', body: JSON.stringify({...input,...sitePayload,year,grid_id:gridId,region}) });if(current===revision.current)setResult(next); }
     catch (reason) { setRequestError(reason instanceof Error ? reason.message : '시나리오 계산에 실패했습니다.'); }
     finally { setSubmitting(false); }
   };
   const optimize = async () => {
     const nextErrors = validateScenario(input); setErrors(nextErrors); if (Object.keys(nextErrors).length) return;
     setOptimizing(true); setRequestError(null);const current=revision.current;
-    try { const next=await api<OptimizationResult>('/optimize', { method: 'POST', body: JSON.stringify({ ...input,...sitePayload,year,grid_id:gridId, min_households: constraints.min_households, min_population: constraints.min_population }) });if(current===revision.current)setOptimization(next); }
+    try { const next=await api<OptimizationResult>('/optimize', { method: 'POST', body: JSON.stringify({ ...input,...sitePayload,year,grid_id:gridId,region, min_households: constraints.min_households, min_population: constraints.min_population }) });if(current===revision.current)setOptimization(next); }
     catch (reason) { setRequestError(reason instanceof Error ? reason.message : '최적화에 실패했습니다.'); }
     finally { setOptimizing(false); }
   };
@@ -116,7 +116,7 @@ export function SimulationPage() {
         <div className="form-actions"><button type="button" className="button ghost" onClick={() => { setInput(initial); setErrors({}); setResult(null); setSite(null); }}><RotateCcw size={15} />초기화</button><button className="button primary" disabled={submitting}><Play size={15} />{submitting ? '계산 중…' : '시나리오 계산'}</button></div>
       </form>
       <div className="simulation-main">
-        <section className="panel massing-panel"><div className="panel-title"><h3>3D 배치·일조</h3><span className="status-tag neutral">규모 비교용 개념 배치</span></div><Massing3D gridId={massingGrid} input={input} site={site} onSiteChange={setSite} onZoning={setLiveZoning} onCapture={result?.id ? saveScene : undefined} captureLabel="보고서용 장면 저장" /></section>
+        <section className="panel massing-panel"><div className="panel-title"><h3>3D 배치·일조</h3><span className="status-tag neutral">규모 비교용 개념 배치</span></div><Massing3D gridId={massingGrid} region={region} input={input} site={site} onSiteChange={setSite} onZoning={setLiveZoning} onCapture={result?.id ? saveScene : undefined} captureLabel="보고서용 장면 저장" /></section>
         <section className="panel scenario-result">
           <div className="panel-title"><h3>에너지·탄소 비교</h3>{result && <div className="badge-row">{provenanceFromCode(result.data_class) && <ProvenanceBadge kind={provenanceFromCode(result.data_class)!} />}{result.quality && <QualityBadge value={result.quality} />}</div>}</div>
           {requestError && <ErrorState message={requestError} onRetry={() => void submit()} />}
@@ -129,7 +129,7 @@ export function SimulationPage() {
         </section>
       </div>
     </div>
-    <section className="panel optimization-panel"><div className="panel-title"><h3>도시구조 최적화</h3><span className="status-tag neutral">결정론적 계산</span></div><p className="panel-description">최소 수용 목표를 충족하는 후보를 같은 입력과 제약에서 항상 같은 순서로 탐색합니다. 대지의 용도지역이 확인되면 전주시 도시계획 조례 기본 상한(건폐율·용적률) 안의 후보만 봅니다.</p><div className="optimization-controls"><label><span>최소 세대수</span><input type="number" min="0" value={constraints.min_households} onChange={(event) => setConstraints((old) => ({ ...old, min_households: Number(event.target.value) }))} /></label><label><span>최소 인구</span><input type="number" min="0" value={constraints.min_population} onChange={(event) => setConstraints((old) => ({ ...old, min_population: Number(event.target.value) }))} /></label><button type="button" className="button secondary" onClick={() => void optimize()} disabled={optimizing}>{optimizing ? '탐색 중…' : '최적안 탐색'}</button></div>{optimization && <OptimizationResults result={optimization} onApply={(row) => setInput((old) => ({ ...old, building_count: Number(row.building_count), floors: Number(row.floors), households: Number(row.households), population: Number(row.population) }))} />}</section>
+    <section className="panel optimization-panel"><div className="panel-title"><h3>도시구조 최적화</h3><span className="status-tag neutral">결정론적 계산</span></div><p className="panel-description">최소 수용 목표를 충족하는 후보를 같은 입력과 제약에서 항상 같은 순서로 탐색합니다. 대지의 용도지역이 확인되면 법적 상한(전주시는 도시계획 조례 기본 상한, 조례를 등록하지 않은 지역은 국토계획법 시행령 상한) 안의 후보만 봅니다.</p><div className="optimization-controls"><label><span>최소 세대수</span><input type="number" min="0" value={constraints.min_households} onChange={(event) => setConstraints((old) => ({ ...old, min_households: Number(event.target.value) }))} /></label><label><span>최소 인구</span><input type="number" min="0" value={constraints.min_population} onChange={(event) => setConstraints((old) => ({ ...old, min_population: Number(event.target.value) }))} /></label><button type="button" className="button secondary" onClick={() => void optimize()} disabled={optimizing}>{optimizing ? '탐색 중…' : '최적안 탐색'}</button></div>{optimization && <OptimizationResults result={optimization} onApply={(row) => setInput((old) => ({ ...old, building_count: Number(row.building_count), floors: Number(row.floors), households: Number(row.households), population: Number(row.population) }))} />}</section>
   </div>;
 }
 
@@ -137,12 +137,14 @@ function ZoningSummary({ zoning, saved }: { zoning: ZoningCheck; saved: boolean 
   const check = zoning.check;
   const tone = check?.label.includes('초과') ? 'bad' : check?.label.includes('이내') ? 'good' : 'warn';
   return <div className="zoning-summary">
-    <div className="zoning-summary-head"><Scale size={16} aria-hidden="true" /><strong>용도지역·조례 상한 1차 확인</strong><span className={`status-tag ${tone}`}>{check?.label ?? '판단 보류'}</span><small>{saved ? '계산 시점 기준' : '현재 입력 기준'}</small></div>
+    <div className="zoning-summary-head"><Scale size={16} aria-hidden="true" /><strong>{zoning.basis === 'DECREE' ? '용도지역·시행령 상한 1차 확인' : '용도지역·조례 상한 1차 확인'}</strong><span className={`status-tag ${tone}`}>{check?.label ?? '판단 보류'}</span><small>{saved ? '계산 시점 기준' : '현재 입력 기준'}</small></div>
     <table><thead><tr><th>용도지역</th><th className="num">대지 비율</th><th className="num">건폐율 상한</th><th className="num">용적률 상한</th></tr></thead>
       <tbody>{zoning.zones.length ? zoning.zones.map((z) => <tr key={`${z.zone}-${z.zone_name}`}><td>{z.zone ?? z.zone_name ?? '이름 없음'}{z.note && <small>{z.note}</small>}</td><td className="num">{z.share != null ? `${z.share.toFixed(1)}%` : '-'}</td><td className="num">{z.bcr_limit != null ? `${z.bcr_limit}%` : '규정 없음'}</td><td className="num">{(z.applied_far_limit ?? z.far_limit) != null ? `${z.applied_far_limit ?? z.far_limit}%` : '확인 필요'}</td></tr>) : <tr><td colSpan={4}>{zoning.reason ?? '대지와 겹치는 용도지역 자료가 없습니다.'}</td></tr>}</tbody>
     </table>
     {check?.notes?.length ? <ul>{check.notes.map((n) => <li key={n}>{n}</li>)}</ul> : null}
-    {zoning.source && <p className="muted">근거: <a href={zoning.source.url} target="_blank" rel="noreferrer">{zoning.source.name}</a> ({zoning.source.number}, {zoning.source.effective} 시행, {zoning.source.checked} 확인). 완화 규정·지구단위계획 지침·경관지구 제한은 반영하지 않았습니다.</p>}
+    {zoning.source && (zoning.basis === 'DECREE'
+      ? <p className="muted">근거: <a href={zoning.source.url} target="_blank" rel="noreferrer">{zoning.source.name}</a> {zoning.source.articles} ({zoning.source.checked} 확인). 이 지역 도시계획 조례를 등록하지 않아 시행령 상한을 썼습니다. 조례 상한은 더 낮을 수 있으므로 '이내'는 조례를 더 확인해야 합니다.</p>
+      : <p className="muted">근거: <a href={zoning.source.url} target="_blank" rel="noreferrer">{zoning.source.name}</a> ({zoning.source.number}, {zoning.source.effective} 시행, {zoning.source.checked} 확인). 완화 규정·지구단위계획 지침·경관지구 제한은 반영하지 않았습니다.</p>)}
   </div>;
 }
 

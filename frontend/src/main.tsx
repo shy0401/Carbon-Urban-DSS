@@ -10,6 +10,7 @@ import './styles/pages.css';
 import './styles/report.css';
 import './styles/area.css';
 import './styles/guide.css';
+import './styles/regions.css';
 import App from './App';
 
 createRoot(document.getElementById('root')!).render(<StrictMode><App /></StrictMode>);

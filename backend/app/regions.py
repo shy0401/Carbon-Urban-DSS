@@ -164,13 +164,19 @@ _CATALOG: dict[str, Any] = {}
 
 
 def catalog(db: Any) -> list[dict[str, Any]]:
-    """Cached region catalog from ``admin_units`` (empty until the legal-dong file is loaded)."""
-    hit = _CATALOG.get("rows")
-    if hit is not None and time.monotonic() - _CATALOG.get("at", 0) < 3600:
-        return hit
+    """Region catalog from ``admin_units`` (empty until the legal-dong file is loaded).
+
+    Cached per unit count, so a load by another process (the worker) shows up at once."""
+    try:
+        count = db.scalar(select(func.count()).select_from(AdminUnit).where(AdminUnit.level.in_(("SIDO", "SIGUNGU")))) or 0
+    except Exception:  # noqa: BLE001 - table not created yet
+        _rollback(db)
+        return []
+    if _CATALOG.get("count") == count and _CATALOG.get("rows") is not None:
+        return _CATALOG["rows"]
     units = [{"code": u.code, "level": u.level, "name": u.name} for u in db.scalars(select(AdminUnit).where(AdminUnit.level.in_(("SIDO", "SIGUNGU"))))]
     rows = region_catalog(units)
-    _CATALOG.update(rows=rows, at=time.monotonic())
+    _CATALOG.update(rows=rows, count=count)
     return rows
 
 

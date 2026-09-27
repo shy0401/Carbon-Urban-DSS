@@ -28,9 +28,11 @@ const VIEWS: Record<View, { label: string; pitch: number; bearing: number; zoomD
 /** 3D concept massing on the selected grid: official buildings extruded by floor count, the planned
  *  blocks on a movable square site, sun shadows for a chosen day and hour, and the 조례 상한 check.
  *  Read-only for analysis values; `onCapture` gets a PNG of the canvas. */
-export function Massing3D({ gridId, input, site = null, onSiteChange, onCapture, captureLabel = '3D 장면 저장', onZoning }: {
+export function Massing3D({ gridId, input, site = null, onSiteChange, onCapture, captureLabel = '3D 장면 저장', onZoning, region = null }: {
   gridId: string | null; input: ScenarioInput; site?: SitePlacement | null; onSiteChange?: (site: SitePlacement | null) => void;
   onCapture?: (dataUrl: string) => void; captureLabel?: string; onZoning?: (zoning: ZoningCheck | null) => void;
+  /** Study region code: decides the legal-limit basis (전주시 조례 or 국토계획법 시행령). */
+  region?: string | null;
 }) {
   const container = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -144,13 +146,14 @@ export function Massing3D({ gridId, input, site = null, onSiteChange, onCapture,
     const timer = window.setTimeout(async () => {
       try {
         const query = new URLSearchParams({ lon: center[0].toFixed(6), lat: center[1].toFixed(6), site_area: String(input.site_area), rotation: String(rotation), bcr: bcr.toFixed(2), far: far.toFixed(2), households: String(Math.max(0, Math.round(input.households))) });
+        if (region) query.set('region', region);
         const next = await api<ZoningCheck>(`/zoning/site?${query}`);
         if (!cancelled) { setZoning(next); onZoning?.(next); }
       } catch { if (!cancelled) { setZoning(null); onZoning?.(null); } }
       finally { if (!cancelled) setZoningLoading(false); }
     }, 350);
     return () => { cancelled = true; window.clearTimeout(timer); };
-  }, [center?.[0], center?.[1], rotation, input.site_area, bcr, far, input.households]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [center?.[0], center?.[1], rotation, input.site_area, bcr, far, input.households, region]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Map: no basemap (works offline), pitched camera, canvas kept for PNG capture.
   useEffect(() => {
@@ -285,16 +288,16 @@ export function Massing3D({ gridId, input, site = null, onSiteChange, onCapture,
         </dl>
     </aside>
     <div className="massing-zoning" aria-live="polite">
-      <strong>용도지역·조례 상한</strong>
+      <strong>{zoning?.basis === 'DECREE' ? '용도지역·시행령 상한' : '용도지역·조례 상한'}</strong>
       {zoningLoading && !zoning ? <span className="muted">확인 중…</span> : zoning ? <>
         <span className={`status-tag ${check?.label.includes('초과') ? 'bad' : check?.label.includes('이내') ? 'good' : 'warn'}`}>{check?.label ?? zoningStatusLabel(zoning.status)}</span>
         <span>{zoning.zones.length ? zoning.zones.slice(0, 3).map((z) => `${z.zone ?? z.zone_name ?? '미상'} ${z.share != null ? `${z.share.toFixed(0)}%` : ''}`).join(' · ') : zoning.reason ?? '대지에 겹치는 용도지역 자료가 없습니다'}</span>
         {zoning.bcr_limit != null && zoning.far_limit != null && <span>기본 상한 건폐율 {zoning.bcr_limit}% · 용적률 {zoning.far_limit}%{zoning.mixed ? ' (면적 가중)' : ''}</span>}
         {check?.district_plan && <span className="status-tag warn">지구단위계획 대상 규모</span>}
-        {zoning.source && <a href={zoning.source.url} target="_blank" rel="noreferrer">{zoning.source.name} ({zoning.source.effective} 시행)</a>}
+        {zoning.source && <a href={zoning.source.url} target="_blank" rel="noreferrer">{zoning.source.name} ({zoning.basis === 'DECREE' ? zoning.source.articles : `${zoning.source.effective} 시행`})</a>}
       </> : <span className="muted">대지 위치가 정해지면 확인합니다.</span>}
     </div>
-    <small className="massing-note">{note}{officialCode ? ` · SGIS 공식 격자 ${officialCode}` : ''}. 계획 블록은 같은 크기로 규칙적으로 늘어놓은 개념 배치이며 실제 배치안이 아닙니다. 동 간격은 마주보는 벽 사이(높이 × 비율, 최소 6m)이고 옆 간격은 그 절반입니다. 그림자는 맑은 날 태양 위치로 그린 개략 그림자이며 지형·주변 지붕은 반영하지 않았습니다. 용도지역 상한은 전주시 도시계획 조례 기본값(완화·지구단위계획 미반영)의 1차 확인입니다.</small>
+    <small className="massing-note">{note}{officialCode ? ` · SGIS 공식 격자 ${officialCode}` : ''}. 계획 블록은 같은 크기로 규칙적으로 늘어놓은 개념 배치이며 실제 배치안이 아닙니다. 동 간격은 마주보는 벽 사이(높이 × 비율, 최소 6m)이고 옆 간격은 그 절반입니다. 그림자는 맑은 날 태양 위치로 그린 개략 그림자이며 지형·주변 지붕은 반영하지 않았습니다. {zoning?.basis === 'DECREE' ? '이 지역 조례가 등록되지 않아 용도지역 상한은 국토계획법 시행령 상한으로 1차 확인합니다(조례 상한은 더 낮을 수 있음).' : '용도지역 상한은 전주시 도시계획 조례 기본값(완화·지구단위계획 미반영)의 1차 확인입니다.'}</small>
   </div>;
 }
 

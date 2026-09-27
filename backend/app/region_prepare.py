@@ -260,11 +260,10 @@ def _kapt_month() -> str:
 
 def step_complexes(db: Any, region: StudyRegion, log: Log, *, delay_s: float = 0.4) -> dict[str, Any]:
     """K-apt 단지 목록 (by 법정 구/시군구 code) and every complex's detail page."""
-    import re
 
     import httpx
 
-    from .kapt import KAPT_LIST_URL, KAPT_MAIN_URL, _client, apply_complex, fetch_complex_detail, normalize_detail, normalize_summary
+    from .kapt import KAPT_LIST_URL, KAPT_MAIN_URL, _client, apply_complex, csrf_token, fetch_complex_detail, normalize_detail, normalize_summary
     from .settings import offline_mode
     month = _kapt_month()
     codes = list_codes(region.legal_codes or [])
@@ -283,10 +282,9 @@ def step_complexes(db: Any, region: StudyRegion, log: Log, *, delay_s: float = 0
             if web is None:
                 web = httpx.Client(timeout=30, follow_redirects=True, headers={"User-Agent": "Carbon-Urban-DSS/1.0 public-data-research", "Accept-Language": "ko-KR,ko;q=0.9"})
                 landing = web.get(KAPT_MAIN_URL)
-                match = re.search(r'<meta\s+name="_csrf"\s+content="([^"]+)"', landing.text)
-                if not match:
+                token = csrf_token(landing.text)
+                if not token:
                     raise ExternalError("K-apt 첫 화면에 CSRF 토큰이 없습니다")
-                token = match.group(1)
             response = web.post(KAPT_LIST_URL, data={"bjdCode": code, "kaptName": "", "searchDate": month, "kaptDuty": "ALL", "_csrf": token},
                                 headers={"X-CSRF-TOKEN": token, "X-Requested-With": "XMLHttpRequest"})
             response.raise_for_status()

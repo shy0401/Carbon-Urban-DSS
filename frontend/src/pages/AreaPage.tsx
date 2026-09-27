@@ -7,6 +7,7 @@ import { PageHeader } from '../components/PageHeader';
 import { ProvenanceBadge } from '../components/ProvenanceBadge';
 import { SgisGridSummaryView } from '../components/SgisGridPanel';
 import { EmptyState, ErrorState, LoadingState } from '../components/Status';
+import { useAnalysisScope } from '../hooks/useAnalysisScope';
 import { useApi } from '../hooks/useApi';
 import { api } from '../lib/api';
 import { at, buildSpec, effortHeadline, eventYears, MODE_LABEL, planBody, plannedArea, REPORT_MODE_LABEL, type AreaAnalysis, type AreaMode, type AreaOptions, type AreaReport, type AreaSpec, type BeforeAfter, type EffortResult, type PlanState } from '../lib/area';
@@ -22,7 +23,8 @@ const DATASET_LABEL: Record<string, string> = { sgis: 'SGIS 인구·가구', kma
 interface CollectionStatus { items: Record<string, { status: string; at?: string; reason?: string }>; runs: Array<{ started_at: string; finished_at?: string; from: number; to: number }>; summary: Record<string, Record<string, number>> }
 
 export function AreaPage() {
-  const options = useApi<AreaOptions>('/areas/options');
+  const { region, regionQuery } = useAnalysisScope();
+  const options = useApi<AreaOptions>(`/areas/options${regionQuery.replace('&', '?')}`);
   const collection = useApi<CollectionStatus>('/areas/collection');
   const [mode, setMode] = useState<AreaMode>('admin');
   const [adminCode, setAdminCode] = useState('');
@@ -44,6 +46,7 @@ export function AreaPage() {
   const [playing, setPlaying] = useState(false);
   const lastSpec = useRef<AreaSpec | null>(null);
   const revision = useRef(0);
+  const started = useRef(false);
 
   // 처음 열 때: 에코시티 개발이 있는 송천1동(없으면 목록 첫 동)과 가장 넓은 용도지역을 고른다.
   useEffect(() => {
@@ -59,7 +62,7 @@ export function AreaPage() {
     const id = ++revision.current;
     setRunning(true); setError(null);
     const pv = Number(pvYield);
-    const body = { area: spec, from_year: fromYear, to_year: toYear, event_year: eventYear, window: windowSize, plan: planBody(plan), target_pct: target, pv_yield_kwh_per_kw: pvYield && pv > 0 ? pv : null };
+    const body = { area: spec, region, from_year: fromYear, to_year: toYear, event_year: eventYear, window: windowSize, plan: planBody(plan), target_pct: target, pv_yield_kwh_per_kw: pvYield && pv > 0 ? pv : null };
     try {
       const result = await api<AreaAnalysis>('/areas/analyze', { method: 'POST', body: JSON.stringify(body) });
       if (id !== revision.current) return;
@@ -70,14 +73,22 @@ export function AreaPage() {
     } finally {
       if (id === revision.current) setRunning(false);
     }
-  }, [fromYear, toYear, eventYear, windowSize, plan, target, pvYield]);
+  }, [fromYear, toYear, eventYear, windowSize, plan, target, pvYield, region]);
   const runRef = useRef(run); runRef.current = run;
+  // Another region: its 행정동, zones and grids are different, so start over there.
+  const shownRegion = useRef(region);
+  useEffect(() => {
+    if (shownRegion.current === region) return;
+    shownRegion.current = region;
+    revision.current++; lastSpec.current = null; started.current = false;
+    setAnalysis(null); setAdminCode(''); setCategory(''); setCenter(null); setVertices([]); setError(null);
+  }, [region]);
 
   const specFor = useCallback((m: AreaMode, over: Partial<{ code: string; category: string; center: [number, number]; vertices: Array<[number, number]> }> = {}) =>
     buildSpec(m, { code: over.code ?? adminCode, category: over.category ?? category, grid: options.data?.default_grid, center: over.center ?? center, radius, vertices: over.vertices ?? vertices }), [adminCode, category, options.data, center, radius, vertices]);
 
-  // First analysis once the defaults are known.
-  const started = useRef(false);
+  // First analysis once the defaults are known (declared before the region reset above uses it).
+
   useEffect(() => { if (!started.current && adminCode && options.data) { started.current = true; void runRef.current({ type: 'admin', code: adminCode }); } }, [adminCode, options.data]);
 
   // Parameter changes re-run the last area (debounced) — the engine recomputes every number.
@@ -149,9 +160,9 @@ export function AreaPage() {
     {analysis && <>
       <div className="section-label"><h2>과거와 현재</h2><span>{analysis.history.years[0]}~{analysis.history.years[analysis.history.years.length - 1]} · {analysis.history.area.label}</span></div>
       <div className="content-grid two-up area-charts">
-        <section className="panel"><div className="panel-title"><h3>연도별 전력 사용량</h3><div className="badge-row"><ProvenanceBadge kind="observed" detail="12개월 완전 지번" /><ProvenanceBadge kind="estimated" /></div></div><ElectricityChart history={analysis.history} eventYear={activeEvent} /><p className="muted">막대는 12개월이 모두 관측된 지번만 더한 값을 단지 준공 시기별로 나눈 것입니다. 점선은 그 해까지 준공된 단지 연면적 × 전주 관측 원단위로 낸 추정입니다.</p></section>
+        <section className="panel"><div className="panel-title"><h3>연도별 전력 사용량</h3><div className="badge-row"><ProvenanceBadge kind="observed" detail="12개월 완전 지번" /><ProvenanceBadge kind="estimated" /></div></div><ElectricityChart history={analysis.history} eventYear={activeEvent} /><p className="muted">막대는 12개월이 모두 관측된 지번만 더한 값을 단지 준공 시기별로 나눈 것입니다. 점선은 그 해까지 준공된 단지 연면적 × {analysis.history.region_label ?? '전주'} 관측 원단위로 낸 추정입니다.</p></section>
         <section className="panel"><div className="panel-title"><h3>개발 이력 (사용승인 세대)</h3><ProvenanceBadge kind="computed" detail="K-apt 사용승인일" /></div><DevelopmentChart history={analysis.history} eventYear={activeEvent} /><p className="muted">호박색 막대가 전후 비교에 쓰는 개발 연도입니다. 막대에 마우스를 올리면 단지명이 보입니다.</p></section>
-        <section className="panel"><div className="panel-title"><h3>기상 (난방도일·냉방도일)</h3><ProvenanceBadge kind="observed" detail="ASOS 전주" /></div><WeatherYearsChart history={analysis.history} /><p className="muted">12개월이 모두 있는 해만 그립니다. 전후 사용량 차이의 일부는 기상 차이일 수 있습니다.</p></section>
+        <section className="panel"><div className="panel-title"><h3>기상 (난방도일·냉방도일)</h3><ProvenanceBadge kind={region ? 'estimated' : 'observed'} detail={region ? 'ERA5-Land 재분석' : 'ASOS 전주'} /></div><WeatherYearsChart history={analysis.history} /><p className="muted">12개월이 모두 있는 해만 그립니다. 전후 사용량 차이의 일부는 기상 차이일 수 있습니다.</p></section>
         <PopulationPanel analysis={analysis} />
         <RegisterPanel analysis={analysis} eventYear={activeEvent} />
       </div>
@@ -165,7 +176,7 @@ export function AreaPage() {
       <EffortPanel effort={analysis.effort} plan={plan} setPlan={setPlan} target={target} setTarget={setTarget} pvYield={pvYield} setPvYield={setPvYield} />
 
       <div className="section-label"><h2>보고서</h2><span>계산 엔진의 근거 문장으로 작성하고, 로컬 AI 문장은 숫자 검증을 통과할 때만 씁니다</span></div>
-      <ReportPanel request={() => ({ area: lastSpec.current, from_year: fromYear, to_year: toYear, event_year: eventYear, window: windowSize, plan: planBody(plan), target_pct: target, pv_yield_kwh_per_kw: pvYield && Number(pvYield) > 0 ? Number(pvYield) : null })} label={analysis.history.area.label} />
+      <ReportPanel request={() => ({ area: lastSpec.current, region, from_year: fromYear, to_year: toYear, event_year: eventYear, window: windowSize, plan: planBody(plan), target_pct: target, pv_yield_kwh_per_kw: pvYield && Number(pvYield) > 0 ? Number(pvYield) : null })} label={analysis.history.area.label} />
     </>}
   </div>;
 }
@@ -209,7 +220,7 @@ function YearPanel({ analysis, year, setYear, playing, setPlaying, eventYear }: 
       <MetricCard dense title="연면적 확인 단지 합계" value={stock?.gfa_m2} unit="m²" provenance="computed" basis={stock?.gfa_excluded ? `연면적 이상 ${stock.gfa_excluded}곳 제외` : undefined} />
       <MetricCard dense title="이 해 사용승인" value={ev?.households ?? 0} unit="세대" provenance="computed" basis={ev?.complexes ? `${ev.complexes}개 단지` : '없음'} />
       <MetricCard dense title="전력 관측" value={elec?.kwh} unit="kWh" provenance="observed" basis={elec?.kwh != null ? `12개월 관측 ${elec.complete_parcels}곳` : undefined} missingReason={collected ? '12개월이 모두 관측된 지번이 없습니다.' : '과거 전력을 아직 수집하지 않았습니다.'} />
-      <MetricCard dense title="전력 추정" value={e?.estimated?.kwh} unit="kWh" provenance="estimated" basis="연면적 × 전주 원단위" missingReason="연면적이 확인된 단지가 없습니다." />
+      <MetricCard dense title="전력 추정" value={e?.estimated?.kwh} unit="kWh" provenance="estimated" basis={`연면적 × ${h.region_label ?? '전주'} 원단위`} missingReason="연면적이 확인된 단지가 없습니다." />
       <MetricCard dense title="전력 탄소 (관측)" value={e?.electricity_carbon_kgco2eq} unit="kgCO₂eq" provenance="computed" basis={h.factor.electricity ? `계수 ${h.factor.electricity}` : undefined} missingReason="관측 전력이 없어 계산하지 않았습니다." />
       <MetricCard dense title="인구" value={pop?.population} unit="명" provenance="observed" basis={pop?.basis} missingReason={`${year}년 SGIS 인구를 아직 수집하지 않았습니다.`} />
     </div>

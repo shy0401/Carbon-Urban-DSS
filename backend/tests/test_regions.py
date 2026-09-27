@@ -116,3 +116,21 @@ def test_list_codes_use_districts_instead_of_the_city():
     assert regions.list_codes(["52111", "52113"]) == ["52111", "52113"]
     assert regions.list_codes(["11110"]) == ["11110"]
     assert regions.list_codes(["36110"]) == ["36110"]
+
+
+def test_sgis_district_names_get_their_province():
+    from app.national import full_name
+    assert full_name("경기도", "수원시 장안구") == "경기도 수원시 장안구"
+    assert full_name("세종특별자치시", "세종특별자치시") == "세종특별자치시"
+    assert full_name("전북특별자치도", "전북특별자치도 전주시 완산구") == "전북특별자치도 전주시 완산구"
+    assert full_name(None, "종로구") == "종로구"
+    rows = [{"adm_code": "31011", "adm_name": full_name("경기도", "수원시 장안구")}, {"adm_code": "31012", "adm_name": full_name("경기도", "수원시 권선구")}]
+    assert match_sgis("경기도 수원시", rows) == ["31011", "31012"]
+
+
+def test_kapt_csrf_token_in_any_attribute_order():
+    from app.kapt import csrf_token
+    assert csrf_token('<meta id="_csrf" name="_csrf" content="abc-123" />') == "abc-123"
+    assert csrf_token('<meta name="_csrf" content="x1">') == "x1"
+    assert csrf_token('<meta content="y2" name="_csrf">') == "y2"
+    assert csrf_token('<meta name="_csrf_header" content="X-CSRF-TOKEN" />') is None

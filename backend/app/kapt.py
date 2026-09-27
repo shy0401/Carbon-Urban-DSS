@@ -141,14 +141,22 @@ def _client(raw_dir: Path | None = None) -> CachedClient:
     return CachedClient(root, client=transport, min_interval=0.3)
 
 
+def csrf_token(html: str) -> str | None:
+    """CSRF token of the K-apt landing page (``<meta id="_csrf" name="_csrf" content="…">``; attribute order varies)."""
+    for tag in re.findall(r"<meta\b[^>]*>", html):
+        if re.search(r'name="_csrf"', tag):
+            found = re.search(r'content="([^"]+)"', tag)
+            if found:
+                return found.group(1)
+    return None
+
+
 def fetch_complex_lists(client: CachedClient, search_month: str = "202512") -> dict[str, list[dict[str, Any]]]:
     """Fetch both Jeonju district lists using K-apt's CSRF-protected public form."""
     landing = client.get("kapt", "main", KAPT_MAIN_URL)
-    text = landing["body"].decode("utf-8", "replace")
-    match = re.search(r'<meta\s+name="_csrf"\s+content="([^"]+)"', text)
-    if not match:
+    token = csrf_token(landing["body"].decode("utf-8", "replace"))
+    if not token:
         raise RuntimeError("K-apt main page did not contain a CSRF token")
-    token = match.group(1)
     headers = {"X-CSRF-TOKEN": token, "X-Requested-With": "XMLHttpRequest"}
     if offline_mode():
         raise ExternalError("오프라인 모드: 로컬 K-apt 목록 파일이 없어 외부 호출을 차단했습니다.")

@@ -55,7 +55,7 @@
 .mobile-top, .mobile-close, .backdrop, .title-block-summary { display: none; }
 
 .title-block {
-  display: grid; grid-template-columns: auto auto minmax(150px, auto) auto auto; margin: 0;
+  display: grid; grid-template-columns: auto auto auto minmax(150px, auto) auto auto; margin: 0;
   border: 1px solid var(--line-strong); border-radius: var(--r-map); background: var(--surface);
 }
 .title-block > div { padding: 6px var(--sp-3); min-width: 0; }
@@ -65,7 +65,9 @@
 .title-block dd small { display: block; font-size: var(--fs-caption); font-weight: 400; color: var(--warning); }
 .title-block code { font-family: var(--mono); font-size: var(--fs-caption); }
 
-.scope-controls { display: flex; align-items: center; gap: var(--sp-3); flex: none; }
+.scope-controls { display: flex; align-items: center; gap: var(--sp-3); flex: none; flex-wrap: wrap; }
+.scope-national { gap: var(--sp-1); }
+.title-block-summary .tb-summary-region { font-weight: 600; white-space: nowrap; }
 .scope-field { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-label); font-weight: 500; color: var(--ink-2); }
 .select-wrap { position: relative; display: inline-flex; align-items: center; }
 .select-wrap select {
@@ -111,15 +113,16 @@
   .title-block { display: none; grid-template-columns: 1fr 1fr; margin-top: var(--sp-2); }
   .title-block-wrap.open .title-block { display: grid; }
   .title-block > div + div { border-left: 0; }
+  .title-block > .tb-const { display: none; }
   .title-block > div:nth-child(n + 3) { border-top: 1px solid var(--line-strong); }
-  .title-block > div:nth-child(2), .title-block > div:nth-child(5) { border-left: 1px solid var(--line-strong); }
+  .title-block > div:nth-child(2), .title-block > div:nth-child(6) { border-left: 1px solid var(--line-strong); }
   .title-block .tb-grid { grid-column: 1 / -1; }
   .title-block dd { white-space: normal; overflow-wrap: anywhere; }
   .scope-field > span:first-child { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
   .page-header { flex-wrap: wrap; align-items: flex-start; gap: var(--sp-3); }
 }
 @media (max-width: 1023px) and (min-width: 761px) {
-  .title-block { grid-template-columns: repeat(5, auto); }
+  .title-block { grid-template-columns: repeat(6, auto); }
 }
 
 @media print {

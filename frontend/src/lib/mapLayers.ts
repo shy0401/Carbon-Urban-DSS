@@ -10,9 +10,9 @@ export interface LayerInfo {
 export const MAP_LAYERS: LayerInfo[] = [
   {
     key: 'grids', label: '분석 격자 (500m)',
-    what: 'EPSG:5179에 맞춘 500×500m 격자 916개입니다. 색은 왼쪽 위에서 고른 지표의 값이고, 빗금은 자료가 없는 격자입니다(0이 아님). SGIS 공식 500m 격자와 모서리가 같아 상세에 공식 격자 코드(예: 다마62a48a)를 함께 표시합니다.',
+    what: 'EPSG:5179에 맞춘 500×500m 격자입니다(전주시 916개, 다른 지역은 준비할 때 SGIS 공식 500m 격자로 만듭니다). 색은 왼쪽 위에서 고른 지표의 값이고, 빗금은 자료가 없는 격자입니다(0이 아님). SGIS 공식 500m 격자와 모서리가 같아 상세에 공식 격자 코드(예: 다마62a48a)를 함께 표시합니다.',
     use: '모든 지표를 같은 공간 단위로 비교합니다. 격자를 누르면 상세가 열리고, 그 격자가 대시보드·분석·시뮬레이션의 대상이 됩니다. 공식 코드는 SGIS 자료신청·결합에 씁니다.',
-    source: '프로젝트 생성 격자 + SGIS OpenAPI 500m 격자 경계(코드)',
+    source: '프로젝트 생성 격자(전주) · SGIS OpenAPI 500m 격자 경계(코드, 전국)',
   },
   {
     key: 'buildings', label: '건물 (도로명주소 건물)',
@@ -27,8 +27,8 @@ export const MAP_LAYERS: LayerInfo[] = [
     source: 'K-apt 공동주택 기본정보',
   },
   {
-    key: 'boundary', label: '전주시 경계',
-    what: 'SGIS 2024 행정동 경계 35개를 합친 전주시 경계입니다.',
+    key: 'boundary', label: '분석 지역 경계',
+    what: '선택한 분석 지역의 SGIS 행정동 경계를 합친 경계입니다(전주시는 2024 행정동 35개).',
     use: '분석 범위를 확인합니다.',
     source: 'SGIS 행정구역 경계',
   },

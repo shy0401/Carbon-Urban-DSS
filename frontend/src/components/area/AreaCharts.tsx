@@ -39,7 +39,7 @@ export function ElectricityChart({ history, eventYear }: { history: AreaHistory;
       itemStyle: { color: COHORT_COLOR[c], borderColor: TOKENS.surface, borderWidth: 1, borderRadius: i === observed.length - 1 ? [4, 4, 0, 0] : 0 },
       ...(i === 0 ? { markArea: observedGaps(years, s.before), markLine: eventLine(eventYear) } : {}),
     }));
-    const est = lineSeries('추정 (연면적 × 전주 원단위)', s.estimated, TOKENS['prov-estimated'], 'estimated');
+    const est = lineSeries(`추정 (연면적 × ${history.region_label ?? '전주'} 원단위)`, s.estimated, TOKENS['prov-estimated'], 'estimated');
     const seriesList: unknown[] = [...bars, bars.length ? est : { ...est, markArea: observedGaps(years, s.before), markLine: eventLine(eventYear) }];
     return baseChart({
       grid: { left: 64, right: 20, top: 48, bottom: 30 },

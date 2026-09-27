@@ -13,6 +13,7 @@ const GuidePage = lazy(() => import('./pages/GuidePage').then((module) => ({ def
 const SimulationPage = lazy(() => import('./pages/SimulationPage').then((module) => ({ default: module.SimulationPage })));
 const ReportsPage = lazy(() => import('./pages/ReportsPage').then((module) => ({ default: module.ReportsPage })));
 const DataPage = lazy(() => import('./pages/DataPage').then((module) => ({ default: module.DataPage })));
+const RegionsPage = lazy(() => import('./pages/RegionsPage').then((module) => ({ default: module.RegionsPage })));
 const SourceDetailPage = lazy(() => import('./pages/SourceDetailPage').then((module) => ({ default: module.SourceDetailPage })));
 
 function Deferred({ children }: { children: ReactNode }) {
@@ -20,5 +21,5 @@ function Deferred({ children }: { children: ReactNode }) {
 }
 
 export default function App() {
-  return <BrowserRouter><Routes><Route element={<Layout />}><Route index element={<DashboardPage />} /><Route path="map" element={<Deferred><MapPage /></Deferred>} /><Route path="analysis" element={<Deferred><AnalysisPage /></Deferred>} /><Route path="model" element={<Deferred><ModelPage /></Deferred>} /><Route path="area" element={<Deferred><AreaPage /></Deferred>} /><Route path="simulation" element={<Deferred><SimulationPage /></Deferred>} /><Route path="reports" element={<Deferred><ReportsPage /></Deferred>} /><Route path="data" element={<Deferred><DataPage /></Deferred>} /><Route path="data/sources/:id" element={<Deferred><SourceDetailPage /></Deferred>} /><Route path="guide" element={<Deferred><GuidePage /></Deferred>} /><Route path="*" element={<DashboardPage />} /></Route></Routes></BrowserRouter>;
+  return <BrowserRouter><Routes><Route element={<Layout />}><Route index element={<DashboardPage />} /><Route path="map" element={<Deferred><MapPage /></Deferred>} /><Route path="analysis" element={<Deferred><AnalysisPage /></Deferred>} /><Route path="model" element={<Deferred><ModelPage /></Deferred>} /><Route path="area" element={<Deferred><AreaPage /></Deferred>} /><Route path="simulation" element={<Deferred><SimulationPage /></Deferred>} /><Route path="reports" element={<Deferred><ReportsPage /></Deferred>} /><Route path="data" element={<Deferred><DataPage /></Deferred>} /><Route path="data/sources/:id" element={<Deferred><SourceDetailPage /></Deferred>} /><Route path="guide" element={<Deferred><GuidePage /></Deferred>} /><Route path="regions" element={<Deferred><RegionsPage /></Deferred>} /><Route path="*" element={<DashboardPage />} /></Route></Routes></BrowserRouter>;
 }

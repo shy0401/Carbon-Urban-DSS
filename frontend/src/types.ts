@@ -48,6 +48,7 @@ export interface QualityScores {
 
 export interface DashboardData {
   selected_sector: Sector | null;
+  region?: RegionRef | null;
   electricity_kwh: number | null;
   gas_kwh: number | null;
   carbon_kg: number | null;
@@ -248,6 +249,9 @@ export interface MapData {
   factors?: { electricity: { value: number; unit: string; source: string; reference_year: number } | null; gas: { value: number; unit: string } | null };
   selected_sector: Sector | null;
   center?: [number, number];
+  /** [west, south, east, north] of the study region (EPSG:4326). */
+  bbox?: [number, number, number, number] | null;
+  region?: RegionRef & { status?: string; grids?: number };
   crs?: string;
   grid_size_m?: number;
   grid_area_m2?: number;
@@ -410,9 +414,44 @@ export interface ZoningCheck {
   bcr_limit: number | null;
   far_limit: number | null;
   mixed: boolean;
-  basis?: 'SITE' | 'GRID_CENTER';
-  check?: { label: string; bcr: 'WITHIN' | 'OVER' | 'UNKNOWN'; far: 'WITHIN' | 'OVER' | 'UNKNOWN'; district_plan: boolean; notes: string[] };
-  source?: { name: string; number: string; effective: string; url: string; checked: string };
+  /** 전주시 조례 표(ORDINANCE) 또는 국토계획법 시행령 상한(DECREE, 조례 미등록 지역). */
+  basis?: 'ORDINANCE' | 'DECREE';
+  site_basis?: 'SITE' | 'GRID_CENTER';
+  check?: { label: string; bcr: 'WITHIN' | 'OVER' | 'UNKNOWN'; far: 'WITHIN' | 'OVER' | 'UNKNOWN'; district_plan: boolean; notes: string[]; basis?: 'ORDINANCE' | 'DECREE' };
+  source?: { name: string; number?: string; effective?: string; url: string; checked: string; articles?: string };
   rules?: string[];
   reason?: string;
+}
+
+/** A study region as the readers return it. */
+export interface RegionRef { code: string; name: string; short_name: string }
+
+export interface RegionStep { id: string; label: string; status: string | null; message?: string; at?: string; rows?: number; resume_at?: string }
+
+export interface RegionSummary extends RegionRef {
+  sido_name: string; status: 'NOT_PREPARED' | 'PREPARING' | 'READY' | 'PARTIAL' | string;
+  legal_codes: string[]; sgis_codes?: string[]; grid_count?: number; default_grid_id?: string | null;
+  center?: [number, number] | null; bbox?: [number, number, number, number] | null;
+  datasets?: Record<string, { status: string; message?: string; at?: string; rows?: number }>;
+  message?: string | null; updated_at?: string | null; steps?: RegionStep[]; districts?: Array<{ code: string; name: string }>;
+}
+
+export interface NationalMeta {
+  admin_units: number; sigungu: number; regions: number; sgis_year: number | null; sgis_sigungu: number; sgis_emd: number;
+  complexes: number; grid500_official: number; grid1k_year: number | null; grid1k_cells: number;
+  sources: Record<string, { status: string; quality: string | null; collected_at: string | null; coverage: string | null } | null>;
+}
+
+export interface RegionsResponse { default: string; regions: RegionSummary[]; national: NationalMeta; steps: Array<{ id: string; label: string }> }
+
+export interface RegionCatalogItem { code: string; name: string; short_name: string; sido_name: string; districts: Array<{ code: string; name: string }>; study_status: string }
+
+export interface NationalRegionProps {
+  code: string; name: string; sido_name: string; districts: Array<{ code: string; name: string }>;
+  population: number | null; households: number | null; density: number | null; area_km2: number | null;
+  complexes: number; study_status: string; sgis_codes: string[];
+}
+
+export interface NationalOverview extends GeoJSON.FeatureCollection<GeoJSON.Geometry | null, NationalRegionProps> {
+  meta: { year: number | null; regions: number; with_geometry?: number; complexes?: number; sources?: Record<string, string | null> };
 }
