@@ -157,3 +157,9 @@
 }
 .metric-use { margin-top: var(--sp-2); font-size: var(--fs-caption); line-height: 1.55; color: var(--ink-2); }
 .metric-use b { margin-right: 4px; color: var(--primary); font-weight: 600; }
+
+.legend-toggle { margin-left: auto; padding: 2px 8px; border: 1px solid var(--line-strong); border-radius: var(--r-control); background: var(--surface); color: var(--ink-2); font-size: var(--fs-caption); cursor: pointer; }
+.legend-toggle:hover { color: var(--ink); border-color: var(--ink-3); }
+.legend-head .unit { margin-left: var(--sp-1); }
+.map-legend.collapsed > :not(.legend-head) { display: none; }
+.map-legend.collapsed .legend-head { margin-bottom: 0; }

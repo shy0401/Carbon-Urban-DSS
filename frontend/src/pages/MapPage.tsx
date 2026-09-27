@@ -51,6 +51,7 @@ export function MapPage() {
   const [offline, setOffline] = useState<boolean | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
   const [basemapEnabled, setBasemapEnabled] = useState(true);
+  const [legendOpen, setLegendOpen] = useState(() => typeof window === 'undefined' || window.innerWidth > 720);
   const [basemapFailed, setBasemapFailed] = useState(false);
   const [metricKey, setMetricKey] = useState<string | null>(null);
   const [visible, setVisible] = useState<Record<LayerKey, boolean>>(DEFAULT_VISIBLE);
@@ -217,8 +218,8 @@ export function MapPage() {
               {METRIC_GROUPS.map((group) => <div className="metric-group" key={group}><span>{group}</span>{METRICS.filter((m) => m.group === group).map((m) => { const valued = classifications[m.key]?.valued ?? 0; return <button key={m.key} className={`metric-option${m.key === metric.key ? ' active' : ''}${valued ? '' : ' empty'}`} aria-pressed={m.key === metric.key} onClick={() => { setMetricKey(m.key); setPickerOpen(false); }}><span>{m.label} <small>{m.unit}</small></span><em>{valued ? `${valued}/${total}` : '자료 없음'}</em></button>; })}</div>)}
             </section>}
           </div>
-          <section className="map-legend" aria-label="지표 범례">
-            <div className="legend-head"><strong>{metric.label}</strong><span className="unit">{metric.unit}</span></div>
+          <section className={`map-legend${legendOpen ? '' : ' collapsed'}`} aria-label="지표 범례">
+            <div className="legend-head"><strong>{metric.label}</strong><span className="unit">{metric.unit}</span><button type="button" className="legend-toggle" aria-expanded={legendOpen} onClick={() => setLegendOpen((open) => !open)}>{legendOpen ? '범례 접기' : '범례 펼치기'}</button></div>
             {classification.classes.length ? <ul className="legend-classes">{classification.classes.map((c, i) => <li key={i}><i style={{ background: c.color }} /><span>{rangeLabel(c, metric.digits, i === classification.classes.length - 1)}</span><em>{c.count.toLocaleString('ko-KR')}격자</em></li>)}</ul> : <p className="map-empty-hint">이 지표는 아직 계산할 관측 자료가 없습니다. 모든 격자를 자료 미확보(해치)로 표시합니다.</p>}
             {classification.missing > 0 && <div className="legend-missing"><i className="is-missing" /><span>자료 미확보 (0 아님)</span><em>{classification.missing.toLocaleString('ko-KR')}격자</em></div>}
             <div className="legend-coverage"><span>값 있는 격자 {classification.valued.toLocaleString('ko-KR')}/{total.toLocaleString('ko-KR')}</span><b>{formatMetric(classification.valued / Math.max(total, 1) * 100, '%', 1)}</b></div>
