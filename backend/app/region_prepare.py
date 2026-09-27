@@ -79,6 +79,13 @@ def create_region(db: Any, code: str) -> StudyRegion:
 
 
 def _mark(db: Any, region: StudyRegion, step: str, status: str, message: str | None = None, **extra: Any) -> None:
+    # Re-read the row under a lock: another process (a CLI run, the API queueing a step) may have written
+    # other steps since this session loaded it, and ``datasets`` is replaced as a whole.
+    try:
+        db.refresh(region, with_for_update=True)
+    except Exception:  # noqa: BLE001 - SQLite in tests
+        db.rollback()
+        db.refresh(region)
     datasets = dict(region.datasets or {})
     item = dict(datasets.get(step) or {})
     item.update(status=status, at=now().isoformat(timespec="seconds"), label=STEP_LABELS.get(step, step))
@@ -309,7 +316,8 @@ def step_complexes(db: Any, region: StudyRegion, log: Log, *, delay_s: float = 0
                     path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
                 pair = (normalize_detail(payload), payload)
                 details += 1
-            except (RuntimeError, ExternalError, ValueError, httpx.HTTPError) as exc:
+            except (RuntimeError, ExternalError, ValueError, TypeError, KeyError, httpx.HTTPError) as exc:
+                # One unreadable detail page leaves that complex with its list values only.
                 failed.append(f"{code}: {type(exc).__name__}")
             apply_complex(db, row, pair, month)
             if index % 50 == 0:
@@ -488,6 +496,7 @@ def _progress_logger(db: Any, region: StudyRegion, step: str, log: Log) -> Log:
             return
         last[0] = time.monotonic()
         try:
+            db.refresh(region, with_for_update=True)
             datasets = dict(region.datasets or {})
             item = dict(datasets.get(step) or {})
             item["message"] = str(message)[:200]

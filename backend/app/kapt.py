@@ -225,7 +225,8 @@ def normalize_detail(payload: dict[str, Any]) -> dict[str, Any]:
     apartment = payload["resultMap_kapt"]
     location = payload.get("evacInfo") or {}
     lon, lat = _coordinates(location)
-    addresses = {row.get("addrGbn"): row.get("addr") for row in payload.get("resultMap_kapt_addrList", [])}
+    # Some complexes answer the address list as null.
+    addresses = {row.get("addrGbn"): row.get("addr") for row in (payload.get("resultMap_kapt_addrList") or []) if isinstance(row, dict)}
     return {
         "source_system": "K-apt",
         "kapt_code": apartment.get("kaptCode"),
