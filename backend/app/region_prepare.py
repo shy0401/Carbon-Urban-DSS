@@ -530,6 +530,9 @@ def prepare_region(db: Any, code: str, steps: list[str] | None = None, *, log: L
     region.message = ("준비 완료" if region.status == "READY"
                       else f"일일 호출 한도로 남은 단계: {', '.join(waiting)} — 한도가 풀리면 이어서 수집합니다" if waiting
                       else "일부 단계가 끝나지 않았습니다 (단계별 상태 참고)")
+    if code == DEFAULT_REGION and not waiting:
+        # The original study area's layers came from the Jeonju collection, not from these steps.
+        region.status, region.message = "READY", "최초 연구 지역 (기존 자료 + 추가 단계)"
     region.updated_at = now()
     db.commit()
     forget_region_cache(code)
