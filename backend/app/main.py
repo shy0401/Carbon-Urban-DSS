@@ -488,7 +488,18 @@ def optimization(request:OptimizationInput):
         legal={}
         if zoning and zoning.get('status')=='OK':legal={'legal_far_limit':zoning['far_limit'],'legal_bcr_limit':zoning['bcr_limit']}
         result=optimize(request.model_dump(),baseline['baseline_monthly'],baseline['baseline_floor_area_m2'],factors_for(db,request.year),legal)
-        if legal and result.get('status')=='ENERGY_OPTIMAL':result['legal_status']=f"전주시 조례 기본 상한(건폐율 {legal['legal_bcr_limit']:g}%·용적률 {legal['legal_far_limit']:g}%) 안의 후보만 탐색 / 인허가 판단 아님"
+        if legal:
+            limit_text=f"전주시 조례 기본 상한(건폐율 {legal['legal_bcr_limit']:g}%·용적률 {legal['legal_far_limit']:g}%)"
+            if result.get('status')=='ENERGY_OPTIMAL':result['legal_status']=f"{limit_text} 안의 후보만 탐색 / 인허가 판단 아님"
+            elif result.get('status')=='NO_FEASIBLE_CANDIDATES':
+                # The largest capacity the limit allows on this site, so the user knows how far to relax the targets.
+                max_gfa=request.site_area*legal['legal_far_limit']/100
+                max_households=int(max_gfa/request.average_household_area)
+                result['legal_status']=f"{limit_text} 적용"
+                result['reason']=(f"{limit_text} 안에서는 최소 세대수 {request.min_households:,}·인구 {request.min_population:,} 조건을 만족하는 후보가 없습니다. "
+                                  f"이 대지(대지면적 {request.site_area:,.0f}m², 평균 세대면적 {request.average_household_area:g}m²)의 상한 연면적은 약 {max_gfa:,.0f}m², 최대 약 {max_households:,}세대입니다. "
+                                  "최소 세대수를 낮추거나 대지면적·평균 세대면적을 바꿔 보세요.")
+                result['max_households_under_limit']=max_households
         result['zoning_check']=zoning
         result['baseline_scope']=baseline.get('baseline_scope')
         sid=str(uuid.uuid4());db.add(Scenario(id=sid,inputs=dict(request.model_dump(),type='OPTIMIZATION')));db.flush();db.add(ScenarioResult(id=sid,result=result));db.commit();return result
