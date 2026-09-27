@@ -24,7 +24,7 @@ frontend/vite.config.d.ts
 *.log
 data/ops/
 data/llm/
-scripts/llm/out/
+scripts/llm/out*/
 .venv-llm/
 # 공공데이터포털 SGIS 격자 원본 패키지(전국). 전주 범위는 scripts/sgis/extract_sgis_grid.py로 data/raw/sgis_grid_1k에 잘라 씀
 국가데이터처_SGIS*/
