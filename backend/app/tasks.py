@@ -212,6 +212,24 @@ def queue_region_prepare(db,region,steps=None,force=False):
         region.status='PARTIAL' if (region.datasets or {}).get('grid',{}).get('status')=='DONE' else 'NOT_PREPARED'
         region.message='수집 작업 큐 연결 실패';db.commit()
 
+def resume_overdue_regions(db):
+    """Re-queue regions whose quota-bound steps passed their resume time (the timed task is lost when the
+    worker restarts). Called from the region screens' reads."""
+    from datetime import datetime,timedelta
+    from .regions import StudyRegion
+    queued=[]
+    for region in db.scalars(select(StudyRegion).where(StudyRegion.status=='PARTIAL')):
+        due=[]
+        for step,item in (region.datasets or {}).items():
+            item=item or {}
+            if item.get('status')!='WAITING' or not item.get('resume_at'):continue
+            try:resume=datetime.fromisoformat(item['resume_at'])
+            except ValueError:continue
+            if resume+timedelta(minutes=10)<now():due.append(step)
+        if due:
+            queue_region_prepare(db,region,due+['finalize']);queued.append(region.code)
+    return queued
+
 @celery_app.task(name='prepare_region',bind=True,max_retries=None)
 def run_prepare_region(self,code,steps=None,force=False):
     import redis

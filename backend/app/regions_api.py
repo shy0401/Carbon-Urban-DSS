@@ -54,6 +54,11 @@ def national_meta(db: Any) -> dict[str, Any]:
 def regions() -> dict[str, Any]:
     from .region_prepare import STEP_LABELS, STEPS
     with Session() as db:
+        try:
+            from .tasks import resume_overdue_regions
+            resume_overdue_regions(db)
+        except Exception:  # noqa: BLE001 - no queue (tests): the regions are still listed
+            db.rollback()
         rows = [region_summary(r) for r in db.scalars(select(StudyRegion).order_by(StudyRegion.code))]
         for row in rows:
             row["short_name"] = short_name(row["name"])
