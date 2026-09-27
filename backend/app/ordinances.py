@@ -55,7 +55,8 @@ _EXCLUDE_TITLE = ("완화", "특례", "강화", "경관", "방화", "취락", "�
 _HOUSING = ("공동주택", "주거복합", "주거용")
 _EXCLUDE_BEFORE = ("재건축은", "재개발은", "정비사업은", "재건축의경우", "재개발의경우")
 
-_PCT = re.compile(r"100분의(\d+(?:\.\d+)?)|(\d{1,2}천\d{0,3}|천\d{1,3}|\d[\d,]*(?:\.\d+)?)(?:퍼센트|%|프로)")
+# "100분의 1,500", "1천300퍼센트", "1천5백퍼센트", "1.000퍼센트"(천 단위 점), "200센트"(원문 오기)
+_PCT = re.compile(r"100분의(\d[\d,]*(?:\.\d+)?)|(\d{1,2}천(?:\d백|\d{1,3})?|천\d{1,3}|\d[\d,]*(?:\.\d+)?)(?:퍼센트|%|프로|센트)")
 _SITE_RULE = re.compile(r"대지면적(?:이)?(\d{1,2}천\d{0,3}|\d[\d,]*)(?:제곱미터|㎡|m2)(초과|이상)")
 _ANNOTATIONS = [re.compile(p) for p in (
     r"<[^<>]*>", r"〈[^〈〉]*〉", r"\[[^\[\]]*\]",
@@ -150,14 +151,17 @@ def _parse_search(body: bytes) -> list[dict[str, Any]]:
 # --------------------------------------------------------------------------- parser
 def _num(text: str) -> float:
     text = text.replace(",", "")
+    if re.fullmatch(r"\d{1,2}\.\d{3}", text):  # "1.000" = 1,000 (천 단위 점)
+        return float(text.replace(".", ""))
     if "천" in text:
         head, tail = text.split("천", 1)
-        return float((int(head) if head else 1) * 1000 + (int(tail) if tail else 0))
+        rest = int(tail[:-1]) * 100 if tail.endswith("백") else int(tail) if tail else 0
+        return float((int(head) if head else 1) * 1000 + rest)
     return float(text)
 
 
 def _pct_value(match: re.Match[str]) -> float:
-    return float(match.group(1)) if match.group(1) else _num(match.group(2))
+    return _num(match.group(1)) if match.group(1) else _num(match.group(2))
 
 
 def _clean(text: str) -> str:
@@ -201,7 +205,10 @@ def _items(lines: list[str]) -> list[str]:
     """'N. …' items of a paragraph, each with its 목 (가. 나. …) and continuation lines."""
     items: list[str] = []
     current: list[str] | None = None
-    for line in lines:
+    expanded: list[str] = []
+    for line in lines:  # "19. 계획관리지역 : 100퍼센트 이하. 다만, … 20. 농림지역 : 80퍼센트 이하" on one line
+        expanded.extend(p for p in re.split(r"\s+(?=\d{1,2}\s*\.\s*(?:제\d종|준주거|중심상업|일반상업|근린상업|유통상업|전용공업|일반공업|준공업|보전|생산|자연|계획관리|농림))", line) if p.strip())
+    for line in expanded:
         if re.match(r"^\d{1,2}\s*\.\s*\S", line) and not re.match(r"^\d{4}\s*\.", line):
             if current is not None:
                 items.append(" ".join(current))
@@ -218,6 +225,8 @@ def _items(lines: list[str]) -> list[str]:
 
 
 def _zones_in_head(head: str) -> list[str]:
+    head = re.sub(r"제(\d)(전용|일반)", r"제\1종\2", head)       # "제1전용주거지역"(원문 오기)
+    head = re.sub(r"(주거|상업|공업|녹지|관리|보전)지(?!역)", r"\1지역", head)  # "준주거지 :"
     found = [z for z in sorted(ZONES, key=len, reverse=True) if z in head]
     # "제1종전용주거지역" contains no other zone name, but "자연녹지지역" must not also claim "녹지지역" groups
     zones = [z for z in ZONES if z in found]

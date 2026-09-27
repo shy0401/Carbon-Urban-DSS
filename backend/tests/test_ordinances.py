@@ -107,3 +107,13 @@ def test_numeric_column_table_with_housing_rows():
     assert far["제3종일반주거지역"]["value"] == 300 and far["제3종일반주거지역"]["housing"] == 250
     assert far["준주거지역"]["housing"] == 350 and far["준공업지역"]["housing"] == 250
     assert far["일반상업지역"]["housing"] is None
+
+
+def test_number_and_name_variants():
+    lines = ["① 용적률은 다음 각 호와 같다.", "1. 제1전용주거지역: 100퍼센트 이하", "3. 제1종일반주거지역 : 200센트 이하", "6. 준주거지 : 500퍼센트 이하",
+             "7. 중심상업지역 : 100분의 1,500 이하", "8. 일반상업지역 : 1천5백퍼센트 이하", "9. 근린상업지역 : 1.000퍼센트 이하",
+             "19. 계획관리지역 : 100퍼센트 이하. 다만, 성장관리계획 지역은 125퍼센트 이하. 20. 농림지역 : 80퍼센트 이하"]
+    parsed = parse_limit_items(lines)
+    assert {z: v["value"] for z, v in parsed.items()} == {
+        "제1종전용주거지역": 100, "제1종일반주거지역": 200, "준주거지역": 500, "중심상업지역": 1500, "일반상업지역": 1500,
+        "근린상업지역": 1000, "계획관리지역": 100, "농림지역": 80}
