@@ -296,6 +296,11 @@ def parse_limit_items(lines: list[str]) -> dict[str, dict[str, Any]]:
     return out
 
 
+def _children(root: ET.Element, tag: str) -> list[ET.Element]:
+    node = root.find(tag)
+    return list(node) if node is not None else []
+
+
 def _article_label(jo: ET.Element) -> str:
     """조문번호 "006600" = 제66조, "001202" = 제12조의2."""
     raw = (jo.findtext("조문번호") or "").strip()
@@ -309,7 +314,7 @@ def _article_label(jo: ET.Element) -> str:
 def _candidate_articles(root: ET.Element, word: str) -> list[ET.Element]:
     """Articles about ``word`` (건폐율/용적률): a 용도지역 article always, others unless they are about relaxations etc."""
     found = []
-    for jo in (root.find("조문") or []):
+    for jo in _children(root, "조문"):
         if (jo.findtext("조문여부") or "Y") not in ("Y", ""):
             continue
         title = (jo.findtext("조제목") or "").replace(" ", "")
@@ -320,7 +325,7 @@ def _candidate_articles(root: ET.Element, word: str) -> list[ET.Element]:
 
 def _table_units(root: ET.Element) -> list[dict[str, Any]]:
     units = []
-    for unit in (root.find("별표") or []):
+    for unit in _children(root, "별표"):
         number = (unit.findtext("별표번호") or "").lstrip("0")
         units.append({"number": int(number) if number.isdigit() else None, "branch": (unit.findtext("별표가지번호") or "").lstrip("0"),
                       "title": (unit.findtext("별표제목") or "").strip(), "text": html.unescape(unit.findtext("별표내용") or "").strip(),
