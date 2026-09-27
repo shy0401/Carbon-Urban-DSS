@@ -11,7 +11,7 @@ from .models import *
 from .catalog import seed_sources
 from .collectors import collect_regions,collect_spatial,collect_weather,DATA
 from .service import serialize,dashboard,factors_for
-from .domain import scenario_calculation,month_range
+from .domain import scenario_calculation,month_range,carbon_kg
 from .tasks import queue_collection
 from .settings import DEFAULT_YEAR,offline_mode
 from . import official,kapt,kapt_energy,kma_asos,sgis,vworld
@@ -29,6 +29,10 @@ async def lifespan(app):
     apply_migrations(engine)
     with Session() as db:
         seed_sources(db)
+        try:
+            from .emissions import ensure_gas_factor
+            ensure_gas_factor(db)
+        except Exception:db.rollback()
         kma_asos.backfill_weather_observations(db)
         # K-apt rows stored before the no-report rule (all-zero months) must not stay as 0 kWh.
         try:kapt_energy.reclassify_existing(db)
@@ -103,7 +107,7 @@ from .sgis_grid import router as sgis_grid_router
 app.include_router(sgis_grid_router)
 from . import energy_parcels  # noqa: F401 - registers parcel_grid before create_all
 from . import sgis_grid_official  # noqa: F401 - registers sgis_official_grid_cells before create_all
-from . import regions,national  # noqa: F401 - registers admin_units, study_regions, grid_regions, national_* before create_all
+from . import regions,national,ordinances  # noqa: F401 - registers admin_units, study_regions, grid_regions, national_*, zoning_ordinances before create_all
 from .regions_api import router as regions_router
 app.include_router(regions_router)
 from .regions import RegionNotReady,DEFAULT_REGION,region_for_grid
@@ -339,6 +343,8 @@ def grid_energy_properties(db,year,factors,sc=None):
         p['electricity_carbon_kg_annual']=carbon_kg(e.get('kwh'),electricity_factor)
         p['electricity_carbon_kg']=carbon_kg(p['electricity_kwh'],electricity_factor)
         p['electricity_carbon_kg_per_m2']=carbon_kg(p['electricity_kwh_per_m2'],electricity_factor)
+        # 도시가스 탄소: 가정 계수 규칙 (emissions.ensure_gas_factor), 12개월 관측 지번만
+        p['gas_carbon_kg_annual']=carbon_kg(g.get('kwh'),factors.get('GAS'))
     return result
 
 @app.get('/api/map')
@@ -372,7 +378,7 @@ def map_data(year:int=Query(DEFAULT_YEAR,ge=2000,le=2100),region:str|None=Query(
             # Only plausible published floor areas are summed; the rest are counted as excluded.
             if c.get('floor_area_status')=='OK':item['complex_gfa_m2']=(item['complex_gfa_m2'] or 0)+c['gross_floor_area_m2']
             else:item['complex_gfa_excluded']+=1
-        empty_energy={'electricity_kwh':None,'gas_kwh':None,'electricity_months':0,'gas_months':0,'energy_parcels':0,'electricity_complete_parcels':0,'electricity_observed_parcels':0,'electricity_suspect_parcels':0,'electricity_area_parcels':0,'electricity_household_parcels':0,'electricity_kwh_per_m2':None,'electricity_kwh_per_household':None,'electricity_area_m2':None,'electricity_households':None,'gas_kwh_per_m2':None,'gas_complete_parcels':0,'gas_observed_parcels':0,'gas_area_parcels':0,'gas_area_m2':None,'electricity_kwh_annual':None,'gas_kwh_annual':None,'electricity_carbon_kg_annual':None,'electricity_carbon_kg':None,'electricity_carbon_kg_per_m2':None}
+        empty_energy={'electricity_kwh':None,'gas_kwh':None,'electricity_months':0,'gas_months':0,'energy_parcels':0,'electricity_complete_parcels':0,'electricity_observed_parcels':0,'electricity_suspect_parcels':0,'electricity_area_parcels':0,'electricity_household_parcels':0,'electricity_kwh_per_m2':None,'electricity_kwh_per_household':None,'electricity_area_m2':None,'electricity_households':None,'gas_kwh_per_m2':None,'gas_complete_parcels':0,'gas_observed_parcels':0,'gas_area_parcels':0,'gas_area_m2':None,'electricity_kwh_annual':None,'gas_kwh_annual':None,'electricity_carbon_kg_annual':None,'electricity_carbon_kg':None,'electricity_carbon_kg_per_m2':None,'gas_carbon_kg_annual':None}
         grids=[]
         rows=[r for start in range(0,len(ids),2000) for r in db.scalars(select(Grid).where(Grid.id.in_(ids[start:start+2000])).order_by(Grid.id))]
         for r in rows:
@@ -474,9 +480,27 @@ def scenario(request:ScenarioInput):
     with Session() as db:
         if request.grid_id and not db.get(Grid,request.grid_id):raise HTTPException(404,'격자를 찾을 수 없습니다')
         region=_request_region(db,request)
-        baseline=dashboard(db,request.grid_id,request.year,region);result=scenario_calculation(request.model_dump(),baseline['baseline_monthly'],baseline['baseline_floor_area_m2'],factors_for(db,request.year))
+        baseline=dashboard(db,request.grid_id,request.year,region);factors=factors_for(db,request.year)
+        estimate=baseline.get('baseline_estimate')
+        if estimate:
+            # No parcel of this grid is observed for 12 months: the plan runs on the region's pooled intensity.
+            # "현재" is then the same planned floor area at that average intensity (BAU), not this grid's use.
+            params=request.model_dump();gfa=params['building_count']*params['footprint_per_building']*params['floors']
+            ratio=gfa/estimate['area_m2'] if estimate['area_m2'] else 0
+            scaled=[]
+            for row in estimate['monthly']:
+                r=dict(row,electricity_kwh=row['electricity_kwh']*ratio if row['electricity_kwh'] is not None else None,gas_kwh=row['gas_kwh']*ratio if row['gas_kwh'] is not None else None)
+                e=carbon_kg(r['electricity_kwh'],factors.get('ELECTRICITY'));g=carbon_kg(r['gas_kwh'],factors.get('GAS'))
+                scaled.append(dict(r,electricity_carbon_kg=e,gas_carbon_kg=g,carbon_kg=e+g if e is not None and g is not None else None))
+            result=scenario_calculation(params,scaled,gfa,factors)
+            result['data_class']='ESTIMATED';result['baseline_basis']=estimate['basis']
+            result['baseline_estimate']={k:estimate[k] for k in ('basis','label','area_m2','parcels','energy_types')}
+            result['assumptions'].insert(0,f"이 격자에는 12개월 관측과 연면적이 모두 있는 지번이 없어 {estimate['label']}(관측 지번 {estimate['parcels']}곳, 연면적 {estimate['area_m2']:,.0f}m²)로 추정했습니다. '현재' 값은 계획 연면적을 그 평균 원단위로 운영할 때의 기준(BAU)입니다.")
+        else:
+            result=scenario_calculation(request.model_dump(),baseline['baseline_monthly'],baseline['baseline_floor_area_m2'],factors)
+            result['baseline_basis']='GRID_OBSERVED' if baseline.get('baseline_scope') else None
         result['baseline_scope']=baseline.get('baseline_scope')
-        result['id']=str(uuid.uuid4());result['quality']='기준 에너지·연면적 부족' if not baseline['baseline_floor_area_m2'] else '공간 매칭된 관측 원단위 기반'
+        result['id']=str(uuid.uuid4());result['quality']=(f"{estimate['label']} 기반 추정 (이 격자 관측 없음)" if estimate else '기준 에너지·연면적 부족' if not baseline['baseline_floor_area_m2'] else '공간 매칭된 관측 원단위 기반')
         result['calculations']={key:result[key] for key in ['total_footprint','gross_floor_area','far','bcr','households','population','green_area_m2']}
         result['baseline']={k:baseline.get(k) for k in ['current_far','current_bcr','households','population','gross_floor_area_m2','developable_site_area_m2']}
         result['grid_id']=baseline['selected_sector']['grid_id'] if baseline['selected_sector'] else None
@@ -503,7 +527,7 @@ def _site_zoning_for(db,request,grid_id,region=None):
 @app.get('/api/zoning/site')
 def zoning_site(lon:float=Query(...,ge=124,le=132),lat:float=Query(...,ge=33,le=39),site_area:float=Query(...,gt=0,le=250000),rotation:float=Query(0,ge=0,lt=90),
                 bcr:float|None=Query(None,ge=0,le=100),far:float|None=Query(None,ge=0,le=5000),households:int|None=Query(None,ge=0),region:str|None=Query(None,max_length=10)):
-    """용도지역 and 상한 (전주시 조례, 다른 지역은 국토계획법 시행령) for a square site; with bcr/far the 1st-pass check as well."""
+    """용도지역 and 상한 (지역 조례 → 시행령 → 국토계획법 제79조) for a square site; with bcr/far the 1st-pass check as well."""
     from .zoning_limits import check_plan,site_zoning
     with Session() as db:
         zoning=site_zoning(db,lon,lat,site_area,rotation,region_code=region)
@@ -524,11 +548,16 @@ def optimization(request:OptimizationInput):
         zoning=_site_zoning_for(db,request,grid_id,region)
         legal={}
         if zoning and zoning.get('status')=='OK':legal={'legal_far_limit':zoning['far_limit'],'legal_bcr_limit':zoning['bcr_limit']}
-        result=optimize(request.model_dump(),baseline['baseline_monthly'],baseline['baseline_floor_area_m2'],factors_for(db,request.year),legal)
+        estimate=baseline.get('baseline_estimate')
+        monthly_base,area_base=(estimate['monthly'],estimate['area_m2']) if estimate else (baseline['baseline_monthly'],baseline['baseline_floor_area_m2'])
+        result=optimize(request.model_dump(),monthly_base,area_base,factors_for(db,request.year),legal)
+        if estimate:result['baseline_basis']=estimate['basis'];result['baseline_estimate']={k:estimate[k] for k in ('basis','label','area_m2','parcels','energy_types')}
         if legal:
-            basis_text='국토계획법 시행령 상한' if zoning.get('basis')=='DECREE' else '전주시 조례 기본 상한'
+            source_name=(zoning.get('source') or {}).get('name') or '조례'
+            basis_text={'DECREE':'국토계획법 시행령 상한','MIXED':f'{source_name}·시행령 상한'}.get(zoning.get('basis'),f'{source_name} 기본 상한')
             limit_text=f"{basis_text}(건폐율 {legal['legal_bcr_limit']:g}%·용적률 {legal['legal_far_limit']:g}%)"
-            if result.get('status')=='ENERGY_OPTIMAL':result['legal_status']=f"{limit_text} 안의 후보만 탐색 / 인허가 판단 아님"
+            if (zoning.get('special') or {}).get('greenbelt'):result['legal_status']=f"개발제한구역 포함 대지 — 건축 원칙적 제한 (참고로 {limit_text} 적용)"
+            elif result.get('status')=='ENERGY_OPTIMAL':result['legal_status']=f"{limit_text} 안의 후보만 탐색 / 인허가 판단 아님"
             elif result.get('status')=='NO_FEASIBLE_CANDIDATES':
                 # The largest capacity the limit allows on this site, so the user knows how far to relax the targets.
                 max_gfa=request.site_area*legal['legal_far_limit']/100

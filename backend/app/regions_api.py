@@ -12,7 +12,8 @@ from .regions import DEFAULT_REGION, AdminUnit, StudyRegion, catalog, region_sum
 
 router = APIRouter(prefix="/api/regions", tags=["regions"])
 
-Step = Literal["grid", "sgis_admin", "complexes", "weather", "zoning", "buildings", "cadastral", "register", "building_energy", "kapt_energy", "finalize"]
+Step = Literal["grid", "sgis_admin", "complexes", "weather", "zoning", "zoning_other", "special_areas", "ordinance", "buildings", "cadastral",
+               "register", "building_energy", "kapt_energy", "finalize"]
 
 
 def _count(db: Any, model: Any, *where: Any) -> int:
@@ -36,7 +37,7 @@ def national_meta(db: Any) -> dict[str, Any]:
         db.rollback()
     grid_year = latest_year(db)
     sources = {}
-    for source_id in ("admin_units", "sgis_national", "kapt_national", "sgis_grid", "sgis_grid_1k"):
+    for source_id in ("admin_units", "sgis_national", "kapt_national", "sgis_grid", "sgis_grid_1k", "zoning_ordinances"):
         source = db.get(DataSource, source_id)
         sources[source_id] = {"status": source.status, "quality": source.quality, "collected_at": source.collected_at.isoformat() if source.collected_at else None,
                               "coverage": source.geographic_coverage} if source else None
@@ -46,8 +47,13 @@ def national_meta(db: Any) -> dict[str, Any]:
         "sgis_emd": _count(db, NationalUnit, NationalUnit.year == year, NationalUnit.level == "EMD") if year else 0,
         "complexes": _count(db, NationalComplex), "grid500_official": _count(db, SgisOfficialGridCell),
         "grid1k_year": grid_year, "grid1k_cells": _count(db, SgisGridCell, SgisGridCell.year == grid_year) if grid_year else 0,
-        "sources": sources,
+        "sources": sources, "ordinances": _ordinance_counts(db),
     }
+
+
+def _ordinance_counts(db: Any) -> dict[str, Any]:
+    from .ordinances import ordinance_summary
+    return ordinance_summary(db)
 
 
 @router.get("")
@@ -125,7 +131,7 @@ def _stale(region: StudyRegion) -> bool:
 
 
 class PrepareInput(BaseModel):
-    steps: list[Step] | None = Field(default=None, max_length=11)
+    steps: list[Step] | None = Field(default=None, max_length=14)
     force: bool = False
 
 
@@ -151,7 +157,8 @@ def prepare(code: str, request: PrepareInput | None = None) -> dict[str, Any]:
 
 
 class NationalInput(BaseModel):
-    datasets: list[Literal["admin_units", "sgis_national", "kapt_national", "grid500"]] = Field(default=["admin_units", "sgis_national", "kapt_national", "grid500"], min_length=1)
+    datasets: list[Literal["admin_units", "sgis_national", "kapt_national", "grid500", "ordinances"]] = Field(
+        default=["admin_units", "sgis_national", "kapt_national", "grid500", "ordinances"], min_length=1)
 
 
 @router.post("/national/collect", status_code=202)

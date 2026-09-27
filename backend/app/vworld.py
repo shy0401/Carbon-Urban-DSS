@@ -25,7 +25,13 @@ VWORLD_API_URL = "https://api.vworld.kr/req/data"
 VWORLD_GUIDE_URL = "https://www.vworld.kr/dev/v4dv_2ddataguide2_s001.do"
 _TO_5179 = Transformer.from_crs("EPSG:4326", "EPSG:5179", always_xy=True)
 _TO_4326 = Transformer.from_crs("EPSG:5179", "EPSG:4326", always_xy=True)
-DATASETS = {"zoning", "cadastral", "buildings"}
+# 용도지역 layers (all stored in vworld_zoning_areas, id "<dataset>:<feature id>"): 도시지역 세분 and the three
+# non-urban 용도지역. The layer name is the zone when a feature carries no ``uname``.
+ZONING_LAYERS = {"zoning": "도시지역", "zoning_management": "관리지역", "zoning_agriculture": "농림지역",
+                 "zoning_conservation": "자연환경보전지역"}
+# 용도구역·지구단위계획: stored in vworld_special_areas.
+SPECIAL_LAYERS = {"greenbelt": "GREENBELT", "district_plan": "DISTRICT_PLAN"}
+DATASETS = {"cadastral", "buildings", *ZONING_LAYERS, *SPECIAL_LAYERS}
 GRID_SIZE_M = 500
 
 
@@ -35,6 +41,23 @@ class VworldZoningArea(Base):
     source_feature_id: Mapped[str] = mapped_column(String, index=True)
     zone_code: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
     zone_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    source_crs: Mapped[str] = mapped_column(String)
+    geom: Mapped[object] = mapped_column(Geometry("GEOMETRY", srid=5179, spatial_index=True))
+    properties: Mapped[dict] = mapped_column(JSON)
+    geometry_repaired: Mapped[bool] = mapped_column(default=False)
+    source: Mapped[str] = mapped_column(String)
+    raw_source_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class VworldSpecialArea(Base):
+    """개발제한구역 (LT_C_UD801) and 지구단위계획구역 (LT_C_UPISUQ161): areas whose own rules override the 용도지역 limits."""
+    __tablename__ = "vworld_special_areas"
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    kind: Mapped[str] = mapped_column(String, index=True)              # GREENBELT | DISTRICT_PLAN
+    name: Mapped[str | None] = mapped_column(String, nullable=True)    # 지구단위계획 이름 (dgm_nm) / "개발제한구역"
+    declared_area_m2: Mapped[float | None] = mapped_column(Float, nullable=True)
+    source_feature_id: Mapped[str] = mapped_column(String, index=True)
     source_crs: Mapped[str] = mapped_column(String)
     geom: Mapped[object] = mapped_column(Geometry("GEOMETRY", srid=5179, spatial_index=True))
     properties: Mapped[dict] = mapped_column(JSON)
@@ -258,10 +281,12 @@ def _grid_shapes(db: Any, scope: str) -> list[dict[str, Any]]:
 
 def _source(db: Any, dataset: str) -> DataSource:
     source_id = f"vworld_{dataset}"
-    names = {"zoning": "VWorld 도시지역 용도지역", "cadastral": "VWorld 연속지적도", "buildings": "VWorld 도로명주소 건물"}
-    categories = {"zoning": "용도지역", "cadastral": "지적", "buildings": "건축물 정보"}
+    names = {"zoning": "VWorld 도시지역 용도지역", "cadastral": "VWorld 연속지적도", "buildings": "VWorld 도로명주소 건물",
+             "zoning_management": "VWorld 관리지역 (보전·생산·계획관리)", "zoning_agriculture": "VWorld 농림지역",
+             "zoning_conservation": "VWorld 자연환경보전지역", "greenbelt": "VWorld 개발제한구역", "district_plan": "VWorld 지구단위계획구역"}
+    categories = {"cadastral": "지적", "buildings": "건축물 정보", "greenbelt": "용도구역", "district_plan": "지구단위계획"}
     source = db.get(DataSource, source_id) or DataSource(
-        id=source_id, category=categories[dataset],
+        id=source_id, category=categories.get(dataset, "용도지역"),
         name=names[dataset], organization="국토교통부 / VWorld", source_url=VWORLD_GUIDE_URL,
         source_type="OFFICIAL", status="NOT_COLLECTED",
         limitation="VWorld 2D Data API의 전주시 분석격자 bbox 조회 결과입니다.",
@@ -311,14 +336,21 @@ def rebuild_grid_zoning_stats(db: Any, grid_ids: list[str] | None = None) -> int
 
 def _store_feature(db: Any, dataset: str, feature: dict[str, Any], layer: dict[str, Any], digest: str, grid_ids: set[str] | None) -> Any:
     """Upsert one parsed VWorld feature into its table (id ``<dataset>:<feature id>``)."""
-    model = {"zoning": VworldZoningArea, "cadastral": CadastralParcel, "buildings": VworldBuilding}[dataset]
+    model = _model(dataset)
     props = feature["properties"]
     ident = f"{dataset}:{feature['id']}"
     row = db.get(model, ident)
-    if dataset == "zoning":
+    if dataset in ZONING_LAYERS:
         row = row or VworldZoningArea(id=ident, source_feature_id=feature["id"], source_crs=layer["source_crs"], source="VWorld")
-        row.zone_name = props.get("uname")
+        row.zone_name = (props.get("uname") or "").strip() or ZONING_LAYERS[dataset]
         row.zone_code = props.get("ucode") or props.get("zone_code") or feature["id"]
+    elif dataset in SPECIAL_LAYERS:
+        row = row or VworldSpecialArea(id=ident, kind=SPECIAL_LAYERS[dataset], source_feature_id=feature["id"], source_crs=layer["source_crs"], source="VWorld")
+        row.name = (props.get("dgm_nm") or props.get("uname") or "").strip() or None
+        try:
+            row.declared_area_m2 = float(props.get("dgm_ar")) if props.get("dgm_ar") not in (None, "") else None
+        except (TypeError, ValueError):
+            row.declared_area_m2 = None
     elif dataset == "buildings":
         row = row or VworldBuilding(id=ident, source_feature_id=feature["id"], source_crs=layer["source_crs"], source="VWorld")
         for column, value in building_values(props, feature["geometry"], grid_ids).items():
@@ -336,6 +368,14 @@ def _store_feature(db: Any, dataset: str, feature: dict[str, Any], layer: dict[s
     row.collected_at = datetime.now(timezone.utc)
     db.add(row)
     return row
+
+
+def _model(dataset: str) -> Any:
+    if dataset in ZONING_LAYERS:
+        return VworldZoningArea
+    if dataset in SPECIAL_LAYERS:
+        return VworldSpecialArea
+    return {"cadastral": CadastralParcel, "buildings": VworldBuilding}[dataset]
 
 
 def tiles_for(grid_ids: list[str], tile_m: int = 1000) -> dict[tuple[int, int], list[str]]:
@@ -420,9 +460,13 @@ def collect_vworld_cells(db: Any, dataset: str, grid_ids: list[str], *, tile_m: 
         db.commit()
         if progress:
             progress(index / max(1, len(tiles)), f"VWorld {dataset} {index}/{len(tiles)} 타일")
-    if dataset == "zoning":
+    if dataset in ZONING_LAYERS:
         stats["grid_intersections"] = rebuild_grid_zoning_stats(db, sorted(member))
-    stored = db.scalar(select(func.count()).select_from({"zoning": VworldZoningArea, "cadastral": CadastralParcel, "buildings": VworldBuilding}[dataset])) or 0
+    model = _model(dataset)
+    query = select(func.count()).select_from(model)
+    if model is VworldZoningArea or model is VworldSpecialArea:
+        query = query.where(model.id.like(f"{dataset}:%"))
+    stored = db.scalar(query) or 0
     source.normalized_row_count = stored
     source.collected_at = datetime.now(timezone.utc)
     db.commit()
@@ -446,7 +490,7 @@ def collect_vworld(db: Any, dataset: str, scope: str = "smoke", *, client: Cache
     session=client or CachedClient(root/"cache"/"vworld",min_interval=0.3)
     url=os.getenv("VWORLD_DATA_URL",VWORLD_API_URL);domain_value=domain or os.getenv("VWORLD_DOMAIN","http://localhost")
     requested=normalized=repaired=empty=0
-    model={"zoning":VworldZoningArea,"cadastral":CadastralParcel,"buildings":VworldBuilding}[dataset]
+    model=_model(dataset)
     grid_ids=set(db.scalars(select(Grid.id))) if dataset=="buildings" else set()
     for grid in grids:
         page=1;grid_features=0
@@ -468,7 +512,7 @@ def collect_vworld(db: Any, dataset: str, scope: str = "smoke", *, client: Cache
         coverage=db.get(VworldGridCoverage,f"{dataset}:{grid['id']}") or VworldGridCoverage(id=f"{dataset}:{grid['id']}",dataset=dataset,grid_id=grid["id"])
         coverage.pages=page;coverage.feature_count=grid_features;coverage.status="EMPTY_VALID" if grid_features==0 else "SUCCESS";coverage.collected_at=datetime.now(timezone.utc);db.add(coverage);db.commit()
     stored=db.scalar(select(func.count()).select_from(model)) or 0
-    intersections=rebuild_grid_zoning_stats(db) if dataset=="zoning" else 0
+    intersections=rebuild_grid_zoning_stats(db) if dataset in ZONING_LAYERS else 0
     quality=f"{layer['dataset_id']} feature {stored}개 / geometry 보정 {repaired}개"
     if dataset=="buildings":
         with_floors=db.scalar(select(func.count()).select_from(VworldBuilding).where(VworldBuilding.above_floors.is_not(None))) or 0

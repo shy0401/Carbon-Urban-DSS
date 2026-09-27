@@ -1,12 +1,20 @@
-"""용도지역별 건폐율·용적률 상한과 계획 대지의 1차 적합성 확인.
+"""용도지역별 건폐율·용적률 상한과 계획 대지의 1차 적합성 확인 (전국, 지역마다 다른 조례).
 
-* 전주시(최초 연구 지역): 전주시 도시계획 조례 제45·47조 기본 상한.
-* 그 밖의 지역: 해당 시·군 조례를 아직 등록하지 않았으므로 국토계획법 시행령 제84조(건폐율)·
-  제85조(용적률 범위의 상한)를 씁니다. 조례는 시행령 범위 안에서 더 낮게 정하므로, 시행령 상한
-  '초과'는 조례로도 초과이지만 '이내'는 조례 확인이 더 필요합니다.
+적용 규칙 (지역마다, 용도지역마다 같은 순서):
 
-값은 원문에서 확인한 수치만 둔다(확인 못 한 칸은 None). 완화 규정, 지구단위계획 지침, 경관지구
-제한은 반영하지 않으므로 결과는 인허가 판단이 아니라 1차 확인이다.
+1. 그 지역에 적용되는 도시·군계획 조례의 값. 전주시(최초 연구 지역)는 원문과 대조한 표(``LIMITS``)이고,
+   그 밖의 지역은 ``ordinances.py``가 법제처 국가법령정보(law.go.kr)에서 받아 읽은 값입니다.
+   특별시·광역시의 구·군은 시 조례, 제주시·서귀포시는 제주특별자치도 조례를 따릅니다.
+2. 조례를 받지 못했거나 조례에 그 용도지역 값이 없으면 국토계획법 시행령 제84조(건폐율)·제85조(용적률) 상한
+   (전국 공통). 조례 값이 시행령 상한을 넘으면 시행령 상한을 씁니다(조례는 시행령 범위 안).
+3. 용도지역이 세분되지 않은 땅은 국토계획법 제79조: 도시지역 → 보전녹지지역(시행령 제86조), 관리지역 →
+   보전관리지역, 용도지역 미지정 → 자연환경보전지역. 주거·상업·공업·녹지지역이 더 나뉘지 않았으면 같은
+   지역 중 상한이 가장 낮은 세분을 씁니다(가정). 대지 일부에 용도지역 자료가 없으면 그 부분도 제79조
+   제1항대로 자연환경보전지역 기준을 가정합니다. 가정한 부분은 결과에 따로 표시합니다.
+4. 개발제한구역(개발제한구역법 제12조: 건축 원칙적 금지)과 지구단위계획구역(계획이 정한 건폐율·용적률이
+   우선)은 대지와 겹치는지 표시하고 판정 문구에 반영합니다.
+
+완화 규정, 경관지구 제한은 반영하지 않으므로 결과는 인허가 판단이 아니라 1차 확인입니다.
 """
 from __future__ import annotations
 
@@ -83,6 +91,32 @@ RULES = [
 
 SITE_AREA_DISTRICT_PLAN_M2 = 10_000
 HOUSEHOLDS_DISTRICT_PLAN = 300
+ASSUMED_GAP_THRESHOLD = 0.05   # 대지의 5% 이상이 용도지역 자료 밖이면 그 부분을 제79조 제1항으로 가정
+ZONES = list(DECREE_LIMITS)
+# 시행령 별표(용도지역 안에서 건축할 수 있는 건축물): 공동주택을 지을 수 없거나 따로 확인해야 하는 곳
+HOUSING_RESTRICTED = {"유통상업지역", "전용공업지역", "일반공업지역"}
+HOUSING_RESTRICTED_NOTE = "공동주택은 이 용도지역에서 건축 제한 대상이라 허용 여부를 따로 확인해야 합니다"
+UNDIVIDED = {
+    "도시지역": ("보전녹지지역", "세부 용도지역이 없는 도시지역 → 국토계획법 제79조 제2항·시행령 제86조에 따라 보전녹지지역 기준"),
+    "관리지역": ("보전관리지역", "세부 용도지역이 없는 관리지역 → 국토계획법 제79조 제2항에 따라 보전관리지역 기준"),
+}
+CLASS_MEMBERS = {
+    "주거지역": ZONES[0:6], "상업지역": ZONES[6:10], "공업지역": ZONES[10:13], "녹지지역": ZONES[13:16],
+}
+GAP_NOTE = "용도지역 자료가 없는 부분 → 국토계획법 제79조 제1항(용도지역 미지정 = 자연환경보전지역) 기준 (가정)"
+ORDINANCE_RULES = [
+    "{name} {articles}의 기본 상한입니다. law.go.kr 원문에서 읽은 값이며({checked} 확인), 완화·강화 조항과 경관지구 제한은 반영하지 않았습니다.",
+    "조례에 값이 없는 용도지역은 국토계획법 시행령 제84조·제85조 상한을 씁니다.",
+    "세부 용도지역이 없는 땅은 국토계획법 제79조(도시지역 → 보전녹지, 관리지역 → 보전관리, 미지정 → 자연환경보전) 기준입니다.",
+    "여러 용도지역에 걸친 대지는 부분 면적으로 가중한 상한을 보여 줍니다.",
+    "1차 확인이며 인허가 판단이 아닙니다.",
+]
+DECREE_REASON = {
+    "NOT_COLLECTED": "이 지역의 시·군 도시계획 조례를 아직 받지 않아",
+    "NOT_FOUND": "law.go.kr에서 이 지역 도시·군계획 조례를 찾지 못해",
+    "PARSE_FAILED": "조례 본문에서 용도지역 상한을 읽지 못해",
+    "ERROR": "조례를 받는 중 오류가 나서",
+}
 
 
 def normalize_zone(name: str | None) -> str | None:
@@ -92,98 +126,251 @@ def normalize_zone(name: str | None) -> str | None:
         return None
     if not text.endswith("지역"):
         text += "지역"
-    return text if text in LIMITS else None
+    return text if text in DECREE_LIMITS else None
 
 
-def limits_for(zone_name: str | None, basis: str = "ORDINANCE") -> dict[str, Any]:
-    """Limits of one 용도지역: ``ORDINANCE`` (전주시 조례) or ``DECREE`` (국토계획법 시행령 상한)."""
-    key = normalize_zone(zone_name)
-    if key is None:
-        return {"zone": zone_name, "known": False, "bcr_limit": None, "far_limit": None, "far_limit_housing": None,
-                "note": ("조례 표에 없는 용도지역 이름입니다" if basis == "ORDINANCE" else "시행령 표에 없는 용도지역 이름입니다") if zone_name else "용도지역 자료 없음"}
-    if basis == "DECREE":
-        bcr, far = DECREE_LIMITS[key]
-        return {"zone": key, "known": True, "bcr_limit": bcr, "far_limit": far, "far_limit_housing": far,
-                "note": "공동주택 허용 여부는 건축 제한을 따로 확인해야 합니다" if key in ("유통상업지역", "전용공업지역", "일반공업지역") else None}
-    bcr, far, far_housing, note = LIMITS[key]
-    return {"zone": key, "known": bcr is not None, "bcr_limit": bcr, "far_limit": far, "far_limit_housing": far_housing, "note": note}
+# --------------------------------------------------------------------------- which table applies
+def _jeonju_rules() -> dict[str, Any]:
+    from .regions import DEFAULT_REGION
+    table = {zone: {"bcr": bcr, "far": far, "bcr_housing": bcr, "far_housing": far_housing, "note": note}
+             for zone, (bcr, far, far_housing, note) in LIMITS.items() if bcr is not None}
+    return {"region": DEFAULT_REGION, "kind": "ORDINANCE", "status": "VERIFIED", "table": table, "source": ORDINANCE, "rules": RULES}
+
+
+def _decree_rules(region: str | None = None, status: str = "NOT_COLLECTED", issuer: dict[str, Any] | None = None) -> dict[str, Any]:
+    reason = DECREE_REASON.get(status, DECREE_REASON["NOT_COLLECTED"])
+    rules = [f"{reason} 국토계획법 시행령 제84조(건폐율)·제85조(용적률 범위의 상한)를 씁니다 (전국 공통 규정).", *DECREE_RULES[1:]]
+    if issuer:
+        rules.insert(1, f"이 지역에 적용되는 조례: {issuer['name']} 도시·군계획 조례 ({issuer['rule']}).")
+    return {"region": region, "kind": "DECREE", "status": status, "table": {}, "source": DECREE, "rules": rules, "issuer": issuer}
+
+
+JEONJU_RULES: dict[str, Any] | None = None
+
+
+def region_rules(db: Any, region_code: str | None) -> dict[str, Any]:
+    """The limits that apply in a region: the 조례 table when it could be read, else the 시행령 (per zone and field)."""
+    global JEONJU_RULES
+    from .regions import DEFAULT_REGION
+    code = region_code or DEFAULT_REGION
+    if code == DEFAULT_REGION:
+        JEONJU_RULES = JEONJU_RULES or _jeonju_rules()
+        return JEONJU_RULES
+    from .ordinances import ordinance_for_region
+    try:
+        info = ordinance_for_region(db, code)
+    except Exception:  # noqa: BLE001 - no catalog / table (tests)
+        info = None
+    row = (info or {}).get("row")
+    issuer = (info or {}).get("issuer")
+    if not row or row.get("status") not in ("PARSED", "PARTIAL"):
+        return _decree_rules(code, (info or {}).get("status") or "NOT_COLLECTED", issuer)
+    table = {}
+    for zone, entry in (row.get("limits") or {}).items():
+        if zone not in DECREE_LIMITS:
+            continue
+        item: dict[str, Any] = {}
+        for key in ("bcr", "far"):
+            if key in entry and not entry.get(f"{key}_over_decree"):
+                item[key] = entry[key]
+                item[f"{key}_housing"] = entry.get(f"{key}_housing", entry[key])
+                if entry.get(f"{key}_site_rules"):
+                    item[f"{key}_site_rules"] = entry[f"{key}_site_rules"]
+                if entry[key] != entry.get(f"{key}_housing", entry[key]) or entry.get(f"{key}_site_rules"):
+                    item.setdefault("texts", []).append(entry.get(f"{key}_text"))
+            elif key in entry:
+                item.setdefault("over_decree", []).append(f"조례 {'건폐율' if key == 'bcr' else '용적률'} {entry[key]:g}%가 시행령 상한을 넘어 시행령 상한을 적용")
+        if item:
+            table[zone] = item
+    articles = row.get("articles") or {}
+    source = {"name": row.get("title"), "number": f"{row.get('agency')} 조례 제{row.get('promulgation_no')}호" if row.get("promulgation_no") else None,
+              "effective": row.get("effective"), "articles": ", ".join(a for a in (articles.get("bcr"), articles.get("far")) if a),
+              "url": row.get("url") or DECREE["url"], "checked": row.get("checked"), "decree": DECREE["name"] + " 제84조·제85조",
+              "issuer": issuer["name"] if issuer else None, "issuer_rule": issuer["rule"] if issuer else None, "parsed": True,
+              "zones": len(table)}
+    rules = [ORDINANCE_RULES[0].format(name=source["name"], articles=source["articles"] or "", checked=source["checked"] or "-"), *ORDINANCE_RULES[1:]]
+    if issuer and issuer["code"] != code:
+        rules.insert(1, f"{issuer['rule']}.")
+    return {"region": code, "kind": "ORDINANCE", "status": row.get("status"), "table": table, "source": source, "rules": rules, "issuer": issuer}
+
+
+def _field(rules: dict[str, Any], zone: str, key: str) -> tuple[float, str]:
+    """(value, basis) of one field: the 조례 value when there is one, else the 시행령 상한."""
+    value = (rules.get("table") or {}).get(zone, {}).get(key)
+    if value is not None:
+        return float(value), "ORDINANCE"
+    decree_bcr, decree_far = DECREE_LIMITS[zone]
+    return float(decree_bcr if key.startswith("bcr") else decree_far), "DECREE"
+
+
+def resolve_zone(name: str | None, rules: dict[str, Any]) -> tuple[str, str | None]:
+    """(table zone, assumption note or None). Unknown or undivided 용도지역 follow 국토계획법 제79조."""
+    key = normalize_zone(name)
+    if key:
+        return key, None
+    text = str(name or "").replace(" ", "")
+    if text and not text.endswith("지역"):
+        text += "지역"
+    if text in UNDIVIDED:
+        return UNDIVIDED[text]
+    if text in CLASS_MEMBERS:
+        members = CLASS_MEMBERS[text]
+        strictest = min(members, key=lambda z: (_field(rules, z, "far")[0], _field(rules, z, "bcr")[0]))
+        return strictest, f"세분되지 않은 {text} → 같은 {text} 중 상한이 가장 낮은 {strictest} 기준 (가정)"
+    if not text:
+        return "자연환경보전지역", GAP_NOTE
+    return "자연환경보전지역", f"'{name}': 용도지역 이름을 알 수 없어 국토계획법 제79조 제1항(자연환경보전지역) 기준 (가정)"
+
+
+def limits_for(zone_name: str | None, basis: str = "ORDINANCE", rules: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Limits of one 용도지역 under ``rules`` (default: 전주시 조례 for ``ORDINANCE``, 시행령 only for ``DECREE``)."""
+    if rules is None:
+        rules = region_rules(None, None) if basis == "ORDINANCE" else _decree_rules()
+    zone, assumed = resolve_zone(zone_name, rules)
+    bcr, bcr_basis = _field(rules, zone, "bcr")
+    far, far_basis = _field(rules, zone, "far")
+    entry = (rules.get("table") or {}).get(zone, {})
+    bcr_housing = float(entry["bcr_housing"]) if bcr_basis == "ORDINANCE" and entry.get("bcr_housing") is not None else bcr
+    far_housing: float | None = float(entry["far_housing"]) if far_basis == "ORDINANCE" and entry.get("far_housing") is not None else far
+    notes = [assumed] if assumed else []
+    if entry.get("note"):
+        notes.append(entry["note"])
+    notes.extend(entry.get("over_decree") or [])
+    if zone in HOUSING_RESTRICTED:
+        far_housing = None
+        if not any("공동주택" in n and "확인" in n for n in notes):
+            notes.append(HOUSING_RESTRICTED_NOTE)
+    if bcr_basis == far_basis == "DECREE" and rules.get("kind") == "ORDINANCE" and not entry.get("over_decree"):
+        notes.append("조례에 이 용도지역 값이 없어 국토계획법 시행령 상한")
+    basis_zone = "ORDINANCE" if bcr_basis == far_basis == "ORDINANCE" else "DECREE" if bcr_basis == far_basis == "DECREE" else "MIXED"
+    return {"zone": zone, "zone_name": zone_name, "known": True, "bcr_limit": bcr, "far_limit": far, "bcr_limit_housing": bcr_housing,
+            "far_limit_housing": far_housing, "site_rules": entry.get("far_site_rules") or [] if far_basis == "ORDINANCE" else [],
+            "note": " · ".join(n for n in notes if n) or None, "basis": basis_zone, "assumed": assumed,
+            "texts": [t for t in entry.get("texts", []) if t]}
 
 
 def basis_for(region_code: str | None) -> str:
-    """전주시(52110)만 조례 표가 등록되어 있습니다."""
+    """Static basis without a database: 전주시 조례 표, 그 밖은 시행령 (조례 수집 여부는 ``region_rules``가 봅니다)."""
     from .regions import DEFAULT_REGION
     return "ORDINANCE" if (region_code or DEFAULT_REGION) == DEFAULT_REGION else "DECREE"
 
 
-def weighted_limits(zones: list[dict[str, Any]], site_area_m2: float, housing: bool = True, basis: str = "ORDINANCE") -> dict[str, Any]:
-    """Area-weighted 상한 over the covered part of the site.
+def _site_basis(rows: list[dict[str, Any]]) -> str:
+    kinds = {r["basis"] for r in rows}
+    return kinds.pop() if len(kinds) == 1 else "MIXED" if kinds else "DECREE"
 
-    ``zones``: [{"zone_name", "area_m2"}]. The uncovered part (no zoning polygon) makes the result partial:
-    a limit is only returned when zoning covers at least 95 % of the site and every covered zone has a value.
+
+def weighted_limits(zones: list[dict[str, Any]], site_area_m2: float, housing: bool = True, basis: str = "ORDINANCE",
+                    rules: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Area-weighted 상한 over the site.
+
+    ``zones``: [{"zone_name", "area_m2"}]. When 5 % or more of the site has no zoning polygon, that part follows
+    국토계획법 제79조 제1항 (자연환경보전지역) as a labelled assumption; smaller gaps are ignored (edges, slivers).
     """
+    if rules is None:
+        rules = region_rules(None, None) if basis == "ORDINANCE" else _decree_rules()
     rows = []
     covered = 0.0
     for item in zones:
         area = float(item.get("area_m2") or 0)
         if area <= 0:
             continue
-        info = limits_for(item.get("zone_name"), basis)
+        info = limits_for(item.get("zone_name"), rules=rules)
         far = info["far_limit_housing"] if housing else info["far_limit"]
-        rows.append(dict(info, zone_name=item.get("zone_name"), area_m2=round(area, 1),
-                         share=round(area / site_area_m2 * 100, 2) if site_area_m2 else None, applied_far_limit=far))
+        bcr = info["bcr_limit_housing"] if housing else info["bcr_limit"]
+        applied_notes = []
+        for rule in info["site_rules"]:
+            hit = site_area_m2 >= rule["min_site_m2"] if rule.get("inclusive") else site_area_m2 > rule["min_site_m2"]
+            if hit and far is not None and rule["value"] < far:
+                far = rule["value"]
+                applied_notes.append(f"대지면적 {rule['min_site_m2']:,.0f}㎡ {'이상' if rule.get('inclusive') else '초과'}: 용적률 {rule['value']:g}% (조례 단서)")
+        rows.append(dict(info, area_m2=round(area, 1), share=round(area / site_area_m2 * 100, 2) if site_area_m2 else None,
+                         applied_bcr_limit=bcr, applied_far_limit=far, applied_notes=applied_notes))
         covered += area
-    rows.sort(key=lambda r: -r["area_m2"])
     covered_share = covered / site_area_m2 if site_area_m2 else 0.0
+    gap = max(0.0, site_area_m2 - covered)
+    if rows and site_area_m2 and gap / site_area_m2 >= ASSUMED_GAP_THRESHOLD:
+        info = limits_for(None, rules=rules)
+        rows.append(dict(info, zone_name=None, area_m2=round(gap, 1), share=round(gap / site_area_m2 * 100, 2),
+                         applied_bcr_limit=info["bcr_limit_housing"] if housing else info["bcr_limit"],
+                         applied_far_limit=info["far_limit_housing"] if housing else info["far_limit"], applied_notes=[], gap=True))
+    rows.sort(key=lambda r: (bool(r.get("gap")), -r["area_m2"]))
+    total = sum(r["area_m2"] for r in rows)
     status = "OK"
     bcr = far = None
     if not rows:
         status = "NO_ZONING"
-    elif covered_share < 0.95:
-        status = "PARTIAL_COVERAGE"
-    elif any(r["bcr_limit"] is None or r["applied_far_limit"] is None for r in rows):
+    elif any(r["applied_bcr_limit"] is None or r["applied_far_limit"] is None for r in rows):
         status = "LIMIT_UNKNOWN"
     else:
-        bcr = sum(r["bcr_limit"] * r["area_m2"] for r in rows) / covered
-        far = sum(r["applied_far_limit"] * r["area_m2"] for r in rows) / covered
+        bcr = sum(r["applied_bcr_limit"] * r["area_m2"] for r in rows) / total
+        far = sum(r["applied_far_limit"] * r["area_m2"] for r in rows) / total
+    assumed_share = sum(r["share"] or 0 for r in rows if r.get("assumed"))
     return {"status": status, "zones": rows, "covered_share": round(min(covered_share, 1.0) * 100, 2),
             "bcr_limit": round(bcr, 2) if bcr is not None else None, "far_limit": round(far, 2) if far is not None else None,
-            "mixed": len(rows) > 1, "basis": basis}
+            "mixed": len(rows) > 1, "basis": _site_basis(rows), "assumed_share": round(assumed_share, 2),
+            "rules_kind": rules.get("kind"), "ordinance_status": rules.get("status")}
+
+
+BASIS_TEXT = {"ORDINANCE": "조례", "DECREE": "시행령", "MIXED": "조례·시행령"}
 
 
 def check_plan(limits: dict[str, Any], *, bcr: float | None, far: float | None, site_area_m2: float, households: int | None) -> dict[str, Any]:
-    """Compare a plan's 건폐율·용적률 (%) with the limits; adds the district-plan (지구단위계획) flag."""
+    """Compare a plan's 건폐율·용적률 (%) with the limits; adds the 지구단위계획 and 개발제한구역 flags."""
     def verdict(value: float | None, limit: float | None) -> str:
         if value is None or limit is None:
             return "UNKNOWN"
         return "OVER" if value > limit + 1e-9 else "WITHIN"
 
     bcr_state, far_state = verdict(bcr, limits.get("bcr_limit")), verdict(far, limits.get("far_limit"))
-    decree = limits.get("basis") == "DECREE"
+    basis = limits.get("basis", "ORDINANCE")
+    word = BASIS_TEXT.get(basis, "조례")
+    special = limits.get("special") or {}
+    greenbelt = (special.get("greenbelt") or {}).get("share", 0) > 0
+    plan_areas = special.get("district_plans") or []
     district_plan = site_area_m2 >= SITE_AREA_DISTRICT_PLAN_M2 or (households or 0) >= HOUSEHOLDS_DISTRICT_PLAN
-    if "OVER" in (bcr_state, far_state):
-        label = "시행령 상한 초과" if decree else "조례 기본 상한 초과"
+    assumed = (limits.get("assumed_share") or 0) > 0
+    if greenbelt:
+        label = "개발제한구역 — 건축 원칙적 제한"
+    elif "OVER" in (bcr_state, far_state):
+        label = "시행령 상한 초과" if basis == "DECREE" else f"{word} 기본 상한 초과"
     elif bcr_state == far_state == "WITHIN":
-        label = "시행령 상한 이내 (조례 확인 필요)" if decree else "조례 기본 상한 이내 (1차 확인)"
+        label = ("시행령 상한 이내 (조례 확인 필요)" if basis == "DECREE" and limits.get("rules_kind") != "ORDINANCE"
+                 else f"{word} 기본 상한 이내 (1차 확인)")
     else:
         label = "법적 상한 판단 보류"
+    if assumed and not greenbelt and label != "법적 상한 판단 보류":
+        label += " · 일부 가정"
+    if plan_areas and not greenbelt:
+        label += " · 지구단위계획 우선"
     notes = []
-    if decree:
+    if greenbelt:
+        notes.append(f"대지의 {special['greenbelt']['share']:.0f}%가 개발제한구역입니다. 개발제한구역법 제12조로 건축물의 건축이 원칙적으로 금지되고 "
+                     "허가 대상 시설만 지을 수 있어 건폐율·용적률 판정을 하지 않습니다.")
+    for area in plan_areas:
+        notes.append(f"대지의 {area['share']:.0f}%가 지구단위계획구역({area.get('name') or '이름 없음'})입니다. 지구단위계획이 정한 건폐율·용적률·높이가 우선하므로 이 확인은 참고용입니다.")
+    if basis == "DECREE" and limits.get("rules_kind") != "ORDINANCE":
         notes.append("이 지역 조례가 등록되지 않아 국토계획법 시행령 상한으로 확인했습니다. 조례 상한은 더 낮을 수 있습니다.")
-    if district_plan:
-        notes.append("지구단위계획 수립 대상 규모일 수 있습니다. 용적률은 지구단위계획 지침을 따르므로 이 확인과 다를 수 있습니다." if decree
+    elif basis in ("DECREE", "MIXED") and limits.get("rules_kind") == "ORDINANCE":
+        notes.append("조례에 값이 없는 용도지역은 국토계획법 시행령 상한을 썼습니다.")
+    if district_plan and not plan_areas:
+        notes.append("지구단위계획 수립 대상 규모일 수 있습니다. 용적률은 지구단위계획 지침을 따르므로 이 확인과 다를 수 있습니다."
+                     if basis != "ORDINANCE" or limits.get("ordinance_status") != "VERIFIED"
                      else "지구단위계획 수립 대상 규모입니다. 용적률은 전주시 지구단위계획수립지침을 따르므로 이 확인과 다를 수 있습니다.")
     if limits.get("mixed"):
         notes.append("대지가 여러 용도지역에 걸쳐 있어 면적 가중 상한을 썼습니다.")
-    if limits.get("status") == "PARTIAL_COVERAGE":
-        notes.append("대지 일부에 용도지역 자료가 없어 판단을 보류합니다.")
     if limits.get("status") == "LIMIT_UNKNOWN":
         notes.append("조례에 수치가 없거나 공동주택 허용 여부 확인이 필요한 용도지역이 있습니다.")
+    seen = set()
     for zone in limits.get("zones", []):
-        if zone.get("note"):
-            notes.append(f"{zone['zone']}: {zone['note']}")
+        for text in [zone.get("note"), *(zone.get("applied_notes") or [])]:
+            if text and text not in seen:
+                seen.add(text)
+                notes.append(f"{zone['zone']}: {text}" if not zone.get("gap") else text)
     return {"label": label, "bcr": bcr_state, "far": far_state, "bcr_value": bcr, "far_value": far,
             "bcr_limit": limits.get("bcr_limit"), "far_limit": limits.get("far_limit"),
-            "district_plan": district_plan, "notes": notes, "basis": limits.get("basis", "ORDINANCE")}
+            "district_plan": district_plan or bool(plan_areas), "district_plan_areas": plan_areas, "greenbelt": greenbelt,
+            "assumed": assumed, "notes": notes, "basis": basis}
 
 
 def site_square_sql() -> str:
@@ -196,14 +383,60 @@ def site_square_sql() -> str:
     )
 
 
-def site_zoning(db: Any, lon: float, lat: float, site_area_m2: float, rotation_deg: float = 0.0, housing: bool = True,
-                region_code: str | None = None) -> dict[str, Any]:
-    """용도지역 parts of the square site (side √area) and the weighted limits (조례, or 시행령 outside Jeonju)."""
+SPECIAL_SQL = (
+    "WITH c AS (SELECT ST_Transform(ST_SetSRID(ST_MakePoint(:lon, :lat), 4326), 5179) AS p), "
+    "s AS (SELECT ST_Rotate(ST_MakeEnvelope(ST_X(p) - :h, ST_Y(p) - :h, ST_X(p) + :h, ST_Y(p) + :h, 5179), :rad, p) AS g FROM c) "
+    "SELECT a.kind, a.name, sum(ST_Area(ST_Intersection(ST_MakeValid(a.geom), s.g))) AS area_m2 "
+    "FROM vworld_special_areas a, s WHERE ST_Intersects(a.geom, s.g) GROUP BY a.kind, a.name ORDER BY area_m2 DESC"
+)
+LAYER_SQL = "SELECT dataset FROM vworld_grid_coverage WHERE grid_id = :g AND dataset IN ('zoning', 'zoning_management', 'greenbelt', 'district_plan')"
+
+
+def _site_cell(lon: float, lat: float) -> str | None:
+    try:
+        from pyproj import Transformer
+        x, y = Transformer.from_crs(4326, 5179, always_xy=True).transform(lon, lat)
+    except Exception:  # noqa: BLE001
+        return None
+    return f"cell_{int(x // 500 * 500)}_{int(y // 500 * 500)}"
+
+
+def special_areas(db: Any, lon: float, lat: float, side: float, rotation_deg: float, site_area_m2: float) -> dict[str, Any]:
+    """개발제한구역·지구단위계획구역 overlapping the site, and which layers were collected around it."""
     from sqlalchemy import text
 
-    basis = basis_for(region_code)
-    rules, source = (RULES, ORDINANCE) if basis == "ORDINANCE" else (DECREE_RULES, DECREE)
+    params = {"lon": lon, "lat": lat, "h": side / 2, "rad": -math.radians(rotation_deg)}
+    layers: set[str] = set()
+    cell = _site_cell(lon, lat)
+    try:
+        if cell:
+            layers = {row[0] for row in db.execute(text(LAYER_SQL), {"g": cell})}
+    except Exception:  # noqa: BLE001
+        db.rollback()
+    out: dict[str, Any] = {"collected": "greenbelt" in layers and "district_plan" in layers, "zoning_other_collected": "zoning_management" in layers,
+                           "greenbelt": None, "district_plans": []}
+    try:
+        rows = db.execute(text(SPECIAL_SQL), params).mappings().all()
+    except Exception:  # noqa: BLE001 - table missing (not collected yet)
+        db.rollback()
+        return out
+    greenbelt = sum(float(r["area_m2"] or 0) for r in rows if r["kind"] == "GREENBELT")
+    if greenbelt > 0:
+        out["greenbelt"] = {"area_m2": round(greenbelt, 1), "share": round(min(greenbelt / site_area_m2, 1.0) * 100, 2)}
+    for row in rows:
+        if row["kind"] == "DISTRICT_PLAN" and float(row["area_m2"] or 0) / site_area_m2 >= 0.01:
+            out["district_plans"].append({"name": row["name"], "area_m2": round(float(row["area_m2"]), 1),
+                                          "share": round(min(float(row["area_m2"]) / site_area_m2, 1.0) * 100, 2)})
+    return out
 
+
+def site_zoning(db: Any, lon: float, lat: float, site_area_m2: float, rotation_deg: float = 0.0, housing: bool = True,
+                region_code: str | None = None) -> dict[str, Any]:
+    """용도지역 parts of the square site (side √area), the region's limits (조례 → 시행령 → 제79조) and special areas."""
+    from sqlalchemy import text
+
+    rules = region_rules(db, region_code)
+    source, texts = rules["source"], rules["rules"]
     side = math.sqrt(max(site_area_m2, 1.0))
     try:
         rows = db.execute(text(site_square_sql()), {"lon": lon, "lat": lat, "h": side / 2, "rad": -math.radians(rotation_deg)}).mappings().all()
@@ -211,10 +444,15 @@ def site_zoning(db: Any, lon: float, lat: float, site_area_m2: float, rotation_d
         db.rollback()
         return {"status": "NOT_COLLECTED", "zones": [], "covered_share": 0.0, "bcr_limit": None, "far_limit": None, "mixed": False,
                 "reason": f"용도지역 자료를 읽지 못했습니다 ({type(exc).__name__})", "site": {"lon": lon, "lat": lat, "side_m": side, "rotation_deg": rotation_deg},
-                "rules": rules, "source": source, "basis": basis}
-    result = weighted_limits([dict(r) for r in rows], site_area_m2, housing=housing, basis=basis)
+                "rules": texts, "source": source, "basis": rules["kind"], "rules_kind": rules["kind"], "ordinance_status": rules["status"]}
+    result = weighted_limits([dict(r) for r in rows], site_area_m2, housing=housing, rules=rules)
+    special = special_areas(db, lon, lat, side, rotation_deg, site_area_m2)
+    if any(z.get("gap") for z in result["zones"]) and not special["zoning_other_collected"]:
+        for zone in result["zones"]:
+            if zone.get("gap"):
+                zone["note"] = GAP_NOTE + ". 이 곳은 관리·농림·자연환경보전지역 자료를 아직 받지 않았을 수 있습니다"
     result.update(site={"lon": lon, "lat": lat, "side_m": round(side, 2), "area_m2": site_area_m2, "rotation_deg": rotation_deg},
-                  rules=rules, source=source, housing=housing)
+                  rules=texts, source=source, housing=housing, special=special, issuer=rules.get("issuer"))
     return result
 
 

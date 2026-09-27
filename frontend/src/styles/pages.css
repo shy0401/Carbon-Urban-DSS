@@ -111,6 +111,7 @@
 .tabs button { padding: var(--sp-2) var(--sp-3); border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--ink-2); font-size: var(--fs-label); font-weight: 500; white-space: nowrap; }
 .tabs button[aria-selected='true'] { border-color: var(--primary); color: var(--ink); }
 .missing-reason { display: flex; gap: var(--sp-2); align-items: flex-start; margin-top: var(--sp-3); padding: var(--sp-3); border: 1px solid var(--hatch); border-radius: var(--r-map); background: var(--prov-missing-bg); color: var(--ink-2); }
+.estimate-note { display: flex; gap: var(--sp-2); align-items: flex-start; margin: var(--sp-2) 0; padding: var(--sp-2) var(--sp-3); border-left: 3px solid var(--prov-estimated, var(--line)); background: var(--surface-sunk); color: var(--ink-2); font-size: var(--fs-label); line-height: 1.55; }
 .missing-reason strong { font-size: var(--fs-body); color: var(--ink); }
 .missing-reason p { margin-top: 2px; font-size: var(--fs-label); }
 /* 개념 배치도: 축척 없는 층수 막대. 현황 먹선, 계획안 --plan-a + 시나리오 점선 테두리. */
@@ -507,6 +508,7 @@
 .zoning-summary { margin-top: var(--sp-4); padding-top: var(--sp-3); border-top: 1px solid var(--line); }
 .zoning-summary-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin-bottom: var(--sp-2); }
 .zoning-summary-head small { color: var(--ink-3); font-size: var(--fs-caption); }
+.zoning-special { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin: 0 0 var(--sp-2); }
 .zoning-summary table { width: 100%; border-collapse: collapse; font-size: var(--fs-label); }
 .zoning-summary th, .zoning-summary td { padding: 6px var(--sp-2); border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
 .zoning-summary th { font-size: var(--fs-caption); font-weight: 600; color: var(--ink-3); background: var(--surface-sunk); }

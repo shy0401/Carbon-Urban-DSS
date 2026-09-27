@@ -58,7 +58,7 @@ export const METRICS: MetricDef[] = [
     formula: 'Σ 월별 가스(kWh), 12개월 관측 지번만',
     basis: (p) => p.gas_complete_parcels ? `12개월 관측 지번 ${p.gas_complete_parcels}곳 합계` : null,
     source: '건축HUB 건물에너지',
-    use: '난방(가스) 수요가 큰 격자를 찾습니다. 가스 탄소는 배출계수를 확정한 뒤 계산합니다.',
+    use: '난방(가스) 수요가 큰 격자를 찾습니다. 가스 탄소는 도시가스 가정 계수로 따로 계산합니다.',
   },
   {
     key: 'electricity_kwh_per_m2', label: '전력 원단위', unit: 'kWh/m²·년', group: '에너지 원단위', ramp: 'load', digits: 1,
@@ -90,11 +90,20 @@ export const METRICS: MetricDef[] = [
   {
     key: 'electricity_carbon_t', label: '전력 탄소배출량', unit: 'tCO₂eq/년', group: '탄소', ramp: 'load', digits: 1,
     value: (p) => { const kg = n(p.electricity_carbon_kg_annual); return kg === null ? null : kg / 1000; },
-    definition: `연간 전력 사용량에 국가 승인 전력 배출계수를 곱한 운영탄소입니다. 가스 탄소는 계수 확정 전이라 포함하지 않습니다.${FACTOR_YEARS}`,
+    definition: `연간 전력 사용량에 국가 승인 전력 배출계수를 곱한 운영탄소입니다. 가스 탄소는 가정 계수라 '가스 탄소배출량'으로 따로 봅니다.${FACTOR_YEARS}`,
     formula: '연간 전력(kWh) × 0.4541 kgCO₂eq/kWh ÷ 1,000',
     basis: (p) => p.electricity_kwh_annual ? `${fmt(n(p.electricity_kwh_annual), 'kWh')} × 0.4541 (GIR 2024 소비단)` : null,
     source: 'GIR 2024 승인 국가 온실가스 배출계수',
     use: '격자의 전력 운영탄소 규모입니다. 감축 목표를 세울 때 기준 배출량으로 씁니다.',
+  },
+  {
+    key: 'gas_carbon_t', label: '가스 탄소배출량 (가정 계수)', unit: 'tCO₂eq/년', group: '탄소', ramp: 'load', digits: 1,
+    value: (p) => { const kg = n(p.gas_carbon_kg_annual); return kg === null ? null : kg / 1000; },
+    definition: '12개월 관측 지번의 연간 도시가스 사용량에 고정 규칙의 가정 계수를 곱한 운영탄소입니다. 계수는 IPCC 2006 천연가스 기본 배출계수(CO₂·CH₄·N₂O, AR5 GWP)를 건축HUB kWh가 총발열량 기준이라고 보고 환산한 값이며, 순발열량 기준이면 약 11% 커집니다.',
+    formula: '연간 가스(kWh) × 0.1826 kgCO₂eq/kWh (가정) ÷ 1,000',
+    basis: (p) => p.gas_kwh_annual ? `${fmt(n(p.gas_kwh_annual), 'kWh')} × 0.1826 (가정 계수)` : null,
+    source: 'IPCC 2006 기본 배출계수 · 에너지법 시행규칙 발열량 (가정)',
+    use: '난방 탄소가 큰 격자를 찾습니다. 공식 가스 계수가 아니므로 전력 탄소와 합칠 때 가정임을 함께 적습니다.',
   },
   {
     key: 'electricity_carbon_kg_per_m2', label: '전력 탄소 원단위', unit: 'kgCO₂eq/m²·년', group: '탄소', ramp: 'load', digits: 1,
@@ -121,7 +130,7 @@ export const METRICS: MetricDef[] = [
     formula: 'Σ 월별 가스(kWh), 12개월 계측 지번',
     basis: (p) => (p.bldg_gas_complete ? `12개월 계측 지번 ${p.bldg_gas_complete}곳` : null),
     source: '건축HUB 건물에너지 (법정동 단위 전 지번)',
-    use: '건물 난방 수요가 큰 격자를 찾습니다. 가스 탄소는 배출계수를 확정한 뒤 계산합니다.',
+    use: '건물 난방 수요가 큰 격자를 찾습니다. 건물 전체 가스 탄소는 아직 지도 지표로 두지 않았습니다.',
   },
   {
     key: 'bldg_kwh_per_m2', label: '건물 전체 전력 원단위', unit: 'kWh/m²·년', group: BUILDING_ENERGY_GROUP, ramp: 'load', digits: 1,

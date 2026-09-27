@@ -11,6 +11,9 @@ Steps (``STEPS``), each recorded in ``study_regions.datasets``:
 * complexes       – K-apt 단지 목록 + 상세 (households, floor area, 사용승인일, coordinates)
 * weather         – ERA5-Land monthly weather at the region centre (Open-Meteo archive), 2015–
 * zoning, buildings, cadastral – VWorld layers per 1km tile
+* zoning_other    – VWorld 관리·농림·자연환경보전지역 (the non-urban 용도지역) per 1km tile
+* special_areas   – VWorld 개발제한구역·지구단위계획구역 per 1km tile
+* ordinance       – the 도시·군계획 조례 that sets the region's 건폐율·용적률 (law.go.kr)
 * register        – 건축HUB 건축물대장 표제부 for every 법정동/리 of the region
 * building_energy – 건축HUB 전 지번 electricity/gas of the analysis year (quota-bound)
 * kapt_energy     – K-apt monthly energy of the analysis year (quota-bound: 5,000 requests a day, shared)
@@ -37,11 +40,13 @@ from .regions import (DEFAULT_REGION, RegionWeatherMonthly, StudyRegion, _set_ce
 
 Log = Callable[[str], None]
 
-STEPS = ("grid", "sgis_admin", "complexes", "weather", "zoning", "buildings", "cadastral", "register",
-         "building_energy", "kapt_energy", "finalize")
+STEPS = ("grid", "sgis_admin", "complexes", "weather", "zoning", "zoning_other", "special_areas", "ordinance",
+         "buildings", "cadastral", "register", "building_energy", "kapt_energy", "finalize")
 STEP_LABELS = {
     "grid": "500m 분석 격자 (SGIS 공식 격자)", "sgis_admin": "SGIS 행정동 인구·가구·경계", "complexes": "K-apt 공동주택 단지",
     "weather": "기상 (ERA5-Land, 지역 중심)", "zoning": "VWorld 용도지역", "buildings": "VWorld 도로명주소 건물",
+    "zoning_other": "VWorld 관리·농림·자연환경보전지역", "special_areas": "VWorld 개발제한구역·지구단위계획구역",
+    "ordinance": "도시·군계획 조례 (건폐율·용적률)",
     "cadastral": "VWorld 연속지적", "register": "건축물대장 표제부", "building_energy": "건축HUB 건물 에너지 (전 지번)",
     "kapt_energy": "K-apt 월별 에너지", "finalize": "연결·기본 대상지 정리",
 }
@@ -381,6 +386,33 @@ def _vworld_step(dataset: str) -> Callable[[Any, StudyRegion, Log], dict[str, An
     return run
 
 
+def _vworld_multi(datasets: tuple[str, ...]) -> Callable[[Any, StudyRegion, Log], dict[str, Any]]:
+    """Several VWorld layers in one step (each keeps its own per-cell coverage)."""
+    def run(db: Any, region: StudyRegion, log: Log) -> dict[str, Any]:
+        rows, parts = 0, []
+        for dataset in datasets:
+            result = _vworld_step(dataset)(db, region, log)
+            rows += result["rows"] if "요청할 격자 없음" not in result["message"] else 0
+            parts.append(f"{dataset}: {result['message']}")
+        return {"rows": rows, "message": " / ".join(parts)}
+    return run
+
+
+def step_ordinance(db: Any, region: StudyRegion, log: Log) -> dict[str, Any]:
+    """The 도시·군계획 조례 that applies here: its 용도지역 건폐율·용적률 (else the screens use 시행령 상한)."""
+    from .ordinances import collect_ordinances, ordinance_for_region
+    collect_ordinances(db, [region.code], log=log)
+    info = ordinance_for_region(db, region.code) or {}
+    row = info.get("row") or {}
+    status = info.get("status")
+    if status in ("PARSED", "PARTIAL"):
+        message = f"{row.get('title')} ({row.get('effective')} 시행): 건폐율 {row.get('zones_bcr')}·용적률 {row.get('zones_far')}개 용도지역"
+        return {"rows": row.get("zones_far") or 0, "message": message}
+    reason = row.get("message") or "조례를 받지 못했습니다"
+    # Not a failure of the region: the limits fall back to 국토계획법 시행령 (전국 공통 규정).
+    return {"rows": 0, "status": "DONE", "message": f"{reason} → 국토계획법 시행령 상한을 씁니다"}
+
+
 def step_register(db: Any, region: StudyRegion, log: Log) -> dict[str, Any]:
     from .official import collect_register
     leaves = legal_leaves(db, region.legal_codes or [])
@@ -452,9 +484,11 @@ def centre_cell(region: StudyRegion, ids: frozenset[str] | set[str]) -> str | No
 RUNNERS: dict[str, Callable[[Any, StudyRegion, Log], dict[str, Any]]] = {
     "grid": step_grid, "sgis_admin": step_sgis_admin, "complexes": step_complexes, "weather": step_weather,
     "zoning": _vworld_step("zoning"), "buildings": _vworld_step("buildings"), "cadastral": _vworld_step("cadastral"),
+    "zoning_other": _vworld_multi(("zoning_management", "zoning_agriculture", "zoning_conservation")),
+    "special_areas": _vworld_multi(("greenbelt", "district_plan")), "ordinance": step_ordinance,
     "register": step_register, "building_energy": step_building_energy, "kapt_energy": step_kapt_energy, "finalize": step_finalize,
 }
-REQUIRES = {step: ("grid",) for step in STEPS if step != "grid"}
+REQUIRES = {step: ("grid",) for step in STEPS if step not in ("grid", "ordinance")}
 REQUIRES["kapt_energy"] = ("grid", "complexes")
 
 

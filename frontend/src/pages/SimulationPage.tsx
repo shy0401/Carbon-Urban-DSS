@@ -18,6 +18,7 @@ import { validateScenario, type ScenarioErrors } from '../lib/scenario';
 import { applyFloorPreset } from '../lib/capacity';
 import { useSystemInfo } from '../hooks/useSystemInfo';
 import type { ScenarioInput, ScenarioResult, ScenarioSeries, ZoningCheck } from '../types';
+import { zoneBasisLabel, zoneName, zoningSourceNote, zoningTitle, zoningTone } from '../lib/zoning';
 
 const initial: ScenarioInput = { site_area: 10000, building_count: 4, footprint_per_building: 700, floors: 12, households: 240, population: 560, efficiency_factor: 0.85, pv_ratio: 0.2, green_ratio: 0.25, average_household_area: 84 };
 const fields: Array<{ key: keyof ScenarioInput; label: string; unit: string; step?: number; min?: number; max?: number }> = [
@@ -121,9 +122,10 @@ export function SimulationPage() {
           <div className="panel-title"><h3>에너지·탄소 비교</h3>{result && <div className="badge-row">{provenanceFromCode(result.data_class) && <ProvenanceBadge kind={provenanceFromCode(result.data_class)!} />}{result.quality && <QualityBadge value={result.quality} />}</div>}</div>
           {requestError && <ErrorState message={requestError} onRetry={() => void submit()} />}
           {!requestError && !result && <div className="scenario-empty"><h3>조건을 정하고 ‘시나리오 계산’을 누르세요</h3><p>서버가 보유한 관측 원단위로 계산하며, 근거 자료가 없으면 임의의 결과를 만들지 않습니다. 3D 배치와 용도지역 확인은 계산 전에도 바로 바뀝니다.</p></div>}
-          {result && <>{result.id && <Link className="button secondary report-from-scenario" to={`/reports?scenario=${result.id}`}>이 계획안으로 보고서 작성{sceneSaved === result.id ? ' (3D 장면 포함)' : ''}</Link>}{result.total_footprint !== undefined && <div className="calculation-strip"><div><span>건축면적 합계</span><strong>{formatMetric(result.total_footprint, 'm²')}</strong></div><div><span>연면적</span><strong>{formatMetric(result.gross_floor_area, 'm²')}</strong></div><div><span>용적률</span><strong>{formatMetric(result.far, '%', 1)}</strong></div><div><span>건폐율</span><strong>{formatMetric(result.bcr, '%', 1)}</strong></div></div>}<div className="tabs" role="tablist">{(['current', 'scenario', 'difference'] as const).map((tab) => <button key={tab} role="tab" aria-selected={active === tab} onClick={() => setActive(tab)}>{activeLabel(tab)}</button>)}</div>
+          {result && <>{result.id && <Link className="button secondary report-from-scenario" to={`/reports?scenario=${result.id}`}>이 계획안으로 보고서 작성{sceneSaved === result.id ? ' (3D 장면 포함)' : ''}</Link>}{result.total_footprint !== undefined && <div className="calculation-strip"><div><span>건축면적 합계</span><strong>{formatMetric(result.total_footprint, 'm²')}</strong></div><div><span>연면적</span><strong>{formatMetric(result.gross_floor_area, 'm²')}</strong></div><div><span>용적률</span><strong>{formatMetric(result.far, '%', 1)}</strong></div><div><span>건폐율</span><strong>{formatMetric(result.bcr, '%', 1)}</strong></div></div>}<div className="tabs" role="tablist">{(['current', 'scenario', 'difference'] as const).map((tab) => <button key={tab} role="tab" aria-selected={active === tab} onClick={() => setActive(tab)}>{activeLabel(tab, !!result.baseline_estimate)}</button>)}</div>
+            {result.baseline_estimate && <p className="estimate-note" role="note"><Info size={15} aria-hidden="true" />이 격자에는 12개월 관측과 연면적이 모두 있는 지번이 없어 <b>{result.baseline_estimate.label}</b>(관측 지번 {result.baseline_estimate.parcels}곳, 연면적 {formatMetric(result.baseline_estimate.area_m2, 'm²')})로 추정했습니다.</p>}
             <div className="result-metrics">{metricEntries(annualFor(result, active)).map(([key, value]) => <div key={key}><span>{metricLabel(key)}</span><strong>{formatMetric(value, metricUnit(key), 1)}</strong></div>)}</div>
-            {allMissing(annualFor(result, active)) ? <div className="missing-reason"><Info size={18} /><div><strong>기준 자료가 없어 추정할 수 없습니다</strong><p>{result.quality ?? '공간 매칭된 기준 에너지 또는 기준 연면적이 없습니다.'}</p></div></div> : series.length > 0 && <Chart option={chartOption} height={270} ariaLabel={`${activeLabel(active)} 월별 시나리오 차트`} />}
+            {allMissing(annualFor(result, active)) ? <div className="missing-reason"><Info size={18} /><div><strong>기준 자료가 없어 추정할 수 없습니다</strong><p>{result.quality ?? '공간 매칭된 기준 에너지 또는 기준 연면적이 없습니다.'}</p></div></div> : series.length > 0 && <Chart option={chartOption} height={270} ariaLabel={`${activeLabel(active, !!result.baseline_estimate)} 월별 시나리오 차트`} />}
             <div className="assumption-note"><strong>해석 범위</strong><p>{result.limitation ?? `${result.label ?? '원단위 기반 1차 추정'} 결과이며, 설계·인허가 수치로 사용할 수 없습니다.`}</p>{result.assumptions?.length ? <ul>{result.assumptions.map((assumption) => <li key={assumption}>{assumption}</li>)}</ul> : null}</div></>}
           {zoning && <ZoningSummary zoning={zoning} saved={!!result?.zoning_check} />}
         </section>
@@ -135,20 +137,24 @@ export function SimulationPage() {
 
 function ZoningSummary({ zoning, saved }: { zoning: ZoningCheck; saved: boolean }) {
   const check = zoning.check;
-  const tone = check?.label.includes('초과') ? 'bad' : check?.label.includes('이내') ? 'good' : 'warn';
+  const tone = zoningTone(check?.label);
+  const special = zoning.special;
   return <div className="zoning-summary">
-    <div className="zoning-summary-head"><Scale size={16} aria-hidden="true" /><strong>{zoning.basis === 'DECREE' ? '용도지역·시행령 상한 1차 확인' : '용도지역·조례 상한 1차 확인'}</strong><span className={`status-tag ${tone}`}>{check?.label ?? '판단 보류'}</span><small>{saved ? '계산 시점 기준' : '현재 입력 기준'}</small></div>
-    <table><thead><tr><th>용도지역</th><th className="num">대지 비율</th><th className="num">건폐율 상한</th><th className="num">용적률 상한</th></tr></thead>
-      <tbody>{zoning.zones.length ? zoning.zones.map((z) => <tr key={`${z.zone}-${z.zone_name}`}><td>{z.zone ?? z.zone_name ?? '이름 없음'}{z.note && <small>{z.note}</small>}</td><td className="num">{z.share != null ? `${z.share.toFixed(1)}%` : '-'}</td><td className="num">{z.bcr_limit != null ? `${z.bcr_limit}%` : '규정 없음'}</td><td className="num">{(z.applied_far_limit ?? z.far_limit) != null ? `${z.applied_far_limit ?? z.far_limit}%` : '확인 필요'}</td></tr>) : <tr><td colSpan={4}>{zoning.reason ?? '대지와 겹치는 용도지역 자료가 없습니다.'}</td></tr>}</tbody>
+    <div className="zoning-summary-head"><Scale size={16} aria-hidden="true" /><strong>{zoningTitle(zoning)} 1차 확인</strong><span className={`status-tag ${tone}`}>{check?.label ?? '판단 보류'}</span><small>{saved ? '계산 시점 기준' : '현재 입력 기준'}</small></div>
+    {(special?.greenbelt || special?.district_plans?.length) ? <p className="zoning-special">
+      {special.greenbelt && <span className="status-tag bad">개발제한구역 {special.greenbelt.share.toFixed(0)}%</span>}
+      {special.district_plans.map((area) => <span key={`${area.name}-${area.area_m2}`} className="status-tag warn">지구단위계획구역 {area.name ?? ''} {area.share.toFixed(0)}%</span>)}
+    </p> : null}
+    <table><thead><tr><th>용도지역</th><th>근거</th><th className="num">대지 비율</th><th className="num">건폐율 상한</th><th className="num">용적률 상한</th></tr></thead>
+      <tbody>{zoning.zones.length ? zoning.zones.map((z) => <tr key={`${z.zone}-${z.zone_name}-${z.gap ? 'gap' : ''}`}><td>{zoneName(z)}{z.note && <small>{z.note}</small>}</td><td>{zoneBasisLabel(z)}</td><td className="num">{z.share != null ? `${z.share.toFixed(1)}%` : '-'}</td><td className="num">{(z.applied_bcr_limit ?? z.bcr_limit) != null ? `${z.applied_bcr_limit ?? z.bcr_limit}%` : '규정 없음'}</td><td className="num">{(z.applied_far_limit ?? z.far_limit) != null ? `${z.applied_far_limit ?? z.far_limit}%` : '확인 필요'}</td></tr>) : <tr><td colSpan={5}>{zoning.reason ?? '대지와 겹치는 용도지역 자료가 없습니다.'}</td></tr>}</tbody>
     </table>
     {check?.notes?.length ? <ul>{check.notes.map((n) => <li key={n}>{n}</li>)}</ul> : null}
-    {zoning.source && (zoning.basis === 'DECREE'
-      ? <p className="muted">근거: <a href={zoning.source.url} target="_blank" rel="noreferrer">{zoning.source.name}</a> {zoning.source.articles} ({zoning.source.checked} 확인). 이 지역 도시계획 조례를 등록하지 않아 시행령 상한을 썼습니다. 조례 상한은 더 낮을 수 있으므로 '이내'는 조례를 더 확인해야 합니다.</p>
-      : <p className="muted">근거: <a href={zoning.source.url} target="_blank" rel="noreferrer">{zoning.source.name}</a> ({zoning.source.number}, {zoning.source.effective} 시행, {zoning.source.checked} 확인). 완화 규정·지구단위계획 지침·경관지구 제한은 반영하지 않았습니다.</p>)}
+    {zoning.source && <p className="muted">근거: <a href={zoning.source.url} target="_blank" rel="noreferrer">{zoning.source.name}</a>{zoning.source.articles ? ` ${zoning.source.articles}` : ''} ({[zoning.source.number, zoning.source.effective ? `${zoning.source.effective} 시행` : null, zoning.source.checked ? `${zoning.source.checked} 확인` : null].filter(Boolean).join(', ')}). {zoningSourceNote(zoning)}</p>}
   </div>;
 }
 
-function activeLabel(key: 'current' | 'scenario' | 'difference') { return ({ current: '현재', scenario: '시나리오', difference: '증감' })[key]; }
+/** '현재' is this grid's observed use; with a pooled estimate it is the planned area at the region's average intensity. */
+function activeLabel(key: 'current' | 'scenario' | 'difference', estimated = false) { return ({ current: estimated ? '지역 평균 기준 (BAU)' : '현재', scenario: '시나리오', difference: estimated ? '기준 대비 증감' : '증감' })[key]; }
 function annualFor(result: ScenarioResult, key: 'current' | 'scenario' | 'difference'): ScenarioSeries | null { return (result.annual?.[key] as ScenarioSeries | null) ?? (!Array.isArray(result[key]) ? result[key] as ScenarioSeries : null) ?? null; }
 function metricEntries(series: ScenarioSeries | null): Array<[string, number | null]> { if (!series) return [['energy_kwh', null], ['carbon_kg', null]]; return Object.entries(series).filter(([, value]) => typeof value === 'number' || value === null).slice(0, 4) as Array<[string, number | null]>; }
 function metricLabel(key: string) { return ({ electricity_kwh: '전력', gas_kwh: '가스', energy_kwh: '에너지', carbon_kg: '전체 탄소 (전력+가스)', electricity_carbon_kg: '전력 탄소' } as Record<string, string>)[key] ?? key.replaceAll('_', ' '); }

@@ -91,7 +91,7 @@ def create_snapshot(db,year,grid_id,scenario_ids,region=None):
             zone_text=', '.join(f"{z['zone']} {z['share']:.0f}%" for z in zc['zones'][:3] if z.get('share') is not None)
             chk=zc.get('check') or {}
             limit=f"기본 상한 건폐율 {zc['bcr_limit']:g}%·용적률 {zc['far_limit']:g}%" if zc.get('bcr_limit') is not None and zc.get('far_limit') is not None else '기본 상한 판단 보류'
-            law='국토계획법 시행령' if zc.get('basis')=='DECREE' else '전주시 도시계획 조례'
+            law=_law_name(zc)
             facts.append({'id':'zoning_'+str(len(scenarios)),'text':f"비교안 {len(scenarios)}의 대지는 {zone_text}이며 {law} {limit} 기준 '{chk.get('label','판단 보류')}'입니다(1차 확인, 인허가 판단 아님)."})
         carbon=r.result.get('annual',{}).get('scenario',{}).get('carbon_kg')
         change=r.result.get('annual',{}).get('difference',{}).get('carbon_kg')
@@ -105,7 +105,7 @@ def create_snapshot(db,year,grid_id,scenario_ids,region=None):
         sc['has_image']=db.get(ScenarioImage,sc['id']) is not None
         if sc['has_image']:sc['image_url']=f"/api/scenarios/{sc['id']}/image"
     sources=[{k:s.get(k) for k in ['id','name','source_url','reference_period','collected_at','status','source_type','normalized_row_count','limitation']} for s in data['sources']]
-    snapshot={'version':2,'year':year,'grid_id':actual_grid,'region':data.get('region'),'title':'도시계획 의사결정 검토 보고서','created_at':now().isoformat(),'sector':sector,'facts':facts,'sources':sources,'scenarios':scenarios,'context':context,'monthly':data['monthly'],'coverage':data['coverage'],'annual_complete':data['annual_complete'],'totals':{k:data.get(k) for k in ['electricity_kwh','gas_kwh','carbon_kg','electricity_carbon_kg']},'scope':data['scope'],
+    snapshot={'version':2,'year':year,'grid_id':actual_grid,'region':data.get('region'),'title':'도시계획 의사결정 검토 보고서','created_at':now().isoformat(),'sector':sector,'facts':facts,'sources':sources,'scenarios':scenarios,'context':context,'monthly':data['monthly'],'coverage':data['coverage'],'annual_complete':data['annual_complete'],'totals':{k:data.get(k) for k in ['electricity_kwh','gas_kwh','carbon_kg','electricity_carbon_kg','gas_carbon_kg']},'scope':data['scope'],
               'cautions':report_cautions(data,detail,scenarios)}
     snapshot['evidence_hash']=hashlib.sha256(json.dumps(snapshot,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
     return snapshot
@@ -172,26 +172,64 @@ def grid_detail_facts(db,year,grid_id,data):
         out['facts'].append({'id':'exclusions','text':"연간 합계와 원단위에서 "+", ".join(p for p in pieces if p)+"을 제외했습니다(원자료에는 남아 있음)."})
     return out
 
+def _gas_caution(data):
+    gas=(data.get('carbon_factors') or {}).get('GAS')
+    if not gas:return '가스 탄소는 배출계수·열량 기준 확정 전이라 계산하지 않았습니다. 전체 운영탄소가 아니라 전력 탄소입니다.'
+    if gas.get('assumed'):
+        return (f"가스 탄소는 고정 규칙의 가정 계수 {gas['factor']:g} kgCO2eq/kWh(IPCC 2006 천연가스 기본 배출계수, 건축HUB kWh를 총발열량 기준으로 가정)로 계산했습니다. "
+                '순발열량 기준이면 약 11% 커집니다. 전력 탄소는 GIR 승인 계수입니다.')
+    return f"가스 탄소는 등록된 배출계수 {gas['factor']:g} kgCO2eq/kWh로 계산했습니다."
+
 def report_cautions(data,detail,scenarios):
     """Fixed, engine-derived cautions the reader must see before acting on the numbers."""
     items=['에너지 관측·원단위·탄소는 K-apt와 매칭된 공동주택 지번의 값이며 격자 안 모든 건물의 합이 아닙니다.',
            '건물 전체 에너지(건축HUB)는 계량된 모든 지번의 합이지만 단독주택·200세대 미만 공동주택·산업용은 빠져 있습니다.' if detail.get('building_energy') else '건축HUB 전 지번 에너지가 아직 없어 격자 전체 건물 사용량은 알 수 없습니다.',
-           '가스 탄소는 배출계수·열량 기준 확정 전이라 계산하지 않았습니다. 전체 운영탄소가 아니라 전력 탄소입니다.',
+           _gas_caution(data),
            '용적률·건폐율은 격자 면적(250,000m²) 기준 근사값이며 필지 기준 법정 용적률·건폐율이 아닙니다.',
            '계획안 결과는 관측 원단위 × 계획 연면적의 1차 추정이며 설계·인허가·넷제로 판정에 쓸 수 없습니다.']
     if any(sc.get('has_image') for sc in scenarios):
         items.append('3D 개념 배치는 대지 안에 같은 크기 블록을 규칙적으로 늘어놓은 규모 비교용 그림이며 실제 배치안이 아닙니다. 그림자는 맑은 날 태양 위치로 그린 개략 그림자입니다.')
-    checks=[(sc.get('result') or {}).get('zoning_check') for sc in scenarios]
-    if any(c and c.get('basis')!='DECREE' for c in checks):
-        items.append('용도지역 상한은 전주시 도시계획 조례 제45조·제47조의 기본값입니다. 완화 규정·지구단위계획 지침·경관지구 제한은 반영하지 않은 1차 확인입니다.')
-    if any(c and c.get('basis')=='DECREE' for c in checks):
-        items.append('이 지역의 도시계획 조례를 아직 등록하지 않아 국토계획법 시행령 제84조·제85조의 상한으로 확인했습니다. 조례 상한은 이보다 낮을 수 있으므로 "이내"는 조례 확인이 더 필요합니다.')
+    checks=[c for c in ((sc.get('result') or {}).get('zoning_check') for sc in scenarios) if c]
+    items.extend(zoning_limitations(checks))
     if data.get('coverage',{}).get('electricity_months',0)<12:
         items.append('전력 관측이 12개월 미만이라 연간 값은 완전하지 않습니다.')
     return items
 
 def _num(value,unit='',digits=0):
     return f'{value:,.{digits}f}{unit}' if isinstance(value,(int,float)) else '자료 없음'
+
+def _law_name(zc):
+    """'수원시 도시계획 조례', '국토계획법 시행령', or both when some zones fell back to the 시행령."""
+    source=(zc or {}).get('source') or {}
+    basis=(zc or {}).get('basis')
+    if basis=='DECREE' and (zc or {}).get('rules_kind')!='ORDINANCE':return '국토계획법 시행령'
+    name=source.get('name') or '도시계획 조례'
+    return f'{name}·국토계획법 시행령' if basis in ('MIXED','DECREE') else name
+
+def zoning_limitations(checks):
+    """Limitation lines for the 용도지역 상한 used in the compared plans (one line per distinct rule)."""
+    lines=[]
+    def add(text):
+        if text not in lines:lines.append(text)
+    for c in checks:
+        source=c.get('source') or {}
+        if c.get('rules_kind')=='ORDINANCE' or c.get('basis') in ('ORDINANCE','MIXED'):
+            if source.get('parsed'):
+                add(f"용도지역 상한은 {source.get('name')} {source.get('articles') or ''}의 기본값입니다(law.go.kr 원문에서 읽음, {source.get('checked') or '-'} 확인). 완화 규정·지구단위계획 지침·경관지구 제한은 반영하지 않은 1차 확인입니다.")
+            else:
+                add('용도지역 상한은 전주시 도시계획 조례 제45조·제47조의 기본값입니다. 완화 규정·지구단위계획 지침·경관지구 제한은 반영하지 않은 1차 확인입니다.')
+            if c.get('basis') in ('MIXED','DECREE'):
+                add('조례에 값이 없는 용도지역은 국토계획법 시행령 제84조·제85조의 상한을 썼습니다.')
+        else:
+            add('이 지역의 도시계획 조례를 아직 등록하지 않아 국토계획법 시행령 제84조·제85조의 상한으로 확인했습니다. 조례 상한은 이보다 낮을 수 있으므로 "이내"는 조례 확인이 더 필요합니다.')
+        if (c.get('assumed_share') or 0)>0:
+            add('세부 용도지역이 없거나 용도지역 자료가 없는 부분은 국토계획법 제79조(도시지역 → 보전녹지, 관리지역 → 보전관리, 미지정 → 자연환경보전) 기준을 가정했습니다.')
+        special=c.get('special') or {}
+        if special.get('greenbelt'):
+            add('개발제한구역에 걸친 대지는 개발제한구역법 제12조로 건축이 원칙적으로 제한되어 건폐율·용적률 판정을 하지 않았습니다.')
+        if special.get('district_plans'):
+            add('지구단위계획구역에 걸친 대지는 지구단위계획이 정한 건폐율·용적률이 우선하므로 조례·시행령 상한 확인은 참고용입니다.')
+    return lines
 
 def _zones(zc):
     zones=(zc or {}).get('zones') or []
@@ -212,7 +250,8 @@ def report_markdown(s):
         if f['id'] in ('context_admin','context_zoning','context_complexes','context_buildings','register','context_sgis_grid','official_grid'):lines.append('- '+f['text'])
     lines+=['## 3. 에너지·탄소 현황']
     totals=s.get('totals') or {}
-    lines+=[f'- 공동주택 관측 전력 {_num(totals.get("electricity_kwh"),"kWh")}, 가스 {_num(totals.get("gas_kwh"),"kWh")}, 전력 탄소 {_num(totals.get("electricity_carbon_kg"),"kgCO2eq")} (12개월 관측 지번 합계; 가스 탄소는 계수 미확정)']
+    gas_note='가스 탄소는 가정 계수' if totals.get('gas_carbon_kg') is not None else '가스 탄소는 계수 미확정'
+    lines+=[f'- 공동주택 관측 전력 {_num(totals.get("electricity_kwh"),"kWh")}, 가스 {_num(totals.get("gas_kwh"),"kWh")}, 전력 탄소 {_num(totals.get("electricity_carbon_kg"),"kgCO2eq")}, 가스 탄소 {_num(totals.get("gas_carbon_kg"),"kgCO2eq")} (12개월 관측 지번 합계; {gas_note})']
     for f in s['facts']:
         if f['id'] in ('electricity_intensity','annual','missing'):lines.append('- '+f['text'])
     for f in context.get('facts') or []:

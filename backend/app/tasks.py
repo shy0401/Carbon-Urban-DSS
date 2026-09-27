@@ -268,14 +268,16 @@ def run_prepare_region(self,code,steps=None,force=False):
 def run_national(datasets):
     """National base layers: 법정 행정구역 → SGIS 시군구·행정동 → K-apt 단지 목록 → SGIS 500m 격자."""
     from .national import collect_admin_units,collect_national_complexes,collect_national_grid500,collect_national_sgis
-    runners={'admin_units':collect_admin_units,'sgis_national':collect_national_sgis,'kapt_national':collect_national_complexes,'grid500':collect_national_grid500}
+    from .ordinances import collect_ordinances
+    runners={'admin_units':collect_admin_units,'sgis_national':collect_national_sgis,'kapt_national':collect_national_complexes,'grid500':collect_national_grid500,
+             'ordinances':collect_ordinances}
     with Session() as db:
-        for name in ['admin_units','sgis_national','kapt_national','grid500']:
+        for name in ['admin_units','sgis_national','kapt_national','grid500','ordinances']:
             if name not in datasets:continue
             try: runners[name](db,log=lambda message:None)
             except Exception as exc:
                 db.rollback()
-                source_id={'grid500':'sgis_grid'}.get(name,name)
+                source_id={'grid500':'sgis_grid','ordinances':'zoning_ordinances'}.get(name,name)
                 source=db.get(DataSource,source_id)
                 if source and name!='grid500':
                     source.status='PARTIAL' if source.normalized_row_count else 'FAILED'

@@ -27,6 +27,7 @@ const STEP_LABEL: Record<string, string> = { DONE: '완료', SKIPPED: '해당 �
 const NATIONAL_LAYERS: Array<{ key: string; label: string }> = [
   { key: 'admin_units', label: '법정 행정구역 코드' }, { key: 'sgis_national', label: 'SGIS 시군구·행정동 인구·가구·경계' },
   { key: 'kapt_national', label: 'K-apt 공동주택 단지 목록' }, { key: 'sgis_grid_1k', label: 'SGIS 1km 격자 통계' }, { key: 'sgis_grid', label: 'SGIS 공식 500m 격자 경계' },
+  { key: 'zoning_ordinances', label: '시·군 도시·군계획 조례 (건폐율·용적률)' },
 ];
 
 export function statusTone(status: string | null | undefined) {
@@ -108,6 +109,7 @@ export function RegionsPage() {
       <NationalFigure label="K-apt 공동주택 단지" value={national.complexes} unit="곳" note="전국 단지 목록 (좌표 포함)" />
       <NationalFigure label={`SGIS 1km 격자 ${national.grid1k_year ?? ''}`.trim()} value={national.grid1k_cells} unit="칸" note="인구·가구·주택·사업체 (잡음 포함)" />
       <NationalFigure label="SGIS 공식 500m 격자" value={national.grid500_official} unit="칸" note="경계·코드 (통계값은 신청 필요)" />
+      <NationalFigure label="도시·군계획 조례" value={(national.ordinances?.counts.PARSED ?? 0) + (national.ordinances?.counts.PARTIAL ?? 0)} unit="곳" note={national.ordinances?.issuers ? `조례 ${national.ordinances.issuers}곳 중 상한을 읽은 곳 (나머지는 시행령)` : '미수집 — 지역은 시행령 상한'} />
     </section>
 
     <div className="regions-layout">

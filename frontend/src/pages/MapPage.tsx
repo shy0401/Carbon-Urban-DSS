@@ -291,7 +291,7 @@ function GridDetail({ props: p, year, name, metric, classification, details, det
       <dl className="fact-list">
         <Fact label="가스 원단위" value={p.gas_kwh_per_m2} unit="kWh/m²·년" digits={1} missingText="연면적이 있는 12개월 가스 관측 지번 없음" />
         <Fact label="평균 지상층수" value={p.avg_floors} unit="층" digits={1} why={p.max_floors ? `최고 ${p.max_floors}층` : undefined} missingText="층수 기록 없음" />
-        <Fact label="가스 탄소" value={null} unit="" missingText="배출계수 확정 전 (0 아님)" />
+        <Fact label="가스 탄소 (가정 계수)" value={typeof p.gas_carbon_kg_annual === 'number' ? p.gas_carbon_kg_annual / 1000 : null} unit="tCO₂eq/년" digits={1} why="가스 × 0.1826 kgCO₂eq/kWh (IPCC 2006, 총발열량 기준 가정)" missingText="12개월 가스 관측 지번 없음 (0 아님)" />
       </dl>
     </section>
     <section className="detail-section" aria-label="월별 관측">

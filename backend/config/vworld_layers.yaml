@@ -19,3 +19,38 @@ buildings:
   source_crs: EPSG:5179
   verified_reference: https://www.vworld.kr/dev/v4dv_2ddataguide2_s002.do?svcIde=spbd
   verified_at: 2026-09-23 (속성 키는 scripts\dss.cmd Probe의 VWorld buildings 단계에서 확인)
+zoning_management:
+  api_type: data
+  dataset_id: LT_C_UQ112
+  description: 관리지역 (보전관리·생산관리·계획관리지역, 속성 uname)
+  source_crs: EPSG:5179
+  verified_reference: https://www.vworld.kr/dev/v4dv_2ddataguide2_s002.do?svcIde=uq112&apiVer=2
+  verified_at: 2026-09-27 (완주군 경계 부근 조회로 uname 확인)
+zoning_agriculture:
+  api_type: data
+  dataset_id: LT_C_UQ113
+  description: 농림지역
+  source_crs: EPSG:5179
+  verified_reference: https://www.vworld.kr/dev/v4dv_2ddataguide2_s002.do?svcIde=uq113&apiVer=2
+  verified_at: 2026-09-27
+zoning_conservation:
+  api_type: data
+  dataset_id: LT_C_UQ114
+  description: 자연환경보전지역
+  source_crs: EPSG:5179
+  verified_reference: https://www.vworld.kr/dev/v4dv_2ddataguide2_s002.do?svcIde=uq114&apiVer=2
+  verified_at: 2026-09-27 (응답 형식 확인, 조회한 네 곳에는 도형 없음)
+greenbelt:
+  api_type: data
+  dataset_id: LT_C_UD801
+  description: 개발제한구역
+  source_crs: EPSG:5179
+  verified_reference: https://www.vworld.kr/dev/v4dv_2ddataguide2_s002.do?svcIde=ud801&apiVer=2
+  verified_at: 2026-09-27 (의왕시·성남시 경계 조회로 uname 확인)
+district_plan:
+  api_type: data
+  dataset_id: LT_C_UPISUQ161
+  description: 지구단위계획구역 (dgm_nm 이름, dgm_ar 면적)
+  source_crs: EPSG:5179
+  verified_reference: https://www.vworld.kr/dev/v4dv_2ddataguide2_s002.do?svcIde=upisuq161&apiVer=2
+  verified_at: 2026-09-27 (수원시·서울 조회로 dgm_nm·dgm_ar 확인)

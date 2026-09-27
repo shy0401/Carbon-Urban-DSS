@@ -9,6 +9,7 @@ import { buildingHeight, HEIGHT_CLASS_LABELS, heightClass, massingFeatures, oute
 import { kst, pointInRing, shadowLength, shadowRing, SUN_DAYS, sunPosition, type SunDay } from '../lib/solar';
 import { TOKENS } from '../theme/palette';
 import type { ScenarioInput, ZoningCheck } from '../types';
+import { zoneBasisLabel, zoneName, zoningSourceNote, zoningTitle, zoningTone } from '../lib/zoning';
 
 maplibregl.setWorkerUrl(workerUrl);
 
@@ -288,16 +289,17 @@ export function Massing3D({ gridId, input, site = null, onSiteChange, onCapture,
         </dl>
     </aside>
     <div className="massing-zoning" aria-live="polite">
-      <strong>{zoning?.basis === 'DECREE' ? '용도지역·시행령 상한' : '용도지역·조례 상한'}</strong>
+      <strong>{zoningTitle(zoning)}</strong>
       {zoningLoading && !zoning ? <span className="muted">확인 중…</span> : zoning ? <>
-        <span className={`status-tag ${check?.label.includes('초과') ? 'bad' : check?.label.includes('이내') ? 'good' : 'warn'}`}>{check?.label ?? zoningStatusLabel(zoning.status)}</span>
-        <span>{zoning.zones.length ? zoning.zones.slice(0, 3).map((z) => `${z.zone ?? z.zone_name ?? '미상'} ${z.share != null ? `${z.share.toFixed(0)}%` : ''}`).join(' · ') : zoning.reason ?? '대지에 겹치는 용도지역 자료가 없습니다'}</span>
+        <span className={`status-tag ${zoningTone(check?.label)}`}>{check?.label ?? zoningStatusLabel(zoning.status)}</span>
+        <span>{zoning.zones.length ? zoning.zones.slice(0, 3).map((z) => `${zoneName(z)} ${z.share != null ? `${z.share.toFixed(0)}%` : ''}${z.basis === 'DECREE' || z.assumed || z.gap ? ` (${zoneBasisLabel(z)})` : ''}`).join(' · ') : zoning.reason ?? '대지에 겹치는 용도지역 자료가 없습니다'}</span>
         {zoning.bcr_limit != null && zoning.far_limit != null && <span>기본 상한 건폐율 {zoning.bcr_limit}% · 용적률 {zoning.far_limit}%{zoning.mixed ? ' (면적 가중)' : ''}</span>}
-        {check?.district_plan && <span className="status-tag warn">지구단위계획 대상 규모</span>}
-        {zoning.source && <a href={zoning.source.url} target="_blank" rel="noreferrer">{zoning.source.name} ({zoning.basis === 'DECREE' ? zoning.source.articles : `${zoning.source.effective} 시행`})</a>}
+        {zoning.special?.greenbelt && <span className="status-tag bad">개발제한구역 {zoning.special.greenbelt.share.toFixed(0)}%</span>}
+        {zoning.special?.district_plans?.length ? <span className="status-tag warn">지구단위계획구역 {zoning.special.district_plans[0].name ?? ''}</span> : check?.district_plan && <span className="status-tag warn">지구단위계획 대상 규모</span>}
+        {zoning.source && <a href={zoning.source.url} target="_blank" rel="noreferrer">{zoning.source.name} ({zoning.rules_kind === 'DECREE' || (!zoning.rules_kind && zoning.basis === 'DECREE') ? zoning.source.articles : `${zoning.source.effective} 시행`})</a>}
       </> : <span className="muted">대지 위치가 정해지면 확인합니다.</span>}
     </div>
-    <small className="massing-note">{note}{officialCode ? ` · SGIS 공식 격자 ${officialCode}` : ''}. 계획 블록은 같은 크기로 규칙적으로 늘어놓은 개념 배치이며 실제 배치안이 아닙니다. 동 간격은 마주보는 벽 사이(높이 × 비율, 최소 6m)이고 옆 간격은 그 절반입니다. 그림자는 맑은 날 태양 위치로 그린 개략 그림자이며 지형·주변 지붕은 반영하지 않았습니다. {zoning?.basis === 'DECREE' ? '이 지역 조례가 등록되지 않아 용도지역 상한은 국토계획법 시행령 상한으로 1차 확인합니다(조례 상한은 더 낮을 수 있음).' : '용도지역 상한은 전주시 도시계획 조례 기본값(완화·지구단위계획 미반영)의 1차 확인입니다.'}</small>
+    <small className="massing-note">{note}{officialCode ? ` · SGIS 공식 격자 ${officialCode}` : ''}. 계획 블록은 같은 크기로 규칙적으로 늘어놓은 개념 배치이며 실제 배치안이 아닙니다. 동 간격은 마주보는 벽 사이(높이 × 비율, 최소 6m)이고 옆 간격은 그 절반입니다. 그림자는 맑은 날 태양 위치로 그린 개략 그림자이며 지형·주변 지붕은 반영하지 않았습니다. {zoning ? zoningSourceNote(zoning) : '용도지역 상한은 그 지역 도시계획 조례(없으면 국토계획법 시행령)의 기본값으로 1차 확인합니다.'}</small>
   </div>;
 }
 

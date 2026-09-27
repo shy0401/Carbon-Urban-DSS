@@ -8,17 +8,22 @@ from .catalog import seed_sources
 from .settings import DATA_DIR,DEFAULT_YEAR
 
 def init_tables():
-    from . import official,kapt,kapt_energy,kma_asos,sgis,sgis_grid,vworld,energy_parcels,sgis_grid_official,regions,national
+    from . import official,kapt,kapt_energy,kma_asos,sgis,sgis_grid,vworld,energy_parcels,sgis_grid_official,regions,national,ordinances
     try:from . import imports
     except ImportError:pass
     with engine.begin() as c:c.execute(text('CREATE EXTENSION IF NOT EXISTS postgis'))
     Base.metadata.create_all(engine)
     from .migrations import apply_migrations
     apply_migrations(engine)
+    with Session() as db:
+        try:
+            from .emissions import ensure_gas_factor
+            ensure_gas_factor(db)
+        except Exception:db.rollback()
 
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('command',choices=['demo','online','status','enrich','collect','collect-history','collect-missing','validate-models','snapshot','llm-dataset','llm-eval','import-sgis-grid',
-        'national-admin','national-sgis','national-complexes','national-grid500','national-all','prepare-region','regions']);parser.add_argument('--year',type=int,default=DEFAULT_YEAR)
+        'national-admin','national-sgis','national-complexes','national-grid500','national-ordinances','national-all','prepare-region','regions']);parser.add_argument('--year',type=int,default=DEFAULT_YEAR)
     parser.add_argument('--from',dest='from_year',type=int,default=2015);parser.add_argument('--to',dest='to_year',type=int,default=DEFAULT_YEAR)
     parser.add_argument('--datasets',default='',help='comma-separated: sgis,kma_asos,kapt_energy,energy,vworld_zoning,vworld_buildings,vworld_cadastral,building_register');parser.add_argument('--force',action='store_true')
     parser.add_argument('--source',choices=['energy','weather','kapt-energy','kma','sgis','vworld-zoning','vworld-cadastral'])
@@ -91,11 +96,14 @@ def main():
             ensure_default_region(db)
             say=lambda m:print(m,flush=True)
             steps={'national-admin':['admin'],'national-sgis':['sgis'],'national-complexes':['complexes'],'national-grid500':['grid500'],
-                   'national-all':['admin','sgis','complexes','grid500']}[args.command]
+                   'national-ordinances':['ordinances'],'national-all':['admin','sgis','complexes','grid500','ordinances']}[args.command]
             for step in steps:
                 if step=='admin':result=national.collect_admin_units(db,log=say)
                 elif step=='sgis':result=national.collect_national_sgis(db,include_emd=not args.no_emd,log=say)
                 elif step=='complexes':result=national.collect_national_complexes(db,log=say)
+                elif step=='ordinances':
+                    from .ordinances import collect_ordinances
+                    result=collect_ordinances(db,[args.region] if args.region else None,force=args.force,log=say)
                 else:result=national.collect_national_grid500(db,log=say)
                 print(json.dumps({step:result},ensure_ascii=False,default=str),flush=True)
         elif args.command=='prepare-region':

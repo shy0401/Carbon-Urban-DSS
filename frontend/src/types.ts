@@ -67,6 +67,11 @@ export interface DashboardData {
   baseline_floor_area_m2?: number | null;
   electricity_carbon_kg?: number | null;
   gas_carbon_kg?: number | null;
+  /** 적용한 배출계수 (가스는 고정 규칙의 가정 계수일 수 있음). */
+  carbon_factors?: Record<string, { factor: number; unit: string; source: string; notes: string; assumed: boolean }>;
+  /** 시뮬레이션 기준: 격자 관측(GRID_OBSERVED) 또는 관측이 없어 지역 평균 원단위로 추정(REGION_POOLED·ALL_REGIONS_POOLED). */
+  baseline_basis?: 'GRID_OBSERVED' | 'REGION_POOLED' | 'ALL_REGIONS_POOLED' | null;
+  baseline_estimate?: BaselineEstimate | null;
   annual_complete?: { electricity: boolean; gas: boolean };
   normalized?: {
     electricity_kwh_per_m2?: number | null;
@@ -145,6 +150,8 @@ export interface GridBuildings {
 }
 
 /** Per-grid indicators served by /api/map (every ratio comes with its basis). */
+export interface BaselineEstimate { basis: 'REGION_POOLED' | 'ALL_REGIONS_POOLED'; label: string; area_m2: number; parcels: number; energy_types: string[] }
+
 export interface GridProps {
   id: string;
   area_m2: number;
@@ -166,6 +173,8 @@ export interface GridProps {
   gas_complete_parcels: number;
   electricity_carbon_kg: number | null;
   electricity_carbon_kg_per_m2: number | null;
+  /** 12개월 관측 지번의 연간 가스 × 도시가스 가정 계수 (kgCO₂eq). */
+  gas_carbon_kg_annual?: number | null;
   carbon_kg: number | null;
   completeness: number;
   zoning_status: string | null;
@@ -403,10 +412,28 @@ export interface ScenarioResult {
   /** '조례 기본 상한 이내 (1차 확인)' 등 서버 판정 문구. */
   legal_status?: string;
   zoning_check?: ZoningCheck | null;
+  /** 이 격자 관측 기준(GRID_OBSERVED) 또는 지역 평균 원단위 추정. */
+  baseline_basis?: 'GRID_OBSERVED' | 'REGION_POOLED' | 'ALL_REGIONS_POOLED' | null;
+  baseline_estimate?: BaselineEstimate | null;
 }
 
-export interface ZoningZone { zone: string | null; zone_name?: string; share: number | null; bcr_limit: number | null; far_limit: number | null; applied_far_limit?: number | null; note?: string | null }
-/** 대지와 겹치는 용도지역과 전주시 도시계획 조례 기본 상한 (GET /api/zoning/site, 시나리오 결과의 zoning_check). */
+export interface ZoningZone {
+  zone: string | null; zone_name?: string | null; share: number | null; bcr_limit: number | null; far_limit: number | null;
+  applied_far_limit?: number | null; applied_bcr_limit?: number | null; note?: string | null;
+  /** 이 용도지역에 쓴 근거: 조례 값, 시행령 상한, 또는 필드별로 섞임. */
+  basis?: 'ORDINANCE' | 'DECREE' | 'MIXED';
+  /** 국토계획법 제79조 등으로 가정한 경우 그 설명 (미세분·미지정·자료 없는 부분). */
+  assumed?: string | null;
+  /** 용도지역 자료가 없는 대지 부분 (제79조 제1항 가정). */
+  gap?: boolean;
+  applied_notes?: string[];
+}
+export interface ZoningSpecial {
+  collected: boolean; zoning_other_collected?: boolean;
+  greenbelt: { area_m2: number; share: number } | null;
+  district_plans: Array<{ name: string | null; area_m2: number; share: number }>;
+}
+/** 대지와 겹치는 용도지역과 그 지역의 상한 (조례 → 시행령 → 국토계획법 제79조; GET /api/zoning/site, 시나리오 결과의 zoning_check). */
 export interface ZoningCheck {
   status: 'OK' | 'PARTIAL_COVERAGE' | 'LIMIT_UNKNOWN' | 'NO_ZONING' | 'NOT_COLLECTED';
   zones: ZoningZone[];
@@ -414,11 +441,22 @@ export interface ZoningCheck {
   bcr_limit: number | null;
   far_limit: number | null;
   mixed: boolean;
-  /** 전주시 조례 표(ORDINANCE) 또는 국토계획법 시행령 상한(DECREE, 조례 미등록 지역). */
-  basis?: 'ORDINANCE' | 'DECREE';
+  /** 대지 전체의 근거: 조례만(ORDINANCE), 시행령만(DECREE), 섞임(MIXED). */
+  basis?: 'ORDINANCE' | 'DECREE' | 'MIXED';
+  /** 지역에 적용한 표: 조례를 읽은 지역(ORDINANCE) 또는 조례를 못 받은 지역(DECREE). */
+  rules_kind?: 'ORDINANCE' | 'DECREE';
+  ordinance_status?: string | null;
+  /** 가정(제79조, 미세분)으로 둔 대지 비율 %. */
+  assumed_share?: number;
+  special?: ZoningSpecial;
+  issuer?: { code: string; name: string; rule: string } | null;
   site_basis?: 'SITE' | 'GRID_CENTER';
-  check?: { label: string; bcr: 'WITHIN' | 'OVER' | 'UNKNOWN'; far: 'WITHIN' | 'OVER' | 'UNKNOWN'; district_plan: boolean; notes: string[]; basis?: 'ORDINANCE' | 'DECREE' };
-  source?: { name: string; number?: string; effective?: string; url: string; checked: string; articles?: string };
+  check?: {
+    label: string; bcr: 'WITHIN' | 'OVER' | 'UNKNOWN'; far: 'WITHIN' | 'OVER' | 'UNKNOWN'; district_plan: boolean; notes: string[];
+    basis?: 'ORDINANCE' | 'DECREE' | 'MIXED'; greenbelt?: boolean; assumed?: boolean;
+    district_plan_areas?: Array<{ name: string | null; area_m2: number; share: number }>;
+  };
+  source?: { name: string; number?: string | null; effective?: string | null; url: string; checked?: string | null; articles?: string | null; parsed?: boolean; issuer?: string | null; issuer_rule?: string | null };
   rules?: string[];
   reason?: string;
 }
@@ -440,6 +478,8 @@ export interface NationalMeta {
   admin_units: number; sigungu: number; regions: number; sgis_year: number | null; sgis_sigungu: number; sgis_emd: number;
   complexes: number; grid500_official: number; grid1k_year: number | null; grid1k_cells: number;
   sources: Record<string, { status: string; quality: string | null; collected_at: string | null; coverage: string | null } | null>;
+  /** 시·군 도시·군계획 조례 수집 결과 (조례를 내는 기관 수와 상태별 개수). */
+  ordinances?: { issuers: number; counts: Record<string, number> };
 }
 
 export interface RegionsResponse { default: string; regions: RegionSummary[]; national: NationalMeta; steps: Array<{ id: string; label: string }> }
