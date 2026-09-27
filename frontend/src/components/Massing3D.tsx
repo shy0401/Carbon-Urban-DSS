@@ -9,7 +9,7 @@ import { buildingHeight, HEIGHT_CLASS_LABELS, heightClass, massingFeatures, oute
 import { kst, pointInRing, shadowLength, shadowRing, SUN_DAYS, sunPosition, type SunDay } from '../lib/solar';
 import { TOKENS } from '../theme/palette';
 import type { ScenarioInput, ZoningCheck } from '../types';
-import { zoneBasisLabel, zoneName, zoningSourceNote, zoningTitle, zoningTone } from '../lib/zoning';
+import { districtPlanLabel, zoneBasisLabel, zoneName, zoningSourceNote, zoningTitle, zoningTone } from '../lib/zoning';
 
 maplibregl.setWorkerUrl(workerUrl);
 
@@ -295,7 +295,7 @@ export function Massing3D({ gridId, input, site = null, onSiteChange, onCapture,
         <span>{zoning.zones.length ? zoning.zones.slice(0, 3).map((z) => `${zoneName(z)} ${z.share != null ? `${z.share.toFixed(0)}%` : ''}${z.basis === 'DECREE' || z.assumed || z.gap ? ` (${zoneBasisLabel(z)})` : ''}`).join(' · ') : zoning.reason ?? '대지에 겹치는 용도지역 자료가 없습니다'}</span>
         {zoning.bcr_limit != null && zoning.far_limit != null && <span>기본 상한 건폐율 {zoning.bcr_limit}% · 용적률 {zoning.far_limit}%{zoning.mixed ? ' (면적 가중)' : ''}</span>}
         {zoning.special?.greenbelt && <span className="status-tag bad">개발제한구역 {zoning.special.greenbelt.share.toFixed(0)}%</span>}
-        {zoning.special?.district_plans?.length ? <span className="status-tag warn">지구단위계획구역 {zoning.special.district_plans[0].name ?? ''}</span> : check?.district_plan && <span className="status-tag warn">지구단위계획 대상 규모</span>}
+        {zoning.special?.district_plans?.length ? <span className="status-tag warn">{districtPlanLabel(zoning.special.district_plans[0].name)}</span> : check?.district_plan && <span className="status-tag warn">지구단위계획 대상 규모</span>}
         {zoning.source && <a href={zoning.source.url} target="_blank" rel="noreferrer">{zoning.source.name} ({zoning.rules_kind === 'DECREE' || (!zoning.rules_kind && zoning.basis === 'DECREE') ? zoning.source.articles : `${zoning.source.effective} 시행`})</a>}
       </> : <span className="muted">대지 위치가 정해지면 확인합니다.</span>}
     </div>

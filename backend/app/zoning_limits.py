@@ -287,6 +287,23 @@ def weighted_limits(zones: list[dict[str, Any]], site_area_m2: float, housing: b
         rows.append(dict(info, area_m2=round(area, 1), share=round(area / site_area_m2 * 100, 2) if site_area_m2 else None,
                          applied_bcr_limit=bcr, applied_far_limit=far, applied_notes=applied_notes))
         covered += area
+    # Overlapping polygons (e.g. an unnamed 도시지역 outline under the 세부 용도지역): the named zones win,
+    # the undivided/unknown ones only fill what the named ones leave, and the total never exceeds the site.
+    if site_area_m2 and covered > site_area_m2 * 1.001:
+        specific = sum(r["area_m2"] for r in rows if not r.get("assumed"))
+        generic = sum(r["area_m2"] for r in rows if r.get("assumed"))
+        spare = max(0.0, site_area_m2 - min(specific, site_area_m2))
+        for r in rows:
+            if r.get("assumed"):
+                factor = min(1.0, spare / generic) if generic else 0.0
+            else:
+                factor = min(1.0, site_area_m2 / specific) if specific else 0.0
+            if factor < 0.999:
+                r["area_m2"] = round(r["area_m2"] * factor, 1)
+                r["share"] = round(r["area_m2"] / site_area_m2 * 100, 2)
+                r["applied_notes"] = [*r["applied_notes"], "겹치는 용도지역 도형은 세부 용도지역을 우선해 면적을 나눴습니다"]
+        rows = [r for r in rows if r["area_m2"] > 0.05]
+        covered = sum(r["area_m2"] for r in rows)
     covered_share = covered / site_area_m2 if site_area_m2 else 0.0
     gap = max(0.0, site_area_m2 - covered)
     if rows and site_area_m2 and gap / site_area_m2 >= ASSUMED_GAP_THRESHOLD:
@@ -313,6 +330,14 @@ def weighted_limits(zones: list[dict[str, Any]], site_area_m2: float, housing: b
 
 
 BASIS_TEXT = {"ORDINANCE": "조례", "DECREE": "시행령", "MIXED": "조례·시행령"}
+
+
+def district_plan_label(name: str | None) -> str:
+    """'서울 강남 보금자리주택지구 지구단' as is; a bare VWorld name '지구단위계획구역' is not repeated."""
+    text = (name or "").strip()
+    if not text:
+        return "지구단위계획구역"
+    return text if "지구단위" in text else f"지구단위계획구역({text})"
 
 
 def check_plan(limits: dict[str, Any], *, bcr: float | None, far: float | None, site_area_m2: float, households: int | None) -> dict[str, Any]:
@@ -348,9 +373,9 @@ def check_plan(limits: dict[str, Any], *, bcr: float | None, far: float | None, 
         notes.append(f"대지의 {special['greenbelt']['share']:.0f}%가 개발제한구역입니다. 개발제한구역법 제12조로 건축물의 건축이 원칙적으로 금지되고 "
                      "허가 대상 시설만 지을 수 있어 건폐율·용적률 판정을 하지 않습니다.")
     for area in plan_areas:
-        notes.append(f"대지의 {area['share']:.0f}%가 지구단위계획구역({area.get('name') or '이름 없음'})입니다. 지구단위계획이 정한 건폐율·용적률·높이가 우선하므로 이 확인은 참고용입니다.")
+        notes.append(f"대지의 {area['share']:.0f}%가 {district_plan_label(area.get('name'))}입니다. 지구단위계획이 정한 건폐율·용적률·높이가 우선하므로 이 확인은 참고용입니다.")
     if basis == "DECREE" and limits.get("rules_kind") != "ORDINANCE":
-        notes.append("이 지역 조례가 등록되지 않아 국토계획법 시행령 상한으로 확인했습니다. 조례 상한은 더 낮을 수 있습니다.")
+        notes.append("이 지역 조례를 받지 못해(또는 읽지 못해) 국토계획법 시행령 상한으로 확인했습니다. 조례 상한은 더 낮을 수 있습니다.")
     elif basis in ("DECREE", "MIXED") and limits.get("rules_kind") == "ORDINANCE":
         notes.append("조례에 값이 없는 용도지역은 국토계획법 시행령 상한을 썼습니다.")
     if district_plan and not plan_areas:

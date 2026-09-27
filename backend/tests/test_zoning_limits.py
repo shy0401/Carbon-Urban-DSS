@@ -134,3 +134,13 @@ def test_greenbelt_and_district_plan_flags():
     limits["special"] = {"greenbelt": None, "district_plans": [{"name": "영통 지구단위계획구역", "area_m2": 10000, "share": 100.0}]}
     plan = check_plan(limits, bcr=10, far=50, site_area_m2=10000, households=10)
     assert plan["label"].endswith("지구단위계획 우선") and plan["district_plan"] and "영통" in plan["notes"][0]
+
+
+def test_overlapping_unnamed_urban_outline_only_fills_the_rest():
+    from app.zoning_limits import weighted_limits
+    # VWorld has a large 도시지역 polygon without a 세부 name under the named 자연녹지지역 polygon
+    both = weighted_limits([{"zone_name": "자연녹지지역", "area_m2": 10000}, {"zone_name": "", "area_m2": 10000}], 10000, basis="DECREE")
+    assert [z["zone"] for z in both["zones"]] == ["자연녹지지역"] and both["far_limit"] == 100 and both["assumed_share"] == 0
+    part = weighted_limits([{"zone_name": "자연녹지지역", "area_m2": 7000}, {"zone_name": "도시지역", "area_m2": 10000}], 10000, basis="DECREE")
+    assert [(z["zone"], z["share"]) for z in part["zones"]] == [("자연녹지지역", 70.0), ("보전녹지지역", 30.0)]
+    assert part["far_limit"] == 0.7 * 100 + 0.3 * 80 and part["assumed_share"] == 30.0

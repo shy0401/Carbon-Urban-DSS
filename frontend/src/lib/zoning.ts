@@ -40,3 +40,10 @@ export function zoningSourceNote(zoning: ZoningCheck): string {
   if ((zoning.assumed_share ?? 0) > 0) parts.push('세분·지정되지 않은 부분은 국토계획법 제79조 기준(가정)');
   return `${parts.join(', ')}입니다. 완화 규정·지구단위계획 지침·경관지구 제한은 반영하지 않았습니다.`;
 }
+
+/** District plan name for a tag: VWorld often names the area just '지구단위계획구역'. */
+export function districtPlanLabel(name: string | null | undefined): string {
+  const text = (name ?? '').trim();
+  if (!text) return '지구단위계획구역';
+  return text.includes('지구단위') ? text : `지구단위계획구역 ${text}`;
+}

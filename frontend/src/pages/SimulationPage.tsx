@@ -18,7 +18,7 @@ import { validateScenario, type ScenarioErrors } from '../lib/scenario';
 import { applyFloorPreset } from '../lib/capacity';
 import { useSystemInfo } from '../hooks/useSystemInfo';
 import type { ScenarioInput, ScenarioResult, ScenarioSeries, ZoningCheck } from '../types';
-import { zoneBasisLabel, zoneName, zoningSourceNote, zoningTitle, zoningTone } from '../lib/zoning';
+import { districtPlanLabel, zoneBasisLabel, zoneName, zoningSourceNote, zoningTitle, zoningTone } from '../lib/zoning';
 
 const initial: ScenarioInput = { site_area: 10000, building_count: 4, footprint_per_building: 700, floors: 12, households: 240, population: 560, efficiency_factor: 0.85, pv_ratio: 0.2, green_ratio: 0.25, average_household_area: 84 };
 const fields: Array<{ key: keyof ScenarioInput; label: string; unit: string; step?: number; min?: number; max?: number }> = [
@@ -131,7 +131,7 @@ export function SimulationPage() {
         </section>
       </div>
     </div>
-    <section className="panel optimization-panel"><div className="panel-title"><h3>도시구조 최적화</h3><span className="status-tag neutral">결정론적 계산</span></div><p className="panel-description">최소 수용 목표를 충족하는 후보를 같은 입력과 제약에서 항상 같은 순서로 탐색합니다. 대지의 용도지역이 확인되면 법적 상한(전주시는 도시계획 조례 기본 상한, 조례를 등록하지 않은 지역은 국토계획법 시행령 상한) 안의 후보만 봅니다.</p><div className="optimization-controls"><label><span>최소 세대수</span><input type="number" min="0" value={constraints.min_households} onChange={(event) => setConstraints((old) => ({ ...old, min_households: Number(event.target.value) }))} /></label><label><span>최소 인구</span><input type="number" min="0" value={constraints.min_population} onChange={(event) => setConstraints((old) => ({ ...old, min_population: Number(event.target.value) }))} /></label><button type="button" className="button secondary" onClick={() => void optimize()} disabled={optimizing}>{optimizing ? '탐색 중…' : '최적안 탐색'}</button></div>{optimization && <OptimizationResults result={optimization} onApply={(row) => setInput((old) => ({ ...old, building_count: Number(row.building_count), floors: Number(row.floors), households: Number(row.households), population: Number(row.population) }))} />}</section>
+    <section className="panel optimization-panel"><div className="panel-title"><h3>도시구조 최적화</h3><span className="status-tag neutral">결정론적 계산</span></div><p className="panel-description">최소 수용 목표를 충족하는 후보를 같은 입력과 제약에서 항상 같은 순서로 탐색합니다. 대지의 용도지역이 확인되면 법적 상한(그 지역 도시계획 조례 기본 상한, 조례에 없거나 조례를 못 받은 경우 국토계획법 시행령 상한) 안의 후보만 봅니다.</p><div className="optimization-controls"><label><span>최소 세대수</span><input type="number" min="0" value={constraints.min_households} onChange={(event) => setConstraints((old) => ({ ...old, min_households: Number(event.target.value) }))} /></label><label><span>최소 인구</span><input type="number" min="0" value={constraints.min_population} onChange={(event) => setConstraints((old) => ({ ...old, min_population: Number(event.target.value) }))} /></label><button type="button" className="button secondary" onClick={() => void optimize()} disabled={optimizing}>{optimizing ? '탐색 중…' : '최적안 탐색'}</button></div>{optimization && <OptimizationResults result={optimization} onApply={(row) => setInput((old) => ({ ...old, building_count: Number(row.building_count), floors: Number(row.floors), households: Number(row.households), population: Number(row.population) }))} />}</section>
   </div>;
 }
 
@@ -143,7 +143,7 @@ function ZoningSummary({ zoning, saved }: { zoning: ZoningCheck; saved: boolean 
     <div className="zoning-summary-head"><Scale size={16} aria-hidden="true" /><strong>{zoningTitle(zoning)} 1차 확인</strong><span className={`status-tag ${tone}`}>{check?.label ?? '판단 보류'}</span><small>{saved ? '계산 시점 기준' : '현재 입력 기준'}</small></div>
     {(special?.greenbelt || special?.district_plans?.length) ? <p className="zoning-special">
       {special.greenbelt && <span className="status-tag bad">개발제한구역 {special.greenbelt.share.toFixed(0)}%</span>}
-      {special.district_plans.map((area) => <span key={`${area.name}-${area.area_m2}`} className="status-tag warn">지구단위계획구역 {area.name ?? ''} {area.share.toFixed(0)}%</span>)}
+      {special.district_plans.map((area) => <span key={`${area.name}-${area.area_m2}`} className="status-tag warn">{districtPlanLabel(area.name)} {area.share.toFixed(0)}%</span>)}
     </p> : null}
     <table><thead><tr><th>용도지역</th><th>근거</th><th className="num">대지 비율</th><th className="num">건폐율 상한</th><th className="num">용적률 상한</th></tr></thead>
       <tbody>{zoning.zones.length ? zoning.zones.map((z) => <tr key={`${z.zone}-${z.zone_name}-${z.gap ? 'gap' : ''}`}><td>{zoneName(z)}{z.note && <small>{z.note}</small>}</td><td>{zoneBasisLabel(z)}</td><td className="num">{z.share != null ? `${z.share.toFixed(1)}%` : '-'}</td><td className="num">{(z.applied_bcr_limit ?? z.bcr_limit) != null ? `${z.applied_bcr_limit ?? z.bcr_limit}%` : '규정 없음'}</td><td className="num">{(z.applied_far_limit ?? z.far_limit) != null ? `${z.applied_far_limit ?? z.far_limit}%` : '확인 필요'}</td></tr>) : <tr><td colSpan={5}>{zoning.reason ?? '대지와 겹치는 용도지역 자료가 없습니다.'}</td></tr>}</tbody>
