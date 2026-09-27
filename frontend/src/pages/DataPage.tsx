@@ -1,6 +1,6 @@
-import { AlertTriangle, ArrowRight, CheckCircle2, ChevronRight, CloudDownload, ExternalLink, FileUp, KeyRound, RefreshCw, X, BrainCircuit, Calculator, FileArchive, FileText } from 'lucide-react';
+import { AlertTriangle, ArrowRight, CheckCircle2, ChevronRight, CloudDownload, ExternalLink, FileUp, Globe2, KeyRound, RefreshCw, X, BrainCircuit, Calculator, FileArchive, FileText } from 'lucide-react';
 import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { lastCompletedMonth, MonthRangePicker, rangeProblem } from '../components/MonthRangePicker';
 import { MissingCollection } from '../components/MissingCollection';
 import { MissingValue } from '../components/MissingValue';
@@ -105,6 +105,7 @@ export function DataPage() {
   return <div className="page">
     <PageHeader title="수집 데이터" description="공식·대체 출처의 수집 범위와 원본에서 정규화까지의 이력을 확인합니다." action={<button className="button secondary" onClick={() => void load()}><RefreshCw size={15} />새로고침</button>} />
     <p className="panel-description"><a href="/guide#collect">이 화면 사용 방법</a> · <a href="https://github.com/shy0401/Carbon-Urban-DSS/blob/main/docs/DATA_SETUP_GUIDE.md" target="_blank" rel="noopener noreferrer">자료별 인증키 신청 · 다운로드 · 필드 매핑 안내</a></p>
+    <p className="data-scope-note"><Globe2 size={15} aria-hidden="true" /><span>이 화면의 '빠진 자료 전부 수집'과 수동 수집은 최초 연구 지역(전주시) 범위입니다. 다른 시·군·구는 <Link to="/regions">전국 지역</Link>에서 지역을 골라 준비하면 그 지역 자료를 받습니다.</span></p>
     <MissingCollection onChanged={() => void load(true)} />
     <section className="data-summary">{sourceSummary.map(([label, value, tone]) => <article className={tone} key={label}><span>{label}</span><strong>{value}</strong></article>)}<article><span>마지막 수집</span><strong>{latestCollection(sources)}</strong></article></section>
     <div className="data-layout">

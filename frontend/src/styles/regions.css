@@ -80,3 +80,7 @@
   .national-sources li { grid-template-columns: 1fr auto; }
   .national-sources li small { grid-column: 1 / -1; }
 }
+
+.data-scope-note { display: flex; align-items: flex-start; gap: var(--sp-2); margin: 0 0 var(--sp-4); padding: var(--sp-2) var(--sp-3); border: 1px solid var(--line); border-left: 3px solid var(--primary); border-radius: var(--r-map); background: var(--surface); color: var(--ink-2); font-size: var(--fs-label); line-height: 1.6; }
+.data-scope-note svg { flex: none; margin-top: 3px; color: var(--primary); }
+.data-scope-note a { color: var(--primary); font-weight: 500; }
