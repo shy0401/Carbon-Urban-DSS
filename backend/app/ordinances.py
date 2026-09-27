@@ -366,11 +366,65 @@ def _combined_scan(text: str) -> dict[str, dict[str, dict[str, Any]]]:
     return out
 
 
+_NUMBER_CELL = re.compile(r"^(\d[\d,]*(?:\.\d+)?|-|－)$")
+
+
+def _numeric_table_scan(text: str) -> dict[str, dict[str, dict[str, Any]]]:
+    """A table with '건폐율(%)' / '용적률(%)' columns: a zone cell followed by bare number cells ('-' = none).
+
+    Housing rows below the table ("제3종 일반주거지역에서 공동주택은 250퍼센트 이하") lower the housing value."""
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    flat_head = re.sub(r"\s+", "", " ".join(lines[:40]))
+    columns = [w for w in ("건폐율", "용적률") if re.search(w + r"\(%\)", flat_head)]
+    out: dict[str, dict[str, dict[str, Any]]] = {"bcr": {}, "far": {}}
+    if not columns:
+        return out
+    keys = ["bcr" if w == "건폐율" else "far" for w in columns]
+    for index, line in enumerate(lines):
+        compact = line.replace(" ", "")
+        zone = next((z for z in sorted(ZONES, key=len, reverse=True) if compact == z), None)
+        if not zone or zone in out[keys[0]]:
+            continue
+        cells = []
+        for follow in lines[index + 1:index + 1 + len(keys)]:
+            match = _NUMBER_CELL.match(follow.replace(" ", ""))
+            if not match:
+                break
+            cells.append(match.group(1))
+        if len(cells) != len(keys):
+            continue
+        for key, cell in zip(keys, cells):
+            if cell not in ("-", "－"):
+                out[key][zone] = {"value": _num(cell), "housing": None, "site_rules": [], "text": f"{zone} {cell}%", "proviso": False}
+    section = None
+    for line in lines:
+        heading = re.match(r"^\d+\.\s*(.*)", line)
+        if heading and ("건폐율" in heading.group(1) or "용적률" in heading.group(1)):
+            section = "far" if "용적률" in heading.group(1) else "bcr"
+            continue
+        compact = re.sub(r"\s+", "", _clean(line))
+        if section and any(word in compact for word in _HOUSING):
+            zones = [z for z in ZONES if z in compact]
+            at = min(compact.find(word) for word in _HOUSING if word in compact)
+            pct = _PCT.search(compact, at)
+            if len(zones) == 1 and pct and zones[0] in out[section]:
+                entry = out[section][zones[0]]
+                value = _pct_value(pct)
+                if 0 < value < entry["value"]:
+                    entry["housing"] = value if entry["housing"] is None else min(entry["housing"], value)
+                    entry["text"] += f" (공동주택 {value:g}%)"
+    return out
+
+
 def _parse_table_text(text: str, word: str, combined: bool) -> dict[str, dict[str, Any]]:
     lines = [line.strip() for line in text.splitlines() if line.strip()]
+    key = "bcr" if word == "건폐율" else "far"
+    numeric = _numeric_table_scan(text)[key]
     if combined:
-        scanned = _combined_scan(text)
-        return scanned["bcr" if word == "건폐율" else "far"]
+        scanned = _combined_scan(text)[key]
+        return numeric if len(numeric) > len(scanned) else scanned
+    if numeric:
+        return numeric
     parsed = parse_limit_items(lines)
     return parsed if parsed else _table_zone_scan(lines)
 

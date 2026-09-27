@@ -93,3 +93,17 @@ def test_title_and_agency_variants():
     assert _title_ok("장흥군 관리계획 조례", "장흥군") and _title_ok("거창군 계획조례", "거창군")
     assert not _title_ok("장흥군 지방재정계획심의위원회 조례", "장흥군")
     assert _same_agency("(구)광주광역시", "광주광역시")  # 통합 전 광역시 조례
+
+
+def test_numeric_column_table_with_housing_rows():
+    # 울산광역시 도시계획 조례 별표 24: '건폐율(%)·용적률(%)' 열에 숫자만, 아래 3.가~다에 공동주택 상한
+    from app.hwp import hwp_text
+    from app.ordinances import _parse_table_text
+    text = hwp_text((FIXTURES / "ordinance-ulsan-table24.hwp").read_bytes())
+    bcr = _parse_table_text(text, "건폐율", combined=True)
+    far = _parse_table_text(text, "용적률", combined=True)
+    assert len(bcr) == 21 and len(far) == 21
+    assert (bcr["중심상업지역"]["value"], far["중심상업지역"]["value"]) == (80, 1300)
+    assert far["제3종일반주거지역"]["value"] == 300 and far["제3종일반주거지역"]["housing"] == 250
+    assert far["준주거지역"]["housing"] == 350 and far["준공업지역"]["housing"] == 250
+    assert far["일반상업지역"]["housing"] is None
