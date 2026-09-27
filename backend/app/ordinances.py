@@ -109,14 +109,20 @@ def issuer_for(region_code: str, region_name: str, sido_name: str | None = None)
 
 
 def _title_ok(title: str, local: str) -> bool:
-    text = (title or "").replace(" ", "")
-    return bool(re.fullmatch(re.escape(local.replace(" ", "")) + r"(?:도시|군|도시[·ㆍ]군)?계획조례", text))
+    """'수원시 도시계획 조례', '고성군계획 조례', '장흥군 관리계획 조례', '청도군 군계획 조례 [제명개정 2020. 10. 5.]'."""
+    text = re.sub(r"\[[^\]]*\]", "", title or "").replace(" ", "")
+    return bool(re.fullmatch(re.escape(local.replace(" ", "")) + r"(?:도시|군|도시[·ㆍ]군|관리)?계획조례", text))
+
+
+def _agency(name: str) -> str:
+    """law.go.kr marks a merged authority's old ordinances '(구)광주광역시'."""
+    return re.sub(r"^\(구\)\s*", "", (name or "").strip())
 
 
 def _same_agency(agency: str, issuer_name: str) -> bool:
     """'전남광주통합특별시 강진군' vs '전라남도 강진군': same last word and a compatible 시도."""
     from .regions import sido_keys
-    a, b = (agency or "").split(), (issuer_name or "").split()
+    a, b = _agency(agency).split(), (issuer_name or "").split()
     if not a or not b:
         return False
     if len(b) == 1:  # 시도 issuer
@@ -292,39 +298,44 @@ def _article_label(jo: ET.Element) -> str:
 
 
 def _candidate_articles(root: ET.Element, word: str) -> list[ET.Element]:
+    """Articles about ``word`` (건폐율/용적률): a 용도지역 article always, others unless they are about relaxations etc."""
     found = []
     for jo in (root.find("조문") or []):
         if (jo.findtext("조문여부") or "Y") not in ("Y", ""):
             continue
         title = (jo.findtext("조제목") or "").replace(" ", "")
-        if word in title and not any(x in title for x in _EXCLUDE_TITLE):
+        if word in title and ("용도지역" in title or not any(x in title for x in _EXCLUDE_TITLE)):
             found.append(jo)
     return found
 
 
-def _table_lines(root: ET.Element, word: str) -> list[str]:
-    lines: list[str] = []
+def _table_units(root: ET.Element) -> list[dict[str, Any]]:
+    units = []
     for unit in (root.find("별표") or []):
-        if word in (unit.findtext("별표제목") or ""):
-            lines.extend(line.strip() for line in html.unescape(unit.findtext("별표내용") or "").splitlines() if line.strip())
-    return lines
+        number = (unit.findtext("별표번호") or "").lstrip("0")
+        units.append({"number": int(number) if number.isdigit() else None, "branch": (unit.findtext("별표가지번호") or "").lstrip("0"),
+                      "title": (unit.findtext("별표제목") or "").strip(), "text": html.unescape(unit.findtext("별표내용") or "").strip(),
+                      "file_type": (unit.findtext("별표첨부파일구분") or "").strip().lower(), "url": (unit.findtext("별표첨부파일명") or "").strip()})
+    return units
 
 
-def _best(root: ET.Element, word: str) -> tuple[str | None, dict[str, dict[str, Any]]]:
-    best: tuple[str | None, dict[str, dict[str, Any]]] = (None, {})
-    for jo in _candidate_articles(root, word):
-        parsed = parse_limit_items(_article_lines(jo))
-        if len(parsed) > len(best[1]):
-            best = (_article_label(jo), parsed)
-    if not best[1]:
-        parsed = _table_zone_scan(_table_lines(root, word))
-        if parsed:
-            best = (f"별표({word})", parsed)
-    return best
+def _referenced_tables(root: ET.Element, word: str) -> list[dict[str, Any]]:
+    """별표 the 용도지역 article points to ("별표 24에 따른다"), else 별표 whose title names ``word``."""
+    units = [u for u in _table_units(root) if "삭제" not in u["title"][:20]]
+    articles = _candidate_articles(root, word)
+    zoning_articles = [jo for jo in articles if "용도지역" in (jo.findtext("조제목") or "")] or articles
+    numbers = set()
+    for jo in zoning_articles:
+        numbers.update(int(n) for n in re.findall(r"별표\s*(\d+)", " ".join(_article_lines(jo))))
+    referenced = [u for u in units if u["number"] in numbers and not u["branch"]]
+    picked = [u for u in referenced if word in u["title"].replace(" ", "")] or referenced
+    if not picked:
+        picked = [u for u in units if word in u["title"].replace(" ", "") and "용도지역" in u["title"].replace(" ", "")]
+    return picked
 
 
 def _table_zone_scan(lines: list[str]) -> dict[str, dict[str, Any]]:
-    """별표 text: a zone name followed closely by a percentage."""
+    """Table text: a zone name followed closely by a percentage."""
     out: dict[str, dict[str, Any]] = {}
     text = re.sub(r"\s+", "", _clean(" ".join(lines)))
     for zone in sorted(ZONES, key=len, reverse=True):
@@ -337,8 +348,72 @@ def _table_zone_scan(lines: list[str]) -> dict[str, dict[str, Any]]:
     return out
 
 
-def parse_ordinance(body: bytes) -> dict[str, Any]:
-    """Meta and per-zone 건폐율·용적률 of one 도시·군계획 조례 XML (law.go.kr lawService, target=ordin)."""
+def _combined_scan(text: str) -> dict[str, dict[str, dict[str, Any]]]:
+    """A 건폐율·용적률 table: each zone followed by two percentages (건폐율, 용적률)."""
+    flat = re.sub(r"\s+", "", _clean(text))
+    out: dict[str, dict[str, dict[str, Any]]] = {"bcr": {}, "far": {}}
+    for zone in sorted(ZONES, key=len, reverse=True):
+        for match in re.finditer(re.escape(zone), flat):
+            if zone in out["bcr"]:
+                break
+            first = _PCT.search(flat, match.end())
+            if not first or first.start() - match.end() > 6:
+                continue
+            second = _PCT.search(flat, first.end())
+            out["bcr"][zone] = {"value": _pct_value(first), "housing": None, "site_rules": [], "text": flat[match.start():first.end()], "proviso": False}
+            if second and second.start() - first.end() <= 8:
+                out["far"][zone] = {"value": _pct_value(second), "housing": None, "site_rules": [], "text": flat[match.start():second.end()], "proviso": False}
+    return out
+
+
+def _parse_table_text(text: str, word: str, combined: bool) -> dict[str, dict[str, Any]]:
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if combined:
+        scanned = _combined_scan(text)
+        return scanned["bcr" if word == "건폐율" else "far"]
+    parsed = parse_limit_items(lines)
+    return parsed if parsed else _table_zone_scan(lines)
+
+
+def _best(root: ET.Element, word: str, tables: dict[str, str] | None = None) -> tuple[str | None, dict[str, dict[str, Any]]]:
+    best: tuple[str | None, dict[str, dict[str, Any]]] = (None, {})
+    for jo in _candidate_articles(root, word):
+        parsed = parse_limit_items(_article_lines(jo))
+        if len(parsed) > len(best[1]):
+            best = (_article_label(jo), parsed)
+    if not best[1]:
+        for unit in _referenced_tables(root, word):
+            text = unit["text"] or (tables or {}).get(unit["url"], "")
+            if not text:
+                continue
+            title = unit["title"].replace(" ", "")
+            parsed = _parse_table_text(text, word, "건폐율" in title and "용적률" in title)
+            if len(parsed) > len(best[1]):
+                best = (re.sub(r"\s+", " ", unit["title"]), parsed)
+    return best
+
+
+def attachments_needed(body: bytes) -> list[dict[str, Any]]:
+    """별표 attachments (.hwp) that hold the 용도지역 limits when the XML has no text for them."""
+    root = ET.fromstring(body)
+    needed = {}
+    for word in ("건폐율", "용적률"):
+        if parse_limit_items_any(root, word):
+            continue
+        for unit in _referenced_tables(root, word):
+            if not unit["text"] and unit["url"] and unit["file_type"] in ("hwp", ""):
+                needed[unit["url"]] = unit
+    return list(needed.values())
+
+
+def parse_limit_items_any(root: ET.Element, word: str) -> bool:
+    return any(parse_limit_items(_article_lines(jo)) for jo in _candidate_articles(root, word))
+
+
+def parse_ordinance(body: bytes, tables: dict[str, str] | None = None) -> dict[str, Any]:
+    """Meta and per-zone 건폐율·용적률 of one 도시·군계획 조례 XML (law.go.kr lawService, target=ordin).
+
+    ``tables``: {별표 attachment URL: text} for limits kept in an .hwp 별표."""
     from .zoning_limits import DECREE_LIMITS
     root = ET.fromstring(body)
     info = root.find("자치법규기본정보")
@@ -349,8 +424,8 @@ def parse_ordinance(body: bytes) -> dict[str, Any]:
     def date(value: str | None) -> str | None:
         return f"{value[:4]}-{value[4:6]}-{value[6:8]}" if value and len(value) == 8 else value
 
-    bcr_article, bcr = _best(root, "건폐율")
-    far_article, far = _best(root, "용적률")
+    bcr_article, bcr = _best(root, "건폐율", tables)
+    far_article, far = _best(root, "용적률", tables)
     limits: dict[str, dict[str, Any]] = {}
     issues = []
     for zone in ZONES:
@@ -376,7 +451,8 @@ def parse_ordinance(body: bytes) -> dict[str, Any]:
     zones_bcr = sum(1 for e in limits.values() if "bcr" in e)
     zones_far = sum(1 for e in limits.values() if "far" in e)
     if zones_bcr and zones_far:
-        status = "PARSED" if zones_bcr >= 13 and zones_far >= 13 else "PARTIAL"
+        # A 시 without 관리·농림지역 lists fewer zones (안양시 12); fewer than 6 is probably a partial read.
+        status = "PARSED" if zones_bcr >= 6 and zones_far >= 6 else "PARTIAL"
     else:
         status = "PARSE_FAILED"
     return {"title": meta("자치법규명"), "mst": meta("자치법규일련번호"), "agency": meta("지자체기관명"),
@@ -405,6 +481,31 @@ def issuers(db: Any, region_codes: Iterable[str] | None = None) -> dict[str, dic
         issuer = issuer_for(region["code"], region["name"], region.get("sido_name"))
         out.setdefault(issuer["code"], dict(issuer, regions=[]))["regions"].append(region["code"])
     return out
+
+
+def fetch_tables(client: Any, body: bytes, stem: Path, *, delay_s: float = 0.4) -> tuple[dict[str, str], list[str]]:
+    """Download the .hwp 별표 that hold the limits (kept next to the XML) and extract their text."""
+    from .hwp import hwp_text
+    tables: dict[str, str] = {}
+    notes: list[str] = []
+    for index, unit in enumerate(attachments_needed(body), 1):
+        url = unit["url"].replace("http://", "https://", 1)
+        try:
+            response = client.get(url)
+            response.raise_for_status()
+            time.sleep(delay_s)
+            stem.parent.mkdir(parents=True, exist_ok=True)
+            (stem.parent / f"{stem.name}-table{unit['number'] or index}.hwp").write_bytes(response.content)
+            text = hwp_text(response.content)
+        except Exception as exc:  # noqa: BLE001 - an unreadable table leaves the 시행령 fallback
+            notes.append(f"{unit['title']} 첨부를 읽지 못함 ({type(exc).__name__})")
+            continue
+        if text:
+            tables[unit["url"]] = text
+            notes.append(f"{unit['title']}: 첨부 hwp에서 읽음")
+        else:
+            notes.append(f"{unit['title']}: 첨부 hwp에 읽을 수 있는 본문이 없음(암호·배포용 문서)")
+    return tables, notes
 
 
 def collect_ordinance(db: Any, client: Any, issuer: dict[str, Any], *, log: Log = print, delay_s: float = 0.4) -> ZoningOrdinance:
@@ -438,7 +539,9 @@ def collect_ordinance(db: Any, client: Any, issuer: dict[str, Any], *, log: Log 
         raw_dir.mkdir(parents=True, exist_ok=True)
         path = raw_dir / f"{issuer['code']}-{hit['mst']}.xml"
         path.write_bytes(response.content)
-        parsed = parse_ordinance(response.content)
+        tables, table_notes = fetch_tables(client, response.content, raw_dir / f"{issuer['code']}-{hit['mst']}", delay_s=delay_s)
+        parsed = parse_ordinance(response.content, tables)
+        parsed["issues"] = table_notes + parsed["issues"]
     except Exception as exc:  # noqa: BLE001 - one issuer must not stop the national run
         db.rollback()
         row = db.get(ZoningOrdinance, issuer["code"]) or ZoningOrdinance(issuer_code=issuer["code"], issuer_name=issuer["name"])

@@ -73,3 +73,23 @@ def test_search_hit_selection():
     assert pick_search_hit(hits, "전라남도 강진군", today="20260927")["mst"] == "4"  # 시도 이름이 바뀌어도 같은 군
     assert pick_search_hit(hits, "경상북도 고령군", today="20260927") is None
     assert len(ZONES) == 21
+
+
+def test_hwp_table_attachment():
+    # 창원시 도시계획 조례 별표 27은 law.go.kr XML에 본문이 없고 .hwp 첨부로만 있다
+    from app.hwp import hwp_text
+    from app.ordinances import _parse_table_text, _combined_scan
+    text = hwp_text((FIXTURES / "ordinance-changwon-table27.hwp").read_bytes())
+    assert "용도지역에서의 건폐율" in text and "1. 제1종 전용주거지역 : 50퍼센트" in text
+    parsed = _parse_table_text(text, "건폐율", combined=False)
+    assert len(parsed) == 21 and parsed["준주거지역"]["value"] == 70 and parsed["계획관리지역"]["value"] == 40
+    combined = _combined_scan("제1종전용주거지역 50퍼센트 이하 100퍼센트 이하\n중심상업지역 80퍼센트 이하 1,300퍼센트 이하")
+    assert combined["bcr"]["중심상업지역"]["value"] == 80 and combined["far"]["중심상업지역"]["value"] == 1300
+
+
+def test_title_and_agency_variants():
+    from app.ordinances import _same_agency, _title_ok
+    assert _title_ok("청도군 군계획 조례 [제명개정 2020. 10. 5.]", "청도군")
+    assert _title_ok("장흥군 관리계획 조례", "장흥군") and _title_ok("거창군 계획조례", "거창군")
+    assert not _title_ok("장흥군 지방재정계획심의위원회 조례", "장흥군")
+    assert _same_agency("(구)광주광역시", "광주광역시")  # 통합 전 광역시 조례
