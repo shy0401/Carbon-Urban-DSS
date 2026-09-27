@@ -1,6 +1,6 @@
 /* 전국 지역 화면 ------------------------------------------------------------------------- */
 .regions-page .notice { margin: 0 0 var(--sp-4); padding: var(--sp-2) var(--sp-3); border: 1px solid var(--line); border-left: 3px solid var(--info); border-radius: var(--r-map); background: var(--surface); color: var(--ink-2); font-size: var(--fs-label); }
-.national-layers { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--sp-3); margin-bottom: var(--sp-4); }
+.national-layers { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: var(--sp-3); margin-bottom: var(--sp-4); }
 .national-figure { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: var(--sp-3) var(--sp-4); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-panel); }
 .national-figure > span { color: var(--ink-2); font-size: var(--fs-label); font-weight: 500; }
 .national-figure strong { font-size: var(--fs-figure); font-weight: 600; line-height: 1.25; color: var(--ink); }

@@ -111,7 +111,8 @@
 .tabs button { padding: var(--sp-2) var(--sp-3); border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--ink-2); font-size: var(--fs-label); font-weight: 500; white-space: nowrap; }
 .tabs button[aria-selected='true'] { border-color: var(--primary); color: var(--ink); }
 .missing-reason { display: flex; gap: var(--sp-2); align-items: flex-start; margin-top: var(--sp-3); padding: var(--sp-3); border: 1px solid var(--hatch); border-radius: var(--r-map); background: var(--prov-missing-bg); color: var(--ink-2); }
-.estimate-note { display: flex; gap: var(--sp-2); align-items: flex-start; margin: var(--sp-2) 0; padding: var(--sp-2) var(--sp-3); border-left: 3px solid var(--prov-estimated, var(--line)); background: var(--surface-sunk); color: var(--ink-2); font-size: var(--fs-label); line-height: 1.55; }
+.estimate-note { display: flex; gap: var(--sp-2); align-items: flex-start;  margin: var(--sp-2) 0; padding: var(--sp-2) var(--sp-3); border-left: 3px solid var(--prov-estimated, var(--line)); background: var(--surface-sunk); color: var(--ink-2); font-size: var(--fs-label); line-height: 1.55; }
+.estimate-note svg { flex: none; margin-top: 3px; }
 .missing-reason strong { font-size: var(--fs-body); color: var(--ink); }
 .missing-reason p { margin-top: 2px; font-size: var(--fs-label); }
 /* 개념 배치도: 축척 없는 층수 막대. 현황 먹선, 계획안 --plan-a + 시나리오 점선 테두리. */
