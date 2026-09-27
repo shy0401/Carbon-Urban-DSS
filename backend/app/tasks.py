@@ -217,10 +217,18 @@ def run_prepare_region(self,code,steps=None,force=False):
     import redis
     from .region_prepare import next_quota_reset,prepare_region
     from .regions import StudyRegion
+    import threading
     connection=redis.Redis.from_url(os.getenv('REDIS_URL','redis://redis:6379/0'))
-    lock=connection.lock(REGION_LOCK,timeout=6*3600,blocking_timeout=1,thread_local=False)
+    # Short lock renewed while the run is alive: a worker killed by a rebuild frees it within 10 minutes.
+    lock=connection.lock(REGION_LOCK,timeout=600,blocking_timeout=1,thread_local=False)
     if not lock.acquire(blocking=True):
         raise self.retry(countdown=120)
+    stop=threading.Event()
+    def keep():
+        while not stop.wait(150):
+            try: lock.reacquire()
+            except Exception: pass
+    threading.Thread(target=keep,name='region-lock',daemon=True).start()
     try:
         with Session() as db:
             result=prepare_region(db,code,steps,log=lambda message:None,force=force)
@@ -234,6 +242,7 @@ def run_prepare_region(self,code,steps=None,force=False):
                 try: run_prepare_region.apply_async((code,waiting+['finalize'],False),eta=resume)
                 except Exception: pass
     finally:
+        stop.set()
         try: lock.release()
         except Exception: pass
 

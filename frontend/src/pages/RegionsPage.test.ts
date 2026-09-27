@@ -22,6 +22,8 @@ describe('RegionsPage table', () => {
     expect(statusTone('WAITING')).toBe('warn');
     expect(statusTone('FAILED')).toBe('bad');
     expect(statusTone('PREPARING')).toBe('neutral');
+    expect(statusTone('NOT_PREPARED')).toBe('neutral');
+    expect(statusTone('PARTIAL')).toBe('warn');
   });
 });
 

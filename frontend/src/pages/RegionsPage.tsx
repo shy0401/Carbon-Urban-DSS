@@ -30,7 +30,10 @@ const NATIONAL_LAYERS: Array<{ key: string; label: string }> = [
 ];
 
 export function statusTone(status: string | null | undefined) {
-  return status === 'READY' || status === 'DONE' || status === 'COLLECTED' ? 'good' : status === 'FAILED' || status === 'BLOCKED' ? 'bad' : status === 'PREPARING' || status === 'RUNNING' || status === 'QUEUED' ? 'neutral' : 'warn';
+  if (status === 'READY' || status === 'DONE' || status === 'COLLECTED') return 'good';
+  if (status === 'FAILED' || status === 'BLOCKED') return 'bad';
+  if (status === 'PARTIAL' || status === 'WAITING') return 'warn';
+  return 'neutral'; // 준비 전·대기·진행 중
 }
 
 /** Rows of the national table, sorted by the chosen metric (missing values last, never 0). */

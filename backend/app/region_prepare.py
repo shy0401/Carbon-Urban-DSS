@@ -446,6 +446,7 @@ REQUIRES["kapt_energy"] = ("grid", "complexes")
 def prepare_region(db: Any, code: str, steps: list[str] | None = None, *, log: Log = print, force: bool = False) -> dict[str, Any]:
     """Run the preparation steps of one region in order. Finished steps are skipped unless ``force``."""
     region = create_region(db, code)
+    db.refresh(region)
     wanted = [step for step in STEPS if steps is None or step in steps]
     region.status = "PREPARING"
     region.message = "지역 자료를 수집하는 중입니다"
@@ -474,6 +475,7 @@ def prepare_region(db: Any, code: str, steps: list[str] | None = None, *, log: L
         _mark(db, region, step, status, result.pop("message", None), **{k: v for k, v in result.items() if k in ("rows", "year")})
         log(f"{STEP_LABELS[step]}: {status}")
     region = db.get(StudyRegion, code)
+    db.refresh(region)  # sessions keep objects after commit: read what other processes wrote
     region.status = overall_status(region.datasets or {})
     waiting = [STEP_LABELS[s] for s in STEPS if (region.datasets or {}).get(s, {}).get("status") == "WAITING"]
     region.message = ("준비 완료" if region.status == "READY"
