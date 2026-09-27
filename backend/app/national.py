@@ -286,7 +286,7 @@ def collect_national_complexes(db: Any, search_month: str | None = None, *, log:
     import httpx
 
     from .collectors import update_source
-    from .kapt import KAPT_LIST_URL, KAPT_MAIN_URL, _coordinates, csrf_token
+    from .kapt import KAPT_LIST_URL, KAPT_MAIN_URL, LIST_HEADERS, _coordinates, csrf_token, list_damaged
     from .settings import offline_mode
     if offline_mode():
         raise ExternalError("오프라인 모드: K-apt 목록을 받지 않습니다")
@@ -298,7 +298,7 @@ def collect_national_complexes(db: Any, search_month: str | None = None, *, log:
     token = csrf_token(landing.text)
     if not token:
         raise ExternalError("K-apt 첫 화면에 CSRF 토큰이 없습니다")
-    headers = {"X-CSRF-TOKEN": token, "X-Requested-With": "XMLHttpRequest"}
+    headers = {"X-CSRF-TOKEN": token, **LIST_HEADERS}
     raw_dir = _root() / "raw" / "kapt-national" / month
     raw_dir.mkdir(parents=True, exist_ok=True)
     regions = catalog(db)
@@ -309,9 +309,8 @@ def collect_national_complexes(db: Any, search_month: str | None = None, *, log:
     for index, (code, region_code) in enumerate(leaf_codes, 1):
         raw_path = raw_dir / f"list-{code}.json"
         try:
-            if raw_path.exists():
-                payload = json.loads(raw_path.read_text(encoding="utf-8"))
-            else:
+            payload = json.loads(raw_path.read_text(encoding="utf-8")) if raw_path.exists() else None
+            if payload is None or list_damaged(payload):
                 time.sleep(delay_s)
                 response = client.post(KAPT_LIST_URL, data={"bjdCode": code, "kaptName": "", "searchDate": month, "kaptDuty": "ALL", "_csrf": token}, headers=headers)
                 requests += 1

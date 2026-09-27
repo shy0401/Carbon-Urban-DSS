@@ -273,7 +273,8 @@ def step_complexes(db: Any, region: StudyRegion, log: Log, *, delay_s: float = 0
 
     import httpx
 
-    from .kapt import KAPT_LIST_URL, KAPT_MAIN_URL, _client, apply_complex, csrf_token, fetch_complex_detail, normalize_detail, normalize_summary
+    from .kapt import (KAPT_LIST_URL, KAPT_MAIN_URL, LIST_HEADERS, _client, apply_complex, csrf_token, fetch_complex_detail, list_damaged,
+                       normalize_detail, normalize_summary)
     from .settings import offline_mode
     month = _kapt_month()
     codes = list_codes(region.legal_codes or [])
@@ -286,7 +287,7 @@ def step_complexes(db: Any, region: StudyRegion, log: Log, *, delay_s: float = 0
     token = None
     for code in codes:
         path = raw_dir / f"list-{code}.json"
-        if not path.exists():
+        if not path.exists() or list_damaged(json.loads(path.read_text(encoding="utf-8"))):
             if offline_mode():
                 raise ExternalError("오프라인 모드: K-apt 목록을 받지 않습니다")
             if web is None:
@@ -296,7 +297,7 @@ def step_complexes(db: Any, region: StudyRegion, log: Log, *, delay_s: float = 0
                 if not token:
                     raise ExternalError("K-apt 첫 화면에 CSRF 토큰이 없습니다")
             response = web.post(KAPT_LIST_URL, data={"bjdCode": code, "kaptName": "", "searchDate": month, "kaptDuty": "ALL", "_csrf": token},
-                                headers={"X-CSRF-TOKEN": token, "X-Requested-With": "XMLHttpRequest"})
+                                headers={"X-CSRF-TOKEN": token, **LIST_HEADERS})
             response.raise_for_status()
             path.write_text(json.dumps(response.json(), ensure_ascii=False), encoding="utf-8")
         lists[code] = json.loads(path.read_text(encoding="utf-8")).get("resultList") or []

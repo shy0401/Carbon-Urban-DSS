@@ -141,6 +141,16 @@ def _client(raw_dir: Path | None = None) -> CachedClient:
     return CachedClient(root, client=transport, min_interval=0.3)
 
 
+# Without an explicit JSON Accept header the list endpoint answers text/plain;charset=ISO-8859-1 and every
+# Korean letter arrives as "?" (measured 2026-09-27: '?????' vs '궁전아파트' for the same complex).
+LIST_HEADERS = {"X-Requested-With": "XMLHttpRequest", "Accept": "application/json, text/javascript, */*; q=0.01"}
+
+
+def list_damaged(payload: dict[str, Any]) -> bool:
+    """A saved list whose Korean names were replaced by '?' (the 법정동 name always has Korean letters)."""
+    return any("?" in str(row.get("bjdName") or "") for row in payload.get("resultList") or [])
+
+
 def csrf_token(html: str) -> str | None:
     """CSRF token of the K-apt landing page (``<meta id="_csrf" name="_csrf" content="…">``; attribute order varies)."""
     for tag in re.findall(r"<meta\b[^>]*>", html):
@@ -157,7 +167,7 @@ def fetch_complex_lists(client: CachedClient, search_month: str = "202512") -> d
     token = csrf_token(landing["body"].decode("utf-8", "replace"))
     if not token:
         raise RuntimeError("K-apt main page did not contain a CSRF token")
-    headers = {"X-CSRF-TOKEN": token, "X-Requested-With": "XMLHttpRequest"}
+    headers = {"X-CSRF-TOKEN": token, **LIST_HEADERS}
     if offline_mode():
         raise ExternalError("오프라인 모드: 로컬 K-apt 목록 파일이 없어 외부 호출을 차단했습니다.")
     result: dict[str, list[dict[str, Any]]] = {}

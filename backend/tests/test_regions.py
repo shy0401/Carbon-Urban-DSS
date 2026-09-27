@@ -139,3 +139,11 @@ def test_kapt_csrf_token_in_any_attribute_order():
     assert csrf_token('<meta name="_csrf" content="x1">') == "x1"
     assert csrf_token('<meta content="y2" name="_csrf">') == "y2"
     assert csrf_token('<meta name="_csrf_header" content="X-CSRF-TOKEN" />') is None
+
+
+def test_kapt_list_with_question_marks_is_damaged():
+    from app.kapt import LIST_HEADERS, list_damaged
+    assert "application/json" in LIST_HEADERS["Accept"]
+    assert list_damaged({"resultList": [{"kaptName": "?????", "bjdName": "??? ????? ???"}]})
+    assert not list_damaged({"resultList": [{"kaptName": "SK VIEW", "bjdName": "전북특별자치도 전주완산구 태평동"}]})
+    assert not list_damaged({"resultList": []})
