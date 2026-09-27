@@ -191,7 +191,7 @@ function LocalAiFlow({ engine }: { engine: LocalEngineStatus }) {
   return <section className="panel ai-flow-panel">
     <div className="panel-title"><h3>로컬 LLM 운영 구조</h3><span className={`status-tag ${engine.status === 'READY' ? 'good' : 'warn'}`}>{engine.status === 'READY' ? '사용 가능' : '설치·연결 필요'}</span></div>
     <div className="ai-flow">{steps.map(({ icon: Icon, label, detail }, index) => <div className="ai-flow-step" key={label}><article><Icon size={20} /><strong>{label}</strong><small>{detail}</small></article>{index < steps.length - 1 && <ArrowRight size={18} />}</div>)}</div>
-    <div className="ai-contract"><span><b>모델</b>{engine.model ?? '설치 전'} ({engine.provider})</span><span><b>허용</b>{engine.allowed_tasks.join(', ')}</span><span><b>금지</b>{engine.prohibited_tasks}</span><span><b>처리 위치</b>{engine.privacy}</span></div>
+    <div className="ai-contract"><span><b>모델</b>{engine.model ?? '설치 전'} ({engine.provider})</span>{engine.narrative_model && engine.narrative_model !== engine.model && <span><b>요약 문장</b>{engine.narrative_model}{engine.narrative_status === 'READY' ? ' (학습 모델)' : ' (설치 필요)'}</span>}<span><b>허용</b>{engine.allowed_tasks.join(', ')}</span><span><b>금지</b>{engine.prohibited_tasks}</span><span><b>처리 위치</b>{engine.privacy}</span></div>
   </section>;
 }
 

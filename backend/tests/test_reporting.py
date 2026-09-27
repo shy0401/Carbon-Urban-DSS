@@ -55,3 +55,41 @@ def test_cautions_say_when_all_building_energy_is_missing_or_months_are_short():
     items = report_cautions({'coverage': {'electricity_months': 7, 'gas_months': 12}}, {'building_energy': None}, [])
     assert any('건축HUB 전 지번 에너지가 아직 없어' in c for c in items) and any('12개월 미만' in c for c in items)
     assert not any('3D' in c for c in items)
+
+def test_fine_tuned_model_only_writes_the_area_summary(monkeypatch):
+    """The fine-tuned model is trained and evaluated on the area summary only; evidence selection keeps OLLAMA_MODEL."""
+    from app.reporting import local_config, model_installed, narrative_model
+    monkeypatch.setenv('OLLAMA_MODEL', 'qwen2.5:1.5b')
+    monkeypatch.delenv('OLLAMA_NARRATIVE_MODEL', raising=False)
+    assert narrative_model() == 'qwen2.5:1.5b'
+    monkeypatch.setenv('OLLAMA_NARRATIVE_MODEL', ' ')
+    assert narrative_model() == 'qwen2.5:1.5b'  # blank (compose default) means unset
+    monkeypatch.setenv('OLLAMA_NARRATIVE_MODEL', 'carbon-area-narrator')
+    assert narrative_model() == 'carbon-area-narrator' and local_config()[1] == 'qwen2.5:1.5b'
+    names = ['carbon-area-narrator:latest', 'qwen2.5:1.5b']
+    assert model_installed('carbon-area-narrator', names) and model_installed('qwen2.5:1.5b', names)
+    assert not model_installed('qwen2.5:3b', names) and not model_installed('carbon-area-narrator:v2', names)
+
+
+def test_area_summary_calls_the_narrative_model(monkeypatch):
+    import json as _json
+    from app import area_report
+    monkeypatch.setenv('OLLAMA_MODEL', 'qwen2.5:1.5b')
+    monkeypatch.setenv('OLLAMA_NARRATIVE_MODEL', 'carbon-area-narrator')
+    seen = {}
+
+    class FakeResponse:
+        def raise_for_status(self): pass
+        def json(self): return {'done': True, 'response': _json.dumps({'summary': '분석 대상은 격자 4개입니다.'})}
+
+    class FakeClient:
+        def __init__(self, **kwargs): pass
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def post(self, url, json): seen.update(json); return FakeResponse()
+
+    monkeypatch.setattr(area_report.httpx, 'Client', FakeClient)
+    facts = [{'id': 'scope', 'text': '분석 대상은 격자 4개입니다.', 'numbers': [4]}]
+    result = area_report.summarize_area(facts, True)
+    assert seen['model'] == 'carbon-area-narrator'
+    assert result['mode'] == 'LOCAL_SLM_NARRATIVE' and result['model'] == 'carbon-area-narrator'

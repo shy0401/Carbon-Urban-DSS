@@ -25,6 +25,16 @@ def local_config():
         raise ValueError('로컬 모델 주소만 허용됩니다')
     return base,os.getenv('OLLAMA_MODEL','qwen2.5:1.5b')
 
+def narrative_model():
+    """Model for the area summary paragraph. A fine-tuned model is trained and evaluated only on that task
+    (scripts/llm), so it is set separately and the evidence-selection task keeps OLLAMA_MODEL."""
+    return (os.getenv('OLLAMA_NARRATIVE_MODEL') or '').strip() or local_config()[1]
+
+def model_installed(model,names):
+    """Ollama lists `name:tag`; a name without a tag means `:latest`."""
+    wanted={model} if ':' in model else {model,model+':latest'}
+    return bool(wanted & set(names))
+
 def choose_evidence(payload,facts):
     if not isinstance(payload,dict) or set(payload)!={'fact_ids'}:raise ValueError('Invalid output schema')
     ids=payload['fact_ids'];index={f['id']:f for f in facts}
@@ -217,7 +227,9 @@ def engine_status():
         base,model=local_config()
         with httpx.Client(timeout=2,trust_env=False) as c:
             response=c.get(base+'/api/tags');response.raise_for_status();names=[m['name'] for m in response.json().get('models',[])]
-        return dict(common,status='READY' if model in names else 'MODEL_NOT_INSTALLED',model=model,method='검증된 근거 문장 선택형 요약')
+        narrative=narrative_model()
+        return dict(common,status='READY' if model_installed(model,names) else 'MODEL_NOT_INSTALLED',model=model,method='검증된 근거 문장 선택형 요약',
+                    narrative_model=narrative,narrative_status='READY' if model_installed(narrative,names) else 'MODEL_NOT_INSTALLED')
     except (httpx.HTTPError,ValueError,KeyError,TypeError,OSError,RuntimeError):return dict(common,status='UNAVAILABLE',model=None,method='검증된 서식 보고서 사용 가능')
 
 @router.post('',status_code=201)

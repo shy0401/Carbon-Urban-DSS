@@ -82,9 +82,12 @@ docker compose -p carbon-urban-dss -f compose.yaml -f compose.demo.yaml --profil
 docker compose -p carbon-urban-dss -f compose.yaml -f compose.demo.yaml --profile local-ai exec -T api python -m app.cli llm-eval --model carbon-area-narrator
 ```
 
-새 모델의 `pass_rate`가 기존보다 높을 때만 `.env`에 `OLLAMA_MODEL=carbon-area-narrator`를 넣고 런처를 다시 실행합니다. `compose.yaml`이 이 값을 읽습니다.
+새 모델의 응답 오류가 줄고 `pass_rate`가 같거나 높을 때만 `.env`에 `OLLAMA_NARRATIVE_MODEL=carbon-area-narrator`를 넣고 api·worker를 다시 만듭니다(`docker compose ... up -d --force-recreate --no-deps api worker`). `compose.yaml`이 이 값을 읽습니다.
 
-되돌리려면 그 줄을 지우면 됩니다 (기본 `qwen2.5:1.5b`).
+- `OLLAMA_NARRATIVE_MODEL`: 지역 보고서의 **요약 문단**을 쓰는 모델. 학습·평가한 작업이 이것뿐이므로 학습 모델은 여기에만 씁니다.
+- `OLLAMA_MODEL`: 격자 보고서의 **근거 ID 선택**(다른 작업)에 쓰는 모델. 학습 모델로 바꾸지 않습니다(그 작업으로 평가하지 않았음).
+
+되돌리려면 `OLLAMA_NARRATIVE_MODEL` 줄을 지우고 api·worker를 다시 만들면 됩니다 (요약도 `OLLAMA_MODEL`, 기본 `qwen2.5:1.5b`).
 
 ## 6GB GPU(RTX 2060)에서 Docker로 학습하기 (2026-09-27, 실제 실행)
 
@@ -96,11 +99,16 @@ docker run --rm --gpus all -v "${PWD}:/work" -v claude-hf-cache:/root/.cache -w 
 
 - `--load-4bit`: 기본 가중치를 4bit(QLoRA)로 올립니다. 학습 뒤 CPU에서 fp16 기본 모델에 어댑터를 합칩니다.
 - 손실은 답변 토큰 위치의 logits만 계산합니다(`logits_to_keep`). 152k 어휘 × 1,250 토큰 logits 3벌이 6GB를 넘겨 첫 스텝이 진행되지 않던 문제의 해결책입니다.
-- 실측: 예시 8개 연습 실행에서 스텝(4예시)당 31초. 319예시 × 2 epoch ≈ 1.5시간.
+- 실측: 예시 8개 연습 실행에서 스텝(4예시)당 31초. 본 학습(319예시 × 2 epoch, 유효 배치 16 → 40스텝)은 3시간 6분(11,138초, 스텝당 약 80초)이 걸렸습니다.
 - GGUF 변환은 같은 컨테이너에서 llama.cpp `convert_hf_to_gguf.py`(q8_0)로 하고, `docker compose cp`로 Ollama 컨테이너에 넣어 `ollama create` 합니다.
 
 ## 상태 (2026-09-27)
 
 - 학습 자료: PC DB로 `llm-dataset --from 2015 --to 2025` → 학습 319, 평가 54 (관측 연도 2024·2025).
 - 기준 모델 `qwen2.5:1.5b` 평가(54개): 통과 45, 불합격 1(근거에 없는 숫자), 응답 오류 8(JSON 파싱 실패). 통과율(응답 중) 97.8%. 응답 시간 중앙값 23초(CPU Ollama).
-- QLoRA 학습·GGUF 변환·Ollama 등록·평가를 PC에서 자동 실행합니다. 새 모델은 응답 오류가 줄고 통과율이 같거나 높을 때만 `.env`의 `OLLAMA_MODEL`로 씁니다.
+- QLoRA 학습(2026-09-27 01:41~04:51 KST, RTX 2060 6GB): Qwen2.5-1.5B-Instruct, LoRA rank 16, lr 2e-4, 2 epoch. 학습 손실 4.09 → 0.17, 평가 손실 0.0188(1 epoch) → 0.0110(2 epoch).
+- 변환·등록: GGUF q8_0 1.65GB, Ollama 모델 `carbon-area-narrator:latest`.
+- 학습 모델 평가(같은 54개, 학습에 쓰지 않은 지역): **통과 54, 불합격 0, 응답 오류 0**. 통과율 100%. 응답 시간 중앙값 20.5초(최대 31초, CPU Ollama).
+- 기준 모델의 응답 오류 8개는 모두 JSON 파싱 실패(`JSONDecodeError`)였고, 학습 모델은 0개입니다.
+- 판정: 기준(응답 오류 감소·통과율 유지 이상)을 만족해 PC `.env`에 `OLLAMA_NARRATIVE_MODEL=carbon-area-narrator`를 넣고 적용했습니다. 근거 ID 선택(`OLLAMA_MODEL`)은 `qwen2.5:1.5b` 그대로입니다.
+- 한계: 학습·평가 예시의 정답은 계산 엔진의 근거 문장을 이어 붙인 서식 문단입니다. 그래서 학습 모델은 근거 문장을 거의 그대로 골라 잇는 **추출형** 요약을 씁니다. 숫자 검증은 통과하지만 자유로운 해설 문장이 늘어난 것은 아니며, 평가 지역도 같은 전주 자료에서 나왔습니다. 다른 도시나 새 근거 유형에서는 다시 평가해야 합니다. 앱은 어느 모델이든 숫자·증감 방향이 근거와 다르면 게시하지 않고 검증된 서식으로 바꿉니다.

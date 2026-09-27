@@ -22,7 +22,7 @@ it('외부 공급기관과 안전한 단계별 수집 범위를 선택할 수 �
       ],
       truth_rules: ['0행은 미수집이며 실제 사용량 0과 다릅니다.'],
     };
-    const engine = { status: 'READY', model: 'qwen2.5:1.5b', provider: 'Ollama local container', privacy: '로컬 Docker 네트워크 내부 처리', allowed_tasks: ['검증된 근거 ID 선택', '한국어 보고서 요약'], prohibited_tasks: '수치 계산·새로운 사실 생성·법적 판정' };
+    const engine = { status: 'READY', model: 'qwen2.5:1.5b', provider: 'Ollama local container', privacy: '로컬 Docker 네트워크 내부 처리', allowed_tasks: ['검증된 근거 ID 선택', '한국어 보고서 요약'], prohibited_tasks: '수치 계산·새로운 사실 생성·법적 판정', narrative_model: 'carbon-area-narrator', narrative_status: 'READY' };
     const jobs = [{ id: 'job-1', status: 'PARTIAL', datasets: ['kapt_energy'], updated_at: '2025-01-01T00:00:00Z', message: '일부 자료 수집 불가 — 오류 내역 확인', errors: [{ dataset: 'kapt_energy', message: 'API 인증 실패: 서비스 승인 및 키 확인 필요 (30/20)' }, '페이지 제한 5 도달'] }];
     const payload = url.includes('/readiness') ? readiness : url.includes('/reports/engine') ? engine : url.includes('/collections') ? jobs : [];
     return Promise.resolve(new Response(JSON.stringify(payload), { status: 200 }));
@@ -41,6 +41,7 @@ it('외부 공급기관과 안전한 단계별 수집 범위를 선택할 수 �
   expect(screen.getByText('운영탄소')).toBeInTheDocument();
   expect(screen.getByText('로컬 LLM 운영 구조')).toBeInTheDocument();
   expect(screen.getByText(/qwen2\.5:1\.5b/)).toBeInTheDocument();
+  expect(screen.getByText(/carbon-area-narrator \(학습 모델\)/)).toBeInTheDocument();
   expect(screen.getByRole('checkbox', { name: /K-apt 에너지/ })).toBeDisabled();
   await waitFor(() => expect(screen.getByRole('checkbox', { name: /ERA5-Land 기상/ })).toBeChecked());
   expect(screen.getByText('API 인증 실패: 서비스 승인 및 키 확인 필요 (30/20)')).toBeInTheDocument();

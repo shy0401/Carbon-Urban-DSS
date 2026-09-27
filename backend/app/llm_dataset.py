@@ -179,12 +179,12 @@ def evaluate(path: str | Path | None = None, *, model: str | None = None, limit:
     error     = no answer (model not running, timeout, invalid JSON).
     """
     from .area_report import local_narrative
-    from .reporting import local_config
+    from .reporting import narrative_model
     source = Path(path or Path(os.getenv("DATA_DIR", "data")) / "llm" / "area-narrative" / "eval.jsonl")
     if not source.exists():
         raise ValueError(f"평가 파일이 없습니다: {source} (먼저 llm-dataset 실행)")
     call = generate or (lambda facts, m: local_narrative(facts, m))
-    name = model or local_config()[1]
+    name = model or narrative_model()
     results: list[dict[str, Any]] = []
     for i, row in enumerate(_read_jsonl(source)):
         if limit is not None and i >= limit:

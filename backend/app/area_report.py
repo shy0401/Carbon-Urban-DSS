@@ -22,7 +22,7 @@ from pydantic import Field
 from .area import AnalyzeInput, analyze
 from .db import Session
 from .models import now
-from .reporting import DecisionReport, local_config
+from .reporting import DecisionReport, local_config, narrative_model
 
 router = APIRouter(prefix="/api/area-reports", tags=["area-reports"])
 
@@ -103,10 +103,10 @@ def facts_prompt(facts: list[dict[str, Any]]) -> str:
 
 
 def local_narrative(facts: list[dict[str, Any]], model: str | None = None) -> str:
-    base, default_model = local_config()
+    base, _ = local_config()
     with httpx.Client(timeout=120, trust_env=False) as client:
         response = client.post(base + "/api/generate", json={
-            "model": model or default_model, "stream": False, "format": SUMMARY_SCHEMA, "system": AREA_SYSTEM, "prompt": facts_prompt(facts),
+            "model": model or narrative_model(), "stream": False, "format": SUMMARY_SCHEMA, "system": AREA_SYSTEM, "prompt": facts_prompt(facts),
             "options": {"temperature": 0, "seed": 42, "num_predict": 600, "num_ctx": 4096}, "keep_alive": "2m"})
         response.raise_for_status()
         body = response.json()
@@ -127,7 +127,7 @@ def summarize_area(facts: list[dict[str, Any]], use_local: bool) -> dict[str, An
     problems = verify_narrative(text, facts)
     if problems:
         return dict(template, mode="TEMPLATE_FALLBACK", reason="로컬 모델 문장이 근거와 달라 검증된 서식으로 바꿨습니다.", violations=problems, rejected=text)
-    return {"mode": "LOCAL_SLM_NARRATIVE", "model": local_config()[1], "paragraphs": [text],
+    return {"mode": "LOCAL_SLM_NARRATIVE", "model": narrative_model(), "paragraphs": [text],
             "validation": "모든 숫자·방향 표현이 계산 엔진 근거와 일치", "violations": [],
             "evidence": [f["text"] for f in facts]}
 

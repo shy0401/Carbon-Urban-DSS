@@ -344,6 +344,9 @@ export interface LocalEngineStatus {
   allowed_tasks: string[];
   prohibited_tasks: string;
   setup?: string;
+  /** Model that writes the area summary paragraph (fine-tuned when set); evidence selection uses `model`. */
+  narrative_model?: string | null;
+  narrative_status?: string;
 }
 
 export interface ScenarioInput {

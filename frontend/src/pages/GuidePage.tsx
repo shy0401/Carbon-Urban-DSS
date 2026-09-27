@@ -307,7 +307,7 @@ export function GuidePage() {
           <ul className="guide-list">
             <li>처음 한 번 PC에서 <code>scripts\setup-local-llm.ps1</code>을 실행하면 모델(qwen2.5:1.5b)을 받습니다. 수집 데이터 화면의 <b>로컬 LLM 운영 구조</b>에서 사용 가능 여부를 봅니다.</li>
             <li>모든 숫자는 계산 엔진이 만듭니다. 모델 문장의 숫자·연도·증감 방향이 계산 결과와 다르면 게시하지 않고 검증된 서식으로 바꿉니다. 그래서 보고서에 틀린 숫자가 실리지 않습니다.</li>
-            <li>학습 자료 만들기·평가·LoRA 학습 절차는 저장소의 <code>scripts/llm/README.md</code>에 있습니다. 이 PC(RTX 2060 6GB)에서는 Docker의 CUDA 이미지로 QLoRA(4bit) 학습을 돌립니다(<code>data/ops/claude-runner/train.sh</code> 참고). 새 모델은 평가 합격률이 더 높을 때만 <code>.env</code>의 <code>OLLAMA_MODEL</code>로 바꿉니다.</li>
+            <li>학습 자료 만들기·평가·LoRA 학습 절차는 저장소의 <code>scripts/llm/README.md</code>에 있습니다. 이 PC(RTX 2060 6GB)에서는 Docker의 CUDA 이미지로 QLoRA(4bit) 학습을 돌립니다(<code>data/ops/claude-runner/train.sh</code> 참고). 새 모델은 응답 오류가 줄고 합격률이 같거나 높을 때만 <code>.env</code>의 <code>OLLAMA_NARRATIVE_MODEL</code>(지역 요약 문단 전용)로 씁니다. 2026-09-27 학습한 <code>carbon-area-narrator</code>는 평가 54개에서 통과 54·오류 0(기준 모델 통과 45·오류 8)이라 요약 문단에 적용했고, 격자 보고서의 근거 선택은 기준 모델(<code>OLLAMA_MODEL</code>)을 그대로 씁니다.</li>
           </ul>
         </Section>
 
