@@ -304,7 +304,8 @@ def grid_context(db: Any, grid_id: str | None) -> dict[str, Any]:
             "SELECT b.adm_code, b.adm_name, b.reference_year, "
             "ST_Area(ST_Intersection(b.geom, g.geom)) / NULLIF(ST_Area(g.geom), 0) AS grid_share "
             "FROM sgis_admin_boundaries b JOIN grid_500m g ON g.id = :grid "
-            "WHERE ST_Intersects(b.geom, g.geom) ORDER BY grid_share DESC"
+            # one boundary vintage: past years collected by 과거 수집 would list the same 행정동 again
+            "WHERE b.reference_year = (SELECT max(reference_year) FROM sgis_admin_boundaries) AND ST_Intersects(b.geom, g.geom) ORDER BY grid_share DESC"
         ), {"grid": grid_id}).mappings()
         from .sgis import SgisHouseholdAdmin, SgisPopulationAdmin
         for row in rows:

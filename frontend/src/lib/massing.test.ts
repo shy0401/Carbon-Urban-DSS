@@ -73,3 +73,16 @@ describe('massing 옵션 (판상형·동 간격·회전)', () => {
     expect(ringCentroid([[0, 0], [2, 0], [2, 2], [0, 2], [0, 0]])).toEqual([1, 1]);
   });
 });
+
+describe('배열 선택', () => {
+  it('대지에 들어가는 배열을 고르고, 없으면 가장 덜 넘치는 배열을 고른다', () => {
+    const slab = planBlocks(10000, 4, 700, 12, { shape: 'slab' }); // 45.8 m × 15.3 m slabs
+    expect(slab.fits).toBe(false);
+    expect(slab.columns).toBe(2); // 2 × 2 overflows 0.6 m; 1 × 4 overflows 15 m
+    const small = planBlocks(10000, 4, 400, 12, { shape: 'slab' });
+    expect(small.fits).toBe(true);
+    const six = planBlocks(20000, 6, 600, 10);
+    expect(six.columns * six.rows).toBeGreaterThanOrEqual(6);
+    expect(six.fits).toBe(true);
+  });
+});

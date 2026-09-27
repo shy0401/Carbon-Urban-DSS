@@ -5,7 +5,8 @@
  * conversion to degrees uses the local scale at the site latitude. Rotation is clockwise (like a map bearing).
  *
  * Spacing between rows (facing walls) is `spacingRatio × height`, at least 6 m; side gaps between
- * blocks in a row are half of that, at least 6 m. The default ratio 0.5 follows the lower bound of the
+ * blocks in a row are half of that, at least 6 m. The rows × columns is the one that fits the site
+ * (or overflows least), closest to square. The default ratio 0.5 follows the lower bound of the
  * 채광 이격 in 건축법 시행령 제86조 (the exact value is set by the local building ordinance), so it is a
  * planning assumption to be checked, not a legal verdict.
  */
@@ -50,11 +51,21 @@ export function planBlocks(siteAreaM2: number, count: number, footprintM2: numbe
   const width = shape === 'slab' ? depth * 3 : depth;
   const n = Math.max(1, Math.min(Math.round(count), 80));
   const height = Math.max(floors, 1) * FLOOR_HEIGHT_M;
-  // Slabs sit in one column per row when they are wide relative to the site; towers stay near-square.
-  const columns = shape === 'slab' ? Math.max(1, Math.min(n, Math.floor((siteSide + MIN_GAP_M) / (width + MIN_GAP_M)) || 1)) : Math.ceil(Math.sqrt(n));
-  const rows = Math.ceil(n / columns);
   const rowGap = Math.max(ratio * height, MIN_GAP_M);
   const gap = Math.max(rowGap / 2, MIN_GAP_M);
+  // Choose the rows × columns that fits the square site; if none fits, the one that overflows least.
+  // Ties go to the arrangement whose extent is closest to square.
+  let best = { columns: 1, rows: n, overflow: Infinity, aspect: Infinity };
+  for (let c = 1; c <= n; c += 1) {
+    const r = Math.ceil(n / c);
+    if ((r - 1) * c >= n) continue; // an empty last row
+    const w = c * width + (c - 1) * gap;
+    const d = r * depth + (r - 1) * rowGap;
+    const overflow = Math.max(0, w - siteSide) + Math.max(0, d - siteSide);
+    const aspect = Math.abs(Math.log(w / d));
+    if (overflow < best.overflow - 1e-6 || (Math.abs(overflow - best.overflow) <= 1e-6 && aspect < best.aspect)) best = { columns: c, rows: r, overflow, aspect };
+  }
+  const { columns, rows } = best;
   const neededWidth = columns * width + (columns - 1) * gap;
   const neededDepth = rows * depth + (rows - 1) * rowGap;
   return {

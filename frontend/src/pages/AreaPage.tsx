@@ -188,7 +188,7 @@ function CoverageStrip({ analysis, collection }: { analysis: AreaAnalysis | null
   </div>;
 }
 
-function statusLabel(status: string) { return ({ DONE: '완료', NOT_PUBLISHED: '미공개', PARTIAL: '일부', FAILED: '실패', BLOCKED: '중단', TODO: '대기', RETRY: '재시도', WAITING: '대기' } as Record<string, string>)[status] ?? status; }
+function statusLabel(status: string) { return ({ DONE: '완료', NOT_PUBLISHED: '미공개', PARTIAL: '일부', FAILED: '실패', BLOCKED: '보류', TODO: '대기', RETRY: '재시도', WAITING: '대기' } as Record<string, string>)[status] ?? status; }
 
 function YearPanel({ analysis, year, setYear, playing, setPlaying, eventYear }: { analysis: AreaAnalysis; year: number; setYear: (y: number) => void; playing: boolean; setPlaying: (p: boolean) => void; eventYear: number | null }) {
   const h = analysis.history;

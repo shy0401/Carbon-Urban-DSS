@@ -262,18 +262,6 @@ export function Massing3D({ gridId, input, site = null, onSiteChange, onCapture,
       <div ref={container} className="massing-3d-canvas" />
       {hover && <div className="massing-tooltip" style={{ left: hover.x + 12, top: hover.y + 12 }} role="status">{hover.text}</div>}
       {placing && <div className="massing-hint" role="status">대지 중심으로 삼을 곳을 지도에서 클릭하세요.</div>}
-      <aside className="massing-hud" aria-label="계획 요약">
-        <dl>
-          <div><dt>대지</dt><dd>{formatMetric(input.site_area, 'm²')} <small>한 변 {plan.site_side_m.toFixed(0)}m</small></dd></div>
-          <div className={tone(check?.bcr)}><dt>건폐율</dt><dd>{plan.coverage_pct.toFixed(1)}%{zoning?.bcr_limit != null && <small> / 상한 {zoning.bcr_limit}%</small>}</dd></div>
-          <div className={tone(check?.far)}><dt>용적률</dt><dd>{plan.far_pct.toFixed(0)}%{zoning?.far_limit != null && <small> / 상한 {zoning.far_limit}%</small>}</dd></div>
-          <div><dt>최고 높이</dt><dd>{plan.height_m.toFixed(0)}m <small>{input.floors}층</small></dd></div>
-          <div className={plan.fits ? '' : 'bad'}><dt>배치</dt><dd>{plan.rows}×{plan.columns} · 동 간격 {plan.row_gap_m.toFixed(0)}m{plan.fits ? '' : <small> 대지 초과</small>}</dd></div>
-          {insideCount > 0 && <div className="warn"><dt>대지 안 기존 건물</dt><dd>{insideCount}동 <small>철거·이전 전제</small></dd></div>}
-          <div><dt>{SUN_DAYS[sunDay].label} {formatHour(hour)}</dt><dd>{sun && sun.altitude > 0.5 ? <>태양 고도 {sun.altitude.toFixed(0)}° · 그림자 {planShadow ? `${planShadow.toFixed(0)}m` : '-'}</> : '해가 지평선 아래'}</dd></div>
-          {layers.shadows && sun && sun.altitude > 0.5 && <div className={shadows.hits ? 'warn' : ''}><dt>그림자가 닿는 기존 건물</dt><dd>{shadows.hits}동</dd></div>}
-        </dl>
-      </aside>
       <div className="massing-legend" aria-label="범례">
         <span><i style={{ background: TOKENS['plan-a'] }} />계획 블록</span>
         <span><i className="outline" style={{ borderColor: TOKENS['plan-a'], background: TOKENS['gain-1'] }} />대지</span>
@@ -284,6 +272,18 @@ export function Massing3D({ gridId, input, site = null, onSiteChange, onCapture,
       </div>
     </div>
 
+    <aside className="massing-hud" aria-label="계획 요약">
+        <dl>
+          <div><dt>대지</dt><dd>{formatMetric(input.site_area, 'm²')} <small>한 변 {plan.site_side_m.toFixed(0)}m</small></dd></div>
+          <div className={tone(check?.bcr)}><dt>건폐율</dt><dd>{plan.coverage_pct.toFixed(1)}%{zoning?.bcr_limit != null && <small> / 상한 {zoning.bcr_limit}%</small>}</dd></div>
+          <div className={tone(check?.far)}><dt>용적률</dt><dd>{plan.far_pct.toFixed(0)}%{zoning?.far_limit != null && <small> / 상한 {zoning.far_limit}%</small>}</dd></div>
+          <div><dt>최고 높이</dt><dd>{plan.height_m.toFixed(0)}m <small>{input.floors}층</small></dd></div>
+          <div className={plan.fits ? '' : 'bad'}><dt>배치</dt><dd>{plan.rows}×{plan.columns} · 동 간격 {plan.row_gap_m.toFixed(0)}m{plan.fits ? '' : <small> 대지 초과</small>}</dd></div>
+          {insideCount > 0 && <div className="warn"><dt>대지 안 기존 건물</dt><dd>{insideCount}동 <small>철거·이전 전제</small></dd></div>}
+          <div><dt>{SUN_DAYS[sunDay].label} {formatHour(hour)}</dt><dd>{sun && sun.altitude > 0.5 ? <>태양 고도 {sun.altitude.toFixed(0)}° · 그림자 {planShadow ? `${planShadow.toFixed(0)}m` : '-'}</> : '해가 지평선 아래'}</dd></div>
+          {layers.shadows && sun && sun.altitude > 0.5 && <div className={shadows.hits ? 'warn' : ''}><dt>그림자가 닿는 기존 건물</dt><dd>{shadows.hits}동</dd></div>}
+        </dl>
+    </aside>
     <div className="massing-zoning" aria-live="polite">
       <strong>용도지역·조례 상한</strong>
       {zoningLoading && !zoning ? <span className="muted">확인 중…</span> : zoning ? <>
