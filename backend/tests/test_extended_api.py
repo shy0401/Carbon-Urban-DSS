@@ -63,7 +63,7 @@ def test_job_history_persists_and_unknown_job_returns_404():
     if rows:
         row=c.get('/api/v1/collection-jobs/'+rows[0]['id']).json()
         assert row['id']==rows[0]['id']
-        assert row['status'] in ('QUEUED','RUNNING','SUCCESS','PARTIAL','FAILED')
+        assert row['status'] in ('QUEUED','RUNNING','WAITING','SUCCESS','PARTIAL','FAILED')  # WAITING: paused for a daily quota, resumes itself
     assert c.get('/api/v1/collection-jobs/missing-id').status_code==404
 
 def test_impossible_green_footprint_and_capacity_rejected():
