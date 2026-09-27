@@ -43,3 +43,20 @@ def test_site_zoning_without_postgis_reports_not_collected():
     db = sessionmaker(create_engine('sqlite+pysqlite:///:memory:'))()
     result = site_zoning(db, 127.15, 35.82, 10000)
     assert result['status'] == 'NOT_COLLECTED' and result['far_limit'] is None and result['source']['url'].startswith('https://www.law.go.kr')
+
+
+def test_decree_basis_outside_the_original_region():
+    from app.zoning_limits import basis_for, check_plan, limits_for, weighted_limits
+    assert basis_for(None) == "ORDINANCE" and basis_for("52110") == "ORDINANCE"
+    assert basis_for("41110") == "DECREE"
+    decree = limits_for("제2종일반주거지역", "DECREE")
+    assert decree["bcr_limit"] == 60 and decree["far_limit"] == 250  # 시행령 제84조·제85조 상한
+    assert limits_for("준주거지역", "DECREE")["bcr_limit"] == 70  # 조례(전주 60)보다 높음
+    assert limits_for("자연환경보전지역", "DECREE")["known"] is True
+    limits = weighted_limits([{"zone_name": "제2종일반주거지역", "area_m2": 10000}], 10000, basis="DECREE")
+    assert limits["status"] == "OK" and limits["basis"] == "DECREE"
+    over = check_plan(limits, bcr=40, far=260, site_area_m2=10000, households=200)
+    assert over["label"] == "시행령 상한 초과" and over["basis"] == "DECREE"
+    within = check_plan(limits, bcr=40, far=240, site_area_m2=5000, households=100)
+    assert within["label"] == "시행령 상한 이내 (조례 확인 필요)"
+    assert any("조례 상한은 더 낮을 수 있습니다" in note for note in within["notes"])

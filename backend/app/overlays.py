@@ -61,14 +61,15 @@ def grid_zoning_summary(db: Any) -> dict[str, dict[str, Any]]:
     return summarize_zoning(coverage, stats)
 
 
-def grid_building_summary(db: Any) -> dict[str, dict[str, Any]]:
-    """Per-grid official building indicators (VWorld LT_C_SPBD), aggregated in SQL."""
+def grid_building_summary(db: Any, grid_ids: Any = None) -> dict[str, dict[str, Any]]:
+    """Per-grid official building indicators (VWorld LT_C_SPBD), aggregated in SQL (``grid_ids``: one region)."""
     from .building_use import summarize_grid_aggregates
     from .vworld import VworldBuilding, VworldGridCoverage
 
     if not _table_exists(db, "vworld_buildings"):
         return {}
-    requested = {row.grid_id: row.status for row in db.scalars(select(VworldGridCoverage).where(VworldGridCoverage.dataset == "buildings"))}
+    requested = {row.grid_id: row.status for row in db.scalars(select(VworldGridCoverage).where(VworldGridCoverage.dataset == "buildings"))
+                 if grid_ids is None or row.grid_id in grid_ids}
     known = VworldBuilding.above_floors.is_not(None)
     rows = db.execute(select(
         VworldBuilding.grid_id, VworldBuilding.use_category, func.count(),
@@ -79,6 +80,8 @@ def grid_building_summary(db: Any) -> dict[str, dict[str, Any]]:
         func.coalesce(func.sum(VworldBuilding.above_floors), 0),
         func.max(VworldBuilding.above_floors),
     ).where(VworldBuilding.grid_id.is_not(None)).group_by(VworldBuilding.grid_id, VworldBuilding.use_category)).all()
+    if grid_ids is not None:
+        rows = [row for row in rows if row[0] in grid_ids]
     if not rows and not requested:
         return {}
     aggregates = [
@@ -132,32 +135,44 @@ def buildings_in_bbox(db: Any, bbox: tuple[float, float, float, float], limit: i
             "source": "VWorld LT_C_SPBD 도로명주소 건물"}
 
 
-def city_boundary(db: Any) -> dict[str, Any] | None:
-    """Jeonju outline dissolved from the official SGIS 행정동 boundaries (latest year), if collected."""
+def _admin_filter(sc: Any) -> tuple[str, dict[str, Any]]:
+    """SQL condition limiting sgis_admin_boundaries to a region's SGIS 시군구 (its 행정동 carry them as parent_code)."""
+    if sc is None or not getattr(sc, "sgis_codes", None):
+        return "", {}
+    return " AND parent_code = ANY(:parents)", {"parents": list(sc.sgis_codes)}
+
+
+def city_boundary(db: Any, sc: Any = None) -> dict[str, Any] | None:
+    """Region outline dissolved from the official SGIS 행정동 boundaries (latest year of that region), if collected."""
     if not _table_exists(db, "sgis_admin_boundaries"):
         return None
+    where, params = _admin_filter(sc)
     row = db.execute(text(
         "SELECT reference_year, count(*) AS dongs, "
         "ST_AsGeoJSON(ST_Transform(ST_SimplifyPreserveTopology(ST_Union(geom), 5.0), 4326), 6) AS geometry, "
         "ST_Area(ST_Union(geom)) AS area_m2 "
-        "FROM sgis_admin_boundaries WHERE reference_year = (SELECT max(reference_year) FROM sgis_admin_boundaries) "
+        f"FROM sgis_admin_boundaries WHERE reference_year = (SELECT max(reference_year) FROM sgis_admin_boundaries WHERE TRUE{where}){where} "
         "GROUP BY reference_year"
-    )).mappings().first()
+    ), params).mappings().first()
     if not row or not row["geometry"]:
         return None
+    name = getattr(sc, "short", None) or "전주시"
     return {"type": "FeatureCollection", "features": [{"type": "Feature", "geometry": json.loads(row["geometry"]), "properties": {
-        "name": "전주시", "source": f"SGIS {row['reference_year']} 행정동 경계 {row['dongs']}개 병합",
+        "name": name, "source": f"SGIS {row['reference_year']} 행정동 경계 {row['dongs']}개 병합",
         "area_km2": round(float(row["area_m2"] or 0) / 1_000_000, 2), "quality": "OBSERVED",
     }}]}
 
 
-def complex_features(db: Any) -> dict[str, Any]:
-    """K-apt apartment complexes as points (official 공동주택 기본정보), with a floor-area plausibility flag."""
+def complex_features(db: Any, sc: Any = None) -> dict[str, Any]:
+    """K-apt apartment complexes as points (official 공동주택 기본정보), with a floor-area plausibility flag.
+    ``sc``: only the complexes of one study region (by its 법정 시·군·구 codes)."""
     from .grid_metrics import floor_area_status
     from .kapt import ApartmentComplex
 
     features = []
     for row in db.scalars(select(ApartmentComplex).where(ApartmentComplex.longitude.is_not(None), ApartmentComplex.latitude.is_not(None)).order_by(ApartmentComplex.kapt_code)):
+        if sc is not None and not sc.owns_complex(row.bjd_code, row.grid_id):
+            continue
         status, reason = floor_area_status(row.gross_floor_area_m2, row.households, row.management_area_m2)
         features.append({"type": "Feature", "id": row.kapt_code, "geometry": {"type": "Point", "coordinates": [row.longitude, row.latitude]}, "properties": {
             "kapt_code": row.kapt_code, "name": row.name, "households": row.households,
@@ -168,30 +183,38 @@ def complex_features(db: Any) -> dict[str, Any]:
     return {"type": "FeatureCollection", "features": features}
 
 
-def zoning_area_by_category(db: Any) -> tuple[dict[str, float], int]:
+def zoning_area_by_category(db: Any, grid_ids: Any = None) -> tuple[dict[str, float], int]:
     """Official zoning area inside the requested analysis grids (km², CALCULATED)."""
     from .vworld import GridZoningStat, VworldGridCoverage, zone_category
 
     if not _table_exists(db, "vworld_grid_coverage"):
         return {}, 0
-    covered = len(list(db.scalars(select(VworldGridCoverage.grid_id).where(VworldGridCoverage.dataset == "zoning"))))
+    covered = len([g for g in db.scalars(select(VworldGridCoverage.grid_id).where(VworldGridCoverage.dataset == "zoning")) if grid_ids is None or g in grid_ids])
     totals: dict[str, float] = {}
     for row in db.scalars(select(GridZoningStat)):
+        if grid_ids is not None and row.grid_id not in grid_ids:
+            continue
         category = zone_category(row.zone_name)
         totals[category] = totals.get(category, 0.0) + float(row.intersection_area_m2 or 0)
     return {key: round(value / 1_000_000, 3) for key, value in sorted(totals.items())}, covered
 
 
-def zoning_features(db: Any, tolerance_m: float = 2.0) -> dict[str, Any]:
+def zoning_features(db: Any, tolerance_m: float = 2.0, sc: Any = None) -> dict[str, Any]:
+    """Zoning polygons (``sc``: those touching the region's bounding box)."""
     from .vworld import zone_category
 
     if not _table_exists(db, "vworld_zoning_areas"):
         return EMPTY
+    where, params = "", {"tol": tolerance_m}
+    if sc is not None and getattr(sc, "bbox", None):
+        west, south, east, north = sc.bbox
+        where = " WHERE geom && ST_Transform(ST_MakeEnvelope(:w, :s, :e, :n, 4326), 5179)"
+        params.update(w=west, s=south, e=east, n=north)
     rows = db.execute(text(
         "SELECT id, zone_code, zone_name, source, "
         "ST_AsGeoJSON(ST_Transform(ST_SimplifyPreserveTopology(geom, :tol), 4326), 6) AS geometry "
-        "FROM vworld_zoning_areas ORDER BY id"
-    ), {"tol": tolerance_m}).mappings()
+        f"FROM vworld_zoning_areas{where} ORDER BY id"
+    ), params).mappings()
     features = []
     for row in rows:
         if not row["geometry"]:
@@ -204,22 +227,27 @@ def zoning_features(db: Any, tolerance_m: float = 2.0) -> dict[str, Any]:
     return {"type": "FeatureCollection", "features": features}
 
 
-def admin_features(db: Any, year: int | None = None) -> tuple[dict[str, Any], int | None]:
+def admin_features(db: Any, year: int | None = None, sc: Any = None) -> tuple[dict[str, Any], int | None]:
+    """SGIS 행정동 boundaries with population/households (``sc``: the 행정동 of one study region)."""
     from .sgis import SgisAdminBoundary, SgisHouseholdAdmin, SgisPopulationAdmin
 
     if not _table_exists(db, "sgis_admin_boundaries"):
         return EMPTY, None
-    years = [value for value in db.scalars(select(SgisAdminBoundary.reference_year).distinct().order_by(SgisAdminBoundary.reference_year.desc()))]
+    query = select(SgisAdminBoundary.reference_year).distinct().order_by(SgisAdminBoundary.reference_year.desc())
+    if sc is not None and getattr(sc, "sgis_codes", None):
+        query = query.where(SgisAdminBoundary.parent_code.in_(list(sc.sgis_codes)))
+    years = [value for value in db.scalars(query)]
     if not years:
         return EMPTY, None
     chosen = year if year in years else years[0]
+    where, params = _admin_filter(sc)
     population = {row.adm_code: row for row in db.scalars(select(SgisPopulationAdmin).where(SgisPopulationAdmin.reference_year == chosen))}
     households = {row.adm_code: row for row in db.scalars(select(SgisHouseholdAdmin).where(SgisHouseholdAdmin.reference_year == chosen))}
     rows = db.execute(text(
         "SELECT id, adm_code, adm_name, parent_code, area_m2, "
         "ST_AsGeoJSON(ST_Transform(ST_SimplifyPreserveTopology(geom, 2.0), 4326), 6) AS geometry "
-        "FROM sgis_admin_boundaries WHERE reference_year = :year ORDER BY adm_code"
-    ), {"year": chosen}).mappings()
+        f"FROM sgis_admin_boundaries WHERE reference_year = :year{where} ORDER BY adm_code"
+    ), dict(params, year=chosen)).mappings()
     features = []
     for row in rows:
         pop = population.get(row["adm_code"])
@@ -252,11 +280,16 @@ def map_buildings(bbox: str = Query(..., description="minLon,minLat,maxLon,maxLa
 
 
 @router.get("/overlays")
-def overlays(year: int = Query(DEFAULT_YEAR, ge=2000, le=2100)) -> dict[str, Any]:
+def overlays(year: int = Query(DEFAULT_YEAR, ge=2000, le=2100), region: str | None = Query(None, max_length=10)) -> dict[str, Any]:
+    from .regions import RegionNotReady, scope
     with Session() as db:
-        zoning = zoning_features(db)
-        admin, admin_year = admin_features(db)
-        zoning_area, zoning_grids = zoning_area_by_category(db)
+        try:
+            sc = scope(db, region)
+        except RegionNotReady as exc:
+            raise HTTPException(404, str(exc)) from None
+        zoning = zoning_features(db, sc=None if sc.is_default else sc)
+        admin, admin_year = admin_features(db, sc=sc)
+        zoning_area, zoning_grids = zoning_area_by_category(db, sc.grid_ids)
         return {
             "zoning": zoning,
             "admin": admin,

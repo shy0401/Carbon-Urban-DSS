@@ -195,7 +195,7 @@ def normalize_summary(record: dict[str, Any], district_code: str, search_month: 
         "source_system": "K-apt",
         "snapshot_query_month": search_month,
         "district_code": district_code,
-        "district_name": JEONJU_DISTRICTS[district_code],
+        "district_name": JEONJU_DISTRICTS.get(district_code, district_code),
         "kapt_code": record.get("kaptCode"),
         "kapt_name": record.get("kaptName"),
         "bjd_code": record.get("bjdCode"),
@@ -345,35 +345,44 @@ def _record_asset(db: Any, source_id: str, path: Path, rows: int, url: str, peri
 
 
 def _register_kapt(db: Any, raw_dir: Path, summaries: list[dict[str, Any]], details: list[tuple[dict[str, Any], dict[str, Any]]], search_month: str) -> None:
-    from .models import DataSource
     detail_map = {row["kapt_code"]: (row, raw) for row, raw in details}
     for row in summaries:
-        detail_pair = detail_map.get(row["kapt_code"])
-        detail, raw_detail = detail_pair if detail_pair else ({}, None)
-        item = db.get(ApartmentComplex, row["kapt_code"]) or ApartmentComplex(kapt_code=row["kapt_code"])
-        item.snapshot_month = search_month
-        item.name = row["kapt_name"]
-        item.bjd_code = row.get("bjd_code")
-        item.bun = _parcel(row.get("bun"))
-        item.ji = _parcel(row.get("ji")) or "0000"
-        item.parcel_address = detail.get("parcel_address") or row.get("parcel_address")
-        item.road_address = detail.get("road_address")
-        item.approval_date = detail.get("approval_date") or row.get("approval_month")
-        item.first_occupancy_month = row.get("first_occupancy_month")
-        item.gross_floor_area_m2 = detail.get("building_register_gross_floor_area_m2")
-        item.management_area_m2 = detail.get("kapt_management_area_m2")
-        item.households = detail.get("households")
-        item.building_count = detail.get("building_count")
-        item.heating_type = detail.get("heating_type")
-        item.source_x = detail.get("source_x") or row.get("source_x")
-        item.source_y = detail.get("source_y") or row.get("source_y")
-        item.longitude = detail.get("longitude") or row.get("longitude")
-        item.latitude = detail.get("latitude") or row.get("latitude")
-        item.grid_id = _grid_id(item.longitude, item.latitude)
-        item.detail_collected = bool(detail_pair)
-        item.summary_json = row
-        item.detail_json = raw_detail
-        db.add(item)
+        apply_complex(db, row, detail_map.get(row["kapt_code"]), search_month)
+    _finish_kapt_source(db, raw_dir, summaries, details, search_month)
+
+
+def apply_complex(db: Any, row: dict[str, Any], detail_pair: tuple[dict[str, Any], dict[str, Any]] | None, search_month: str) -> "ApartmentComplex":
+    """Upsert one complex from its normalized list row and (optional) normalized detail."""
+    detail, raw_detail = detail_pair if detail_pair else ({}, None)
+    item = db.get(ApartmentComplex, row["kapt_code"]) or ApartmentComplex(kapt_code=row["kapt_code"])
+    item.snapshot_month = search_month
+    item.name = row["kapt_name"]
+    item.bjd_code = row.get("bjd_code")
+    item.bun = _parcel(row.get("bun"))
+    item.ji = _parcel(row.get("ji")) or "0000"
+    item.parcel_address = detail.get("parcel_address") or row.get("parcel_address")
+    item.road_address = detail.get("road_address")
+    item.approval_date = detail.get("approval_date") or row.get("approval_month")
+    item.first_occupancy_month = row.get("first_occupancy_month")
+    item.gross_floor_area_m2 = detail.get("building_register_gross_floor_area_m2")
+    item.management_area_m2 = detail.get("kapt_management_area_m2")
+    item.households = detail.get("households")
+    item.building_count = detail.get("building_count")
+    item.heating_type = detail.get("heating_type")
+    item.source_x = detail.get("source_x") or row.get("source_x")
+    item.source_y = detail.get("source_y") or row.get("source_y")
+    item.longitude = detail.get("longitude") or row.get("longitude")
+    item.latitude = detail.get("latitude") or row.get("latitude")
+    item.grid_id = _grid_id(item.longitude, item.latitude)
+    item.detail_collected = bool(detail_pair)
+    item.summary_json = row
+    item.detail_json = raw_detail
+    db.add(item)
+    return item
+
+
+def _finish_kapt_source(db: Any, raw_dir: Path, summaries: list[dict[str, Any]], details: list[tuple[dict[str, Any], dict[str, Any]]], search_month: str) -> None:
+    from .models import DataSource
     source = db.get(DataSource, "kapt") or DataSource(
         id="kapt", category="건축물 정보", name="K-apt 공동주택 단지 정보",
         organization="국토교통부 / 한국부동산원", source_url=KAPT_BASIC_CATALOG_URL, source_type="OFFICIAL",

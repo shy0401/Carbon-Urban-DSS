@@ -88,7 +88,8 @@ def sub_cell_letters(grid_cd: str, x_min: float, y_min: float) -> tuple[str, str
 
 def collect_sgis_grid_official(db: Any, *, client: Any | None = None, token_manager: Any | None = None,
                                data_dir: str | Path | None = None, district_codes: list[str] | None = None) -> dict[str, Any]:
-    """Fetch the official 500m cells of every Jeonju 시군구 and link them to project cells."""
+    """Fetch the official 500m cells of the given SGIS 시군구 (default: those with 행정동 statistics) and link
+    them to analysis cells. Additive: cells of other districts are kept."""
     from .models import Grid
     from .sgis import SGIS_BASE_URL, SgisTokenManager, clear_credential_error, record_credential_error
     root = Path(data_dir or os.getenv("DATA_DIR", "data"))
@@ -136,22 +137,40 @@ def collect_sgis_grid_official(db: Any, *, client: Any | None = None, token_mana
             mismatched += 1
     project = set(db.scalars(select(Grid.id)))
     linked = 0
-    rows = []
+    # Additive: other districts' cells stay; a cell already listed by another district keeps both codes.
+    existing: dict[str, SgisOfficialGridCell] = {}
+    keys = list(cells)
+    for start in range(0, len(keys), 5000):
+        for row in db.scalars(select(SgisOfficialGridCell).where(SgisOfficialGridCell.grid_cd.in_(keys[start:start + 5000]))):
+            existing[row.grid_cd] = row
+    new_rows = []
+    stamp = datetime.now(timezone.utc).isoformat()
     for cell in cells.values():
         grid_id = project_cell_id(cell["x_min"], cell["y_min"])
         matched = grid_id if grid_id in project else None
         linked += bool(matched)
-        rows.append({"grid_cd": cell["grid_cd"], "size_m": cell["size_m"], "x_min": cell["x_min"], "y_min": cell["y_min"], "adm_cd": cell["adm_cd"],
-                     "grid_id": matched, "collected_at": datetime.now(timezone.utc).isoformat()})
-    db.execute(delete(SgisOfficialGridCell))
-    if rows:
-        db.execute(insert(SgisOfficialGridCell), rows)
+        known = existing.get(cell["grid_cd"])
+        if known is not None:
+            codes = [c for c in (known.adm_cd or "").split(",") if c]
+            codes += [c for c in cell["adm_cd"].split(",") if c not in codes]
+            known.adm_cd = ",".join(codes)
+            known.grid_id = matched or known.grid_id
+            known.collected_at = stamp
+            continue
+        new_rows.append({"grid_cd": cell["grid_cd"], "size_m": cell["size_m"], "x_min": cell["x_min"], "y_min": cell["y_min"], "adm_cd": cell["adm_cd"],
+                         "grid_id": matched, "collected_at": stamp})
+    for start in range(0, len(new_rows), 5000):
+        db.execute(insert(SgisOfficialGridCell), new_rows[start:start + 5000])
+    rows = list(cells.values())
+    total_rows = db.scalar(select(func.count()).select_from(SgisOfficialGridCell)) or 0
     _GRID_CODES.clear()
     source.status = "PARTIAL"
-    source.normalized_row_count = len(rows)
+    source.normalized_row_count = total_rows
     source.raw_row_count = db.scalar(select(func.count()).select_from(RawDataAsset).where(RawDataAsset.source_id == SOURCE_ID)) or 0
     source.reference_period = "현재 (SGIS 격자 경계 API)"
-    source.quality = (f"공식 500m 격자 경계·코드 {len(rows):,}개 (시군구 {len(codes)}곳, API) / 프로젝트 격자 {len(project)}개 중 {linked}개 일치"
+    all_linked = db.scalar(select(func.count()).select_from(SgisOfficialGridCell).where(SgisOfficialGridCell.grid_id.is_not(None))) or 0
+    districts = len({c for (value,) in db.execute(select(SgisOfficialGridCell.adm_cd).distinct()) for c in (value or "").split(",") if c})
+    source.quality = (f"공식 500m 격자 경계·코드 {total_rows:,}개 (시군구 {districts}곳, API) / 분석 격자 {len(project):,}개 중 {all_linked:,}개 일치"
                       f"{f' / 코드-좌표 불일치 {mismatched}개' if mismatched else ''} / 통계값은 SGIS 자료신청 필요")
     source.limitation = "경계·격자코드만 API로 받습니다. 500m 인구·가구 통계값은 SGIS 자료제공 신청(총괄 항목)으로 받은 파일을 업로드해야 합니다."
     source.collected_at = datetime.now(timezone.utc)

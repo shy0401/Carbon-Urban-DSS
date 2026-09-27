@@ -60,9 +60,11 @@ def summarize(facts,use_local):
     except (httpx.HTTPError,ValueError,KeyError,TypeError):
         return dict(default,mode='TEMPLATE_FALLBACK',reason='로컬 모델에 연결할 수 없거나 응답 검증에 실패하여 검증된 서식으로 작성했습니다.')
 
-def create_snapshot(db,year,grid_id,scenario_ids):
+def create_snapshot(db,year,grid_id,scenario_ids,region=None):
+    from .regions import region_for_grid
     if grid_id and not db.get(Grid,grid_id):raise ValueError('격자를 찾을 수 없습니다')
-    data=dashboard(db,grid_id,year);sector=data['selected_sector'];actual_grid=sector['grid_id'] if sector else None
+    region=region or region_for_grid(db,grid_id)
+    data=dashboard(db,grid_id,year,region);sector=data['selected_sector'];actual_grid=sector['grid_id'] if sector else None
     facts=[{'id':'scope','text':f'{year}년 {sector["name"] if sector else "미선정 대상지"}의 500m 분석 격자를 기준으로 작성했습니다.'},
            {'id':'coverage','text':f'월별 전력 {data["coverage"]["electricity_months"]}/12개월, 가스 {data["coverage"]["gas_months"]}/12개월이 확보되어 있습니다.'},
            {'id':'boundary','text':'격자에 매칭된 관측 지번의 합계이며 전체 건물 소비량을 의미하지 않습니다.'}]
@@ -89,7 +91,8 @@ def create_snapshot(db,year,grid_id,scenario_ids):
             zone_text=', '.join(f"{z['zone']} {z['share']:.0f}%" for z in zc['zones'][:3] if z.get('share') is not None)
             chk=zc.get('check') or {}
             limit=f"기본 상한 건폐율 {zc['bcr_limit']:g}%·용적률 {zc['far_limit']:g}%" if zc.get('bcr_limit') is not None and zc.get('far_limit') is not None else '기본 상한 판단 보류'
-            facts.append({'id':'zoning_'+str(len(scenarios)),'text':f"비교안 {len(scenarios)}의 대지는 {zone_text}이며 전주시 도시계획 조례 {limit} 기준 '{chk.get('label','판단 보류')}'입니다(1차 확인, 인허가 판단 아님)."})
+            law='국토계획법 시행령' if zc.get('basis')=='DECREE' else '전주시 도시계획 조례'
+            facts.append({'id':'zoning_'+str(len(scenarios)),'text':f"비교안 {len(scenarios)}의 대지는 {zone_text}이며 {law} {limit} 기준 '{chk.get('label','판단 보류')}'입니다(1차 확인, 인허가 판단 아님)."})
         carbon=r.result.get('annual',{}).get('scenario',{}).get('carbon_kg')
         change=r.result.get('annual',{}).get('difference',{}).get('carbon_kg')
         if carbon is not None and change is not None:
@@ -102,7 +105,7 @@ def create_snapshot(db,year,grid_id,scenario_ids):
         sc['has_image']=db.get(ScenarioImage,sc['id']) is not None
         if sc['has_image']:sc['image_url']=f"/api/scenarios/{sc['id']}/image"
     sources=[{k:s.get(k) for k in ['id','name','source_url','reference_period','collected_at','status','source_type','normalized_row_count','limitation']} for s in data['sources']]
-    snapshot={'version':2,'year':year,'grid_id':actual_grid,'title':'도시계획 의사결정 검토 보고서','created_at':now().isoformat(),'sector':sector,'facts':facts,'sources':sources,'scenarios':scenarios,'context':context,'monthly':data['monthly'],'coverage':data['coverage'],'annual_complete':data['annual_complete'],'totals':{k:data.get(k) for k in ['electricity_kwh','gas_kwh','carbon_kg','electricity_carbon_kg']},'scope':data['scope'],
+    snapshot={'version':2,'year':year,'grid_id':actual_grid,'region':data.get('region'),'title':'도시계획 의사결정 검토 보고서','created_at':now().isoformat(),'sector':sector,'facts':facts,'sources':sources,'scenarios':scenarios,'context':context,'monthly':data['monthly'],'coverage':data['coverage'],'annual_complete':data['annual_complete'],'totals':{k:data.get(k) for k in ['electricity_kwh','gas_kwh','carbon_kg','electricity_carbon_kg']},'scope':data['scope'],
               'cautions':report_cautions(data,detail,scenarios)}
     snapshot['evidence_hash']=hashlib.sha256(json.dumps(snapshot,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
     return snapshot
@@ -147,8 +150,8 @@ def grid_detail_facts(db,year,grid_id,data):
             out['facts'].append({'id':'register','text':f"건축물대장 표제부 기준 격자 안 건물은 {props['reg_buildings']:,}동{gfa}{far}{res}{old}입니다{issues}."})
     except Exception:db.rollback()
     try:
-        from .models import ModelRun
-        latest=db.scalar(select(ModelRun).where(ModelRun.year==year).order_by(ModelRun.created_at.desc()))
+        from .model_service import latest_run
+        latest=latest_run(db,year,(data.get('region') or {}).get('code'))
         if latest and latest.result.get('status')=='SPATIALLY_EVALUATED':
             best={}
             for m in latest.result.get('models',[]):
@@ -178,8 +181,11 @@ def report_cautions(data,detail,scenarios):
            '계획안 결과는 관측 원단위 × 계획 연면적의 1차 추정이며 설계·인허가·넷제로 판정에 쓸 수 없습니다.']
     if any(sc.get('has_image') for sc in scenarios):
         items.append('3D 개념 배치는 대지 안에 같은 크기 블록을 규칙적으로 늘어놓은 규모 비교용 그림이며 실제 배치안이 아닙니다. 그림자는 맑은 날 태양 위치로 그린 개략 그림자입니다.')
-    if any((sc.get('result') or {}).get('zoning_check') for sc in scenarios):
+    checks=[(sc.get('result') or {}).get('zoning_check') for sc in scenarios]
+    if any(c and c.get('basis')!='DECREE' for c in checks):
         items.append('용도지역 상한은 전주시 도시계획 조례 제45조·제47조의 기본값입니다. 완화 규정·지구단위계획 지침·경관지구 제한은 반영하지 않은 1차 확인입니다.')
+    if any(c and c.get('basis')=='DECREE' for c in checks):
+        items.append('이 지역의 도시계획 조례를 아직 등록하지 않아 국토계획법 시행령 제84조·제85조의 상한으로 확인했습니다. 조례 상한은 이보다 낮을 수 있으므로 "이내"는 조례 확인이 더 필요합니다.')
     if data.get('coverage',{}).get('electricity_months',0)<12:
         items.append('전력 관측이 12개월 미만이라 연간 값은 완전하지 않습니다.')
     return items
@@ -219,8 +225,8 @@ def report_markdown(s):
               ('계획 연간 전력',lambda sc:_num((sc['result'].get('annual') or {}).get('scenario',{}).get('electricity_kwh'),'kWh')),('계획 연간 가스',lambda sc:_num((sc['result'].get('annual') or {}).get('scenario',{}).get('gas_kwh'),'kWh')),
               ('계획 연간 전력 탄소',lambda sc:_num((sc['result'].get('annual') or {}).get('scenario',{}).get('electricity_carbon_kg'),'kgCO2eq',1)),('기준 대비 전력 탄소 변화',lambda sc:_num((sc['result'].get('annual') or {}).get('difference',{}).get('electricity_carbon_kg'),'kgCO2eq',1)),
               ('계획 연간 전체 탄소 (전력+가스)',lambda sc:_num((sc['result'].get('annual') or {}).get('scenario',{}).get('carbon_kg'),'kgCO2eq',1)),
-              ('대지 용도지역',lambda sc:_zones(sc['result'].get('zoning_check'))),('조례 기본 상한 (건폐율/용적률)',lambda sc:_limits(sc['result'].get('zoning_check'))),
-              ('조례 상한 1차 확인',lambda sc:((sc['result'].get('zoning_check') or {}).get('check') or {}).get('label','판단 보류'))]
+              ('대지 용도지역',lambda sc:_zones(sc['result'].get('zoning_check'))),('기본 상한 (건폐율/용적률)',lambda sc:_limits(sc['result'].get('zoning_check'))),
+              ('상한 1차 확인',lambda sc:((sc['result'].get('zoning_check') or {}).get('check') or {}).get('label','판단 보류'))]
         for label,fn in rows:table.append(f'| {label} | '+' | '.join(fn(sc) for sc in s['scenarios'])+' |')
         lines.append('\n'.join(table))
         for i,sc in enumerate(s['scenarios'],1):
@@ -236,6 +242,7 @@ def report_markdown(s):
 class ReportInput(BaseModel):
     year:int=Field(default=DEFAULT_YEAR,ge=2000,le=2100)
     grid_id:str|None=None
+    region:str|None=Field(default=None,max_length=10)
     scenario_ids:list[str]=Field(default_factory=list,max_length=3)
     use_local_model:bool=False
 
@@ -254,7 +261,7 @@ def engine_status():
 @router.post('',status_code=201)
 def create_report(request:ReportInput):
     with Session() as db:
-        try:snapshot=create_snapshot(db,request.year,request.grid_id,request.scenario_ids)
+        try:snapshot=create_snapshot(db,request.year,request.grid_id,request.scenario_ids,request.region)
         except ValueError as e:raise HTTPException(422,str(e)) from None
         snapshot['summary']=summarize(snapshot['facts'],request.use_local_model)
         rid=str(uuid.uuid4());db.add(DecisionReport(id=rid,snapshot=snapshot));db.commit()

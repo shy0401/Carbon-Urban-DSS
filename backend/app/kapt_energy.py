@@ -299,9 +299,16 @@ def _source(db: Any) -> DataSource:
     return source
 
 
-def _targets(db: Any, scope: str) -> list[Any]:
+def _targets(db: Any, scope: str, region: str | None = None) -> list[Any]:
+    """Complexes of one study region (the original region by default): its 법정 시·군·구 codes decide,
+    so preparing another region never adds that region's complexes to this region's back-fill."""
     from .kapt import ApartmentComplex, PROTOTYPE_KAPT_CODE
-    rows = list(db.scalars(select(ApartmentComplex).order_by(ApartmentComplex.kapt_code)))
+    from .regions import DEFAULT_REGION, get_region
+    code = region or DEFAULT_REGION
+    study = get_region(db, code)
+    legal = set(study.legal_codes or []) if study else ({"52111", "52113"} if code == DEFAULT_REGION else set())
+    rows = [row for row in db.scalars(select(ApartmentComplex).order_by(ApartmentComplex.kapt_code))
+            if (row.bjd_code and row.bjd_code[:5] in legal) or (not row.bjd_code and code == DEFAULT_REGION)]
     rows.sort(key=lambda row: (row.kapt_code != PROTOTYPE_KAPT_CODE, row.kapt_code))
     return rows[:1] if scope == "smoke" else rows[:3] if scope == "limited" else rows
 
@@ -357,7 +364,7 @@ def collect_kapt_energy(
     db: Any, year: int, scope: str = "smoke", *, client: CachedClient | None = None,
     service_key: str | None = None, data_dir: str | Path | None = None, history: bool = False,
     progress: Any = None, retry_rounds: int = 0, retry_wait_s: float = 0.0, outage_pause_s: float = 0.0,
-    max_outage_pauses: int = 20, sleep: Any = None,
+    max_outage_pauses: int = 20, sleep: Any = None, region: str | None = None,
 ) -> dict[str, int]:
     """Collect one year of K-apt monthly energy.
 
@@ -386,7 +393,7 @@ def collect_kapt_energy(
         ).limit(1))
         if not smoke:
             raise ValueError("K-apt full 수집 전에 같은 연도의 smoke 성공이 필요합니다")
-    targets = _targets(db, scope)
+    targets = _targets(db, scope, region)
     if not targets:
         raise ValueError("K-apt 단지 기본정보가 없습니다")
     months = [f"{year}01"] if scope == "smoke" else [f"{year}{month:02d}" for month in range(1, 13)]

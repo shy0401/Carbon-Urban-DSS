@@ -14,7 +14,7 @@ from geoalchemy2.shape import from_shape, to_shape
 from pyproj import Transformer
 from shapely.geometry import shape
 from shapely.validation import make_valid
-from sqlalchemy import DateTime, Float, JSON, String, delete, func, select
+from sqlalchemy import DateTime, Float, JSON, String, delete, func, select, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .cache import CachedClient, ExternalError, parse_cached_response
@@ -269,14 +269,164 @@ def _source(db: Any, dataset: str) -> DataSource:
     db.add(source);db.flush();return source
 
 
-def rebuild_grid_zoning_stats(db: Any) -> int:
-    grids = _grid_shapes(db, "full")
+ZONING_STATS_SQL = (
+    "INSERT INTO grid_zoning_stats (id, grid_id, zoning_feature_id, zone_code, zone_name, intersection_area_m2, grid_area_ratio, source) "
+    "SELECT g.id || ':' || z.id, g.id, z.id, z.zone_code, z.zone_name, a.area, a.area / NULLIF(ST_Area(g.geom), 0), 'VWorld' "
+    "FROM grid_500m g JOIN vworld_zoning_areas z ON ST_Intersects(g.geom, z.geom) "
+    "CROSS JOIN LATERAL (SELECT ST_Area(ST_Intersection(g.geom, ST_MakeValid(z.geom))) AS area) a "
+    "WHERE a.area > 0 {where}"
+)
+
+
+def rebuild_grid_zoning_stats(db: Any, grid_ids: list[str] | None = None) -> int:
+    """Zoning share of every analysis cell (or of ``grid_ids`` only). PostGIS does the overlay; without
+    PostGIS (tests) the same numbers come from shapely."""
+    try:
+        with db.begin_nested():
+            if grid_ids is None:
+                db.execute(delete(GridZoningStat))
+                db.execute(text(ZONING_STATS_SQL.format(where="")))
+            else:
+                ids = sorted(set(grid_ids))
+                for start in range(0, len(ids), 2000):
+                    chunk = ids[start:start + 2000]
+                    db.execute(delete(GridZoningStat).where(GridZoningStat.grid_id.in_(chunk)))
+                    db.execute(text(ZONING_STATS_SQL.format(where="AND g.id = ANY(:ids)")), {"ids": chunk})
+        db.commit()
+        query = select(func.count()).select_from(GridZoningStat)
+        return db.scalar(query if grid_ids is None else query.where(GridZoningStat.grid_id.in_(list(grid_ids)))) or 0
+    except Exception:  # noqa: BLE001 - no PostGIS: shapely fallback
+        db.rollback()
+    grids = [g for g in _grid_shapes(db, "full") if grid_ids is None or g["id"] in set(grid_ids)]
     zones = [{"id": row.id, "zone_code": row.zone_code, "zone_name": row.zone_name, "geometry": to_shape(row.geom)} for row in db.scalars(select(VworldZoningArea))]
     rows = zoning_intersections(grids, zones)
-    db.execute(delete(GridZoningStat))
+    if grid_ids is None:
+        db.execute(delete(GridZoningStat))
+    else:
+        db.execute(delete(GridZoningStat).where(GridZoningStat.grid_id.in_(list(grid_ids))))
     for row in rows:
         db.add(GridZoningStat(id=f"{row['grid_id']}:{row['zoning_feature_id']}", source="VWorld", **row))
     db.commit();return len(rows)
+
+
+def _store_feature(db: Any, dataset: str, feature: dict[str, Any], layer: dict[str, Any], digest: str, grid_ids: set[str] | None) -> Any:
+    """Upsert one parsed VWorld feature into its table (id ``<dataset>:<feature id>``)."""
+    model = {"zoning": VworldZoningArea, "cadastral": CadastralParcel, "buildings": VworldBuilding}[dataset]
+    props = feature["properties"]
+    ident = f"{dataset}:{feature['id']}"
+    row = db.get(model, ident)
+    if dataset == "zoning":
+        row = row or VworldZoningArea(id=ident, source_feature_id=feature["id"], source_crs=layer["source_crs"], source="VWorld")
+        row.zone_name = props.get("uname")
+        row.zone_code = props.get("ucode") or props.get("zone_code") or feature["id"]
+    elif dataset == "buildings":
+        row = row or VworldBuilding(id=ident, source_feature_id=feature["id"], source_crs=layer["source_crs"], source="VWorld")
+        for column, value in building_values(props, feature["geometry"], grid_ids).items():
+            setattr(row, column, value)
+    else:
+        row = row or CadastralParcel(id=ident, source_feature_id=feature["id"], source_crs=layer["source_crs"], source="VWorld")
+        row.pnu = str(props.get("pnu") or "") or None
+        row.legal_dong_code = row.pnu[:10] if row.pnu else None
+        row.lot_main_no = row.pnu[-8:-4] if row.pnu else None
+        row.lot_sub_no = row.pnu[-4:] if row.pnu else None
+    row.geom = from_shape(feature["geometry"], srid=5179)
+    row.properties = props
+    row.geometry_repaired = feature["geometry_repaired"]
+    row.raw_source_id = digest
+    row.collected_at = datetime.now(timezone.utc)
+    db.add(row)
+    return row
+
+
+def tiles_for(grid_ids: list[str], tile_m: int = 1000) -> dict[tuple[int, int], list[str]]:
+    """Analysis cells grouped by the ``tile_m`` square (EPSG:5179 multiples) that holds them."""
+    tiles: dict[tuple[int, int], list[str]] = {}
+    for grid_id in sorted(set(grid_ids)):
+        try:
+            _, x, y = grid_id.split("_")
+            key = (int(float(x)) // tile_m * tile_m, int(float(y)) // tile_m * tile_m)
+        except ValueError:
+            continue
+        tiles.setdefault(key, []).append(grid_id)
+    return tiles
+
+
+def collect_vworld_cells(db: Any, dataset: str, grid_ids: list[str], *, tile_m: int = 1000, progress: Any = None,
+                         client: CachedClient | None = None, api_key: str | None = None, domain: str | None = None,
+                         data_dir: str | Path | None = None) -> dict[str, int]:
+    """One study region's VWorld layer, asked per 1km tile (4 analysis cells per request instead of 1).
+
+    Used by the region preparation. It records the coverage of every member cell (so an empty cell is
+    "collected, nothing there", not missing) and leaves the source's overall status alone (that one
+    describes the original region's full collection)."""
+    if dataset not in DATASETS:
+        raise ValueError("invalid VWorld dataset")
+    source = _source(db, dataset);db.commit()
+    key = (api_key or os.getenv("VWORLD_API_KEY", "")).strip()
+    if not key:
+        raise ExternalError("VWorld 인증 실패: VWORLD_API_KEY 미설정")
+    layer = load_layer_config()[dataset]
+    root = Path(data_dir or os.getenv("DATA_DIR", "data"))
+    raw_root = root / "raw" / "vworld" / dataset / "tiles"
+    raw_root.mkdir(parents=True, exist_ok=True)
+    session = client or CachedClient(root / "cache" / "vworld", min_interval=0.3)
+    url = os.getenv("VWORLD_DATA_URL", VWORLD_API_URL)
+    domain_value = domain or os.getenv("VWORLD_DOMAIN", "http://localhost")
+    member = set(grid_ids)
+    tiles = tiles_for(grid_ids, tile_m)
+    stats = {"requests": 0, "features": 0, "tiles": len(tiles), "cells": len(member), "geometry_repaired": 0}
+    for index, ((x0, y0), cells) in enumerate(sorted(tiles.items()), 1):
+        xs = [int(c.split("_")[1]) for c in cells]
+        ys = [int(c.split("_")[2]) for c in cells]
+        bounds = (min(xs), min(ys), max(xs) + GRID_SIZE_M, max(ys) + GRID_SIZE_M)
+        page, found, per_cell = 1, 0, {c: 0 for c in cells}
+        while True:
+            params = {"service": "data", "version": "2.0", "request": "GetFeature", "key": key, "format": "json", "size": 1000, "page": page,
+                      "data": layer["dataset_id"], "geomFilter": bbox_filter(bounds), "geometry": "true", "attribute": "true",
+                      "crs": layer["source_crs"], "domain": domain_value}
+            if str(domain_value).strip().lower() in {"none", "-"}:
+                params.pop("domain")
+            result = session.get("VWorld", f"{dataset}-tile{tile_m}-{x0}-{y0}-{page}", url, params)
+            stats["requests"] += 1
+            raw_path = raw_root / f"{x0}_{y0}-page-{page}.json"
+            raw_path.write_bytes(result["body"])
+            parsed = parse_cached_response(session, result, parse_vworld_response)
+            digest = hashlib.sha256(result["body"] + f"{dataset}:tile:{x0}:{y0}:{page}".encode()).hexdigest()
+            asset = db.get(RawDataAsset, digest) or RawDataAsset(id=digest, source_id=source.id, provider=source.organization, source_url=layer["verified_reference"],
+                                                                 reference_period="수집 시점", storage_location=str(raw_path), collection_status=parsed["status"])
+            asset.row_count = len(parsed["features"])
+            asset.request_parameters = {k: v for k, v in params.items() if k not in {"key", "domain"}}
+            db.add(asset)
+            for feature in parsed["features"]:
+                row = _store_feature(db, dataset, feature, layer, digest, member)
+                stats["geometry_repaired"] += feature["geometry_repaired"]
+                cell = getattr(row, "grid_id", None)
+                if cell in per_cell:
+                    per_cell[cell] += 1
+            found += len(parsed["features"])
+            db.commit()
+            if page >= parsed["total_pages"]:
+                break
+            page += 1
+        stats["features"] += found
+        for cell in cells:
+            count = per_cell[cell] if dataset == "buildings" else found
+            coverage = db.get(VworldGridCoverage, f"{dataset}:{cell}") or VworldGridCoverage(id=f"{dataset}:{cell}", dataset=dataset, grid_id=cell)
+            coverage.pages = page
+            coverage.feature_count = count
+            coverage.status = "EMPTY_VALID" if count == 0 else "SUCCESS"
+            coverage.collected_at = datetime.now(timezone.utc)
+            db.add(coverage)
+        db.commit()
+        if progress:
+            progress(index / max(1, len(tiles)), f"VWorld {dataset} {index}/{len(tiles)} 타일")
+    if dataset == "zoning":
+        stats["grid_intersections"] = rebuild_grid_zoning_stats(db, sorted(member))
+    stored = db.scalar(select(func.count()).select_from({"zoning": VworldZoningArea, "cadastral": CadastralParcel, "buildings": VworldBuilding}[dataset])) or 0
+    source.normalized_row_count = stored
+    source.collected_at = datetime.now(timezone.utc)
+    db.commit()
+    return stats
 
 
 def collect_vworld(db: Any, dataset: str, scope: str = "smoke", *, client: CachedClient | None = None, api_key: str | None = None, domain: str | None = None, data_dir: str | Path | None = None) -> dict[str, int]:
@@ -310,18 +460,7 @@ def collect_vworld(db: Any, dataset: str, scope: str = "smoke", *, client: Cache
             asset=db.get(RawDataAsset,digest) or RawDataAsset(id=digest,source_id=source.id,provider=source.organization,source_url=layer["verified_reference"],reference_period="수집 시점",storage_location=str(raw_path),collection_status=parsed["status"])
             asset.row_count=len(parsed["features"]);asset.request_parameters={key_:value for key_,value in params.items() if key_ not in {"key","domain"}};db.add(asset)
             for feature in parsed["features"]:
-                props=feature["properties"];ident=f"{dataset}:{feature['id']}"
-                row=db.get(model,ident)
-                if dataset=="zoning":
-                    row=row or VworldZoningArea(id=ident,source_feature_id=feature["id"],source_crs=layer["source_crs"],source="VWorld")
-                    row.zone_name=props.get("uname");row.zone_code=props.get("ucode") or props.get("zone_code") or feature["id"]
-                elif dataset=="buildings":
-                    row=row or VworldBuilding(id=ident,source_feature_id=feature["id"],source_crs=layer["source_crs"],source="VWorld")
-                    for column,value in building_values(props,feature["geometry"],grid_ids).items():setattr(row,column,value)
-                else:
-                    row=row or CadastralParcel(id=ident,source_feature_id=feature["id"],source_crs=layer["source_crs"],source="VWorld")
-                    row.pnu=str(props.get("pnu") or "") or None;row.legal_dong_code=row.pnu[:10] if row.pnu else None;row.lot_main_no=row.pnu[-8:-4] if row.pnu else None;row.lot_sub_no=row.pnu[-4:] if row.pnu else None
-                row.geom=from_shape(feature["geometry"],srid=5179);row.properties=props;row.geometry_repaired=feature["geometry_repaired"];row.raw_source_id=digest;row.collected_at=datetime.now(timezone.utc);db.add(row);normalized+=1;repaired+=feature["geometry_repaired"]
+                _store_feature(db,dataset,feature,layer,digest,grid_ids);normalized+=1;repaired+=feature["geometry_repaired"]
             grid_features+=len(parsed["features"])
             db.commit()
             if page>=parsed["total_pages"]:break

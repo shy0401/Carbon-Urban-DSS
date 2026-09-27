@@ -46,7 +46,7 @@ services:
     build: ./backend
     env_file: .env
     environment: *backend_env
-    command: celery -A app.tasks.celery_app worker --loglevel=WARNING --concurrency=1
+    command: celery -A app.tasks.celery_app worker --loglevel=WARNING --concurrency=2
     volumes:
       - ./data:/data
     depends_on:

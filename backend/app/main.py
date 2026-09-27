@@ -62,6 +62,12 @@ async def lifespan(app):
             try:kapt.collect_municipal(db)
             except Exception:
                 db.rollback()
+        # Study-region records (the original Jeonju area is registered from its existing grids).
+        try:
+            from .regions import ensure_default_region
+            ensure_default_region(db)
+        except Exception as exc:
+            db.rollback();print('기본 지역 등록 실패:',type(exc).__name__,exc)
         if not offline_mode() and not db.scalar(select(CollectionJob.id).limit(1)):
             startup_datasets=available_collection_datasets(['energy','weather'])
             if startup_datasets:queue_collection(db,startup_datasets,f'{DEFAULT_YEAR}-01',f'{DEFAULT_YEAR}-12')
@@ -97,6 +103,16 @@ from .sgis_grid import router as sgis_grid_router
 app.include_router(sgis_grid_router)
 from . import energy_parcels  # noqa: F401 - registers parcel_grid before create_all
 from . import sgis_grid_official  # noqa: F401 - registers sgis_official_grid_cells before create_all
+from . import regions,national  # noqa: F401 - registers admin_units, study_regions, grid_regions, national_* before create_all
+from .regions_api import router as regions_router
+app.include_router(regions_router)
+from .regions import RegionNotReady,DEFAULT_REGION,region_for_grid
+
+def _scope(db,region):
+    """Study region scope for a reader; an unknown or unprepared region is a 404 with the reason."""
+    from .regions import scope
+    try:return scope(db,region)
+    except RegionNotReady as exc:raise HTTPException(404,str(exc)) from None
 
 @app.get('/api/health')
 @app.get('/health')
@@ -107,10 +123,12 @@ def health():
     except Exception: return JSONResponse({'status':'degraded','database':'unavailable'},status_code=503)
 
 @app.get('/api/dashboard')
-def get_dashboard(year:int=Query(DEFAULT_YEAR,ge=2000,le=2100),grid_id:str|None=None):
+def get_dashboard(year:int=Query(DEFAULT_YEAR,ge=2000,le=2100),grid_id:str|None=None,region:str|None=Query(None,max_length=10)):
     from .overlays import grid_context
     with Session() as db:
-        data=dashboard(db,grid_id,year)
+        region=region or region_for_grid(db,grid_id)
+        _scope(db,region)
+        data=dashboard(db,grid_id,year,region)
         # Official context of the same grid (zoning, overlapping 행정동, buildings, K-apt complexes).
         selected=data['selected_sector']['grid_id'] if data['selected_sector'] else None
         data['context']=grid_context(db,selected)
@@ -286,12 +304,14 @@ def create_v1_job(request:JobInput):
     except ValueError:raise HTTPException(422,'수집 기간 또는 지역 형식이 올바르지 않습니다') from None
     return create_collection(validated)
 
-def grid_energy_properties(db,year,factors):
-    """Observed energy per grid for the map (sums, months, 12-month intensities)."""
+def grid_energy_properties(db,year,factors,sc=None):
+    """Observed energy per grid for the map (sums, months, 12-month intensities). ``sc``: one study region only."""
     from .domain import carbon_kg
     from .grid_metrics import grid_energy_intensity
     from .kapt import ApartmentComplex
     within=EnergyMonthly.use_ym.between(f'{year}01',f'{year}12')
+    clause=sc.legal_clause(EnergyMonthly.sigungu_code) if sc is not None else None
+    if clause is not None:within=within & clause
     rows=db.scalars(select(EnergyMonthly).where(within,EnergyMonthly.grid_id.is_not(None),EnergyMonthly.usage_kwh.is_not(None))).all()
     result={}
     for r in rows:
@@ -322,18 +342,21 @@ def grid_energy_properties(db,year,factors):
     return result
 
 @app.get('/api/map')
-def map_data(year:int=Query(DEFAULT_YEAR,ge=2000,le=2100)):
+def map_data(year:int=Query(DEFAULT_YEAR,ge=2000,le=2100),region:str|None=Query(None,max_length=10)):
     from .domain import carbon_kg
     from .overlays import city_boundary,complex_features,grid_building_summary
+    from .service import region_sector
     with Session() as db:
-        sector=db.get(TestbedSector,'prototype')
+        sc=_scope(db,region)
+        ids=sorted(sc.grid_ids)
+        sector=region_sector(db,sc)
         factors=factors_for(db,year)
-        energy=grid_energy_properties(db,year,factors)
+        energy=grid_energy_properties(db,year,factors,sc)
         zoning=grid_zoning_summary(db)
-        buildings=grid_building_summary(db)
-        complexes=complex_features(db)
+        buildings=grid_building_summary(db,sc.grid_ids)
+        complexes=complex_features(db,sc)
         from .sgis_grid import grid_metric_properties
-        sgis_props=grid_metric_properties(db)
+        sgis_props=grid_metric_properties(db,ids)
         from .register_grid import grid_register_summary,map_properties as register_properties
         register=grid_register_summary(db)
         from .energy_parcels import grid_building_energy,map_properties as building_energy_properties,year_complete
@@ -351,7 +374,8 @@ def map_data(year:int=Query(DEFAULT_YEAR,ge=2000,le=2100)):
             else:item['complex_gfa_excluded']+=1
         empty_energy={'electricity_kwh':None,'gas_kwh':None,'electricity_months':0,'gas_months':0,'energy_parcels':0,'electricity_complete_parcels':0,'electricity_observed_parcels':0,'electricity_suspect_parcels':0,'electricity_area_parcels':0,'electricity_household_parcels':0,'electricity_kwh_per_m2':None,'electricity_kwh_per_household':None,'electricity_area_m2':None,'electricity_households':None,'gas_kwh_per_m2':None,'gas_complete_parcels':0,'gas_observed_parcels':0,'gas_area_parcels':0,'gas_area_m2':None,'electricity_kwh_annual':None,'gas_kwh_annual':None,'electricity_carbon_kg_annual':None,'electricity_carbon_kg':None,'electricity_carbon_kg_per_m2':None}
         grids=[]
-        for r in db.scalars(select(Grid)):
+        rows=[r for start in range(0,len(ids),2000) for r in db.scalars(select(Grid).where(Grid.id.in_(ids[start:start+2000])).order_by(Grid.id))]
+        for r in rows:
             f=dict(r.geojson);base=dict(r.properties);grid_id=base.get('id',r.id)
             p={'id':grid_id,'area_m2':r.area_m2 or 250000,'x':base.get('x'),'y':base.get('y'),'selected':bool(sector and sector.grid_id==grid_id)}
             p.update(energy.get(grid_id,empty_energy))
@@ -380,9 +404,9 @@ def map_data(year:int=Query(DEFAULT_YEAR,ge=2000,le=2100)):
             # Every metered building of the grid (건축HUB by 법정동, placed through the cadastral parcel).
             p.update(building_energy_properties(building_energy.get(grid_id),e_factor))
             f['properties']=p;grids.append(f)
-        official_buildings=any(b['building_count'] for b in buildings.values())
-        spatial_path=DATA/'spatial.json';spatial=json.loads(spatial_path.read_text(encoding='utf-8')) if spatial_path.exists() else {}
-        official_boundary=city_boundary(db)
+        official_buildings=any(b['building_count'] for b in buildings.values()) or not sc.is_default
+        spatial_path=DATA/'spatial.json';spatial=json.loads(spatial_path.read_text(encoding='utf-8')) if spatial_path.exists() and sc.is_default else {}
+        official_boundary=city_boundary(db,sc)
         boundary=official_boundary or spatial.get('boundary',{'type':'FeatureCollection','features':[]})
         electricity_factor=factors.get('ELECTRICITY')
         return {
@@ -397,11 +421,12 @@ def map_data(year:int=Query(DEFAULT_YEAR,ge=2000,le=2100)):
             'register':{'grids':len(register),'buildings':sum(r['buildings'] for r in register.values()),'source':'건축HUB 건축물대장 표제부 (격자 연결분)'} if register else None,
             'sgis_grid':{'year':next((v.get('sgis1k_year') for v in sgis_props.values()),None),'source':'SGIS 격자 통계 1km (공공데이터포털 15141768)','note':'소속 1km 공식 격자의 밀도·비율이며 500m로 나눈 값이 아닙니다. 비밀보호 잡음(±7) 포함.'} if sgis_props else None,
             'sgis_grid_official':dict(official_grid_meta(db),source='SGIS OpenAPI grid/data.geojson (grid_level_div=500m)') if official else None,
-            'selected_sector':serialize(sector) if sector else None,'center':[127.148,35.8242],'crs':'EPSG:5179','grid_size_m':500,'grid_area_m2':250000,'year':year,'offline_mode':offline_mode(),
+            'selected_sector':serialize(sector) if sector else None,'center':list(sc.center) if sc.center else [127.148,35.8242],'bbox':list(sc.bbox) if sc.bbox else None,'crs':'EPSG:5179','grid_size_m':500,'grid_area_m2':250000,'year':year,'offline_mode':offline_mode(),
+            'region':{'code':sc.code,'name':sc.name,'short_name':sc.short,'status':sc.status,'grids':len(ids)},
         }
 
 @app.get('/api/grids/{grid_id}')
-def grid_detail(grid_id:str,year:int=Query(DEFAULT_YEAR,ge=2000,le=2100)):
+def grid_detail(grid_id:str,year:int=Query(DEFAULT_YEAR,ge=2000,le=2100),region:str|None=Query(None,max_length=10)):
     with Session() as db:
         grid=db.get(Grid,grid_id)
         if not grid:raise HTTPException(404,'격자를 찾을 수 없습니다')
@@ -409,7 +434,9 @@ def grid_detail(grid_id:str,year:int=Query(DEFAULT_YEAR,ge=2000,le=2100)):
         try:code=official_codes(db).get(grid_id)
         except Exception:db.rollback();code=None
         body=serialize(grid);body['properties']=dict(body.get('properties') or {},sgis500_code=code)
-        return dict(dashboard(db,grid_id,year),grid=body)
+        region=region or region_for_grid(db,grid_id)
+        _scope(db,region)
+        return dict(dashboard(db,grid_id,year,region),grid=body)
 
 class ScenarioInput(BaseModel):
     site_area:float=Field(default=50000,gt=0,le=250000)
@@ -428,6 +455,8 @@ class ScenarioInput(BaseModel):
     site_lon:float|None=Field(default=None,ge=124,le=132)
     site_lat:float|None=Field(default=None,ge=33,le=39)
     site_rotation:float=Field(default=0,ge=0,lt=90)
+    # Study region (defaults to the region of grid_id): decides the default 대상지 and the legal-limit basis.
+    region:str|None=Field(default=None,max_length=10)
     @model_validator(mode='after')
     def validate_footprint(self):
         if self.building_count*self.footprint_per_building>self.site_area:raise ValueError('건축면적 합계가 부지 면적을 초과합니다')
@@ -435,42 +464,49 @@ class ScenarioInput(BaseModel):
         if self.households*self.average_household_area>self.building_count*self.footprint_per_building*self.floors:raise ValueError('입력 세대수의 면적 수요가 연면적을 초과합니다')
         return self
 
+def _request_region(db,request):
+    region=request.region or region_for_grid(db,request.grid_id)
+    _scope(db,region)
+    return region
+
 @app.post('/api/scenarios')
 def scenario(request:ScenarioInput):
     with Session() as db:
         if request.grid_id and not db.get(Grid,request.grid_id):raise HTTPException(404,'격자를 찾을 수 없습니다')
-        baseline=dashboard(db,request.grid_id,request.year);result=scenario_calculation(request.model_dump(),baseline['baseline_monthly'],baseline['baseline_floor_area_m2'],factors_for(db,request.year))
+        region=_request_region(db,request)
+        baseline=dashboard(db,request.grid_id,request.year,region);result=scenario_calculation(request.model_dump(),baseline['baseline_monthly'],baseline['baseline_floor_area_m2'],factors_for(db,request.year))
         result['baseline_scope']=baseline.get('baseline_scope')
         result['id']=str(uuid.uuid4());result['quality']='기준 에너지·연면적 부족' if not baseline['baseline_floor_area_m2'] else '공간 매칭된 관측 원단위 기반'
         result['calculations']={key:result[key] for key in ['total_footprint','gross_floor_area','far','bcr','households','population','green_area_m2']}
         result['baseline']={k:baseline.get(k) for k in ['current_far','current_bcr','households','population','gross_floor_area_m2','developable_site_area_m2']}
         result['grid_id']=baseline['selected_sector']['grid_id'] if baseline['selected_sector'] else None
-        zoning=_site_zoning_for(db,request,result['grid_id'])
+        result['region']=baseline.get('region')
+        zoning=_site_zoning_for(db,request,result['grid_id'],region)
         if zoning:
             from .zoning_limits import check_plan
             zoning['check']=check_plan(zoning,bcr=result.get('bcr'),far=result.get('far'),site_area_m2=request.site_area,households=request.households)
             result['legal_status']=zoning['check']['label']
         else:result['legal_status']='법적 상한 미확정'
         result['zoning_check']=zoning
-        db.add(Scenario(id=result['id'],inputs=dict(request.model_dump(),grid_id=result['grid_id'])));db.flush();db.add(ScenarioResult(id=result['id'],result=result));db.commit();return result
+        db.add(Scenario(id=result['id'],inputs=dict(request.model_dump(),grid_id=result['grid_id'],region=region)));db.flush();db.add(ScenarioResult(id=result['id'],result=result));db.commit();return result
 
-def _site_zoning_for(db,request,grid_id):
+def _site_zoning_for(db,request,grid_id,region=None):
     """용도지역 parts of the planned site: the placed centre, else the grid centre. None when nothing is known."""
     from .zoning_limits import grid_center_lonlat,site_zoning
     if request.site_lon is not None and request.site_lat is not None:center=(request.site_lon,request.site_lat)
     else:center=grid_center_lonlat(db,grid_id) if grid_id else None
     if not center:return None
-    zoning=site_zoning(db,center[0],center[1],request.site_area,request.site_rotation)
-    zoning['basis']='SITE' if request.site_lon is not None else 'GRID_CENTER'
+    zoning=site_zoning(db,center[0],center[1],request.site_area,request.site_rotation,region_code=region)
+    zoning['site_basis']='SITE' if request.site_lon is not None else 'GRID_CENTER'
     return zoning
 
 @app.get('/api/zoning/site')
 def zoning_site(lon:float=Query(...,ge=124,le=132),lat:float=Query(...,ge=33,le=39),site_area:float=Query(...,gt=0,le=250000),rotation:float=Query(0,ge=0,lt=90),
-                bcr:float|None=Query(None,ge=0,le=100),far:float|None=Query(None,ge=0,le=5000),households:int|None=Query(None,ge=0)):
-    """용도지역 and 전주시 조례 기본 상한 for a square site; with bcr/far the 1st-pass check as well."""
+                bcr:float|None=Query(None,ge=0,le=100),far:float|None=Query(None,ge=0,le=5000),households:int|None=Query(None,ge=0),region:str|None=Query(None,max_length=10)):
+    """용도지역 and 상한 (전주시 조례, 다른 지역은 국토계획법 시행령) for a square site; with bcr/far the 1st-pass check as well."""
     from .zoning_limits import check_plan,site_zoning
     with Session() as db:
-        zoning=site_zoning(db,lon,lat,site_area,rotation)
+        zoning=site_zoning(db,lon,lat,site_area,rotation,region_code=region)
         if bcr is not None or far is not None:zoning['check']=check_plan(zoning,bcr=bcr,far=far,site_area_m2=site_area,households=households)
         return zoning
 
@@ -482,14 +518,16 @@ class OptimizationInput(ScenarioInput):
 def optimization(request:OptimizationInput):
     from .modeling import optimize
     with Session() as db:
-        baseline=dashboard(db,request.grid_id,request.year)
+        region=_request_region(db,request)
+        baseline=dashboard(db,request.grid_id,request.year,region)
         grid_id=baseline['selected_sector']['grid_id'] if baseline['selected_sector'] else None
-        zoning=_site_zoning_for(db,request,grid_id)
+        zoning=_site_zoning_for(db,request,grid_id,region)
         legal={}
         if zoning and zoning.get('status')=='OK':legal={'legal_far_limit':zoning['far_limit'],'legal_bcr_limit':zoning['bcr_limit']}
         result=optimize(request.model_dump(),baseline['baseline_monthly'],baseline['baseline_floor_area_m2'],factors_for(db,request.year),legal)
         if legal:
-            limit_text=f"전주시 조례 기본 상한(건폐율 {legal['legal_bcr_limit']:g}%·용적률 {legal['legal_far_limit']:g}%)"
+            basis_text='국토계획법 시행령 상한' if zoning.get('basis')=='DECREE' else '전주시 조례 기본 상한'
+            limit_text=f"{basis_text}(건폐율 {legal['legal_bcr_limit']:g}%·용적률 {legal['legal_far_limit']:g}%)"
             if result.get('status')=='ENERGY_OPTIMAL':result['legal_status']=f"{limit_text} 안의 후보만 탐색 / 인허가 판단 아님"
             elif result.get('status')=='NO_FEASIBLE_CANDIDATES':
                 # The largest capacity the limit allows on this site, so the user knows how far to relax the targets.
@@ -502,12 +540,13 @@ def optimization(request:OptimizationInput):
                 result['max_households_under_limit']=max_households
         result['zoning_check']=zoning
         result['baseline_scope']=baseline.get('baseline_scope')
-        sid=str(uuid.uuid4());db.add(Scenario(id=sid,inputs=dict(request.model_dump(),type='OPTIMIZATION')));db.flush();db.add(ScenarioResult(id=sid,result=result));db.commit();return result
+        result['region']=baseline.get('region')
+        sid=str(uuid.uuid4());db.add(Scenario(id=sid,inputs=dict(request.model_dump(),type='OPTIMIZATION',region=region)));db.flush();db.add(ScenarioResult(id=sid,result=result));db.commit();return result
 
 @app.get('/api/model')
-def models(year:int=Query(DEFAULT_YEAR,ge=2000,le=2100)):
+def models(year:int=Query(DEFAULT_YEAR,ge=2000,le=2100),region:str|None=Query(None,max_length=10)):
     from .model_service import model_status
-    with Session() as db:return model_status(db,year)
+    with Session() as db:return model_status(db,year,region=_scope(db,region).code)
 
 @app.get('/api/scenarios')
 def scenario_history():
@@ -542,16 +581,24 @@ def get_scenario_image(scenario_id:str):
         return Response(row.png,media_type='image/png',headers={'Cache-Control':'private, max-age=60'})
 
 @app.post('/api/model/validate')
-def validate_models(year:int=Query(DEFAULT_YEAR,ge=2000,le=2100)):
+def validate_models(year:int=Query(DEFAULT_YEAR,ge=2000,le=2100),region:str|None=Query(None,max_length=10)):
     from .model_service import model_status
-    with Session() as db:return model_status(db,year,train=True)
+    with Session() as db:return model_status(db,year,train=True,region=_scope(db,region).code)
 
 @app.get('/api/system')
-def system():
+def system(region:str|None=Query(None,max_length=10)):
+    from .regions import StudyRegion,short_name
+    from .service import region_sector
     with Session() as db:
-        sector=db.get(TestbedSector,'prototype')
+        try:sc=_scope(db,region)
+        except HTTPException:sc=_scope(db,None)
+        sector=region_sector(db,sc)
         default_grid=sector.grid_id if sector else None
-    return {'offline_mode':offline_mode(),'baseline_year':DEFAULT_YEAR,'version':app.version,'default_grid_id':default_grid}
+        try:prepared=[{'code':r.code,'name':r.name,'short_name':short_name(r.name),'status':r.status,'grid_count':r.grid_count,'default_grid_id':r.default_grid_id}
+                      for r in db.scalars(select(StudyRegion).order_by(StudyRegion.code)) if r.grid_count]
+        except Exception:db.rollback();prepared=[]
+    return {'offline_mode':offline_mode(),'baseline_year':DEFAULT_YEAR,'version':app.version,'default_grid_id':default_grid,
+            'default_region':DEFAULT_REGION,'region':{'code':sc.code,'name':sc.name,'short_name':sc.short,'center':list(sc.center) if sc.center else None},'regions':prepared}
 
 class OfflineInput(BaseModel):
     enabled:bool
@@ -561,4 +608,4 @@ def set_offline(request:OfflineInput):
     flag=DATA/'offline.flag'
     if request.enabled:flag.write_text('Use verified local DB and cache only.\n',encoding='utf-8')
     else:flag.unlink(missing_ok=True)
-    return system()
+    return system(None)

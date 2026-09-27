@@ -140,7 +140,7 @@ class AreaReportInput(AnalyzeInput):
 def _snapshot(request: AreaReportInput) -> dict[str, Any]:
     with Session() as db:
         result = analyze(db, request.area.model_dump(), request.from_year, request.to_year, request.event_year, request.window,
-                         request.plan.model_dump() if request.plan else None, request.target_pct, request.pv_yield_kwh_per_kw)
+                         request.plan.model_dump() if request.plan else None, request.target_pct, request.pv_yield_kwh_per_kw, region=request.region)
     history = result["history"]
     history_public = {k: v for k, v in history.items() if k != "area"}
     area = {k: v for k, v in history["area"].items() if k != "geometry"}
@@ -148,7 +148,7 @@ def _snapshot(request: AreaReportInput) -> dict[str, Any]:
         "kind": "AREA", "version": 1, "title": request.title or f"{history['area']['label']} 개발 영향·감축 검토",
         "created_at": now().isoformat(), "request": request.model_dump(exclude={"use_local_model"}),
         "area": area, "geometry": history["area"].get("geometry"), "history": history_public,
-        "before_after": result["before_after"], "effort": result["effort"], "facts": result["facts"],
+        "before_after": result["before_after"], "effort": result["effort"], "facts": result["facts"], "region": result.get("region"),
         # kept for the shared report list
         "year": request.to_year, "grid_id": None,
     }

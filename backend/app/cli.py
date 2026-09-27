@@ -8,7 +8,7 @@ from .catalog import seed_sources
 from .settings import DATA_DIR,DEFAULT_YEAR
 
 def init_tables():
-    from . import official,kapt,kapt_energy,kma_asos,sgis,sgis_grid,vworld
+    from . import official,kapt,kapt_energy,kma_asos,sgis,sgis_grid,vworld,energy_parcels,sgis_grid_official,regions,national
     try:from . import imports
     except ImportError:pass
     with engine.begin() as c:c.execute(text('CREATE EXTENSION IF NOT EXISTS postgis'))
@@ -17,11 +17,15 @@ def init_tables():
     apply_migrations(engine)
 
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument('command',choices=['demo','online','status','enrich','collect','collect-history','collect-missing','validate-models','snapshot','llm-dataset','llm-eval','import-sgis-grid']);parser.add_argument('--year',type=int,default=DEFAULT_YEAR)
+    parser=argparse.ArgumentParser();parser.add_argument('command',choices=['demo','online','status','enrich','collect','collect-history','collect-missing','validate-models','snapshot','llm-dataset','llm-eval','import-sgis-grid',
+        'national-admin','national-sgis','national-complexes','national-grid500','national-all','prepare-region','regions']);parser.add_argument('--year',type=int,default=DEFAULT_YEAR)
     parser.add_argument('--from',dest='from_year',type=int,default=2015);parser.add_argument('--to',dest='to_year',type=int,default=DEFAULT_YEAR)
     parser.add_argument('--datasets',default='',help='comma-separated: sgis,kma_asos,kapt_energy,energy,vworld_zoning,vworld_buildings,vworld_cadastral,building_register');parser.add_argument('--force',action='store_true')
     parser.add_argument('--source',choices=['energy','weather','kapt-energy','kma','sgis','vworld-zoning','vworld-cadastral'])
     parser.add_argument('--scope',choices=['smoke','limited','full'],default='smoke')
+    parser.add_argument('--region',default=None,help='prepare-region/validate-models: 5-digit 법정 시·군·구 code (e.g. 41110 수원시)')
+    parser.add_argument('--steps',default='',help='prepare-region: comma-separated steps (default: all)')
+    parser.add_argument('--no-emd',action='store_true',help='national-sgis: 시군구만 (행정동 생략)')
     parser.add_argument('--model',default=None,help='llm-eval: Ollama model name (default OLLAMA_NARRATIVE_MODEL, then OLLAMA_MODEL)');parser.add_argument('--limit',type=int,default=None);parser.add_argument('--file',default=None)
     args=parser.parse_args();init_tables()
     with Session() as db:
@@ -80,6 +84,30 @@ def main():
             print(json.dumps(dict(result,loaded={k:meta(db)[k] for k in ('year','cells','stat_rows')}),ensure_ascii=False))
         elif args.command=='validate-models':
             from .model_service import model_status
-            print(json.dumps(model_status(db,args.year,train=True),ensure_ascii=False,indent=2))
+            print(json.dumps(model_status(db,args.year,train=True,region=args.region),ensure_ascii=False,indent=2))
+        elif args.command.startswith('national-'):
+            from .regions import ensure_default_region
+            from . import national
+            ensure_default_region(db)
+            say=lambda m:print(m,flush=True)
+            steps={'national-admin':['admin'],'national-sgis':['sgis'],'national-complexes':['complexes'],'national-grid500':['grid500'],
+                   'national-all':['admin','sgis','complexes','grid500']}[args.command]
+            for step in steps:
+                if step=='admin':result=national.collect_admin_units(db,log=say)
+                elif step=='sgis':result=national.collect_national_sgis(db,include_emd=not args.no_emd,log=say)
+                elif step=='complexes':result=national.collect_national_complexes(db,log=say)
+                else:result=national.collect_national_grid500(db,log=say)
+                print(json.dumps({step:result},ensure_ascii=False,default=str),flush=True)
+        elif args.command=='prepare-region':
+            if not args.region:raise SystemExit('--region 코드가 필요합니다 (예: 41110)')
+            from .region_prepare import prepare_region
+            from .regions import ensure_default_region
+            ensure_default_region(db)
+            steps=[s.strip() for s in args.steps.split(',') if s.strip()] or None
+            result=prepare_region(db,args.region,steps,log=lambda m:print(m,flush=True),force=args.force)
+            print(json.dumps({'code':result['code'],'status':result['status'],'datasets':{k:{'status':v.get('status'),'message':v.get('message')} for k,v in (result['datasets'] or {}).items()}},ensure_ascii=False,indent=1))
+        elif args.command=='regions':
+            from .regions import StudyRegion,region_summary
+            print(json.dumps([region_summary(r) for r in db.scalars(select(StudyRegion))],ensure_ascii=False,indent=1,default=str))
 
 if __name__=='__main__':main()

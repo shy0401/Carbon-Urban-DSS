@@ -14,7 +14,8 @@ The project 500m cells nest exactly in the 1km cells (both aligned to EPSG:5179 
 500m cell gets its parent 1km cell's *densities and shares* — never a divided count. For an area,
 the observed value is the sum of the whole 1km cells it touches (wider than the area); an
 area-proportional figure is offered separately and always labelled ESTIMATED.
-Input: the Jeonju bundle made by scripts/sgis/extract_sgis_grid.py in DATA_DIR/raw/sgis_grid_1k/<year>/.
+Input: the bundle made by scripts/sgis/extract_sgis_grid.py (Jeonju cut, or ``--national`` for the whole country)
+in DATA_DIR/raw/sgis_grid_1k/<year>/. Readers load only the 1km cells of their region (``grid_values(codes=…)``).
 """
 from __future__ import annotations
 
@@ -127,36 +128,75 @@ def import_sgis_grid(db: Any, root: str | Path | None = None, force: bool = Fals
             continue
         db.execute(delete(SgisGridStat).where(SgisGridStat.year == year))
         db.execute(delete(SgisGridCell).where(SgisGridCell.year == year))
-        cell_rows = []
-        with (folder / "cells.csv").open(encoding="utf-8") as f:
-            for row in csv.DictReader(f):
-                code = row["grid_cd"]
-                origin = code_origin(code)
-                if origin is None or origin != (int(float(row["x_min"])), int(float(row["y_min"]))):
-                    raise ValueError(f"격자코드와 좌표가 맞지 않습니다: {code}")
-                cell_rows.append({"id": f"{year}:{code}", "year": year, "grid_cd": code, "size_m": int(row["size_m"]), "x_min": origin[0], "y_min": origin[1]})
-        stat_rows = []
-        with (folder / "stats.csv").open(encoding="utf-8") as f:
-            for row in csv.DictReader(f):
-                if int(row["base_year"]) != year:
-                    continue
-                stat_rows.append({"id": f"{year}:{row['grid_cd']}:{row['item']}", "year": year, "grid_cd": row["grid_cd"], "item": row["item"],
-                                  "value": float(row["value"]), "group": row["group"]})
-        if cell_rows:
-            db.execute(insert(SgisGridCell), cell_rows)
-        for start in range(0, len(stat_rows), 5000):
-            db.execute(insert(SgisGridStat), stat_rows[start:start + 5000])
-        cells, stats = len(cell_rows), len(stat_rows)
+        cells = _load_cells(db, folder / "cells.csv", year)
+        stats = _load_stats(db, folder / "stats.csv", year)
         db.commit()
         _VALUES_CACHE.clear()
+        _COUNT_CACHE.clear()
+        national = list(manifest.get("bbox_5179") or []) == [700000, 1300000, 1500000, 2100000]
         update_source(db, SOURCE_ID, stats, raw_count=cells, status="COLLECTED",
-                      quality=f"{year}년 1km 격자 {cells}개 · 통계값 {stats:,}행 (비밀보호 잡음 포함, 인구 부문 5 미만은 0/5 확률 대체)")
+                      quality=f"{year}년 {'전국 ' if national else ''}1km 격자 {cells:,}개 · 통계값 {stats:,}행 (비밀보호 잡음 포함, 인구 부문 5 미만은 0/5 확률 대체)")
         source = _source(db)
         if source:
             source.reference_period = f"{year}년 (기준시점 6월 30일)"
+            source.geographic_coverage = "전국" if national else "전북특별자치도 전주시 (분석 범위)"
             db.commit()
         result["years"].append(year)
     return result
+
+
+def _copy_rows(db: Any, table: str, columns: tuple[str, ...], rows: Any) -> int | None:
+    """COPY rows into ``table`` on PostgreSQL (the national bundle has ~5.5 million rows). None elsewhere."""
+    if db.get_bind().dialect.name != "postgresql":
+        return None
+    raw = db.connection().connection
+    count = 0
+    with raw.cursor() as cursor:
+        with cursor.copy(f"COPY {table} ({', '.join(columns)}) FROM STDIN") as copy:
+            for row in rows:
+                copy.write_row(row)
+                count += 1
+    return count
+
+
+def _cell_rows(path: Path, year: int):
+    with path.open(encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            code = row["grid_cd"]
+            origin = code_origin(code)
+            if origin is None or origin != (int(float(row["x_min"])), int(float(row["y_min"]))):
+                raise ValueError(f"격자코드와 좌표가 맞지 않습니다: {code}")
+            yield (f"{year}:{code}", year, code, int(row["size_m"]), origin[0], origin[1])
+
+
+def _stat_rows(path: Path, year: int):
+    with path.open(encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            if int(row["base_year"]) != year:
+                continue
+            yield (f"{year}:{row['grid_cd']}:{row['item']}", year, row["grid_cd"], row["item"], float(row["value"]), row["group"])
+
+
+def _load_cells(db: Any, path: Path, year: int) -> int:
+    columns = ("id", "year", "grid_cd", "size_m", "x_min", "y_min")
+    copied = _copy_rows(db, "sgis_grid_cells", columns, _cell_rows(path, year))
+    if copied is not None:
+        return copied
+    rows = [dict(zip(columns, row)) for row in _cell_rows(path, year)]
+    for start in range(0, len(rows), 5000):
+        db.execute(insert(SgisGridCell), rows[start:start + 5000])
+    return len(rows)
+
+
+def _load_stats(db: Any, path: Path, year: int) -> int:
+    columns = ("id", "year", "grid_cd", "item", "value", "item_group")
+    copied = _copy_rows(db, "sgis_grid_stats", columns, _stat_rows(path, year))
+    if copied is not None:
+        return copied
+    rows = [{"id": r[0], "year": r[1], "grid_cd": r[2], "item": r[3], "value": r[4], "group": r[5]} for r in _stat_rows(path, year)]
+    for start in range(0, len(rows), 5000):
+        db.execute(insert(SgisGridStat), rows[start:start + 5000])
+    return len(rows)
 
 
 def _source(db: Any):
@@ -164,7 +204,8 @@ def _source(db: Any):
     return db.get(DataSource, SOURCE_ID)
 
 
-_VALUES_CACHE: dict[tuple[int, int], dict[str, dict[str, float]]] = {}
+_VALUES_CACHE: dict[tuple[Any, ...], dict[str, dict[str, float]]] = {}
+_COUNT_CACHE: dict[int, tuple[float, int]] = {}
 
 
 def latest_year(db: Any) -> int | None:
@@ -175,20 +216,47 @@ def latest_year(db: Any) -> int | None:
         return None
 
 
-def grid_values(db: Any, year: int | None = None) -> tuple[int | None, dict[str, dict[str, float]]]:
-    """{grid_cd: {item: value}} for one year (latest by default). Cached per (year, row count)."""
+def _row_count(db: Any, year: int) -> int:
+    """Row count of a year (cached a minute: the national table holds millions of rows)."""
+    import time
+    hit = _COUNT_CACHE.get(year)
+    if hit and time.monotonic() - hit[0] < 60:
+        return hit[1]
+    count = db.scalar(select(func.count()).select_from(SgisGridStat).where(SgisGridStat.year == year)) or 0
+    _COUNT_CACHE[year] = (time.monotonic(), count)
+    return count
+
+
+def grid_values(db: Any, year: int | None = None, codes: Any = None) -> tuple[int | None, dict[str, dict[str, float]]]:
+    """{grid_cd: {item: value}} for one year (latest by default), limited to ``codes`` (1km codes) when given.
+
+    The national bundle is too large to hold whole, so readers pass the 1km cells of their region.
+    Cached per (year, row count, code set)."""
     year = year or latest_year(db)
     if not year:
         return None, {}
-    count = db.scalar(select(func.count()).select_from(SgisGridStat).where(SgisGridStat.year == year)) or 0
-    key = (year, count)
+    wanted = frozenset(c for c in codes if c) if codes is not None else None
+    key = (year, _row_count(db, year), hash(wanted) if wanted is not None else None)
     if key not in _VALUES_CACHE:
         values: dict[str, dict[str, float]] = {}
-        for code, item, value in db.execute(select(SgisGridStat.grid_cd, SgisGridStat.item, SgisGridStat.value).where(SgisGridStat.year == year)):
-            values.setdefault(code, {})[item] = value
-        _VALUES_CACHE.clear()
+        query = select(SgisGridStat.grid_cd, SgisGridStat.item, SgisGridStat.value).where(SgisGridStat.year == year)
+        if wanted is None:
+            rows = db.execute(query)
+            for code, item, value in rows:
+                values.setdefault(code, {})[item] = value
+        else:
+            ordered = sorted(wanted)
+            for start in range(0, len(ordered), 2000):
+                for code, item, value in db.execute(query.where(SgisGridStat.grid_cd.in_(ordered[start:start + 2000]))):
+                    values.setdefault(code, {})[item] = value
+        if len(_VALUES_CACHE) >= 6:
+            _VALUES_CACHE.pop(next(iter(_VALUES_CACHE)))
         _VALUES_CACHE[key] = values
     return year, _VALUES_CACHE[key]
+
+
+def parents(grid_ids: Any) -> set[str]:
+    return {code for code in (parent_code(g) for g in grid_ids) if code}
 
 
 # --------------------------------------------------------------------------- summaries
@@ -241,14 +309,15 @@ def add_values(cells: list[dict[str, float]]) -> dict[str, float]:
     return total
 
 
-def grid_metric_properties(db: Any) -> dict[str, dict[str, Any]]:
-    """Map properties for every project 500m cell from its parent 1km cell (densities and shares only)."""
+def grid_metric_properties(db: Any, grid_ids: Any = None) -> dict[str, dict[str, Any]]:
+    """Map properties for the given (default: every) analysis 500m cell from its parent 1km cell (densities and shares only)."""
     from .models import Grid
-    year, values = grid_values(db)
+    ids = list(grid_ids) if grid_ids is not None else list(db.scalars(select(Grid.id)))
+    year, values = grid_values(db, codes=parents(ids))
     if not year:
         return {}
     out: dict[str, dict[str, Any]] = {}
-    for grid_id in db.scalars(select(Grid.id)):
+    for grid_id in ids:
         code = parent_code(grid_id)
         cell = values.get(code or "")
         if cell is None:
@@ -269,7 +338,7 @@ def grid_metric_properties(db: Any) -> dict[str, dict[str, Any]]:
 
 
 def grid_context_block(db: Any, grid_id: str) -> dict[str, Any] | None:
-    year, values = grid_values(db)
+    year, values = grid_values(db, codes={parent_code(grid_id)})
     if not year:
         return None
     code = parent_code(grid_id)
@@ -323,7 +392,7 @@ def meta(db: Any) -> dict[str, Any]:
     from .settings import DATA_DIR
     year = latest_year(db)
     cells = db.scalar(select(func.count()).select_from(SgisGridCell).where(SgisGridCell.year == year)) if year else 0
-    stats = db.scalar(select(func.count()).select_from(SgisGridStat).where(SgisGridStat.year == year)) if year else 0
+    stats = _row_count(db, year) if year else 0
     manifests = [json.loads(p.read_text(encoding="utf-8")) for p in bundles(DATA_DIR / "raw" / "sgis_grid_1k")]
     return {"year": year, "cells": cells, "stat_rows": stats, "grid_size_m": 1000,
             "bundles": [{k: m.get(k) for k in ("dataset", "base_years", "cells", "stat_rows", "created_at")} for m in manifests],

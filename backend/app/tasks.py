@@ -196,3 +196,61 @@ def queue_collection(db,datasets,start,end,scope='limited'):
         except Exception:
             job.status='FAILED';job.message='수집 작업 큐 연결 실패';job.errors=[{'message':job.message}];db.commit()
         return job
+
+# --------------------------------------------------------------------------- 전국 지역
+REGION_LOCK='carbon:region-prepare'
+
+def queue_region_prepare(db,region,steps=None,force=False):
+    """Mark the region as queued and hand it to the worker (one region at a time)."""
+    from .region_prepare import STEPS,_mark
+    region.status='PREPARING';region.message='수집 대기 중 (다른 지역 준비가 끝나면 시작)';db.commit()
+    for step in (steps or STEPS):
+        state=(region.datasets or {}).get(step,{}).get('status')
+        if force or state not in ('DONE','SKIPPED'):_mark(db,region,step,'QUEUED','대기 중')
+    try: run_prepare_region.delay(region.code,steps,force)
+    except Exception:
+        region.status='PARTIAL' if (region.datasets or {}).get('grid',{}).get('status')=='DONE' else 'NOT_PREPARED'
+        region.message='수집 작업 큐 연결 실패';db.commit()
+
+@celery_app.task(name='prepare_region',bind=True,max_retries=None)
+def run_prepare_region(self,code,steps=None,force=False):
+    import redis
+    from .region_prepare import next_quota_reset,prepare_region
+    from .regions import StudyRegion
+    connection=redis.Redis.from_url(os.getenv('REDIS_URL','redis://redis:6379/0'))
+    lock=connection.lock(REGION_LOCK,timeout=6*3600,blocking_timeout=1,thread_local=False)
+    if not lock.acquire(blocking=True):
+        raise self.retry(countdown=120)
+    try:
+        with Session() as db:
+            result=prepare_region(db,code,steps,log=lambda message:None,force=force)
+            waiting=[step for step,item in (result['datasets'] or {}).items() if (item or {}).get('status')=='WAITING']
+            if waiting:
+                region=db.get(StudyRegion,code)
+                resume=next_quota_reset()
+                datasets=dict(region.datasets or {})
+                for step in waiting:datasets[step]=dict(datasets[step],resume_at=resume.isoformat())
+                region.datasets=datasets;db.commit()
+                try: run_prepare_region.apply_async((code,waiting+['finalize'],False),eta=resume)
+                except Exception: pass
+    finally:
+        try: lock.release()
+        except Exception: pass
+
+@celery_app.task(name='collect_national')
+def run_national(datasets):
+    """National base layers: 법정 행정구역 → SGIS 시군구·행정동 → K-apt 단지 목록 → SGIS 500m 격자."""
+    from .national import collect_admin_units,collect_national_complexes,collect_national_grid500,collect_national_sgis
+    runners={'admin_units':collect_admin_units,'sgis_national':collect_national_sgis,'kapt_national':collect_national_complexes,'grid500':collect_national_grid500}
+    with Session() as db:
+        for name in ['admin_units','sgis_national','kapt_national','grid500']:
+            if name not in datasets:continue
+            try: runners[name](db,log=lambda message:None)
+            except Exception as exc:
+                db.rollback()
+                source_id={'grid500':'sgis_grid'}.get(name,name)
+                source=db.get(DataSource,source_id)
+                if source and name!='grid500':
+                    source.status='PARTIAL' if source.normalized_row_count else 'FAILED'
+                    source.quality=(str(exc) if type(exc).__name__ in ('ExternalError','ValueError') else '처리 실패: '+type(exc).__name__)[:200]
+                    db.commit()

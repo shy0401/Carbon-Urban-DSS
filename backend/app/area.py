@@ -20,7 +20,7 @@ import math
 from collections import defaultdict
 from typing import Any, Iterable
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from .grid_metrics import electricity_plausibility
@@ -114,6 +114,13 @@ def circle_geometry(lon: float, lat: float, radius_m: float, steps: int = 64) ->
         l2 = l1 + math.atan2(math.sin(bearing) * math.sin(d) * math.cos(p1), math.cos(d) - math.sin(p1) * math.sin(p2))
         coords.append([round(math.degrees(l2), 6), round(math.degrees(p2), 6)])
     return {"type": "Polygon", "coordinates": [coords]}
+
+
+def region_label(region: dict[str, Any] | None) -> str:
+    """Name used in sentences for the region-wide intensity: '전주' for the original region, else the short name."""
+    if not region or region.get("is_default", True):
+        return "전주"
+    return region.get("short_name") or region.get("name") or "지역"
 
 
 def short_admin_name(name: str | None) -> str:
@@ -540,7 +547,7 @@ def effort(history: dict[str, Any], plan: dict[str, Any], target_pct: float, pv_
         "scope": "전력 운영탄소 기준 (가스는 배출계수 확정 후 추가)",
         "assumptions": [
             (f"신축 부하 = 계획 연면적 × 지역 관측 전력 원단위 {intensity:,.2f} kWh/m²·년 ({base_year}년, 연면적 {basis_area:,.0f}m² 기준)" if baseline_mode == "OBSERVED"
-             else f"지역 관측이 없어 기준 부하를 추정했습니다: 단지 연면적 {basis_area:,.0f}m² × 전주 관측 원단위 {intensity:,.2f} kWh/m²·년"),
+             else f"지역 관측이 없어 기준 부하를 추정했습니다: 단지 연면적 {basis_area:,.0f}m² × {history.get('region_label') or '전주'} 관측 원단위 {intensity:,.2f} kWh/m²·년"),
             "기상은 기준 연도와 같다고 가정합니다 (별도 기상 보정 없음)",
             "가스는 이 계산에 넣지 않았습니다 (가스 배출계수 기준 확정 후 추가)",
             "태양광 설비 용량은 사용자가 입력한 kW당 연 발전량 가정으로만 환산합니다" if pv_yield_kwh_per_kw else "태양광은 연간 상쇄 전력량(kWh)으로만 표시합니다 (설비 용량 환산에는 지역 발전량 근거 필요)",
@@ -651,6 +658,7 @@ def build_history(area: dict[str, Any], years: list[int], inputs: dict[str, Any]
         "events": development_events(area, complexes, years),
         "factor": inputs.get("factor", {}),
         "factor_basis": "최신 등록 전력 계수를 모든 연도에 동일 적용(연도별 계수 미등록). 전후 차이는 사용량 변화만 반영",
+        "region_label": region_label(inputs.get("region")),
     }
     factor = history["factor"].get("electricity")
     for item in history["energy"].values():
@@ -673,7 +681,7 @@ def build_history(area: dict[str, Any], years: list[int], inputs: dict[str, Any]
         kwh = round(gfa * city["kwh_per_m2"], 1) if city and gfa else None
         history["energy"][year]["estimated"] = {
             "kwh": kwh, "carbon_kgco2eq": round(kwh * factor, 1) if kwh is not None and factor else None,
-            "basis": f"사용승인된 단지 연면적 × 전주 관측 전력 원단위 {city['kwh_per_m2']:,.2f} kWh/m²·년({city['year']}년)" if city else None,
+            "basis": f"사용승인된 단지 연면적 × {history['region_label']} 관측 전력 원단위 {city['kwh_per_m2']:,.2f} kWh/m²·년({city['year']}년)" if city else None,
             "data_class": "ESTIMATED",
         }
     years_with_energy = [y for y in years if history["energy"][y]["electricity"]["kwh"] is not None]
@@ -765,7 +773,7 @@ def area_facts(history: dict[str, Any], comparison: dict[str, Any] | None = None
         o = effort_result["options"]
         if effort_result.get("baseline_mode") == "ESTIMATED":
             city = history.get("city_intensity") or {}
-            add("effort_basis", f"이 지역은 관측 전력이 없어 기준 부하를 단지 연면적 {effort_result['intensity_area_m2']:,.0f}m²와 전주 관측 원단위 {effort_result['intensity_kwh_per_m2']:,.2f} kWh/m²·년({city.get('year')}년, 관측 지번 {city.get('parcels')}곳 기준)으로 추정했습니다. 관측 지번이 적을수록 추정 오차가 큽니다.", effort_result["intensity_area_m2"], effort_result["intensity_kwh_per_m2"], city.get("year"), city.get("parcels"))
+            add("effort_basis", f"이 지역은 관측 전력이 없어 기준 부하를 단지 연면적 {effort_result['intensity_area_m2']:,.0f}m²와 {history.get('region_label') or '전주'} 관측 원단위 {effort_result['intensity_kwh_per_m2']:,.2f} kWh/m²·년({city.get('year')}년, 관측 지번 {city.get('parcels')}곳 기준)으로 추정했습니다. 관측 지번이 적을수록 추정 오차가 큽니다.", effort_result["intensity_area_m2"], effort_result["intensity_kwh_per_m2"], city.get("year"), city.get("parcels"))
         add("effort_target", f"{effort_result['baseline_year']}년 대비 {effort_result['target_pct']:,.0f}% 감축을 목표로 하면 계획 반영 후 연간 {effort_result['required_reduction_kgco2eq']:,.0f} kgCO2eq를 줄여야 합니다.", effort_result["baseline_year"], effort_result["target_pct"], effort_result["required_reduction_kgco2eq"])
         if effort_result["already_met"]:
             add("effort_met", "계획을 반영해도 목표 이하이므로 추가 감축이 필요하지 않습니다.")
@@ -780,12 +788,18 @@ def area_facts(history: dict[str, Any], comparison: dict[str, Any] | None = None
 
 
 # --------------------------------------------------------------------------- DB loaders
-def load_inputs(db: Any, years: list[int]) -> dict[str, Any]:
+def load_inputs(db: Any, years: list[int], region: str | None = None) -> dict[str, Any]:
+    """Everything the area analysis reads for one study region (the original region by default)."""
     from sqlalchemy import select
     from .kapt import ApartmentComplex
-    from .models import EmissionFactor, EnergyMonthly, Grid, WeatherMonthly
+    from .models import EmissionFactor, EnergyMonthly, Grid
+    from .regions import scope, weather_rows
+    sc = scope(db, region)
+    region_ids = sc.grid_ids
     complexes: dict[str, dict[str, Any]] = {}
     for row in db.scalars(select(ApartmentComplex)):
+        if not sc.owns_complex(row.bjd_code, row.grid_id):
+            continue
         complexes[row.kapt_code] = {
             "kapt_code": row.kapt_code, "name": row.name, "approval_date": row.approval_date,
             "approval_year": approval_year(row.approval_date), "households": row.households,
@@ -795,27 +809,36 @@ def load_inputs(db: Any, years: list[int]) -> dict[str, Any]:
     lo, hi = f"{years[0]}01", f"{years[-1]}12"
     energy = []
     # Rows without a grid (city-wide 건축HUB parcels that are not K-apt complexes) never belong to an area here.
-    for r in db.scalars(select(EnergyMonthly).where(EnergyMonthly.use_ym.between(lo, hi), EnergyMonthly.usage_kwh.is_not(None), EnergyMonthly.grid_id.is_not(None))):
+    energy_query = select(EnergyMonthly).where(EnergyMonthly.use_ym.between(lo, hi), EnergyMonthly.usage_kwh.is_not(None), EnergyMonthly.grid_id.is_not(None))
+    clause = sc.legal_clause(EnergyMonthly.sigungu_code)
+    if clause is not None:
+        energy_query = energy_query.where(clause)
+    for r in db.scalars(energy_query):
         energy.append({"use_ym": r.use_ym, "energy_type": r.energy_type, "usage_kwh": r.usage_kwh, "grid_id": r.grid_id,
                        "kapt_code": (r.raw_record or {}).get("kapt_code"), "parcel": f"{r.sigungu_code}{r.bjdong_code}-{r.lot_type}-{r.bun}-{r.ji}"})
     weather = [{"use_ym": w.use_ym, "hdd": w.hdd, "cdd": w.cdd, "mean_temperature": w.mean_temperature, "source_type": w.source_type}
-               for w in db.scalars(select(WeatherMonthly).where(WeatherMonthly.use_ym.between(lo, hi)))]
+               for w in weather_rows(db, sc.code, lo, hi)]
     population, households = [], []
     try:
         from .sgis import SgisHouseholdAdmin, SgisPopulationAdmin
-        population = [{"adm_code": r.adm_code, "adm_name": r.adm_name, "reference_year": r.reference_year, "value": r.population_count if r.value_status == "OBSERVED" else None} for r in db.scalars(select(SgisPopulationAdmin))]
-        households = [{"adm_code": r.adm_code, "adm_name": r.adm_name, "reference_year": r.reference_year, "value": r.household_count if r.value_status == "OBSERVED" else None} for r in db.scalars(select(SgisHouseholdAdmin))]
+        mine = (lambda code: sc.owns_sgis(code)) if sc.sgis_codes else (lambda code: True)
+        population = [{"adm_code": r.adm_code, "adm_name": r.adm_name, "reference_year": r.reference_year, "value": r.population_count if r.value_status == "OBSERVED" else None} for r in db.scalars(select(SgisPopulationAdmin)) if mine(r.adm_code)]
+        households = [{"adm_code": r.adm_code, "adm_name": r.adm_name, "reference_year": r.reference_year, "value": r.household_count if r.value_status == "OBSERVED" else None} for r in db.scalars(select(SgisHouseholdAdmin)) if mine(r.adm_code)]
     except Exception:  # noqa: BLE001 - SGIS tables are optional
         db.rollback()
     factors = {}
     for f in db.scalars(select(EmissionFactor).order_by(EmissionFactor.reference_year)):
         if f.factor_unit == "kgCO2eq/kWh":
             factors[f.energy_type.lower()] = f.factor
-    grids = [{"id": g.id, "geometry": (g.geojson or {}).get("geometry")} for g in db.scalars(select(Grid))]
+    ids = sorted(region_ids)
+    grids = [{"id": g.id, "geometry": (g.geojson or {}).get("geometry")}
+             for start in range(0, len(ids), 2000) for g in db.scalars(select(Grid).where(Grid.id.in_(ids[start:start + 2000])))]
     register = []
     try:
         from .official import BuildingRegister, register_areas
         for r in db.scalars(select(BuildingRegister).where(BuildingRegister.grid_id.is_not(None))):
+            if r.grid_id not in region_ids:
+                continue
             attrs = r.attributes or {}
             register.append({"grid_id": r.grid_id, "approval_year": r.approval_year, "gfa": register_areas(attrs)[0], "use": attrs.get("building_use")})
     except Exception:  # noqa: BLE001 - register not collected yet (or columns not migrated)
@@ -823,7 +846,7 @@ def load_inputs(db: Any, years: list[int]) -> dict[str, Any]:
     from .overlays import admin_features, grid_zoning_summary
     from .sgis_grid import grid_values
     from .energy_parcels import grid_building_energy
-    admin, admin_year = admin_features(db)
+    admin, admin_year = admin_features(db, sc=sc)
     building_energy = {}
     for year in years:
         if year >= 2024:  # 건축HUB has no data before 2024-01
@@ -832,46 +855,60 @@ def load_inputs(db: Any, years: list[int]) -> dict[str, Any]:
             except Exception:  # noqa: BLE001 - parcel_grid not built yet
                 db.rollback()
                 by_grid = {}
+            by_grid = {g: v for g, v in by_grid.items() if g in region_ids}
             if by_grid:
                 building_energy[year] = by_grid
-    return {"building_energy": building_energy, "sgis_grid": grid_values(db), "register": register, "complexes": complexes, "energy": energy, "weather": weather, "population": population, "households": households,
-            "factor": factors, "grids": grids, "admin": admin.get("features", []), "admin_year": admin_year, "zoning": grid_zoning_summary(db)}
+    from .sgis_grid import parents
+    zoning = {g: v for g, v in grid_zoning_summary(db).items() if g in region_ids}
+    return {"building_energy": building_energy, "sgis_grid": grid_values(db, codes=parents(ids)), "register": register, "complexes": complexes, "energy": energy, "weather": weather, "population": population, "households": households,
+            "factor": factors, "grids": grids, "admin": admin.get("features", []), "admin_year": admin_year, "zoning": zoning,
+            "region": {"code": sc.code, "name": sc.name, "short_name": sc.short, "is_default": sc.is_default}}
 
 
-_INPUTS: dict[tuple[int, ...], tuple[float, dict[str, Any]]] = {}
+_INPUTS: dict[tuple[Any, ...], tuple[float, dict[str, Any]]] = {}
 INPUTS_TTL = 300.0  # seconds: new collections show up within five minutes
 
 
-_REFRESHING: set[tuple[int, ...]] = set()
+_REFRESHING: set[tuple[Any, ...]] = set()
 
 
-def cached_inputs(db: Any, years: list[int]) -> dict[str, Any]:
-    """DB inputs for ``years`` reused for a few minutes (changing the target or the plan re-analyses often).
+def _key(years: list[int], region: str | None) -> tuple[Any, ...]:
+    from .regions import DEFAULT_REGION
+    return (region or DEFAULT_REGION, *years)
+
+
+def forget_inputs() -> None:
+    """Drop cached inputs (a region was prepared or re-collected)."""
+    _INPUTS.clear()
+
+
+def cached_inputs(db: Any, years: list[int], region: str | None = None) -> dict[str, Any]:
+    """DB inputs for ``years`` of one region reused for a few minutes (changing the target or the plan re-analyses often).
 
     After the TTL the stale inputs are still answered at once while a background thread reloads them
     (a cold load takes ~10 s on the PC), so only the very first request of a year range waits.
     """
     import time
-    key = tuple(years)
+    key = _key(years, region)
     hit = _INPUTS.get(key)
     if hit and time.monotonic() - hit[0] < INPUTS_TTL:
         return hit[1]
     if hit:
         _refresh_in_background(key)
         return hit[1]
-    inputs = prepare_inputs(db, years)
+    inputs = prepare_inputs(db, years, region)
     _store_inputs(key, inputs)
     return inputs
 
 
-def _store_inputs(key: tuple[int, ...], inputs: dict[str, Any]) -> None:
+def _store_inputs(key: tuple[Any, ...], inputs: dict[str, Any]) -> None:
     import time
-    if len(_INPUTS) >= 2 and key not in _INPUTS:  # keep memory bounded: two year ranges at most
+    if len(_INPUTS) >= 3 and key not in _INPUTS:  # keep memory bounded: three region/year ranges at most
         _INPUTS.pop(min(_INPUTS, key=lambda k: _INPUTS[k][0]), None)
     _INPUTS[key] = (time.monotonic(), inputs)
 
 
-def _refresh_in_background(key: tuple[int, ...]) -> None:
+def _refresh_in_background(key: tuple[Any, ...]) -> None:
     import threading
     if key in _REFRESHING:
         return
@@ -881,7 +918,7 @@ def _refresh_in_background(key: tuple[int, ...]) -> None:
         try:
             from .db import Session
             with Session() as session:
-                _store_inputs(key, prepare_inputs(session, list(key)))
+                _store_inputs(key, prepare_inputs(session, list(key[1:]), key[0]))
         except Exception as exc:  # noqa: BLE001 - the stale inputs stay in use
             print("지역 분석 입력 갱신 실패:", type(exc).__name__, exc)
         finally:
@@ -893,14 +930,15 @@ def warm_inputs(from_year: int = 2015, to_year: int = 2025) -> None:
     """Load the default year range once (called from the API start-up warm-up)."""
     from .db import Session
     with Session() as session:
-        key = tuple(range(from_year, to_year + 1))
+        years = list(range(from_year, to_year + 1))
+        key = _key(years, None)
         if key not in _INPUTS:
-            _store_inputs(key, prepare_inputs(session, list(key)))
+            _store_inputs(key, prepare_inputs(session, years))
 
 
-def prepare_inputs(db: Any, years: list[int]) -> dict[str, Any]:
-    """DB rows for ``years`` plus the city-wide observed intensity (reusable across many areas)."""
-    inputs = load_inputs(db, years)
+def prepare_inputs(db: Any, years: list[int], region: str | None = None) -> dict[str, Any]:
+    """DB rows for ``years`` plus the region-wide observed intensity (reusable across many areas)."""
+    inputs = load_inputs(db, years, region)
     inputs["city_intensity"] = city_intensity(inputs["energy"], inputs["complexes"], years)
     inputs["years"] = list(years)
     return inputs
@@ -908,12 +946,12 @@ def prepare_inputs(db: Any, years: list[int]) -> dict[str, Any]:
 
 def analyze(db: Any, spec: dict[str, Any], from_year: int, to_year: int, event_year: int | None = None,
             window: int = 3, plan: dict[str, Any] | None = None, target_pct: float | None = None,
-            pv_yield: float | None = None, *, inputs: dict[str, Any] | None = None) -> dict[str, Any]:
+            pv_yield: float | None = None, *, inputs: dict[str, Any] | None = None, region: str | None = None) -> dict[str, Any]:
     if from_year > to_year or to_year - from_year > 30:
         raise ValueError("분석 기간을 확인하세요 (최대 31년)")
     years = list(range(from_year, to_year + 1))
     if inputs is None or inputs.get("years") != years:
-        inputs = cached_inputs(db, years)
+        inputs = cached_inputs(db, years, region)
     complex_points = [{"kapt_code": c["kapt_code"], "lon": c["lon"], "lat": c["lat"], "grid_id": c["grid_id"]} for c in inputs["complexes"].values()]
     area = resolve_area(spec, inputs["grids"], complex_points, inputs["admin"], inputs["zoning"])
     history = build_history(area, years, inputs)
@@ -924,7 +962,8 @@ def analyze(db: Any, spec: dict[str, Any], from_year: int, to_year: int, event_y
         {"type": "Feature", "id": g["id"], "geometry": g["geometry"], "properties": {"id": g["id"]}}
         for g in inputs["grids"] if g["id"] in members and g.get("geometry")]}
     return {"history": history, "before_after": comparison, "effort": effort_result, "grid_features": grid_features,
-            "facts": area_facts(history, comparison, effort_result), "admin_year": inputs["admin_year"]}
+            "facts": area_facts(history, comparison, effort_result), "admin_year": inputs["admin_year"],
+            "region": inputs.get("region")}
 
 
 # --------------------------------------------------------------------------- API
@@ -953,6 +992,7 @@ class PlanInput(BaseModel):
 
 class AnalyzeInput(BaseModel):
     area: AreaSpec
+    region: str | None = Field(default=None, max_length=10)
     from_year: int = Field(default=2015, ge=2000, le=2100)
     to_year: int = Field(default=2025, ge=2000, le=2100)
     event_year: int | None = None
@@ -963,20 +1003,30 @@ class AnalyzeInput(BaseModel):
 
 
 @router.get("/options")
-def area_options() -> dict[str, Any]:
+def area_options(region: str | None = Query(None, max_length=10)) -> dict[str, Any]:
     from sqlalchemy import select
     from .db import Session
-    from .models import EnergyMonthly, TestbedSector
+    from .models import EnergyMonthly
+    from .regions import RegionNotReady, scope
+    from .service import region_sector
     with Session() as db:
+        try:
+            sc = scope(db, region)
+        except RegionNotReady as exc:
+            raise HTTPException(404, str(exc)) from None
         from .overlays import admin_features, grid_zoning_summary
-        admin, year = admin_features(db)
-        zoning = grid_zoning_summary(db)
+        admin, year = admin_features(db, sc=sc)
+        zoning = {g: v for g, v in grid_zoning_summary(db).items() if g in sc.grid_ids}
         zone_counts: dict[str, int] = defaultdict(int)
         for z in zoning.values():
             if z.get("dominant_zone"):
                 zone_counts[z["dominant_zone"]] += 1
-        months = sorted({r for r in db.scalars(select(EnergyMonthly.use_ym).distinct())})
-        sector = db.get(TestbedSector, "prototype")
+        month_query = select(EnergyMonthly.use_ym).distinct()
+        clause = sc.legal_clause(EnergyMonthly.sigungu_code)
+        if clause is not None:
+            month_query = month_query.where(clause)
+        months = sorted({r for r in db.scalars(month_query)})
+        sector = region_sector(db, sc)
         return {
             "admin": sorted(({"code": f["properties"]["adm_code"], "name": short_admin_name(f["properties"]["adm_name"])} for f in admin.get("features", [])), key=lambda x: x["name"] or ""),
             "admin_geojson": {"type": "FeatureCollection", "features": [
@@ -986,6 +1036,7 @@ def area_options() -> dict[str, Any]:
             "zones": [{"category": k, "label": ZONE_LABEL[k], "grids": v} for k, v in sorted(zone_counts.items(), key=lambda kv: -kv[1]) if k in ZONE_LABEL],
             "energy_years": sorted({int(m[:4]) for m in months if m and len(m) == 6}),
             "default_grid": sector.grid_id if sector else None,
+            "region": {"code": sc.code, "name": sc.name, "short_name": sc.short, "center": list(sc.center) if sc.center else None, "bbox": list(sc.bbox) if sc.bbox else None},
         }
 
 
@@ -999,10 +1050,13 @@ def area_collection_status() -> dict[str, Any]:
 @router.post("/analyze")
 def area_analyze(request: AnalyzeInput) -> dict[str, Any]:
     from .db import Session
+    from .regions import RegionNotReady
     with Session() as db:
         try:
             return analyze(db, request.area.model_dump(), request.from_year, request.to_year, request.event_year,
                            request.window, request.plan.model_dump() if request.plan else None, request.target_pct,
-                           request.pv_yield_kwh_per_kw)
+                           request.pv_yield_kwh_per_kw, region=request.region)
+        except RegionNotReady as exc:
+            raise HTTPException(404, str(exc)) from None
         except (ValueError, KeyError) as exc:
             raise HTTPException(422, str(exc)) from None

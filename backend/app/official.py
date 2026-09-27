@@ -136,10 +136,12 @@ def register_regions(db,scope='full'):
     regions=[dict(sigunguCd=r.sigungu_code,bjdongCd=r.bjdong_code,name=r.name) for r in rows]
     return regions[:{'smoke':1,'limited':3}.get(scope,len(regions))]
 
-def collect_register(db,scope='full',progress=None):
+def collect_register(db,scope='full',progress=None,regions=None,update=True):
     """건축HUB 건축물대장 표제부(getBrTitleInfo) for every 전주시 법정동, all pages.
 
     smoke: first 법정동, first page (10 rows) / limited: 3 법정동 / full: every 법정동.
+    ``regions``: another study region's 법정동/리 list (``regions.legal_leaves``); ``update=False`` leaves the
+    source status (which describes the original region's collection) as it is.
     Successful pages are cached, so a rerun after a quota stop continues without re-requesting them.
     """
     sid='building_official'
@@ -147,7 +149,7 @@ def collect_register(db,scope='full',progress=None):
     if not key:raise ExternalError('API 인증 실패: DATA_GO_KR_SERVICE_KEY 미설정')
     spec=official_spec('15134735','building-register')
     url=verified_operation(spec,'getBrTitleInfo')
-    regions=register_regions(db,scope)
+    regions=regions if regions is not None else register_regions(db,scope)
     if not regions:raise ExternalError('법정동 코드가 없습니다. 지역코드 수집 필요')
     client.min_interval=max(float(os.getenv('BUILDING_REGISTER_REQUEST_DELAY_MS','300'))/1000,0)
     rows_saved=0;failed=[];reference=now().date().isoformat()
@@ -162,7 +164,7 @@ def collect_register(db,scope='full',progress=None):
                 db.commit()
                 if '일시 오류' not in str(exc):
                     source=db.get(DataSource,sid)
-                    if source:source.status='NEEDS_API_APPROVAL' if '인증' in str(exc) else 'PARTIAL' if source.normalized_row_count else 'FAILED';source.quality=str(exc)[:200];db.commit()
+                    if source and update:source.status='NEEDS_API_APPROVAL' if '인증' in str(exc) else 'PARTIAL' if source.normalized_row_count else 'FAILED';source.quality=str(exc)[:200];db.commit()
                     raise
                 failed.append(f"{region['name']} {page}쪽");break
             record_asset(db,sid,response,len(rows),reference)
@@ -182,7 +184,7 @@ def collect_register(db,scope='full',progress=None):
     linked=link_register_grids(db)
     total_rows=db.query(BuildingRegister).count()
     status='COLLECTED' if scope=='full' and not failed else 'PARTIAL'
-    update_source(db,sid,total_rows,status=status,quality=f'표제부 {total_rows:,}동 / 법정동 {len(regions)}곳({scope}) / 격자 연결 {linked:,}동 / 일시 오류 {len(failed)}건')
+    if update:update_source(db,sid,total_rows,status=status,quality=f'표제부 {total_rows:,}동 / 법정동 {len(regions)}곳({scope}) / 격자 연결 {linked:,}동 / 일시 오류 {len(failed)}건')
     return {'rows':rows_saved,'regions':len(regions),'failed':len(failed),'linked':linked,'total':total_rows}
 
 def link_register_grids(db):

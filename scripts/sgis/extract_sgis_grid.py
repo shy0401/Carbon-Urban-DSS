@@ -1,4 +1,4 @@
-"""Cut the nationwide SGIS grid statistics package down to the Jeonju analysis area.
+"""Cut the nationwide SGIS grid statistics package to an analysis area (default Jeonju) or keep all of it (--national).
 
 Input: the folder from 공공데이터포털 '국가데이터처_SGIS 격자 통계 및 경계' (data.go.kr 15141768), which holds
   1. 통계/…/<year>년_<group>_<100km block>_1K.csv   (기준연도, 격자코드, 통계항목, 통계값; CP949 or UTF-8)
@@ -9,6 +9,7 @@ Output (default data/raw/sgis_grid_1k/<year>/): cells.csv, stats.csv, items.json
 Only standard-library Python is required (openpyxl only for the code names).
 
     python scripts/sgis/extract_sgis_grid.py --source "국가데이터처_SGIS 격자 통계 및 경계_20250630/국가데이터처_SGIS 격자 통계 및 경계"
+    python scripts/sgis/extract_sgis_grid.py --national --source "…"   # 전국 (약 550만 행)
 
 The grid code is <x block><y block><xx><yy>: x = 700000 + 100000·index(x block) + 1000·xx, y likewise from 1300000,
 with blocks 가나다라마바사아. The script checks every kept boundary against that rule.
@@ -29,6 +30,8 @@ BLOCKS = "가나다라마바사아"
 X0, Y0 = 700000, 1300000
 # Project 500m grid (EPSG:5179) spans x 954500–976500, y 1748000–1767500 → the 1km cells that contain it.
 JEONJU_BBOX = (954000, 1748000, 977000, 1768000)
+# Every 100km block (가~아 × 가~아): the whole country.
+NATIONAL_BBOX = (700000, 1300000, 1500000, 2100000)
 GROUPS = {"인구": "population", "가구": "household", "주택": "housing", "사업체": "business", "사업체중분류": "business_detail",
           "종사자": "worker", "종사자중분류": "worker_detail"}
 CODE_RE = re.compile(r"^([가-힣])([가-힣])(\d{2})(\d{2})$")
@@ -208,8 +211,9 @@ def main() -> None:
     parser.add_argument("--source", required=True, help="'1. 통계', '2. 경계', '3. 코드집'이 있는 폴더")
     parser.add_argument("--out", default=None, help="출력 폴더 (기본 data/raw/sgis_grid_1k/<기준연도>)")
     parser.add_argument("--bbox", default=",".join(map(str, JEONJU_BBOX)), help="EPSG:5179 xmin,ymin,xmax,ymax")
+    parser.add_argument("--national", action="store_true", help="전국 (모든 100km 블록): --bbox를 무시합니다")
     args = parser.parse_args()
-    bbox = tuple(int(v) for v in args.bbox.split(","))
+    bbox = NATIONAL_BBOX if args.national else tuple(int(v) for v in args.bbox.split(","))
     source = Path(args.source)
     tmp = Path(args.out) if args.out else Path("data/raw/sgis_grid_1k/_new")
     manifest = extract(source, tmp, bbox)  # type: ignore[arg-type]
