@@ -842,17 +842,60 @@ _INPUTS: dict[tuple[int, ...], tuple[float, dict[str, Any]]] = {}
 INPUTS_TTL = 300.0  # seconds: new collections show up within five minutes
 
 
+_REFRESHING: set[tuple[int, ...]] = set()
+
+
 def cached_inputs(db: Any, years: list[int]) -> dict[str, Any]:
-    """DB inputs for ``years`` reused for a few minutes (changing the target or the plan re-analyses often)."""
+    """DB inputs for ``years`` reused for a few minutes (changing the target or the plan re-analyses often).
+
+    After the TTL the stale inputs are still answered at once while a background thread reloads them
+    (a cold load takes ~10 s on the PC), so only the very first request of a year range waits.
+    """
     import time
     key = tuple(years)
     hit = _INPUTS.get(key)
     if hit and time.monotonic() - hit[0] < INPUTS_TTL:
         return hit[1]
+    if hit:
+        _refresh_in_background(key)
+        return hit[1]
     inputs = prepare_inputs(db, years)
-    _INPUTS.clear()
-    _INPUTS[key] = (time.monotonic(), inputs)
+    _store_inputs(key, inputs)
     return inputs
+
+
+def _store_inputs(key: tuple[int, ...], inputs: dict[str, Any]) -> None:
+    import time
+    if len(_INPUTS) >= 2 and key not in _INPUTS:  # keep memory bounded: two year ranges at most
+        _INPUTS.pop(min(_INPUTS, key=lambda k: _INPUTS[k][0]), None)
+    _INPUTS[key] = (time.monotonic(), inputs)
+
+
+def _refresh_in_background(key: tuple[int, ...]) -> None:
+    import threading
+    if key in _REFRESHING:
+        return
+    _REFRESHING.add(key)
+
+    def reload() -> None:
+        try:
+            from .db import Session
+            with Session() as session:
+                _store_inputs(key, prepare_inputs(session, list(key)))
+        except Exception as exc:  # noqa: BLE001 - the stale inputs stay in use
+            print("지역 분석 입력 갱신 실패:", type(exc).__name__, exc)
+        finally:
+            _REFRESHING.discard(key)
+    threading.Thread(target=reload, name="area-inputs", daemon=True).start()
+
+
+def warm_inputs(from_year: int = 2015, to_year: int = 2025) -> None:
+    """Load the default year range once (called from the API start-up warm-up)."""
+    from .db import Session
+    with Session() as session:
+        key = tuple(range(from_year, to_year + 1))
+        if key not in _INPUTS:
+            _store_inputs(key, prepare_inputs(session, list(key)))
 
 
 def prepare_inputs(db: Any, years: list[int]) -> dict[str, Any]:

@@ -78,6 +78,8 @@ def _warm_caches_in_background():
             with Session() as db:
                 build_readiness(db)
                 dashboard(db,None,DEFAULT_YEAR)
+            from .area import warm_inputs
+            warm_inputs(2015,DEFAULT_YEAR)
         except Exception as exc:  # noqa: BLE001 - warming is best effort
             print('캐시 예열 실패:',type(exc).__name__,exc)
     threading.Thread(target=warm,name='warm-caches',daemon=True).start()
