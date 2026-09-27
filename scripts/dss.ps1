@@ -176,12 +176,13 @@ function Wait-Postgres([string]$Which) {
     # final server accepts TCP connections inside the container.
     # No embedded double quotes: Windows PowerShell 5.1 does not escape them for native commands.
     $probe = @('exec', '-T', 'postgres', 'sh', '-c', 'PGPASSWORD=$POSTGRES_PASSWORD psql -h 127.0.0.1 -U ${POSTGRES_USER:-carbon} -d ${POSTGRES_DB:-carbon} -Atc ''select 1''')
-    for ($attempt = 0; $attempt -lt 60; $attempt++) {
+    # A fresh volume on a busy PC measured 3+ minutes (initdb, 2026-09-27), so allow up to 5 minutes.
+    for ($attempt = 0; $attempt -lt 150; $attempt++) {
         $result = if ($Which -eq 'restore') { Compose-Restore $probe } else { Compose-Main $probe }
         if ($result.Code -eq 0 -and ($result.Lines -contains '1')) { return }
         Start-Sleep -Seconds 2
     }
-    throw "postgres ($Which) did not accept TCP connections within 120 s"
+    throw "postgres ($Which) did not accept TCP connections within 300 s"
 }
 
 function Get-TableCounts([string]$Which) {
