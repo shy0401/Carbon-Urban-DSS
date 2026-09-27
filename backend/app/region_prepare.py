@@ -205,6 +205,9 @@ def step_grid(db: Any, region: StudyRegion, log: Log) -> dict[str, Any]:
     forget_region_cache(region.code)
     region.grid_count = len(region_grid_ids(db, region.code))
     _set_center(db, region)
+    if not region.default_grid_id:
+        # Until the finalize step picks the densest housing cell, the centre cell is the default 대상지.
+        region.default_grid_id = centre_cell(region, region_grid_ids(db, region.code))
     db.commit()
     from .sgis_grid_official import _GRID_CODES
     _GRID_CODES.clear()
@@ -423,15 +426,26 @@ def step_finalize(db: Any, region: StudyRegion, log: Log) -> dict[str, Any]:
         region.default_grid_id = max(households, key=lambda g: (households[g], g))
         reason = f"K-apt 세대수가 가장 많은 격자 ({households[region.default_grid_id]:,}세대)"
     else:
-        from pyproj import Transformer
-        x, y = Transformer.from_crs(4326, 5179, always_xy=True).transform(region.center_lon, region.center_lat)
-        centre = f"cell_{int(x // 500 * 500)}_{int(y // 500 * 500)}"
-        region.default_grid_id = centre if centre in ids else sorted(ids)[len(ids) // 2]
+        region.default_grid_id = centre_cell(region, ids)
         reason = "지역 중심 격자 (공동주택 자료 없음)"
     db.commit()
     from .area import forget_inputs
     forget_inputs()
     return {"rows": len(ids), "message": f"기본 대상지 {region.default_grid_id}: {reason}"}
+
+
+def centre_cell(region: StudyRegion, ids: frozenset[str] | set[str]) -> str | None:
+    """The analysis cell under the region centre (else the middle one of the sorted ids)."""
+    if not ids:
+        return None
+    if region.center_lon is not None and region.center_lat is not None:
+        from pyproj import Transformer
+        x, y = Transformer.from_crs(4326, 5179, always_xy=True).transform(region.center_lon, region.center_lat)
+        centre = f"cell_{int(x // 500 * 500)}_{int(y // 500 * 500)}"
+        if centre in ids:
+            return centre
+    ordered = sorted(ids)
+    return ordered[len(ordered) // 2]
 
 
 RUNNERS: dict[str, Callable[[Any, StudyRegion, Log], dict[str, Any]]] = {

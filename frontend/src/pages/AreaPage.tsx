@@ -1,5 +1,6 @@
 import { Download, FileText, Info, Pause, Play, RotateCcw, Undo2 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { AreaMap } from '../components/area/AreaMap';
 import { BeforeAfterChart, DevelopmentChart, EffortBars, EffortCurve, ElectricityChart, RegisterChart, WeatherYearsChart } from '../components/area/AreaCharts';
 import { MetricCard } from '../components/MetricCard';
@@ -147,7 +148,7 @@ export function AreaPage() {
         {running && <span className="area-running" role="status"><span className="spinner" aria-hidden="true" />계산 중</span>}
       </div>
       {error && <p className="form-error" role="alert">{error}</p>}
-      <CoverageStrip analysis={analysis} collection={collection.data} />
+      <CoverageStrip analysis={analysis} collection={collection.data} regionName={region ? (options.data?.region?.short_name ?? null) : null} />
     </section>
 
     <div className="area-workspace">
@@ -181,7 +182,7 @@ export function AreaPage() {
   </div>;
 }
 
-function CoverageStrip({ analysis, collection }: { analysis: AreaAnalysis | null; collection: CollectionStatus | null }) {
+function CoverageStrip({ analysis, collection, regionName }: { analysis: AreaAnalysis | null; collection: CollectionStatus | null; regionName?: string | null }) {
   const cov = analysis?.history.coverage;
   const summary = collection?.summary ?? {};
   const datasets = Object.keys(summary);
@@ -193,7 +194,9 @@ function CoverageStrip({ analysis, collection }: { analysis: AreaAnalysis | null
       <div><dt>인구 연도</dt><dd>{list(cov.population_years)}</dd></div>
       <div><dt>구역</dt><dd>격자 {cov.grid_count}개 · 단지 {cov.complex_count}곳</dd></div>
     </dl>}
-    <p className="area-collect">{datasets.length
+    <p className="area-collect">{regionName
+      ? <>이 지역({regionName})은 지역 준비 때 분석연도 자료만 받았습니다(과거 연도 일괄 수집은 전주시 범위). 단계별 상태는 <Link to="/regions">전국 지역</Link>에서 봅니다.</>
+      : datasets.length
       ? <><span className="area-collect-title">과거 수집 진행 (연도·항목 수)</span><span className="area-collect-list">{datasets.map((d) => <span key={d} className="area-collect-item"><b>{DATASET_LABEL[d] ?? d}</b>{Object.entries(summary[d]).map(([st, n]) => <em key={st} className={`st-${st.toLowerCase()}`}>{statusLabel(st)} {n}</em>)}</span>)}</span></>
       : <>과거 연도 자료는 아직 수집하지 않았습니다. <a href="/data#collect-missing">수집 데이터 → 빠진 자료 전부 수집</a> 버튼을 누르거나 PC에서 <code>scripts\dss.cmd CollectAll</code>을 실행하면 채워집니다 (일일 한도에 걸리면 다음 날 자동으로 이어서).</>}</p>
   </div>;
