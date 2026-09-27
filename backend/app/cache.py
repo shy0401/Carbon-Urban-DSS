@@ -34,37 +34,98 @@ def recent_credential_error(root, credential, max_age=ERROR_CACHE_SECONDS, match
 
 _ERROR_SCAN={}
 _ERROR_SCAN_TTL=60
+ERROR_INDEX='_error-index.jsonl'
+_INDEX_KEEP_SECONDS=2*ERROR_CACHE_SECONDS
+_INDEX_MAX_BYTES=512_000
 
 def _recent_error_metas(root,max_age):
     """Error metadata written within ``max_age`` seconds.
 
-    The cache folders hold tens of thousands of responses on a slow Windows bind mount, so
-    files are first filtered by modification time (a stat, no read) and the result is reused
-    for a minute. A new error written by this process clears the memo (see CachedClient).
+    Every error this app writes is also appended to ``_error-index.jsonl`` in the same folder, so a
+    check reads that short index and the few meta files it names instead of listing tens of
+    thousands of cached responses on a slow Windows bind mount (a full scan took ~24 s cold).
+    A folder without an index is scanned once and the index is written for the next call.
+    The result is reused for a minute; a new error written by this process clears the memo.
     """
     key=(str(Path(root)),max_age)
     hit=_ERROR_SCAN.get(key)
     if hit and time.monotonic()-hit[0]<_ERROR_SCAN_TTL:
         return hit[1]
     cutoff=time.time()-max_age
-    found=[]
-    try:
-        entries=list(os.scandir(root))
-    except OSError:
-        entries=[]
-    for entry in entries:
-        if not entry.name.endswith('.json'):
-            continue
-        try:
-            if entry.stat().st_mtime<cutoff:
-                continue
-            meta=json.loads(Path(entry.path).read_text(encoding='utf-8'))
-        except (OSError,ValueError,TypeError,json.JSONDecodeError):
-            continue
-        if isinstance(meta,dict) and meta.get('error'):
-            found.append(meta)
+    index=Path(root)/ERROR_INDEX
+    if index.exists():
+        found=_metas_from_index(Path(root),index,cutoff)
+    else:
+        found=_scan_error_metas(Path(root),cutoff,max(max_age,_INDEX_KEEP_SECONDS))
     _ERROR_SCAN[key]=(time.monotonic(),found)
     return found
+
+def _read_meta(path):
+    try:meta=json.loads(Path(path).read_text(encoding='utf-8'))
+    except (OSError,ValueError,TypeError,json.JSONDecodeError):return None
+    return meta if isinstance(meta,dict) else None
+
+def _metas_from_index(root,index,cutoff):
+    names=[]
+    try:lines=index.read_text(encoding='utf-8').splitlines()
+    except OSError:lines=[]
+    for line in lines:
+        try:entry=json.loads(line)
+        except (ValueError,json.JSONDecodeError):continue
+        name=entry.get('file') if isinstance(entry,dict) else None
+        try:recent=float(entry.get('timestamp',0))>=cutoff
+        except (TypeError,ValueError):recent=False
+        if name and recent and name not in names and '/' not in name and '\\' not in name:names.append(name)
+    found=[]
+    for name in names:  # the meta file is the truth: a later success may have replaced the error
+        meta=_read_meta(root/name)
+        if meta and meta.get('error'):
+            try:
+                if float(meta.get('timestamp',0))>=cutoff:found.append(meta)
+            except (TypeError,ValueError):continue
+    return found
+
+def _scan_error_metas(root,cutoff,index_window):
+    found=[];indexed=[]
+    index_cutoff=time.time()-index_window
+    try:entries=list(os.scandir(root))
+    except OSError:entries=[]
+    for entry in entries:
+        if not entry.name.endswith('.json'):continue
+        try:
+            if entry.stat().st_mtime<min(cutoff,index_cutoff):continue
+        except OSError:continue
+        meta=_read_meta(entry.path)
+        if not meta or not meta.get('error'):continue
+        indexed.append((entry.name,meta))
+        try:
+            if float(meta.get('timestamp',0))>=cutoff:found.append(meta)
+        except (TypeError,ValueError):continue
+    if entries or root.exists():
+        try:
+            (root/ERROR_INDEX).write_text(''.join(_index_line(name,meta) for name,meta in indexed),encoding='utf-8')
+        except OSError:
+            pass
+    return found
+
+def _index_line(name,meta):
+    return json.dumps({'file':name,'timestamp':meta.get('timestamp'),'error':meta.get('error')},ensure_ascii=False)+'\n'
+
+def _index_error(root,name,meta):
+    """Append one written error to the folder index (pruned to recent lines when it grows)."""
+    index=Path(root)/ERROR_INDEX
+    try:
+        if index.exists() and index.stat().st_size>_INDEX_MAX_BYTES:
+            keep=time.time()-_INDEX_KEEP_SECONDS
+            lines=[l for l in index.read_text(encoding='utf-8').splitlines() if _line_time(l)>=keep]
+            index.write_text(''.join(l+'\n' for l in lines),encoding='utf-8')
+        with index.open('a',encoding='utf-8') as handle:handle.write(_index_line(name,meta))
+    except OSError:
+        pass
+
+def _line_time(line):
+    try:return float(json.loads(line).get('timestamp',0))
+    except (ValueError,TypeError,AttributeError,json.JSONDecodeError):return 0.0
 
 def _forget_error_scan(root):
     for key in [k for k in _ERROR_SCAN if k[0]==str(Path(root))]:
@@ -79,6 +140,7 @@ def record_credential_error(root, credential, message):
         'auth_hash':hashlib.sha256(str(credential).encode()).hexdigest(),
     }
     (target/'credential-error.json').write_text(json.dumps(meta,ensure_ascii=False),encoding='utf-8')
+    _index_error(target,'credential-error.json',meta)
     _forget_error_scan(target)
 
 def clear_credential_error(root, credential):
@@ -161,7 +223,7 @@ class CachedClient:
                     time.sleep(2**(attempt+1));continue
                 meta=dict(identity,timestamp=time.time(),status=status,error=error,auth_hash=auth_hash)
                 body_path.write_bytes(body);meta_path.write_text(json.dumps(meta,ensure_ascii=False),encoding='utf-8')
-                if error:_forget_error_scan(self.root)
+                if error:_index_error(self.root,meta_path.name,meta);_forget_error_scan(self.root)
                 result=dict(meta,body=body,cached=False,path=str(body_path),id=digest)
                 if error: raise ExternalError(error,result)
                 return result
@@ -185,6 +247,7 @@ class CachedClient:
         except (OSError,ValueError,TypeError,json.JSONDecodeError):return
         meta['timestamp']=time.time();meta['error']=str(message)
         meta_path.write_text(json.dumps(meta,ensure_ascii=False),encoding='utf-8')
+        _index_error(self.root,meta_path.name,meta)
         _forget_error_scan(self.root)
 
 def parse_cached_response(client,result,parser):

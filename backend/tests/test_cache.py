@@ -1,3 +1,7 @@
+import hashlib
+import json
+import time
+
 import httpx
 import pytest
 from app.cache import CachedClient,ExternalError,parse_cached_response,recent_credential_error
@@ -87,3 +91,39 @@ def test_a_provider_description_page_listing_error_codes_is_not_an_api_failure(t
     assert client.get('data.go.kr','definition','https://www.data.go.kr/data/1/openapi.do',api=False)['body']==page
     with pytest.raises(ExternalError):  # the same text inside an API answer is a real failure
         client.get('data.go.kr','api','https://apis.example.org/x',{'serviceKey':'k'})
+
+
+def test_error_index_replaces_the_folder_scan(tmp_path, monkeypatch):
+    """Errors are found through the small index; a later success on the same request clears them."""
+    import app.cache as cache
+    answers = [httpx.Response(200, content=b'LIMITED_NUMBER_OF_SERVICE_REQUESTS_EXCEEDS_ERROR'), httpx.Response(200, content=b'<ok/>')]
+    client = CachedClient(tmp_path, httpx.Client(transport=httpx.MockTransport(lambda request: answers.pop(0))), min_interval=0)
+    try:
+        client.get('data.go.kr', 'op', 'https://example.org/api', {'serviceKey': 'k1'})
+        raise AssertionError('the rate-limit answer must raise')
+    except ExternalError as exc:
+        assert '호출 제한' in str(exc)
+        failed = exc.asset
+    index = tmp_path / cache.ERROR_INDEX
+    assert index.exists() and 'serviceKey' not in index.read_text(encoding='utf-8') and 'k1' not in index.read_text(encoding='utf-8')
+    scanned = []
+    monkeypatch.setattr(cache, '_scan_error_metas', lambda *a: scanned.append(a) or [])
+    cache._forget_error_scan(tmp_path)
+    assert recent_credential_error(tmp_path, 'k1') == '공공데이터 호출 제한'
+    assert scanned == []  # the index was used, not a directory listing
+    # the same request succeeds later (after forget): the stale index line must not report an error
+    client.forget(failed)
+    assert client.get('data.go.kr', 'op', 'https://example.org/api', {'serviceKey': 'k1'})['body'] == b'<ok/>'
+    cache._forget_error_scan(tmp_path)
+    assert recent_credential_error(tmp_path, 'k1') is None
+
+
+def test_folder_without_index_is_scanned_once_and_indexed(tmp_path):
+    import app.cache as cache
+    auth = hashlib.sha256(b'k2').hexdigest()
+    (tmp_path / 'abc.json').write_text(json.dumps({'timestamp': time.time(), 'error': 'API 인증 실패', 'auth_hash': auth}), encoding='utf-8')
+    (tmp_path / 'ok.json').write_text(json.dumps({'timestamp': time.time(), 'error': None}), encoding='utf-8')
+    cache._forget_error_scan(tmp_path)
+    assert recent_credential_error(tmp_path, 'k2') == 'API 인증 실패'
+    lines = (tmp_path / cache.ERROR_INDEX).read_text(encoding='utf-8').splitlines()
+    assert len(lines) == 1 and json.loads(lines[0])['file'] == 'abc.json'

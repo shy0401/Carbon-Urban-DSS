@@ -84,6 +84,12 @@ def create_snapshot(db,year,grid_id,scenario_ids):
             raise ValueError('동일 연도와 격자의 시나리오만 비교할 수 있습니다')
         scenarios.append({'id':sid,'inputs':s.inputs,'result':r.result,'created_at':s.created_at.isoformat()})
         facts.append({'id':'scenario_'+str(len(scenarios)),'text':f'비교안 {len(scenarios)}은 {s.inputs["floors"]}층, {s.inputs["building_count"]}동이며 계획 용적률 {r.result["far"]:.1f}%, 건폐율 {r.result["bcr"]:.1f}%입니다.'})
+        zc=r.result.get('zoning_check') or {}
+        if zc.get('zones'):
+            zone_text=', '.join(f"{z['zone']} {z['share']:.0f}%" for z in zc['zones'][:3] if z.get('share') is not None)
+            chk=zc.get('check') or {}
+            limit=f"기본 상한 건폐율 {zc['bcr_limit']:g}%·용적률 {zc['far_limit']:g}%" if zc.get('bcr_limit') is not None and zc.get('far_limit') is not None else '기본 상한 판단 보류'
+            facts.append({'id':'zoning_'+str(len(scenarios)),'text':f"비교안 {len(scenarios)}의 대지는 {zone_text}이며 전주시 도시계획 조례 {limit} 기준 '{chk.get('label','판단 보류')}'입니다(1차 확인, 인허가 판단 아님)."})
         carbon=r.result.get('annual',{}).get('scenario',{}).get('carbon_kg')
         change=r.result.get('annual',{}).get('difference',{}).get('carbon_kg')
         if carbon is not None and change is not None:
@@ -171,13 +177,24 @@ def report_cautions(data,detail,scenarios):
            '용적률·건폐율은 격자 면적(250,000m²) 기준 근사값이며 필지 기준 법정 용적률·건폐율이 아닙니다.',
            '계획안 결과는 관측 원단위 × 계획 연면적의 1차 추정이며 설계·인허가·넷제로 판정에 쓸 수 없습니다.']
     if any(sc.get('has_image') for sc in scenarios):
-        items.append('3D 개념 배치는 대지 중앙에 같은 크기 블록을 늘어놓은 규모 비교용 그림이며 실제 배치안이 아닙니다.')
+        items.append('3D 개념 배치는 대지 안에 같은 크기 블록을 규칙적으로 늘어놓은 규모 비교용 그림이며 실제 배치안이 아닙니다. 그림자는 맑은 날 태양 위치로 그린 개략 그림자입니다.')
+    if any((sc.get('result') or {}).get('zoning_check') for sc in scenarios):
+        items.append('용도지역 상한은 전주시 도시계획 조례 제45조·제47조의 기본값입니다. 완화 규정·지구단위계획 지침·경관지구 제한은 반영하지 않은 1차 확인입니다.')
     if data.get('coverage',{}).get('electricity_months',0)<12:
         items.append('전력 관측이 12개월 미만이라 연간 값은 완전하지 않습니다.')
     return items
 
 def _num(value,unit='',digits=0):
     return f'{value:,.{digits}f}{unit}' if isinstance(value,(int,float)) else '자료 없음'
+
+def _zones(zc):
+    zones=(zc or {}).get('zones') or []
+    return ', '.join(f"{z['zone']} {z['share']:.0f}%" for z in zones[:3] if z.get('share') is not None) or '자료 없음'
+
+def _limits(zc):
+    zc=zc or {}
+    if zc.get('bcr_limit') is None or zc.get('far_limit') is None:return '판단 보류'
+    return f"{zc['bcr_limit']:g}% / {zc['far_limit']:g}%"
 
 def report_markdown(s):
     context=s.get('context') or {};sector=s.get('sector') or {}
@@ -201,7 +218,9 @@ def report_markdown(s):
               ('용적률',lambda sc:_num(sc['result'].get('far'),'%',1)),('건폐율',lambda sc:_num(sc['result'].get('bcr'),'%',1)),('세대수',lambda sc:_num(sc['inputs'].get('households'),'세대')),('계획 인구',lambda sc:_num(sc['inputs'].get('population'),'명')),
               ('계획 연간 전력',lambda sc:_num((sc['result'].get('annual') or {}).get('scenario',{}).get('electricity_kwh'),'kWh')),('계획 연간 가스',lambda sc:_num((sc['result'].get('annual') or {}).get('scenario',{}).get('gas_kwh'),'kWh')),
               ('계획 연간 전력 탄소',lambda sc:_num((sc['result'].get('annual') or {}).get('scenario',{}).get('electricity_carbon_kg'),'kgCO2eq',1)),('기준 대비 전력 탄소 변화',lambda sc:_num((sc['result'].get('annual') or {}).get('difference',{}).get('electricity_carbon_kg'),'kgCO2eq',1)),
-              ('계획 연간 전체 탄소 (전력+가스)',lambda sc:_num((sc['result'].get('annual') or {}).get('scenario',{}).get('carbon_kg'),'kgCO2eq',1))]
+              ('계획 연간 전체 탄소 (전력+가스)',lambda sc:_num((sc['result'].get('annual') or {}).get('scenario',{}).get('carbon_kg'),'kgCO2eq',1)),
+              ('대지 용도지역',lambda sc:_zones(sc['result'].get('zoning_check'))),('조례 기본 상한 (건폐율/용적률)',lambda sc:_limits(sc['result'].get('zoning_check'))),
+              ('조례 상한 1차 확인',lambda sc:((sc['result'].get('zoning_check') or {}).get('check') or {}).get('label','판단 보류'))]
         for label,fn in rows:table.append(f'| {label} | '+' | '.join(fn(sc) for sc in s['scenarios'])+' |')
         lines.append('\n'.join(table))
         for i,sc in enumerate(s['scenarios'],1):
@@ -243,7 +262,7 @@ def create_report(request:ReportInput):
 
 @router.get('')
 def reports():
-    with Session() as db:return [{'id':r.id,'created_at':r.created_at.isoformat(),'year':r.snapshot['year'],'grid_id':r.snapshot['grid_id'],'mode':r.snapshot['summary']['mode']} for r in db.scalars(select(DecisionReport).order_by(DecisionReport.created_at.desc()).limit(200)) if r.snapshot.get('kind')!='AREA'][:50]
+    with Session() as db:return [{'id':r.id,'created_at':r.created_at.isoformat(),'year':r.snapshot['year'],'grid_id':r.snapshot['grid_id'],'mode':r.snapshot['summary']['mode'],'title':r.snapshot.get('title'),'scenario_count':len(r.snapshot.get('scenarios') or [])} for r in db.scalars(select(DecisionReport).order_by(DecisionReport.created_at.desc()).limit(200)) if r.snapshot.get('kind')!='AREA'][:50]
 
 @router.get('/{report_id}')
 def get_report(report_id:str):

@@ -1,4 +1,4 @@
-import json,uuid,re
+import json,os,uuid,re
 from contextlib import asynccontextmanager
 from typing import Literal
 from fastapi import FastAPI,HTTPException,Query
@@ -65,7 +65,22 @@ async def lifespan(app):
         if not offline_mode() and not db.scalar(select(CollectionJob.id).limit(1)):
             startup_datasets=available_collection_datasets(['energy','weather'])
             if startup_datasets:queue_collection(db,startup_datasets,f'{DEFAULT_YEAR}-01',f'{DEFAULT_YEAR}-12')
+    _warm_caches_in_background()
     yield
+
+def _warm_caches_in_background():
+    """Build the provider error indexes and touch the default dashboard once after start-up, so the first
+    visitor of 수집 데이터·대시보드 does not wait for a cold scan (measured 24 s) or cold DB pages."""
+    if os.getenv('DSS_WARM_CACHE','1')=='0' or os.getenv('PYTEST_CURRENT_TEST'):return
+    import threading
+    def warm():
+        try:
+            with Session() as db:
+                build_readiness(db)
+                dashboard(db,None,DEFAULT_YEAR)
+        except Exception as exc:  # noqa: BLE001 - warming is best effort
+            print('캐시 예열 실패:',type(exc).__name__,exc)
+    threading.Thread(target=warm,name='warm-caches',daemon=True).start()
 
 app=FastAPI(title='Carbon Urban DSS',version='0.1.0',lifespan=lifespan)
 app.add_middleware(GZipMiddleware,minimum_size=2048)
@@ -388,7 +403,11 @@ def grid_detail(grid_id:str,year:int=Query(DEFAULT_YEAR,ge=2000,le=2100)):
     with Session() as db:
         grid=db.get(Grid,grid_id)
         if not grid:raise HTTPException(404,'격자를 찾을 수 없습니다')
-        return dict(dashboard(db,grid_id,year),grid=serialize(grid))
+        from .sgis_grid_official import official_codes
+        try:code=official_codes(db).get(grid_id)
+        except Exception:db.rollback();code=None
+        body=serialize(grid);body['properties']=dict(body.get('properties') or {},sgis500_code=code)
+        return dict(dashboard(db,grid_id,year),grid=body)
 
 class ScenarioInput(BaseModel):
     site_area:float=Field(default=50000,gt=0,le=250000)
@@ -403,6 +422,10 @@ class ScenarioInput(BaseModel):
     average_household_area:float=Field(default=85,gt=0,le=500)
     grid_id:str|None=None
     year:int=Field(default=DEFAULT_YEAR,ge=2000,le=2100)
+    # Site centre placed in the 3D view (defaults to the grid centre) and its clockwise rotation.
+    site_lon:float|None=Field(default=None,ge=124,le=132)
+    site_lat:float|None=Field(default=None,ge=33,le=39)
+    site_rotation:float=Field(default=0,ge=0,lt=90)
     @model_validator(mode='after')
     def validate_footprint(self):
         if self.building_count*self.footprint_per_building>self.site_area:raise ValueError('건축면적 합계가 부지 면적을 초과합니다')
@@ -419,9 +442,35 @@ def scenario(request:ScenarioInput):
         result['id']=str(uuid.uuid4());result['quality']='기준 에너지·연면적 부족' if not baseline['baseline_floor_area_m2'] else '공간 매칭된 관측 원단위 기반'
         result['calculations']={key:result[key] for key in ['total_footprint','gross_floor_area','far','bcr','households','population','green_area_m2']}
         result['baseline']={k:baseline.get(k) for k in ['current_far','current_bcr','households','population','gross_floor_area_m2','developable_site_area_m2']}
-        result['legal_status']='법적 상한 미확정'
         result['grid_id']=baseline['selected_sector']['grid_id'] if baseline['selected_sector'] else None
+        zoning=_site_zoning_for(db,request,result['grid_id'])
+        if zoning:
+            from .zoning_limits import check_plan
+            zoning['check']=check_plan(zoning,bcr=result.get('bcr'),far=result.get('far'),site_area_m2=request.site_area,households=request.households)
+            result['legal_status']=zoning['check']['label']
+        else:result['legal_status']='법적 상한 미확정'
+        result['zoning_check']=zoning
         db.add(Scenario(id=result['id'],inputs=dict(request.model_dump(),grid_id=result['grid_id'])));db.flush();db.add(ScenarioResult(id=result['id'],result=result));db.commit();return result
+
+def _site_zoning_for(db,request,grid_id):
+    """용도지역 parts of the planned site: the placed centre, else the grid centre. None when nothing is known."""
+    from .zoning_limits import grid_center_lonlat,site_zoning
+    if request.site_lon is not None and request.site_lat is not None:center=(request.site_lon,request.site_lat)
+    else:center=grid_center_lonlat(db,grid_id) if grid_id else None
+    if not center:return None
+    zoning=site_zoning(db,center[0],center[1],request.site_area,request.site_rotation)
+    zoning['basis']='SITE' if request.site_lon is not None else 'GRID_CENTER'
+    return zoning
+
+@app.get('/api/zoning/site')
+def zoning_site(lon:float=Query(...,ge=124,le=132),lat:float=Query(...,ge=33,le=39),site_area:float=Query(...,gt=0,le=250000),rotation:float=Query(0,ge=0,lt=90),
+                bcr:float|None=Query(None,ge=0,le=100),far:float|None=Query(None,ge=0,le=5000),households:int|None=Query(None,ge=0)):
+    """용도지역 and 전주시 조례 기본 상한 for a square site; with bcr/far the 1st-pass check as well."""
+    from .zoning_limits import check_plan,site_zoning
+    with Session() as db:
+        zoning=site_zoning(db,lon,lat,site_area,rotation)
+        if bcr is not None or far is not None:zoning['check']=check_plan(zoning,bcr=bcr,far=far,site_area_m2=site_area,households=households)
+        return zoning
 
 class OptimizationInput(ScenarioInput):
     min_households:int=Field(default=500,ge=0,le=100000)
@@ -432,7 +481,13 @@ def optimization(request:OptimizationInput):
     from .modeling import optimize
     with Session() as db:
         baseline=dashboard(db,request.grid_id,request.year)
-        result=optimize(request.model_dump(),baseline['baseline_monthly'],baseline['baseline_floor_area_m2'],factors_for(db,request.year))
+        grid_id=baseline['selected_sector']['grid_id'] if baseline['selected_sector'] else None
+        zoning=_site_zoning_for(db,request,grid_id)
+        legal={}
+        if zoning and zoning.get('status')=='OK':legal={'legal_far_limit':zoning['far_limit'],'legal_bcr_limit':zoning['bcr_limit']}
+        result=optimize(request.model_dump(),baseline['baseline_monthly'],baseline['baseline_floor_area_m2'],factors_for(db,request.year),legal)
+        if legal and result.get('status')=='ENERGY_OPTIMAL':result['legal_status']=f"전주시 조례 기본 상한(건폐율 {legal['legal_bcr_limit']:g}%·용적률 {legal['legal_far_limit']:g}%) 안의 후보만 탐색 / 인허가 판단 아님"
+        result['zoning_check']=zoning
         result['baseline_scope']=baseline.get('baseline_scope')
         sid=str(uuid.uuid4());db.add(Scenario(id=sid,inputs=dict(request.model_dump(),type='OPTIMIZATION')));db.flush();db.add(ScenarioResult(id=sid,result=result));db.commit();return result
 
@@ -480,7 +535,10 @@ def validate_models(year:int=Query(DEFAULT_YEAR,ge=2000,le=2100)):
 
 @app.get('/api/system')
 def system():
-    return {'offline_mode':offline_mode(),'baseline_year':DEFAULT_YEAR,'version':app.version}
+    with Session() as db:
+        sector=db.get(TestbedSector,'prototype')
+        default_grid=sector.grid_id if sector else None
+    return {'offline_mode':offline_mode(),'baseline_year':DEFAULT_YEAR,'version':app.version,'default_grid_id':default_grid}
 
 class OfflineInput(BaseModel):
     enabled:bool
