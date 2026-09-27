@@ -132,8 +132,8 @@ def load_admin_units(db: Any, body: bytes, version: str | None = None) -> int:
 def region_catalog(units: Iterable[Any]) -> list[dict[str, Any]]:
     """Selectable study regions from 시군구 units: every 시·군·구, with a city's 일반구 grouped under it.
 
-    A 5-digit code whose last digit is not 0 and whose "<first four>0" exists is an 일반구 of that city
-    (수원시 41110 → 장안구 41111 …). Seoul's 자치구 end in 0 or have no parent, so each is a region.
+    A 5-digit code whose last digit is not 0, whose "<first four>0" exists and whose name continues that
+    unit's name is an 일반구 of that city (수원시 41110 → 장안구 41111 …). Seoul's 자치구 end in 0, so each is a region.
     """
     sigungu = {}
     sido_names = {}
@@ -145,16 +145,23 @@ def region_catalog(units: Iterable[Any]) -> list[dict[str, Any]]:
             sido_names[code[:2]] = name
         elif level == "SIGUNGU":
             sigungu[code[:5]] = name
+    def city_of(code: str) -> str | None:
+        # An 일반구 carries its city's name: 41111 '경기도 수원시 장안구' under 41110 '경기도 수원시'.
+        # A neighbouring 군 with a similar code is not one (43745 증평군 is not part of 43740 영동군).
+        parent = code[:4] + "0"
+        if code[4] != "0" and parent in sigungu and sigungu[code].startswith(sigungu[parent] + " "):
+            return parent
+        return None
+
     regions: dict[str, dict[str, Any]] = {}
     for code, name in sorted(sigungu.items()):
-        parent = code[:4] + "0"
-        if code[4] != "0" and parent in sigungu:
+        if city_of(code):
             continue
         sido = sido_names.get(code[:2]) or name.split()[0]
         regions[code] = {"code": code, "name": name, "sido_code": code[:2], "sido_name": sido, "legal_codes": [code], "districts": []}
     for code, name in sorted(sigungu.items()):
-        parent = code[:4] + "0"
-        if code[4] != "0" and parent in regions:
+        parent = city_of(code)
+        if parent and parent in regions:
             regions[parent]["legal_codes"].append(code)
             regions[parent]["districts"].append({"code": code, "name": name.split()[-1]})
     return list(regions.values())
@@ -504,7 +511,8 @@ def legal_leaves(db: Any, legal_codes: Iterable[str]) -> list[dict[str, str]]:
 
 
 def list_codes(legal_codes: Iterable[str]) -> list[str]:
-    """법정 codes that K-apt/건축HUB lists answer for: a city's 일반구 instead of the city code itself."""
+    """법정 codes that K-apt/건축HUB lists answer for: a city's 일반구 instead of the city code itself.
+    (A region's legal codes are the city and its 일반구 only, so a shared 4-digit prefix means "district".)"""
     codes = list(dict.fromkeys(legal_codes))
     return [c for c in codes if not (c.endswith("0") and any(o != c and o[:4] == c[:4] for o in codes))]
 

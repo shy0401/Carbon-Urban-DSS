@@ -30,6 +30,9 @@ SAMPLE = [
     "1111000000\t서울특별시 종로구\t존재",
     "1111010100\t서울특별시 종로구 청운동\t존재",
     "3611000000\t세종특별자치시\t존재",
+    "4300000000\t충청북도\t존재",
+    "4374000000\t충청북도 영동군\t존재",
+    "4374500000\t충청북도 증평군\t존재",
     "4211000000\t강원도 춘천시\t폐지",
 ]
 
@@ -53,6 +56,8 @@ def test_catalog_groups_general_districts_under_their_city():
     assert by_code["11110"]["legal_codes"] == ["11110"]  # 서울 자치구 stays a region
     assert by_code["41820"]["sido_name"] == "경기도"
     assert by_code["36110"]["name"] == "세종특별자치시"
+    # a neighbouring 군 with a similar code is its own region, not a district
+    assert by_code["43745"]["name"] == "충청북도 증평군" and by_code["43740"]["legal_codes"] == ["43740"]
 
 
 def test_sido_keys_follow_renamed_provinces():
