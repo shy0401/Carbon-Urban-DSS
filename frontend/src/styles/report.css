@@ -91,3 +91,8 @@
 .report-figures figure.plan-c { border-top-color: var(--plan-c); }
 .report-figures img { display: block; width: 100%; height: auto; }
 .report-figures figcaption { padding: var(--sp-2) var(--sp-3); font-size: var(--fs-caption); color: var(--ink-2); }
+
+.scenario-picker label > span { display: grid; gap: 2px; min-width: 0; flex: 1; }
+.scenario-picker small.legal { color: var(--success); font-weight: 600; }
+.scenario-picker small.legal.over { color: var(--danger); }
+.report-table td.over { color: var(--danger); font-weight: 600; }

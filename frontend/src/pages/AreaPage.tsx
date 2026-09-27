@@ -17,7 +17,7 @@ const YEARS = Array.from({ length: 17 }, (_, i) => 2010 + i);
 const DEFAULT_PLAN: PlanState = { method: 'area', added_floor_area_m2: 50000, floors: 20, building_count: 5, footprint_per_building: 800, removed_floor_area_m2: 0 };
 const DEFAULT_TARGET = 40;
 const MODES: AreaMode[] = ['admin', 'circle', 'polygon', 'zone', 'grid'];
-const DATASET_LABEL: Record<string, string> = { sgis: 'SGIS 인구·가구', kma_asos: '기상청 ASOS', kapt_energy: 'K-apt 단지 에너지', energy: '건축HUB 지번 에너지', vworld_buildings: 'VWorld 건물', vworld_cadastral: 'VWorld 연속지적' };
+const DATASET_LABEL: Record<string, string> = { sgis: 'SGIS 인구·가구', kma_asos: '기상청 ASOS', kapt_energy: 'K-apt 단지 에너지', energy: '건축HUB 지번 에너지', vworld_zoning: 'VWorld 용도지역', vworld_buildings: 'VWorld 건물', vworld_cadastral: 'VWorld 연속지적', building_register: '건축물대장', sgis_grid_500m: 'SGIS 500m 격자 경계' };
 
 interface CollectionStatus { items: Record<string, { status: string; at?: string; reason?: string }>; runs: Array<{ started_at: string; finished_at?: string; from: number; to: number }>; summary: Record<string, Record<string, number>> }
 
@@ -183,12 +183,12 @@ function CoverageStrip({ analysis, collection }: { analysis: AreaAnalysis | null
       <div><dt>구역</dt><dd>격자 {cov.grid_count}개 · 단지 {cov.complex_count}곳</dd></div>
     </dl>}
     <p className="area-collect">{datasets.length
-      ? <>과거 수집 진행: {datasets.map((d) => `${DATASET_LABEL[d] ?? d} ${Object.entries(summary[d]).map(([s, n]) => `${statusLabel(s)} ${n}`).join('·')}`).join(' / ')}</>
+      ? <><span className="area-collect-title">과거 수집 진행 (연도·항목 수)</span><span className="area-collect-list">{datasets.map((d) => <span key={d} className="area-collect-item"><b>{DATASET_LABEL[d] ?? d}</b>{Object.entries(summary[d]).map(([st, n]) => <em key={st} className={`st-${st.toLowerCase()}`}>{statusLabel(st)} {n}</em>)}</span>)}</span></>
       : <>과거 연도 자료는 아직 수집하지 않았습니다. <a href="/data#collect-missing">수집 데이터 → 빠진 자료 전부 수집</a> 버튼을 누르거나 PC에서 <code>scripts\dss.cmd CollectAll</code>을 실행하면 채워집니다 (일일 한도에 걸리면 다음 날 자동으로 이어서).</>}</p>
   </div>;
 }
 
-function statusLabel(status: string) { return ({ DONE: '완료', NOT_PUBLISHED: '미공개', PARTIAL: '일부', FAILED: '실패', BLOCKED: '중단' } as Record<string, string>)[status] ?? status; }
+function statusLabel(status: string) { return ({ DONE: '완료', NOT_PUBLISHED: '미공개', PARTIAL: '일부', FAILED: '실패', BLOCKED: '중단', TODO: '대기', RETRY: '재시도', WAITING: '대기' } as Record<string, string>)[status] ?? status; }
 
 function YearPanel({ analysis, year, setYear, playing, setPlaying, eventYear }: { analysis: AreaAnalysis; year: number; setYear: (y: number) => void; playing: boolean; setPlaying: (p: boolean) => void; eventYear: number | null }) {
   const h = analysis.history;

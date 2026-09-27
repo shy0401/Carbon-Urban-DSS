@@ -396,4 +396,23 @@ export interface ScenarioResult {
   bcr?: number | null;
   baseline_floor_area_m2?: number | null;
   assumptions?: string[];
+  /** '조례 기본 상한 이내 (1차 확인)' 등 서버 판정 문구. */
+  legal_status?: string;
+  zoning_check?: ZoningCheck | null;
+}
+
+export interface ZoningZone { zone: string | null; zone_name?: string; share: number | null; bcr_limit: number | null; far_limit: number | null; applied_far_limit?: number | null; note?: string | null }
+/** 대지와 겹치는 용도지역과 전주시 도시계획 조례 기본 상한 (GET /api/zoning/site, 시나리오 결과의 zoning_check). */
+export interface ZoningCheck {
+  status: 'OK' | 'PARTIAL_COVERAGE' | 'LIMIT_UNKNOWN' | 'NO_ZONING' | 'NOT_COLLECTED';
+  zones: ZoningZone[];
+  covered_share: number;
+  bcr_limit: number | null;
+  far_limit: number | null;
+  mixed: boolean;
+  basis?: 'SITE' | 'GRID_CENTER';
+  check?: { label: string; bcr: 'WITHIN' | 'OVER' | 'UNKNOWN'; far: 'WITHIN' | 'OVER' | 'UNKNOWN'; district_plan: boolean; notes: string[] };
+  source?: { name: string; number: string; effective: string; url: string; checked: string };
+  rules?: string[];
+  reason?: string;
 }

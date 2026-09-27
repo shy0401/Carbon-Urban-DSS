@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import { api } from '../lib/api';
 
-export interface SystemInfo { offline_mode: boolean; baseline_year: number; version: string }
+export interface SystemInfo { offline_mode: boolean; baseline_year: number; version: string; /** Grid of the default 대상지 (testbed sector). */ default_grid_id?: string | null }
 
 // One shared /api/system read for the sidebar mode switch and the title block.
 let info: SystemInfo | null = null;

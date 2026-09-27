@@ -107,3 +107,12 @@
 .area-sgis { margin-top: var(--sp-4); }
 .area-building-energy { margin-top: var(--sp-4); }
 .area-building-energy td small { color: var(--ink-3); }
+
+.area-collect-title { display: block; margin-bottom: var(--sp-1); font-weight: 600; color: var(--ink-2); }
+.area-collect-list { display: flex; flex-wrap: wrap; gap: var(--sp-1) var(--sp-2); }
+.area-collect-item { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px 2px 2px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); }
+.area-collect-item b { padding: 1px 8px; border-radius: 999px; background: var(--surface-sunk); font-weight: 600; color: var(--ink); }
+.area-collect-item em { font-style: normal; font-variant-numeric: tabular-nums; color: var(--ink-2); }
+.area-collect-item em.st-done { color: var(--success); }
+.area-collect-item em.st-failed, .area-collect-item em.st-blocked { color: var(--danger); }
+.area-collect-item em.st-not_published { color: var(--ink-3); }

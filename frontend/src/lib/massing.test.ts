@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildingHeight, massingFeatures, planBlocks, polygonBounds } from './massing';
+import { buildingHeight, heightClass, massingFeatures, outerRings, planBlocks, polygonBounds, ringCentroid } from './massing';
 
 describe('massing (3D 개념 배치)', () => {
   it('블록을 정사각형에 가깝게 배열하고 높이는 층수 × 3m로 둔다', () => {
@@ -37,5 +37,39 @@ describe('massing (3D 개념 배치)', () => {
     expect(buildingHeight(15)).toBe(45);
     expect(buildingHeight(null)).toBe(0);
     expect(buildingHeight(0)).toBe(0);
+  });
+});
+
+describe('massing 옵션 (판상형·동 간격·회전)', () => {
+  it('판상형은 가로 3:1로 만들고 동 간격은 높이 × 비율(최소 6m)로 둔다', () => {
+    const slab = planBlocks(10000, 4, 600, 15, { shape: 'slab', spacingRatio: 0.5 });
+    expect(slab.block_width_m / slab.block_depth_m).toBeCloseTo(3, 6);
+    expect(slab.block_width_m * slab.block_depth_m).toBeCloseTo(600, 6);
+    expect(slab.row_gap_m).toBeCloseTo(22.5, 6); // 45 m × 0.5
+    expect(slab.columns * slab.rows).toBeGreaterThanOrEqual(4);
+    expect(slab.coverage_pct).toBeCloseTo(24, 6);
+    expect(slab.far_pct).toBeCloseTo(360, 6);
+    expect(planBlocks(10000, 4, 700, 12, { spacingRatio: 1.5 }).fits).toBe(false); // 54 m row gap: 2 × 26.5 + 54 > 100 m
+  });
+
+  it('회전해도 대지 면적과 블록 크기는 그대로다', () => {
+    const turned = massingFeatures([127.15, 35.82], 10000, 4, 700, 12, { rotation: 30 });
+    const area = (ring: number[][]) => {
+      const lat = ring[0][1];
+      const kx = 111320 * Math.cos((lat * Math.PI) / 180);
+      let sum = 0;
+      for (let i = 0; i < ring.length - 1; i += 1) sum += ring[i][0] * kx * ring[i + 1][1] * 111320 - ring[i + 1][0] * kx * ring[i][1] * 111320;
+      return Math.abs(sum) / 2;
+    };
+    expect(area(turned.features[0].geometry.coordinates[0])).toBeCloseTo(10000, -1);
+    expect(area(turned.features[1].geometry.coordinates[0])).toBeCloseTo(700, -1);
+    const straight = massingFeatures([127.15, 35.82], 10000, 4, 700, 12);
+    expect(turned.features[1].geometry.coordinates[0][0]).not.toEqual(straight.features[1].geometry.coordinates[0][0]);
+  });
+
+  it('높이 등급과 외곽 고리를 구한다', () => {
+    expect([0, 9, 21, 45, 90].map(heightClass)).toEqual([0, 1, 2, 3, 4]);
+    expect(outerRings({ type: 'MultiPolygon', coordinates: [[[[0, 0], [1, 0], [1, 1], [0, 0]]], [[[2, 2], [3, 2], [3, 3], [2, 2]]]] })).toHaveLength(2);
+    expect(ringCentroid([[0, 0], [2, 0], [2, 2], [0, 2], [0, 0]])).toEqual([1, 1]);
   });
 });
