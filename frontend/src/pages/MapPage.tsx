@@ -2,17 +2,20 @@ import * as maplibregl from 'maplibre-gl';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import { ChevronDown, Layers3, LocateFixed, RefreshCw, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
+import { LayerGroupTitle, LayerToggle } from '../components/LayerToggle';
 import { MetricCard } from '../components/MetricCard';
 import { MissingValue } from '../components/MissingValue';
 import { PageHeader } from '../components/PageHeader';
 import { ProvenanceBadge } from '../components/ProvenanceBadge';
+import { ProvinceMap } from '../components/ProvinceMap';
 import { ShareBar } from '../components/ShareBar';
 import { ErrorState, LoadingState } from '../components/Status';
 import { WeatherChart } from '../components/WeatherChart';
 import { setBasemapStatus } from '../hooks/useBasemapStatus';
 import { useApi } from '../hooks/useApi';
 import { useAnalysisScope } from '../hooks/useAnalysisScope';
+import { useSystemInfo } from '../hooks/useSystemInfo';
 import { api } from '../lib/api';
 import { formatMetric } from '../lib/format';
 import { referenceGrid } from '../lib/mapGrid';
@@ -29,7 +32,55 @@ export const ZONE_LEGEND: ReadonlyArray<readonly [string, string, string]> = [
 ];
 type LayerKey = 'grids' | 'buildings' | 'complexes' | 'boundary' | 'zoning' | 'admin';
 const LAYER_IDS: Record<LayerKey, string[]> = { grids: ['grid-fill', 'grid-missing', 'grid-line'], buildings: ['buildings-fill', 'buildings-unknown', 'buildings-line'], complexes: ['complexes-circle'], boundary: ['boundary-line'], zoning: ['zoning-unknown', 'zoning-halo', 'zoning-line'], admin: ['admin-fill', 'admin-line'] };
-const DEFAULT_VISIBLE: Record<LayerKey, boolean> = { grids: true, buildings: true, complexes: false, boundary: true, zoning: false, admin: false };
+/** 처음에는 격자 색과 경계선만. 겹쳐 보는 레이어(건물·단지·용도지역·행정동)는 한 번에 하나만 켠다. */
+const DEFAULT_VISIBLE: Record<LayerKey, boolean> = { grids: true, buildings: false, complexes: false, boundary: true, zoning: false, admin: false };
+export const OVERLAY_KEYS: ReadonlyArray<LayerKey> = ['buildings', 'complexes', 'zoning', 'admin'];
+/** 레이어 하나를 켜고 끈다. 겹쳐 보기 레이어를 켜면 다른 겹쳐 보기 레이어는 끈다(격자·경계선은 그대로). */
+export function toggleLayer(visible: Record<LayerKey, boolean>, key: LayerKey, on: boolean): Record<LayerKey, boolean> {
+  const next = { ...visible, [key]: on };
+  if (on && OVERLAY_KEYS.includes(key)) for (const other of OVERLAY_KEYS) if (other !== key) next[other] = false;
+  return next;
+}
+const PROVINCE_KEY = 'carbon-map-province';
+type MapView = 'province' | 'region';
+
+/** 시·도 코드(법정 2자리): 주소의 sido → 이 브라우저에 기억한 값 → 분석 지역의 시·도. 제주(50)는 이 화면에서 제외. */
+export function pickProvince(param: string | null, stored: string | null, regionCode: string | null): string {
+  for (const code of [param, stored, regionCode?.slice(0, 2) ?? null]) if (code && /^\d{2}$/.test(code) && code !== '50') return code;
+  return '52';
+}
+function storedProvince(): string | null { try { return localStorage.getItem(PROVINCE_KEY); } catch { return null; } }
+function storeProvince(code: string) { try { localStorage.setItem(PROVINCE_KEY, code); } catch { /* Optional browser storage. */ } }
+
+/** 지도 분석: 1단계 시·도 500m 격자(전국 공통 지표) → 2단계 분석 준비 시·군·구 상세(에너지·탄소·건물·용도지역). */
+export function MapPage() {
+  const [params, setParams] = useSearchParams();
+  const view: MapView = params.get('view') === 'region' ? 'region' : 'province';
+  const { region, setScope } = useAnalysisScope();
+  const system = useSystemInfo();
+  const defaultRegion = system?.default_region ?? '52110';
+  const regionName = system?.region?.short_name ?? '전주시';
+  const province = pickProvince(params.get('sido'), storedProvince(), region ?? defaultRegion);
+  const [offline, setOffline] = useState<boolean | null>(null);
+  useEffect(() => { const update = () => { api<{ offline_mode: boolean }>('/system').then((s) => setOffline(s.offline_mode)).catch(() => setOffline(true)); }; update(); window.addEventListener('carbon-system-change', update); return () => window.removeEventListener('carbon-system-change', update); }, []);
+  useEffect(() => () => setBasemapStatus('not-on-map'), []);
+  const go = (next: Record<string, string>) => setParams((old) => { const p = new URLSearchParams(old); for (const [k, v] of Object.entries(next)) p.set(k, v); return p; });
+  const chooseProvince = (code: string) => { storeProvince(code); go({ view: 'province', sido: code }); };
+  const openRegion = (code: string, grid: string) => { setScope({ region: code === defaultRegion ? null : code, gridId: grid }); go({ view: 'region' }); };
+  const description = view === 'province'
+    ? '시·도를 고르면 그 시·도 전체를 SGIS 공식 500m 격자로 나눠 전국 공통 지표(인구·주택·공동주택)로 칠합니다. 굵은 테두리의 분석 준비 지역은 격자를 눌러 시·군·구 상세로 이어집니다.'
+    : `${regionName}의 500m 분석 격자(격자당 250,000m²)에 에너지·탄소·건물·용도지역 지표를 칠합니다. 격자를 누르면 모든 분석 화면의 대상지가 바뀝니다.`;
+  return <div className="page map-page">
+    <PageHeader title="도시 탄소 지도" description={description} />
+    <nav className="map-views" aria-label="지도 보기">
+      <Link to={`?view=province&sido=${province}`} aria-current={view === 'province' ? 'page' : undefined} onClick={() => storeProvince(province)}><strong>1. 시·도 500m 격자</strong><small>전국 공통 지표, 제주 제외</small></Link>
+      <Link to="?view=region" aria-current={view === 'region' ? 'page' : undefined}><strong>2. 시·군·구 상세</strong><small>{regionName} 에너지·탄소</small></Link>
+    </nav>
+    {view === 'province'
+      ? <ProvinceMap provinceCode={province} onProvince={chooseProvince} onOpenRegion={openRegion} offline={offline} />
+      : <RegionDetailMap offline={offline} />}
+  </div>;
+}
 const BUILDING_MIN_ZOOM = 14;
 const EMPTY: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] };
 const DEFAULT_METRIC_ORDER = ['far_est_pct', 'coverage_pct', 'residential_zone_ratio', 'complex_households', 'electricity_kwh_per_m2'];
@@ -39,7 +90,7 @@ const MISSING_NOTICE: Record<'zoning' | 'admin', string> = {
   admin: '행정동 인구 자료 미확보: SGIS 인구·가구를 수집한 뒤 표시됩니다.',
 };
 
-export function MapPage() {
+function RegionDetailMap({ offline }: { offline: boolean | null }) {
   const { year, gridId, query, regionQuery, setScope } = useAnalysisScope();
   const { data, loading, error, reload } = useApi<MapData>(`/map?year=${year}${regionQuery}`);
   const details = useApi<DashboardData>(`/dashboard?${query}`);
@@ -49,7 +100,6 @@ export function MapPage() {
   const mapRef = useRef<maplibregl.Map | null>(null);
   const hoverPopup = useRef<maplibregl.Popup | null>(null);
   const [mapReady, setMapReady] = useState(0);
-  const [offline, setOffline] = useState<boolean | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
   const [basemapEnabled, setBasemapEnabled] = useState(true);
   const [legendOpen, setLegendOpen] = useState(() => typeof window === 'undefined' || window.innerWidth > 720);
@@ -81,10 +131,8 @@ export function MapPage() {
   const selected = grids?.features.find((f) => String((f.properties as GridProps).id) === selectedId)?.properties as GridProps | undefined;
   const showBasemap = offline === false && basemapEnabled && !basemapFailed;
 
-  useEffect(() => { const update = () => { api<{ offline_mode: boolean }>('/system').then((s) => setOffline(s.offline_mode)).catch(() => setOffline(true)); }; update(); window.addEventListener('carbon-system-change', update); return () => window.removeEventListener('carbon-system-change', update); }, []);
   // 표제란의 모드 칸: 배경지도가 없으면(오프라인·끔·타일 실패) "배경지도 없음".
   useEffect(() => { if (offline !== null) setBasemapStatus(showBasemap ? 'shown' : 'none'); }, [offline, showBasemap]);
-  useEffect(() => () => setBasemapStatus('not-on-map'), []);
 
   useEffect(() => {
     if (!container.current || !data || !grids || offline === null) return;
@@ -164,7 +212,12 @@ export function MapPage() {
     m.setPaintProperty('grid-line', 'line-color', showBasemap ? LINE_ON_BASEMAP : TOKENS['line-strong']);
     m.setLayoutProperty('reference-grid', 'visibility', showBasemap ? 'none' : 'visible');
   }, [showBasemap, mapReady]);
-  useEffect(() => { const m = mapRef.current; if (m?.getLayer('grid-fill')) applyVisibility(m, visible); }, [visible, mapReady]);
+  useEffect(() => {
+    const m = mapRef.current; if (!m?.getLayer('grid-fill')) return;
+    applyVisibility(m, visible);
+    const faded = OVERLAY_KEYS.some((key) => visible[key]);
+    m.setPaintProperty('grid-fill', 'fill-opacity', gridOpacity(faded)); m.setPaintProperty('grid-missing', 'fill-opacity', gridOpacity(faded));
+  }, [visible, mapReady]);
   useEffect(() => {
     const m = mapRef.current; const o = overlays.data; if (!m || !mapReady || !o) return;
     if (addOverlayLayers(m, o)) {
@@ -194,8 +247,8 @@ export function MapPage() {
     return () => { m.off('moveend', load); window.clearTimeout(timer); controller?.abort(); };
   }, [mapReady, data?.buildings_mode, visible.buildings]);
 
-  if (loading) return <div className="page"><LoadingState label="공간 레이어를 불러오는 중입니다" /></div>;
-  if (error || !data || !grids) return <div className="page"><ErrorState message={error} onRetry={reload} /></div>;
+  if (loading) return <div className="map-state"><LoadingState label="공간 레이어를 불러오는 중입니다" /></div>;
+  if (error || !data || !grids) return <div className="map-state"><ErrorState message={error} onRetry={reload} /></div>;
   const overlayMeta = overlays.data?.meta; const adminMax = maxOf(overlays.data?.admin, 'population_density');
   const focus = () => { const f = grids.features.find((x) => String((x.properties as GridProps).id) === selectedId); if (mapRef.current && f) fitToData(mapRef.current, { type: 'FeatureCollection', features: [f] }, 16, true); };
   const total = grids.features.length;
@@ -205,9 +258,9 @@ export function MapPage() {
   const adminQuality = provenanceFromCode(overlays.data?.admin.features[0]?.properties?.quality);
   const buildingQuality = provenanceFromCode(viewport?.quality);
   const detailShown = !!selected && detailOpen;
-  return <div className="page map-page">
-    <PageHeader title="도시 탄소 지도" description={`500m 분석 격자 ${total.toLocaleString('ko-KR')}개, 격자당 250,000m². 격자를 누르면 모든 분석 화면의 대상지가 바뀝니다.`} action={<button className="button secondary" onClick={reload}><RefreshCw size={15} />새로고침</button>} />
-    <div className={`map-workspace${detailShown ? ' has-detail' : ''}`}>
+  const overlayOn = OVERLAY_KEYS.some((key) => visible[key]);
+  const toggle = (key: LayerKey) => (on: boolean) => setVisible((old) => toggleLayer(old, key, on));
+  return <div className={`map-workspace${detailShown ? ' has-detail' : ''}`}>
       <div className="map-stage">
         <div ref={container} className={`map-canvas${showBasemap ? '' : ' no-basemap'}`} aria-label={`${regionName} 탄소 공간 지도`} />
         <div className="map-rail">
@@ -233,15 +286,21 @@ export function MapPage() {
           </section>
         </div>
         <div className="map-tools">
-          <button className="tool-button" aria-expanded={layersOpen} onClick={() => setLayersOpen(!layersOpen)}><Layers3 size={16} aria-hidden="true" />레이어<b>{Object.values(visible).filter(Boolean).length}</b></button>
+          <div className="map-tool-row">
+            <button className="tool-button" onClick={reload} aria-label="지도 새로고침"><RefreshCw size={15} aria-hidden="true" /></button>
+            <button className="tool-button" aria-expanded={layersOpen} onClick={() => setLayersOpen(!layersOpen)}><Layers3 size={16} aria-hidden="true" />레이어<b>{Object.values(visible).filter(Boolean).length}</b></button>
+          </div>
           {layersOpen && <section className="map-layers map-popover" aria-label="레이어">
-            <LayerToggle label="분석 격자 (500m)" checked={visible.grids} onChange={(v) => setVisible({ ...visible, grids: v })} />
-            <LayerToggle label={data.buildings_mode === 'viewport' ? '건물 (도로명주소 건물)' : '건물 (OSM 공동주택, 대체)'} checked={visible.buildings} onChange={(v) => setVisible({ ...visible, buildings: v })} hint={data.buildings_mode === 'viewport' ? `확대 ${BUILDING_MIN_ZOOM} 이상에서 표시` : '공식 건물 수집 전 대체 자료'} />
-            <LayerToggle label={`공동주택 단지 (K-apt ${data.complexes?.features.length ?? 0})`} checked={visible.complexes} onChange={(v) => setVisible({ ...visible, complexes: v })} hint="원 크기 = 세대수" />
-            <LayerToggle label={`${regionName} 경계`} checked={visible.boundary} onChange={(v) => setVisible({ ...visible, boundary: v })} hint={data.boundary_source} />
-            {([['zoning', '용도지역 (VWorld)', zoningCount], ['admin', '행정동 인구 (SGIS)', adminCount]] as const).map(([key, label, count]) => <LayerToggle key={key} label={label} checked={visible[key]} onChange={(v) => setVisible({ ...visible, [key]: v })} badge={!count ? (overlays.loading ? '확인 중' : '자료 미확보') : undefined} hint={key === 'zoning' ? '외곽선으로 표시' : undefined} />)}
-            <hr />
-            <LayerToggle label="배경지도 (OpenStreetMap)" checked={basemapEnabled && !offline} disabled={!!offline} onChange={(v) => setBasemapEnabled(v)} hint={offline ? '오프라인 모드: 외부 타일을 요청하지 않음. 도면지 바탕과 1km 참조 격자로 표시' : basemapFailed ? '연결 실패. 도면지 바탕과 1km 참조 격자로 표시' : undefined} />
+            <LayerGroupTitle title="격자 색" note="지표 하나" />
+            <LayerToggle swatch="fill" label="분석 격자 (500m)" checked={visible.grids} onChange={toggle('grids')} hint={`지도 지표: ${metric.label}${overlayOn ? '. 겹쳐 보기 중에는 옅게' : ''}`} />
+            <LayerGroupTitle title="경계선" />
+            <LayerToggle swatch="line" label={`${regionName} 경계`} checked={visible.boundary} onChange={toggle('boundary')} hint={data.boundary_source} />
+            <LayerGroupTitle title="겹쳐 보기" note="한 번에 하나" />
+            <LayerToggle swatch="building" label={data.buildings_mode === 'viewport' ? '건물 (도로명주소 건물)' : '건물 (OSM 공동주택, 대체)'} checked={visible.buildings} onChange={toggle('buildings')} hint={data.buildings_mode === 'viewport' ? `확대 ${BUILDING_MIN_ZOOM} 이상에서 표시, 색 = 용도` : '공식 건물 수집 전 대체 자료'} />
+            <LayerToggle swatch="dot" label={`공동주택 단지 (K-apt ${data.complexes?.features.length ?? 0})`} checked={visible.complexes} onChange={toggle('complexes')} hint="원 크기 = 세대수" />
+            {([['zoning', '용도지역 (VWorld)', zoningCount], ['admin', '행정동 인구 (SGIS)', adminCount]] as const).map(([key, label, count]) => <LayerToggle key={key} swatch={key} label={label} checked={visible[key]} onChange={toggle(key)} badge={!count ? (overlays.loading ? '확인 중' : '자료 미확보') : undefined} hint={key === 'zoning' ? '색 외곽선 = 용도지역' : '면 색 = 행정동 인구밀도'} />)}
+            <LayerGroupTitle title="바탕" />
+            <LayerToggle swatch="base" label="배경지도 (OpenStreetMap)" checked={basemapEnabled && !offline} disabled={!!offline} onChange={(v) => setBasemapEnabled(v)} hint={offline ? '오프라인 모드: 외부 타일을 요청하지 않음. 도면지 바탕과 1km 참조 격자로 표시' : basemapFailed ? '연결 실패. 도면지 바탕과 1km 참조 격자로 표시' : undefined} />
           </section>}
         </div>
         <div className="map-notices">
@@ -253,12 +312,7 @@ export function MapPage() {
         {mapError && <p role="alert" className="map-error">{mapError}</p>}
       </div>
       {detailShown && <GridDetail props={selected} year={year} name={String(data.selected_sector?.grid_id) === selectedId ? data.selected_sector?.name : undefined} metric={metric} classification={classification} details={details.data} detailsLoading={details.loading} onFocus={focus} onClose={() => setDetailOpen(false)} />}
-    </div>
-  </div>;
-}
-
-function LayerToggle({ label, checked, onChange, disabled, hint, badge }: { label: string; checked: boolean; onChange: (value: boolean) => void; disabled?: boolean; hint?: string; badge?: string }) {
-  return <label className="layer-toggle"><input type="checkbox" checked={checked && !disabled} disabled={disabled} onChange={(e) => onChange(e.target.checked)} /><span>{label}{hint && <small>{hint}</small>}</span>{badge && <small className="overlay-empty">{badge}</small>}</label>;
+    </div>;
 }
 
 function GridDetail({ props: p, year, name, metric, classification, details, detailsLoading, onFocus, onClose }: { props: GridProps; year: number; name?: string; metric: MetricDef; classification: Classification; details: DashboardData | null; detailsLoading: boolean; onFocus: () => void; onClose: () => void }) {
@@ -383,8 +437,8 @@ function complexTooltip(p: Record<string, unknown>): string {
   return `<div class="map-tip"><strong>${escapeHtml(p.name)}</strong><span>K-apt ${escapeHtml(p.kapt_code)}</span><b>${escapeHtml(formatMetric(typeof p.households === 'number' ? p.households : null, '세대'))}</b><span>연면적 ${escapeHtml(formatMetric(area, 'm²'))}${p.floor_area_status !== 'OK' ? `, <em>${escapeHtml(p.floor_area_issue || '연면적 확인 필요')}</em>` : ''}</span><span>사용승인 ${escapeHtml(p.approval_date || '자료 없음')}, ${escapeHtml(p.heating_type || '난방방식 자료 없음')}</span></div>`;
 }
 
-/** 격자 면 불투명도 0.85 (DESIGN.md 6). 건물이 보이는 확대 14 이상에서만 옅게 한다. */
-function gridOpacity(): maplibregl.ExpressionSpecification { return ['interpolate', ['linear'], ['zoom'], 13.5, 0.85, 15, 0.35, 16, 0.2]; }
+/** 격자 면 불투명도 0.85 (DESIGN.md 6). 건물이 보이는 확대 14 이상, 또는 겹쳐 보기 레이어를 켰을 때는 옅게 한다. */
+export function gridOpacity(faded = false): maplibregl.ExpressionSpecification { return faded ? ['interpolate', ['linear'], ['zoom'], 13.5, 0.3, 16, 0.15] : ['interpolate', ['linear'], ['zoom'], 13.5, 0.85, 15, 0.35, 16, 0.2]; }
 function missingFilter(key: string): maplibregl.FilterSpecification { return ['==', ['get', key], null]; }
 
 /** 해치 패턴 이미지(45°, --hatch 선 / --prov-missing-bg 바탕) — fill-pattern용. */

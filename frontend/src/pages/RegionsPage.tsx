@@ -92,7 +92,7 @@ export function RegionsPage() {
     catch (e) { setMessage(e instanceof Error ? e.message : '수집을 시작하지 못했습니다.'); }
     finally { setBusy(false); }
   };
-  const analyse = (code: string) => { setAnalysisScope({ region: code === defaultRegion ? null : code }); window.dispatchEvent(new Event('carbon-regions-change')); navigate('/map'); };
+  const analyse = (code: string) => { setAnalysisScope({ region: code === defaultRegion ? null : code }); window.dispatchEvent(new Event('carbon-regions-change')); navigate('/map?view=region'); };
 
   if (regions.loading && !regions.data) return <div className="page"><LoadingState label="전국 지역 정보를 불러오는 중입니다" /></div>;
   if (regions.error || !regions.data) return <div className="page"><ErrorState message={regions.error} onRetry={regions.reload} /></div>;

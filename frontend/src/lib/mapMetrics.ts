@@ -340,7 +340,9 @@ export function classify(values: Array<number | null>, fixed?: number[], ramp: R
   const valid = values.filter((v): v is number => v !== null && Number.isFinite(v));
   const missing = values.length - valid.length;
   if (!valid.length) return { classes: [], lowerBounds: [], valued: 0, missing, min: null, max: null };
-  const min = Math.min(...valid), max = Math.max(...valid);
+  // No spread: a 시·도 has up to ~75,000 cells, more than Math.min(...values) accepts safely.
+  let min = valid[0], max = valid[0];
+  for (const v of valid) { if (v < min) min = v; if (v > max) max = v; }
   const lowerBounds = (fixed ?? quantileBounds(valid)).filter((b) => b > min || fixed !== undefined);
   const colors = pickColors(lowerBounds.length + 1, RAMPS[ramp]);
   const edges = [min, ...lowerBounds];

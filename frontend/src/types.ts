@@ -495,3 +495,26 @@ export interface NationalRegionProps {
 export interface NationalOverview extends GeoJSON.FeatureCollection<GeoJSON.Geometry | null, NationalRegionProps> {
   meta: { year: number | null; regions: number; with_geometry?: number; complexes?: number; sources?: Record<string, string | null> };
 }
+
+/** A 시·도 of the province map (제주 제외). */
+/** ``status`` only in the 시·도 list (the cached grid payload leaves it out). */
+export interface ProvincePreparedRegion { code: string; name: string; short_name: string; status?: string; grid_count: number }
+export interface ProvinceSummary {
+  code: string; name: string; kind: 'PROVINCE' | 'METRO'; sgis_codes: string[]; cells: number; regions: number;
+  prepared: ProvincePreparedRegion[]; excluded?: string | null;
+}
+export interface ProvinceList { provinces: ProvinceSummary[]; excluded: Array<{ code: string; reason: string }> }
+/** GET /api/map/province/{code}: every SGIS 500m cell of one 시·도 as a number row (see ``fields``). */
+export interface ProvinceGrid {
+  code: string; name: string; kind: 'PROVINCE' | 'METRO'; sgis_codes: string[];
+  fields: string[];
+  cells: Array<Array<number | null>>;
+  sigungu: Array<{ code: string; name: string | null; region: string | null }>;
+  regions: ProvincePreparedRegion[];
+  boundaries: GeoJSON.FeatureCollection;
+  bbox: [number, number, number, number] | null;
+  meta: {
+    cells: number; sgis_year: number | null; complex_month: string | null; with_stats: number; no_stat: number; with_complexes: number; prepared: number;
+    grid_source: string; stats_source: string; complex_source: string;
+  };
+}

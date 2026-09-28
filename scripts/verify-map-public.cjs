@@ -11,7 +11,7 @@ const assert=require('node:assert/strict');
  try{
   // One stationary viewport only: no scans or tile prefetching.
   const tiles=[];page.on('response',r=>{if(r.url().startsWith('https://tile.openstreetmap.org/'))tiles.push(r)});
-  const response=await page.goto(base+'/map');
+  const response=await page.goto(base+'/map?view=region');
   assert.equal(response.headers()['referrer-policy'],'strict-origin-when-cross-origin');
   await page.waitForFunction(()=>Number(document.querySelector('.map-canvas')?.dataset.renderedFeatures)>0);
   await page.waitForTimeout(2000);

@@ -51,3 +51,27 @@ describe('MapPage overlays', () => {
     expect(statValue(0, 'OBSERVED_ZERO', '명')).toContain('0');
   });
 });
+
+describe('MapPage views and layers', () => {
+  it('opens the 시·도 of the address, then the remembered one, then the analysis region (never 제주)', async () => {
+    const { pickProvince } = await import('./MapPage');
+    expect(pickProvince('41', '52', '52110')).toBe('41');
+    expect(pickProvince(null, '11', '52110')).toBe('11');
+    expect(pickProvince(null, null, '52110')).toBe('52');
+    expect(pickProvince('50', null, '41111')).toBe('41');
+    expect(pickProvince('x', 'bad', null)).toBe('52');
+  });
+  it('keeps one overlay at a time and leaves the grid and boundary alone', async () => {
+    const { toggleLayer } = await import('./MapPage');
+    const base = { grids: true, buildings: false, complexes: false, boundary: true, zoning: true, admin: false };
+    const next = toggleLayer(base, 'admin', true);
+    expect(next).toEqual({ grids: true, buildings: false, complexes: false, boundary: true, zoning: false, admin: true });
+    expect(toggleLayer(next, 'boundary', false)).toMatchObject({ admin: true, boundary: false });
+    expect(toggleLayer(next, 'admin', false)).toMatchObject({ admin: false, zoning: false, grids: true });
+  });
+  it('fades the grid colour while an overlay is shown', async () => {
+    const { gridOpacity } = await import('./MapPage');
+    expect(JSON.stringify(gridOpacity(true))).toContain('0.3');
+    expect(JSON.stringify(gridOpacity(false))).toContain('0.85');
+  });
+});

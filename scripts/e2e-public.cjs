@@ -20,7 +20,7 @@ const out = path.resolve('data/deployment');
     assert.equal((await (await context.request.get(base+'/api/system')).json()).offline_mode,false); checks.push('online_collection_enabled');
     await page.goto(base); await page.locator('.metric-card').first().waitFor();
     assert.equal(await page.locator('.metric-card').count(),8); checks.push('public_dashboard');
-    await page.goto(base+'/map');
+    await page.goto(base+'/map?view=region');
     await page.waitForFunction(()=>Number(document.querySelector('.map-canvas')?.dataset.renderedFeatures)>0);
     await page.screenshot({path:path.join(out,'public-map.png'),fullPage:true}); checks.push('public_real_map');
     await page.goto(base+'/simulation'); await page.getByRole('button',{name:'30층',exact:true}).click();

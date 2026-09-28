@@ -14,7 +14,7 @@ fs.mkdirSync(out, { recursive: true });
   try {
     const meta = (await (await page.request.get(base + '/api/map/overlays')).json()).meta;
     const mapData = await (await page.request.get(base + '/api/map')).json();
-    await page.goto(base + '/map', { waitUntil: 'domcontentloaded' });
+    await page.goto(base + '/map?view=region', { waitUntil: 'domcontentloaded' });
     await page.locator('.maplibregl-canvas').waitFor();
     await page.waitForFunction(() => Number(document.querySelector('.map-canvas')?.dataset.renderedFeatures) > 0, null, { timeout: 60000 });
     // Every map metric shows explicit classes plus a separate "missing (not 0)" row.
@@ -44,6 +44,8 @@ fs.mkdirSync(out, { recursive: true });
     }
     // Official building footprints (VWorld LT_C_SPBD) are fetched per viewport after zooming in.
     if (mapData.buildings_mode === 'viewport') {
+      // Buildings are an overlay (off by default, one overlay at a time).
+      await page.getByRole('checkbox', { name: /건물 \(/ }).check();
       await page.getByRole('button', { name: '선택 격자로 확대' }).click();
       await page.waitForFunction(() => Number(document.querySelector('.map-canvas')?.dataset.renderedBuildings) > 0, null, { timeout: 60000 });
       await page.screenshot({ path: path.join(out, 'map-buildings.png'), fullPage: true });

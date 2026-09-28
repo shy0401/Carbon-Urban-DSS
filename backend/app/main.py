@@ -110,6 +110,8 @@ from . import sgis_grid_official  # noqa: F401 - registers sgis_official_grid_ce
 from . import regions,national,ordinances  # noqa: F401 - registers admin_units, study_regions, grid_regions, national_*, zoning_ordinances before create_all
 from .regions_api import router as regions_router
 app.include_router(regions_router)
+from .province_map import router as province_map_router
+app.include_router(province_map_router)
 from .regions import RegionNotReady,DEFAULT_REGION,region_for_grid
 
 def _scope(db,region):
