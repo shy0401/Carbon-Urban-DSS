@@ -38,7 +38,7 @@ def test_payload_counts_cells_and_keeps_official_population():
     rows = [
         {"adm_code": "3101151", "adm_name": "파장동", "parent_code": "31011", "population": 20000, "population_status": "OK",
          "households": 9000, "household_status": "OK", "area_m2": 4_000_000, "outline": json.dumps({"type": "Polygon", "coordinates": [[[127, 37], [127.1, 37], [127.1, 37.1], [127, 37]]]})},
-        {"adm_code": "3101152", "adm_name": "정자1동", "parent_code": "31011", "population": None, "population_status": "SUPPRESSED",
+        {"adm_code": "3101152", "adm_name": "경기도 수원시 장안구 정자1동", "parent_code": "31011", "population": None, "population_status": "SUPPRESSED",
          "households": None, "household_status": "SUPPRESSED", "area_m2": 1_000_000, "outline": None},
     ]
     body = dongs.build_payload(sc, 2024, rows, {"a": [[0, 1.0]], "b": [[0, 0.5], [1, 0.5]]})
@@ -46,6 +46,7 @@ def test_payload_counts_cells_and_keeps_official_population():
     assert first["cells"] == 2 and first["cell_area_km2"] == 0.375 and first["density"] == 5000.0
     # A suppressed statistic stays missing (never 0).
     assert second["population"] is None and second["density"] is None and second["cells"] == 1
+    assert second["name"] == "정자1동"
     assert len(body["boundaries"]["features"]) == 1 and body["boundaries"]["features"][0]["properties"]["name"] == "파장동"
 
 

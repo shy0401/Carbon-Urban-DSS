@@ -157,6 +157,11 @@ def cell_shares_sql(db: Any, cells: dict[str, tuple[float, float]], codes: list[
     return out
 
 
+def short_dong_name(name: str | None) -> str | None:
+    """'전북특별자치도 전주시 덕진구 금암1동' → '금암1동' (SGIS gives some 행정동 with their full path)."""
+    return name.split()[-1] if name and name.split() else name
+
+
 def build_payload(sc: Any, year: int | None, rows: list[dict[str, Any]], weights: dict[str, list[list[float]]]) -> dict[str, Any]:
     cells = [0] * len(rows)
     covered = [0.0] * len(rows)
@@ -169,7 +174,7 @@ def build_payload(sc: Any, year: int | None, rows: list[dict[str, Any]], weights
         area_km2 = (row.get("area_m2") or 0) / 1_000_000
         population = row.get("population")
         dongs.append({
-            "code": row["adm_code"], "name": row.get("adm_name") or row["adm_code"], "sigungu": row.get("parent_code"),
+            "code": row["adm_code"], "name": short_dong_name(row.get("adm_name")) or row["adm_code"], "sigungu": row.get("parent_code"),
             "population": population, "population_status": row.get("population_status"),
             "households": row.get("households"), "household_status": row.get("household_status"),
             "area_km2": round(area_km2, 3) if area_km2 else None,
@@ -179,7 +184,7 @@ def build_payload(sc: Any, year: int | None, rows: list[dict[str, Any]], weights
         outline = row.get("outline")
         if outline:
             features.append({"type": "Feature", "id": i, "geometry": json.loads(outline) if isinstance(outline, str) else outline,
-                             "properties": {"i": i, "code": row["adm_code"], "name": row.get("adm_name")}})
+                             "properties": {"i": i, "code": row["adm_code"], "name": short_dong_name(row.get("adm_name"))}})
     return {
         "region": sc.code, "year": year, "dongs": dongs, "boundaries": {"type": "FeatureCollection", "features": features},
         "weights": weights,

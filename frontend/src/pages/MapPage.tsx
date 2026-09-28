@@ -89,6 +89,7 @@ export function MapPage() {
 const BUILDING_MIN_ZOOM = 14;
 const EMPTY: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] };
 const DEFAULT_METRIC_ORDER = ['far_est_pct', 'coverage_pct', 'residential_zone_ratio', 'complex_households', 'electricity_kwh_per_m2'];
+const BASIC_METRIC_ORDER = ['sgis_pop_density', 'sgis_housing_density', 'complex_count'];
 const HATCH = 'hatch-missing';
 const MISSING_NOTICE: Record<'zoning' | 'admin', string> = {
   zoning: '용도지역 자료 미확보: VWorld 또는 원본 파일 승인 후 표시됩니다.',
@@ -137,7 +138,9 @@ function RegionDetailMap({ offline }: { offline: boolean | null }) {
     for (const metric of METRICS) result[metric.key] = classify(grids.features.map((f) => (f.properties as GridProps)[metric.key] as number | null), metric.breaks, metric.ramp);
     return result;
   }, [grids]);
-  const activeKey = metricKey ?? DEFAULT_METRIC_ORDER.find((key) => (classifications[key]?.valued ?? 0) >= 20) ?? METRICS.find((m) => classifications[m.key]?.valued)?.key ?? 'electricity_kwh_annual';
+  // 기본 지도(전국 공통 자료만)는 SGIS 인구밀도부터: 이웃 상세 지역과 겹친 몇 격자의 값으로 고르지 않는다.
+  const defaultOrder = data?.region?.level === 'BASIC' ? BASIC_METRIC_ORDER : DEFAULT_METRIC_ORDER;
+  const activeKey = metricKey ?? defaultOrder.find((key) => (classifications[key]?.valued ?? 0) >= 20) ?? METRICS.find((m) => classifications[m.key]?.valued)?.key ?? 'electricity_kwh_annual';
   const metric = METRICS.find((m) => m.key === activeKey) ?? METRICS[0];
   const classification = classifications[metric.key] ?? { classes: [], lowerBounds: [], valued: 0, missing: 0, min: null, max: null };
   const metricRef = useRef({ metric, classification }); metricRef.current = { metric, classification };
