@@ -260,7 +260,9 @@ export interface MapData {
   center?: [number, number];
   /** [west, south, east, north] of the study region (EPSG:4326). */
   bbox?: [number, number, number, number] | null;
-  region?: RegionRef & { status?: string; grids?: number };
+  region?: RegionRef & { status?: string; grids?: number; level?: RegionLevel };
+  /** Where the complex points come from (the region's K-apt detail pages, or the national list before them). */
+  complexes_source?: string | null;
   crs?: string;
   grid_size_m?: number;
   grid_area_m2?: number;
@@ -466,8 +468,11 @@ export interface RegionRef { code: string; name: string; short_name: string }
 
 export interface RegionStep { id: string; label: string; status: string | null; message?: string; at?: string; rows?: number; resume_at?: string }
 
+/** DETAILED: the region's own energy/building/zoning collection is in. BASIC: national layers only. NONE: no cells yet. */
+export type RegionLevel = 'DETAILED' | 'BASIC' | 'NONE';
+
 export interface RegionSummary extends RegionRef {
-  sido_name: string; status: 'NOT_PREPARED' | 'PREPARING' | 'READY' | 'PARTIAL' | string;
+  sido_name: string; status: 'NOT_PREPARED' | 'PREPARING' | 'READY' | 'PARTIAL' | string; level?: RegionLevel;
   legal_codes: string[]; sgis_codes?: string[]; grid_count?: number; default_grid_id?: string | null;
   center?: [number, number] | null; bbox?: [number, number, number, number] | null;
   datasets?: Record<string, { status: string; message?: string; at?: string; rows?: number }>;
@@ -499,9 +504,14 @@ export interface NationalOverview extends GeoJSON.FeatureCollection<GeoJSON.Geom
 /** A 시·도 of the province map (제주 제외). */
 /** ``status`` only in the 시·도 list (the cached grid payload leaves it out). */
 export interface ProvincePreparedRegion { code: string; name: string; short_name: string; status?: string; grid_count: number }
+export interface ProvinceUnit { code: string; name: string; short_name: string; level: RegionLevel }
 export interface ProvinceSummary {
   code: string; name: string; kind: 'PROVINCE' | 'METRO'; sgis_codes: string[]; cells: number; regions: number;
-  prepared: ProvincePreparedRegion[]; excluded?: string | null;
+  /** 상세 자료 지역 (outlined). */
+  prepared: ProvincePreparedRegion[];
+  /** Every 시·군·구 of the 시·도 with how far its map goes. */
+  units?: ProvinceUnit[];
+  excluded?: string | null;
 }
 export interface ProvinceList { provinces: ProvinceSummary[]; excluded: Array<{ code: string; reason: string }> }
 /** GET /api/map/province/{code}: every SGIS 500m cell of one 시·도 as a number row (see ``fields``). */
@@ -517,4 +527,20 @@ export interface ProvinceGrid {
     cells: number; sgis_year: number | null; complex_month: string | null; with_stats: number; no_stat: number; with_complexes: number; prepared: number;
     grid_source: string; stats_source: string; complex_source: string;
   };
+}
+
+/** GET /api/map/dongs: 읍면동(행정동) of a region with the share of each 500m cell inside each of them. */
+export interface DongInfo {
+  code: string; name: string; sigungu: string | null;
+  population: number | null; population_status: string | null; households: number | null; household_status: string | null;
+  area_km2: number | null; density: number | null;
+  /** Analysis cells touching the 행정동, and the area they cover inside it. */
+  cells: number; cell_area_km2: number;
+}
+export interface DongData {
+  region: string; year: number | null; dongs: DongInfo[];
+  boundaries: GeoJSON.FeatureCollection<GeoJSON.Geometry, { i: number; code: string; name: string | null }>;
+  /** cell id → [[dong index, share of the cell's 250,000 m² inside it], …] */
+  weights: Record<string, Array<[number, number]>>;
+  source: string;
 }

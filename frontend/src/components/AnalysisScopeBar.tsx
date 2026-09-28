@@ -7,6 +7,13 @@ const FIRST_YEAR = 2015;
 const MORE = '__more__';
 const CURRENT = '__current__';
 
+type RegionOption = { code: string; short_name: string; name: string; level?: string };
+/** 상세 자료 지역(에너지·건물·용도지역) 먼저, 기본 지도(전국 공통 자료)만 있는 지역은 따로 묶는다. */
+export function groupRegions(options: RegionOption[]): Array<[string, RegionOption[]]> {
+  const sorted = [...options].sort((a, b) => a.short_name.localeCompare(b.short_name, 'ko'));
+  return [['상세 자료', sorted.filter((o) => o.level !== 'BASIC')], ['기본 지도 (전국 공통 자료)', sorted.filter((o) => o.level === 'BASIC')]];
+}
+
 /** 분석 범위 컨트롤: 분석 지역·연도 선택과 기본 대상지 복귀. 표시는 표제란(TitleBlock)이 맡는다. */
 export function AnalysisScopeBar() {
   const { year, gridId, region, setScope } = useAnalysisScope();
@@ -27,7 +34,7 @@ export function AnalysisScopeBar() {
   return <div className="scope-controls" title="지역·연도·격자는 모든 분석 화면에 함께 적용됩니다">
     <label className="scope-field"><span>분석 지역</span>
       <span className="select-wrap"><select aria-label="분석 지역" data-testid="region-select" value={known ? current : CURRENT} onChange={(e) => pick(e.target.value)}>
-        {options.map((option) => <option key={option.code} value={option.code} title={option.name}>{option.short_name}</option>)}
+        {groupRegions(options).map(([label, items]) => items.length ? <optgroup key={label} label={label}>{items.map((option) => <option key={option.code} value={option.code} title={option.name}>{option.short_name}</option>)}</optgroup> : null)}
         {!known && <option value={CURRENT} disabled>{system?.region?.short_name ?? current}</option>}
         <option value={MORE}>전국에서 고르기…</option>
       </select><ChevronDown size={15} aria-hidden="true" /></span>

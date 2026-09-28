@@ -387,10 +387,29 @@ def _set_center(db: Any, region: StudyRegion) -> None:
     region.center_lon, region.center_lat = round(cx, 6), round(cy, 6)
 
 
+# Layers only a region's own collection brings in (the rest of a region comes from the national base layers).
+DETAIL_STEPS = ("zoning", "buildings", "register", "building_energy", "kapt_energy")
+
+
+def detail_level(region: StudyRegion | None) -> str:
+    """How far a region's map goes.
+
+    * ``DETAILED``: the region's own collection brought energy, buildings, zoning or the building register.
+    * ``BASIC``: analysis cells built from the national layers only (SGIS grid statistics, 행정동, K-apt list, 조례).
+    * ``NONE``: no analysis cells yet (opening the region builds them in seconds).
+    """
+    if region is None or not region.grid_count:
+        return "NONE"
+    if region.code == DEFAULT_REGION:
+        return "DETAILED"
+    datasets = region.datasets or {}
+    return "DETAILED" if any((datasets.get(step) or {}).get("status") == "DONE" for step in DETAIL_STEPS) else "BASIC"
+
+
 def region_summary(region: StudyRegion | None) -> dict[str, Any] | None:
     if region is None:
         return None
-    return {"code": region.code, "name": region.name, "sido_name": region.sido_name, "status": region.status, "legal_codes": region.legal_codes,
+    return {"code": region.code, "name": region.name, "sido_name": region.sido_name, "status": region.status, "level": detail_level(region), "legal_codes": region.legal_codes,
             "sgis_codes": region.sgis_codes, "grid_count": region.grid_count, "default_grid_id": region.default_grid_id,
             "center": [region.center_lon, region.center_lat] if region.center_lon is not None else None, "bbox": region.bbox,
             "datasets": region.datasets or {}, "message": region.message,

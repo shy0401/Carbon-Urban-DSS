@@ -112,6 +112,8 @@ from .regions_api import router as regions_router
 app.include_router(regions_router)
 from .province_map import router as province_map_router
 app.include_router(province_map_router)
+from .dongs import router as dongs_router
+app.include_router(dongs_router)
 from .regions import RegionNotReady,DEFAULT_REGION,region_for_grid
 
 def _scope(db,region):
@@ -349,6 +351,10 @@ def grid_energy_properties(db,year,factors,sc=None):
         p['gas_carbon_kg_annual']=carbon_kg(g.get('kwh'),factors.get('GAS'))
     return result
 
+def _level(db,code):
+    from .regions import detail_level,get_region
+    return detail_level(get_region(db,code)) if code!=DEFAULT_REGION else 'DETAILED'
+
 @app.get('/api/map')
 def map_data(year:int=Query(DEFAULT_YEAR,ge=2000,le=2100),region:str|None=Query(None,max_length=10)):
     from .domain import carbon_kg
@@ -379,7 +385,7 @@ def map_data(year:int=Query(DEFAULT_YEAR,ge=2000,le=2100),region:str|None=Query(
             if c.get('households') is not None:item['complex_households']=(item['complex_households'] or 0)+c['households']
             # Only plausible published floor areas are summed; the rest are counted as excluded.
             if c.get('floor_area_status')=='OK':item['complex_gfa_m2']=(item['complex_gfa_m2'] or 0)+c['gross_floor_area_m2']
-            else:item['complex_gfa_excluded']+=1
+            elif c.get('floor_area_status'):item['complex_gfa_excluded']+=1  # None: list-only complex (no detail page yet)
         empty_energy={'electricity_kwh':None,'gas_kwh':None,'electricity_months':0,'gas_months':0,'energy_parcels':0,'electricity_complete_parcels':0,'electricity_observed_parcels':0,'electricity_suspect_parcels':0,'electricity_area_parcels':0,'electricity_household_parcels':0,'electricity_kwh_per_m2':None,'electricity_kwh_per_household':None,'electricity_area_m2':None,'electricity_households':None,'gas_kwh_per_m2':None,'gas_complete_parcels':0,'gas_observed_parcels':0,'gas_area_parcels':0,'gas_area_m2':None,'electricity_kwh_annual':None,'gas_kwh_annual':None,'electricity_carbon_kg_annual':None,'electricity_carbon_kg':None,'electricity_carbon_kg_per_m2':None,'gas_carbon_kg_annual':None}
         grids=[]
         rows=[r for start in range(0,len(ids),2000) for r in db.scalars(select(Grid).where(Grid.id.in_(ids[start:start+2000])).order_by(Grid.id))]
@@ -423,14 +429,15 @@ def map_data(year:int=Query(DEFAULT_YEAR,ge=2000,le=2100),region:str|None=Query(
             'buildings_mode':'viewport' if official_buildings else 'embedded',
             'buildings_source':'VWorld LT_C_SPBD 도로명주소 건물(화면 범위 조회)' if official_buildings else 'OpenStreetMap 공동주택 윤곽(대체 자료, 전체 건물 아님)',
             'boundary':boundary,'boundary_source':official_boundary['features'][0]['properties']['source'] if official_boundary else 'OpenStreetMap 행정경계(대체 자료)',
-            'complexes':complexes,'complex_floor_area_issues':sum(1 for f in complexes['features'] if f['properties'].get('floor_area_status')!='OK'),
+            'complexes':complexes,'complex_floor_area_issues':sum(1 for f in complexes['features'] if f['properties'].get('floor_area_status') not in ('OK',None)),
+            'complexes_source':complexes.get('source'),
             'factors':{'electricity':{'value':electricity_factor['factor'],'unit':electricity_factor['factor_unit'],'source':electricity_factor.get('source'),'reference_year':electricity_factor.get('reference_year')} if electricity_factor else None,'gas':None if not factors.get('GAS') else {'value':factors['GAS']['factor'],'unit':factors['GAS']['factor_unit']}},
             'building_energy':{'grids':len(building_energy),'parcels':sum(v['parcels'] for v in building_energy.values()),'complete':year_complete(year),'source':'건축HUB 건물에너지 (법정동 단위 전 지번, 연속지적으로 격자 배치)'} if building_energy else None,
             'register':{'grids':len(register),'buildings':sum(r['buildings'] for r in register.values()),'source':'건축HUB 건축물대장 표제부 (격자 연결분)'} if register else None,
             'sgis_grid':{'year':next((v.get('sgis1k_year') for v in sgis_props.values()),None),'source':'SGIS 격자 통계 1km (공공데이터포털 15141768)','note':'소속 1km 공식 격자의 밀도·비율이며 500m로 나눈 값이 아닙니다. 비밀보호 잡음(±7) 포함.'} if sgis_props else None,
             'sgis_grid_official':dict(official_grid_meta(db),source='SGIS OpenAPI grid/data.geojson (grid_level_div=500m)') if official else None,
             'selected_sector':serialize(sector) if sector else None,'center':list(sc.center) if sc.center else [127.148,35.8242],'bbox':list(sc.bbox) if sc.bbox else None,'crs':'EPSG:5179','grid_size_m':500,'grid_area_m2':250000,'year':year,'offline_mode':offline_mode(),
-            'region':{'code':sc.code,'name':sc.name,'short_name':sc.short,'status':sc.status,'grids':len(ids)},
+            'region':{'code':sc.code,'name':sc.name,'short_name':sc.short,'status':sc.status,'grids':len(ids),'level':_level(db,sc.code)},
         }
 
 @app.get('/api/grids/{grid_id}')
@@ -625,7 +632,8 @@ def system(region:str|None=Query(None,max_length=10)):
         except HTTPException:sc=_scope(db,None)
         sector=region_sector(db,sc)
         default_grid=sector.grid_id if sector else None
-        try:prepared=[{'code':r.code,'name':r.name,'short_name':short_name(r.name),'status':r.status,'grid_count':r.grid_count,'default_grid_id':r.default_grid_id}
+        from .regions import detail_level
+        try:prepared=[{'code':r.code,'name':r.name,'short_name':short_name(r.name),'status':r.status,'level':detail_level(r),'grid_count':r.grid_count,'default_grid_id':r.default_grid_id}
                       for r in db.scalars(select(StudyRegion).order_by(StudyRegion.code)) if r.grid_count]
         except Exception:db.rollback();prepared=[]
     return {'offline_mode':offline_mode(),'baseline_year':DEFAULT_YEAR,'version':app.version,'default_grid_id':default_grid,

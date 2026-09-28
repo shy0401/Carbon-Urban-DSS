@@ -180,7 +180,38 @@ def complex_features(db: Any, sc: Any = None) -> dict[str, Any]:
             "building_count": row.building_count,
             "approval_date": row.approval_date, "heating_type": row.heating_type, "grid_id": row.grid_id,
         }})
-    return {"type": "FeatureCollection", "features": features}
+    if not features and sc is not None and not getattr(sc, "is_default", True):
+        listed = national_complex_features(db, sc)
+        if listed["features"]:
+            return listed
+    return {"type": "FeatureCollection", "features": features, "source": "K-apt 공동주택 기본정보 (단지 상세)"}
+
+
+def national_complex_features(db: Any, sc: Any) -> dict[str, Any]:
+    """Before a region's own K-apt step: the national complex list (name, approval month, position; no households or
+    floor area). The complex is placed in the analysis cell under its point."""
+    from .national import NationalComplex
+
+    try:
+        from pyproj import Transformer
+        to5179 = Transformer.from_crs(4326, 5179, always_xy=True).transform
+        rows = list(db.scalars(select(NationalComplex).where(NationalComplex.longitude.is_not(None), NationalComplex.latitude.is_not(None),
+                                                             NationalComplex.sigungu_code.in_(list(sc.legal_codes))).order_by(NationalComplex.kapt_code)))
+    except Exception:  # noqa: BLE001 - national layer not collected or no projection library
+        db.rollback()
+        return {"type": "FeatureCollection", "features": []}
+    features = []
+    for row in rows:
+        x, y = to5179(row.longitude, row.latitude)
+        cell = f"cell_{int(x // 500 * 500)}_{int(y // 500 * 500)}"
+        month = row.approval_month or ""
+        features.append({"type": "Feature", "id": row.kapt_code, "geometry": {"type": "Point", "coordinates": [row.longitude, row.latitude]}, "properties": {
+            "kapt_code": row.kapt_code, "name": row.name, "households": None, "gross_floor_area_m2": None, "floor_area_status": None,
+            "floor_area_issue": None, "building_count": None,
+            "approval_date": f"{month[:4]}-{month[4:6]}" if len(month) >= 6 else (month or None), "heating_type": None,
+            "grid_id": cell if cell in sc.grid_ids else None, "listed_only": True,
+        }})
+    return {"type": "FeatureCollection", "features": features, "source": f"K-apt 전국 단지 목록 {rows[0].snapshot_month if rows else ''} (좌표·사용승인월만, 세대수는 상세 자료 수집 후)"}
 
 
 def zoning_area_by_category(db: Any, grid_ids: Any = None) -> tuple[dict[str, float], int]:

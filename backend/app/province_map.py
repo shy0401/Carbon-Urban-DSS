@@ -42,12 +42,14 @@ def _kind(name: str) -> str:
 def province_list(db: Any) -> list[dict[str, Any]]:
     """시·도 (제주 제외) with their SGIS 시도 codes, prepared study regions and 500m cell counts."""
     from .national import NationalUnit
-    from .regions import StudyRegion, catalog, short_name, sido_keys
+    from .regions import StudyRegion, catalog, detail_level, short_name, sido_keys
     groups: dict[str, dict[str, Any]] = {}
+    units: dict[str, list[dict[str, Any]]] = {}
     for region in catalog(db):
         code = region["code"][:2]
         item = groups.setdefault(code, {"code": code, "name": region["sido_name"], "regions": 0})
         item["regions"] += 1
+        units.setdefault(code, []).append({"code": region["code"], "name": region["name"], "short_name": short_name(region["name"]), "level": "NONE"})
     try:
         year = db.scalar(select(func.max(NationalUnit.year)))
         sgis = [(u.adm_code, u.adm_name or "") for u in db.scalars(select(NationalUnit).where(NationalUnit.year == year, NationalUnit.level == "SIDO"))]
@@ -55,19 +57,26 @@ def province_list(db: Any) -> list[dict[str, Any]]:
         db.rollback()
         sgis = []
     counts = _cell_counts(db)
+    # 상세 자료 지역 (the region's own energy/building/zoning collection): outlined on the map, cells link to them.
+    # Regions opened with the national layers only (BASIC) are listed in ``units`` with their level.
     prepared: dict[str, list[dict[str, Any]]] = {}
+    levels: dict[str, str] = {}
     try:
         for region in db.scalars(select(StudyRegion).where(StudyRegion.grid_count > 0).order_by(StudyRegion.code)):
-            prepared.setdefault(region.code[:2], []).append({"code": region.code, "name": region.name, "short_name": short_name(region.name),
-                                                             "status": region.status, "grid_count": region.grid_count})
+            level = detail_level(region)
+            levels[region.code] = level
+            if level == "DETAILED":
+                prepared.setdefault(region.code[:2], []).append({"code": region.code, "name": region.name, "short_name": short_name(region.name),
+                                                                 "status": region.status, "grid_count": region.grid_count})
     except Exception:  # noqa: BLE001
         db.rollback()
     out = []
     for code, item in sorted(groups.items()):
         keys = set(sido_keys(item["name"]))
         codes = sorted(c for c, n in sgis if keys & set(sido_keys(n)))
+        members = [dict(unit, level=levels.get(unit["code"], "NONE")) for unit in units.get(code, [])]
         out.append(dict(item, kind=_kind(item["name"]), sgis_codes=codes, cells=sum(counts.get(c, 0) for c in codes),
-                        prepared=prepared.get(code, []), excluded=EXCLUDED.get(code)))
+                        prepared=prepared.get(code, []), units=members, excluded=EXCLUDED.get(code)))
     out.sort(key=lambda p: (p["kind"] != "PROVINCE", p["code"]))
     return out
 

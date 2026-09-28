@@ -196,6 +196,16 @@ export const METRICS: MetricDef[] = [
     use: '공동주택 세대 규모를 보고, 인구 대신 세대 기준으로 부하를 추정합니다.',
   },
   {
+    key: 'complex_count', label: '공동주택 단지 수', unit: '단지', group: '도시 형태', ramp: 'seq', digits: 0, breaks: [1, 2, 4, 8],
+    // 단지 목록을 격자에 놓은 결과라 단지가 없는 격자의 0은 실제 0입니다.
+    value: (p) => n(p.complex_count),
+    definition: '좌표가 격자 안에 있는 K-apt 의무관리 공동주택 단지 수입니다. 상세 자료를 받기 전 지역은 전국 단지 목록 좌표로 셉니다.',
+    formula: 'count(단지 좌표 ∈ 격자)',
+    basis: () => null,
+    source: 'K-apt 공동주택 기본정보·전국 단지 목록',
+    use: '아파트 단지가 모인 곳을 찾고, 세대수·연면적을 받기 전 지역의 공동주택 분포를 봅니다.',
+  },
+  {
     key: 'reg_far_pct', label: '용적률 (건축물대장)', unit: '%', group: REGISTER_GROUP, ramp: 'seq', digits: 1,
     value: (p) => n(p.reg_far_pct), breaks: [25, 50, 100, 200],
     definition: `격자 안 건물의 공식 용적률산정연면적(건축물대장)을 격자 면적으로 나눈 값입니다. 필지 대지면적 기준의 법정 용적률과 다르지만, 층수로 추정한 용적률보다 정확합니다. 소수점이 밀린 오기처럼 건축면적×층수나 연면적과 맞지 않는 값은 빼고(0이 아님) 계산합니다.`,

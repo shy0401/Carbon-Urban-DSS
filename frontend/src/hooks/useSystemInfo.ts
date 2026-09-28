@@ -2,7 +2,7 @@ import { useEffect, useSyncExternalStore } from 'react';
 import { api } from '../lib/api';
 import { useAnalysisScope } from './useAnalysisScope';
 
-export interface PreparedRegion { code: string; name: string; short_name: string; status: string; grid_count: number; default_grid_id: string | null }
+export interface PreparedRegion { code: string; name: string; short_name: string; status: string; grid_count: number; default_grid_id: string | null; level?: 'DETAILED' | 'BASIC' | 'NONE' }
 export interface SystemInfo {
   offline_mode: boolean; baseline_year: number; version: string;
   /** Grid of the default 대상지 of the current region. */

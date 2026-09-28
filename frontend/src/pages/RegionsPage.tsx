@@ -2,7 +2,7 @@ import * as maplibregl from 'maplibre-gl';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import { CheckCircle2, Clock3, Database, Globe2, Loader2, MapPinned, Play, Search, TriangleAlert } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { PageHeader } from '../components/PageHeader';
 import { ErrorState, LoadingState } from '../components/Status';
 import { setAnalysisScope, useAnalysisScope } from '../hooks/useAnalysisScope';
@@ -53,7 +53,8 @@ export function RegionsPage() {
   const [metric, setMetric] = useState<MetricKey>('density');
   const [query, setQuery] = useState('');
   const [sido, setSido] = useState('');
-  const [selected, setSelected] = useState<string | null>(null);
+  const [searchParams] = useSearchParams();
+  const [selected, setSelected] = useState<string | null>(() => searchParams.get('select'));
   const [detail, setDetail] = useState<RegionSummary | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -184,9 +185,10 @@ function RegionDetail({ props, detail, current, busy, onPrepare, onAnalyse }: { 
       <div><dt>K-apt 단지</dt><dd>{props.complexes ? `${props.complexes.toLocaleString('ko-KR')}곳` : '-'}</dd></div><div><dt>분석 격자</dt><dd>{hasGrid ? `${(detail.grid_count ?? 0).toLocaleString('ko-KR')}개` : '없음'}</dd></div>
     </dl>}
     <div className="region-actions">
-      {hasGrid && <button type="button" className="button primary" onClick={onAnalyse}><MapPinned size={15} aria-hidden="true" />{current ? '이 지역 지도 보기' : '이 지역 분석하기'}</button>}
-      <button type="button" className={`button ${hasGrid ? 'secondary' : 'primary'}`} onClick={onPrepare} disabled={busy || preparing}>{preparing ? <><Loader2 size={15} className="spin" aria-hidden="true" />준비 중…</> : <><Play size={15} aria-hidden="true" />{detail.status === 'NOT_PREPARED' ? '이 지역 준비 (자료 수집)' : '남은 단계 이어서 수집'}</>}</button>
+      <button type="button" className="button primary" onClick={onAnalyse}><MapPinned size={15} aria-hidden="true" />{hasGrid ? (current ? '이 지역 지도 보기' : '이 지역 분석하기') : '지도 열기 (읍면동 포함)'}</button>
+      <button type="button" className="button secondary" onClick={onPrepare} disabled={busy || preparing}>{preparing ? <><Loader2 size={15} className="spin" aria-hidden="true" />준비 중…</> : <><Play size={15} aria-hidden="true" />{detail.status === 'NOT_PREPARED' || detail.level === 'BASIC' ? '상세 자료 수집 (에너지·건물·용도지역)' : '남은 단계 이어서 수집'}</>}</button>
     </div>
+    {!hasGrid && <p className="muted">지도 열기는 전국 기초 자료(SGIS 격자 통계·행정동·K-apt 단지 목록·조례)로 500m 격자와 읍면동 지도를 몇 초 만에 만듭니다. 에너지·건물·용도지역은 '상세 자료 수집'으로 모읍니다.</p>}
     {detail.message && <p className="muted">{detail.message}</p>}
     <ol className="step-list">{steps.map((step) => <li key={step.id} className={`step ${step.status ? step.status.toLowerCase() : 'todo'}`}>
       <StepIcon status={step.status} /><div><strong>{step.label}</strong><small>{step.status ? STEP_LABEL[step.status] ?? step.status : '아직 안 함'}{step.message ? ` · ${step.message}` : ''}{step.resume_at ? ` · 재개 ${formatDate(step.resume_at)}` : ''}</small></div>

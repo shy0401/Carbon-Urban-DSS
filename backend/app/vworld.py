@@ -263,8 +263,17 @@ def zoning_intersections(grids: list[dict[str, Any]], zones: list[dict[str, Any]
 
 
 def _grid_shapes(db: Any, scope: str) -> list[dict[str, Any]]:
+    """Cells of the original study region (this whole-city collection predates the per-region steps; other regions use
+    ``collect_vworld_cells`` over their own cells, so opening regions nationwide never widens this request)."""
     limit = 1 if scope == "smoke" else 25 if scope == "limited" else None
     query = select(Grid).order_by(Grid.id)
+    try:
+        from .regions import DEFAULT_REGION, region_grid_ids
+        own = region_grid_ids(db, DEFAULT_REGION)
+    except Exception:  # noqa: BLE001
+        own = frozenset()
+    if own and scope == "full":
+        query = query.where(Grid.id.in_(sorted(own)))
     if limit:
         query = query.limit(limit)
     rows = []

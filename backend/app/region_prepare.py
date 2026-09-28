@@ -51,6 +51,9 @@ STEP_LABELS = {
     "kapt_energy": "K-apt 월별 에너지", "finalize": "연결·기본 대상지 정리",
 }
 QUOTA_BOUND = ("building_energy", "kapt_energy")
+# Opening any 시·군·구 on the map builds these right away (national layers already in the database + one weather call).
+BASIC_STEPS = ("grid", "sgis_admin", "ordinance", "weather")
+_OPEN_LOCKS: dict[str, Any] = {}
 DONE_STATES = ("DONE", "SKIPPED")
 
 
@@ -537,6 +540,44 @@ def prepare_region(db: Any, code: str, steps: list[str] | None = None, *, log: L
     db.commit()
     forget_region_cache(code)
     return {"code": code, "status": region.status, "datasets": region.datasets}
+
+
+def open_region(db: Any, code: str, *, log: Log = print) -> StudyRegion:
+    """Analysis cells of any 시·군·구 from the national layers (the basic map), built once in seconds.
+
+    Runs in the caller's process (not the one-region-at-a-time worker queue): the grid, SGIS 행정동 and 조례 steps read
+    data the national collection already stored; weather is a single request and may fail without blocking the map.
+    The region's own collection (energy, buildings, zoning, register) stays a separate, explicit request.
+    """
+    import threading
+    region = create_region(db, code)
+    if region.grid_count or code == DEFAULT_REGION:
+        return region
+    lock = _OPEN_LOCKS.setdefault(code, threading.Lock())
+    with lock:
+        db.refresh(region)
+        if region.grid_count:
+            return region
+        if region.status == "PREPARING" and (region.datasets or {}).get("grid", {}).get("status") in ("RUNNING", "QUEUED"):
+            raise RuntimeError(f"{region.name}의 격자를 다른 작업이 만드는 중입니다. 잠시 뒤 다시 여세요")
+        previous = region.message
+        steps = [step for step in BASIC_STEPS if (region.datasets or {}).get(step, {}).get("status") not in DONE_STATES]
+        prepare_region(db, code, steps, log=log)
+        region = db.get(StudyRegion, code)
+        db.refresh(region)
+        if (region.datasets or {}).get("grid", {}).get("status") == "FAILED":
+            # e.g. a border cell another region inserted at the same moment: the second run finds it and links it.
+            prepare_region(db, code, ["grid"], log=log)
+        region = db.get(StudyRegion, code)
+        db.refresh(region)
+        if region.grid_count and not any((region.datasets or {}).get(s, {}).get("status") in ("RUNNING", "QUEUED") for s in STEPS):
+            from .regions import detail_level
+            if detail_level(region) == "BASIC":
+                region.message = "기본 지도: 전국 공통 자료(SGIS 격자 통계·행정동·K-apt 단지 목록·조례)만 있습니다. 에너지·건물·용도지역은 상세 자료 수집 뒤 채워집니다"
+            elif previous:
+                region.message = previous
+            db.commit()
+        return region
 
 
 def _progress_logger(db: Any, region: StudyRegion, step: str, log: Log) -> Log:

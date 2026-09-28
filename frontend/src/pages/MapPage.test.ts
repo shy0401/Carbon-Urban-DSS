@@ -75,3 +75,14 @@ describe('MapPage views and layers', () => {
     expect(JSON.stringify(gridOpacity(false))).toContain('0.85');
   });
 });
+
+describe('읍면동 labels', () => {
+  it('names the 행정동 a cell lies in, largest part first', async () => {
+    const { dongLabel } = await import('./MapPage');
+    const data = { dongs: [{ name: '효자1동' }, { name: '효자2동' }], weights: { a: [[0, 0.3], [1, 0.7]], b: [[0, 1]] } } as never;
+    expect(dongLabel(data, 'a')).toBe('효자2동 · 효자1동');
+    expect(dongLabel(data, 'a', true)).toBe('행정동: 효자2동 70%, 효자1동 30%');
+    expect(dongLabel(data, 'zz')).toBeNull();
+    expect(dongLabel(null, 'a')).toBeNull();
+  });
+});

@@ -29,17 +29,19 @@ class FakeDb:
 
 
 CATALOG = [
-    {"code": "41111", "sido_name": "경기도"}, {"code": "41113", "sido_name": "경기도"},
-    {"code": "52110", "sido_name": "전북특별자치도"},
-    {"code": "11110", "sido_name": "서울특별시"},
-    {"code": "12110", "sido_name": "전남광주통합특별시"},
-    {"code": "50110", "sido_name": "제주특별자치도"},
+    {"code": "41110", "sido_name": "경기도", "name": "경기도 수원시"}, {"code": "41820", "sido_name": "경기도", "name": "경기도 가평군"},
+    {"code": "52110", "sido_name": "전북특별자치도", "name": "전북특별자치도 전주시"},
+    {"code": "11110", "sido_name": "서울특별시", "name": "서울특별시 종로구"},
+    {"code": "12110", "sido_name": "전남광주통합특별시", "name": "전남광주통합특별시 동구"},
+    {"code": "50110", "sido_name": "제주특별자치도", "name": "제주특별자치도 제주시"},
 ]
 UNITS = [SimpleNamespace(adm_code=c, adm_name=n) for c, n in [
     ("11", "서울특별시"), ("24", "광주광역시"), ("31", "경기도"), ("35", "전북특별자치도"), ("36", "전라남도"), ("39", "제주특별자치도")]]
 COUNTS = {"11": 2500, "24": 2100, "31": 42119, "35": 33306, "36": 51000, "39": 8000}
-PREPARED = [SimpleNamespace(code="41110", name="경기도 수원시", status="READY", grid_count=520),
-            SimpleNamespace(code="52110", name="전북특별자치도 전주시", status="READY", grid_count=916)]
+PREPARED = [SimpleNamespace(code="41110", name="경기도 수원시", status="PARTIAL", grid_count=559, datasets={"buildings": {"status": "DONE"}}),
+            # Opened from the map with the national layers only: listed as a unit, not outlined as a detailed region.
+            SimpleNamespace(code="41820", name="경기도 가평군", status="PARTIAL", grid_count=3500, datasets={"grid": {"status": "DONE"}}),
+            SimpleNamespace(code="52110", name="전북특별자치도 전주시", status="READY", grid_count=916, datasets={})]
 
 
 def listing(monkeypatch):
@@ -55,6 +57,8 @@ def test_provinces_are_grouped_with_sgis_codes_and_prepared_regions(monkeypatch)
     items = {p["code"]: p for p in listing(monkeypatch)}
     assert items["41"]["sgis_codes"] == ["31"] and items["41"]["cells"] == 42119 and items["41"]["regions"] == 2
     assert [r["short_name"] for r in items["41"]["prepared"]] == ["수원시"]
+    assert {u["short_name"]: u["level"] for u in items["41"]["units"]} == {"수원시": "DETAILED", "가평군": "BASIC"}
+    assert items["11"]["units"] == [{"code": "11110", "name": "서울특별시 종로구", "short_name": "종로구", "level": "NONE"}]
     assert items["52"]["sgis_codes"] == ["35"] and items["52"]["prepared"][0]["grid_count"] == 916
     # 통합특별시 covers the two old SGIS 시도 (광주 24 + 전남 36) and counts as a 도-level menu item.
     assert items["12"]["sgis_codes"] == ["24", "36"] and items["12"]["cells"] == 53100 and items["12"]["kind"] == "PROVINCE"

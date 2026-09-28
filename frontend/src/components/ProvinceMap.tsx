@@ -9,7 +9,7 @@ import { classify, rangeLabel, stepColor, type Classification } from '../lib/map
 import { DEFAULT_PROVINCE_METRIC, PROVINCE_METRICS, rowValue, type ProvinceMetric } from '../lib/provinceMetrics';
 import { cellRing } from '../lib/tm5179';
 import { LINE_ON_BASEMAP, TOKENS } from '../theme/palette';
-import type { ProvinceGrid, ProvinceList, ProvinceSummary } from '../types';
+import type { ProvinceGrid, ProvinceList, ProvinceSummary, ProvinceUnit } from '../types';
 import { LayerGroupTitle, LayerToggle } from './LayerToggle';
 import { ErrorState, LoadingState } from './Status';
 
@@ -178,9 +178,13 @@ export function ProvinceMap({ provinceCode, onProvince, onOpenRegion, offline }:
       {grid.error && !grid.loading && <div className="map-loading"><ErrorState message={grid.error} onRetry={grid.reload} /></div>}
       <div className="map-rail">
         <div className="province-title"><strong>{summary?.name ?? data?.name ?? ''}</strong><span>500m 격자 {formatMetric(data?.meta.cells ?? summary?.cells ?? null, '개')}</span></div>
-        {summary && <div className="province-prepared" aria-label="분석 준비 지역">
-          <span>분석 준비 지역</span>
-          {summary.prepared.length ? summary.prepared.map((r) => <button key={r.code} type="button" onClick={() => onOpenRegion(r.code, null)} title={`${r.name}: 에너지·탄소·건물·용도지역 상세 (${r.grid_count.toLocaleString('ko-KR')}격자)`}>{r.short_name} 상세 →</button>) : <Link to="/regions">없음 · 전국 지역에서 준비</Link>}
+        {summary && <div className="province-prepared" aria-label="시·군·구 지도 열기">
+          <span>상세 자료</span>
+          {summary.prepared.length ? summary.prepared.map((r) => <button key={r.code} type="button" onClick={() => onOpenRegion(r.code, null)} title={`${r.name}: 에너지·탄소·건물·용도지역 상세 (${r.grid_count.toLocaleString('ko-KR')}격자)`}>{r.short_name} →</button>) : <em>없음</em>}
+          {summary.units?.length ? <span className="select-wrap unit-open"><select aria-label="시·군·구 지도 열기" value="" onChange={(e) => { if (e.target.value) onOpenRegion(e.target.value, null); }}>
+            <option value="">시·군·구 지도 열기 ({summary.units.length}곳)…</option>
+            {[...summary.units].sort((a, b) => a.short_name.localeCompare(b.short_name, 'ko')).map((u) => <option key={u.code} value={u.code}>{u.short_name}{u.level === 'DETAILED' ? ' · 상세' : u.level === 'BASIC' ? ' · 기본' : ''}</option>)}
+          </select><ChevronDown size={14} aria-hidden="true" /></span> : null}
         </div>}
         <div className="metric-picker">
           <button className="metric-trigger" aria-haspopup="listbox" aria-expanded={pickerOpen} onClick={() => setPickerOpen(!pickerOpen)}>
@@ -200,7 +204,7 @@ export function ProvinceMap({ provinceCode, onProvince, onOpenRegion, offline }:
           {classification.missing > 0 && <div className="legend-missing"><i className="is-missing" /><span>{metric.resolution === '500m' ? '값 없음 (0 아님)' : metric.unit === '%' ? '통계 없음 또는 분모 20 미만 (0 아님)' : '통계 없음·비공개 (0 아님)'}</span><em>{classification.missing.toLocaleString('ko-KR')}격자</em></div>}
           <ul className="layer-key" aria-label="선 기호">
             {visible.sigungu && <li><i className="key-line" />시·군·구 경계</li>}
-            {visible.prepared && <li><i className="key-line prepared" />분석 준비 지역 (상세 지표 있음){data?.regions.length ? `: ${data.regions.map((r) => r.short_name).join(', ')}` : ': 없음'}</li>}
+            {visible.prepared && <li><i className="key-line prepared" />상세 자료 지역 (에너지·건물·용도지역){data?.regions.length ? `: ${data.regions.map((r) => r.short_name).join(', ')}` : ': 없음'}</li>}
           </ul>
           <details className="legend-def"><summary>정의·출처·활용</summary><p>{metric.definition}</p><p className="legend-use"><b>활용</b> {metric.use}</p><p className="legend-source">출처: {metric.source}{data ? ` · ${metric.resolution === '1km' ? data.meta.stats_source : data.meta.complex_source}` : ''}</p></details>
         </section>
@@ -212,21 +216,22 @@ export function ProvinceMap({ provinceCode, onProvince, onOpenRegion, offline }:
           <LayerToggle label="500m 격자" hint={`지도 지표: ${metric.label}`} swatch="fill" colors={classification.classes.map((c) => c.color)} checked={visible.cells} onChange={(v) => setVisible({ ...visible, cells: v })} />
           <LayerGroupTitle title="경계선" />
           <LayerToggle label="시·군·구 경계" swatch="line" checked={visible.sigungu} onChange={(v) => setVisible({ ...visible, sigungu: v })} />
-          <LayerToggle label="분석 준비 지역" hint="에너지·탄소·건물·용도지역 상세 지표가 있는 시·군·구" swatch="prepared" checked={visible.prepared} onChange={(v) => setVisible({ ...visible, prepared: v })} />
+          <LayerToggle label="상세 자료 지역" hint="에너지·탄소·건물·용도지역까지 모은 시·군·구 (다른 곳도 격자를 누르면 기본 지도로 열림)" swatch="prepared" checked={visible.prepared} onChange={(v) => setVisible({ ...visible, prepared: v })} />
           <LayerGroupTitle title="바탕" />
           <LayerToggle label="배경지도 (OpenStreetMap)" swatch="base" checked={basemap && !offline} disabled={!!offline} onChange={setBasemap} hint={offline ? '오프라인 모드: 외부 타일을 요청하지 않음' : basemapFailed ? '연결 실패. 도면지 바탕으로 표시' : undefined} />
         </section>}
       </div>
     </div>
-    {selectedRow && data && <CellDetail grid={data} index={selected as number} row={selectedRow} metric={metric} onClose={() => setSelected(null)} onOpenRegion={onOpenRegion} />}
+    {selectedRow && data && <CellDetail grid={data} index={selected as number} row={selectedRow} metric={metric} units={summary?.units ?? []} onClose={() => setSelected(null)} onOpenRegion={onOpenRegion} />}
   </div>;
 }
 
-function CellDetail({ grid, index, row, metric, onClose, onOpenRegion }: { grid: ProvinceGrid; index: number; row: Array<number | null>; metric: ProvinceMetric; onClose: () => void; onOpenRegion: (regionCode: string, gridId: string | null) => void }) {
+function CellDetail({ grid, index, row, metric, units, onClose, onOpenRegion }: { grid: ProvinceGrid; index: number; row: Array<number | null>; metric: ProvinceMetric; units: ProvinceUnit[]; onClose: () => void; onOpenRegion: (regionCode: string, gridId: string | null) => void }) {
   const sgg = grid.sigungu[Number(rowValue(grid.fields, row, 'sgg'))];
   const regionIndex = rowValue(grid.fields, row, 'region');
   const region = regionIndex !== null && regionIndex >= 0 ? grid.regions[regionIndex] : null;
   const id = cellId(grid, row);
+  const unit = sgg?.region ? units.find((u) => u.code === sgg.region) : undefined;
   const value = (key: string) => rowValue(grid.fields, row, key);
   return <aside className="map-detail" aria-label="선택 격자 상세">
     <header className="detail-head"><div><h2>{sgg?.name ?? '시·군·구 미상'}</h2><code className="grid-id">{id}</code></div><button type="button" className="icon-link" aria-label="상세 닫기" onClick={onClose}><X size={16} /></button></header>
@@ -248,15 +253,15 @@ function CellDetail({ grid, index, row, metric, onClose, onOpenRegion }: { grid:
         <div className="fact"><dt>평균 사용승인연도</dt><dd>{value('complex_year') === null ? <span className="muted">단지 없음</span> : `${value('complex_year')}년`}</dd></div>
       </dl>
     </section>
-    <section className="detail-section" aria-label="분석 상태">
-      <h3>에너지·탄소 상세</h3>
+    <section className="detail-section" aria-label="시·군·구와 읍면동 지도">
+      <h3>시·군·구 · 읍면동 지도</h3>
       {region ? <>
-        <p>{region.short_name}은 분석 준비 지역입니다. 이 격자의 에너지 관측·탄소·건물·용도지역·법적 상한을 시·군·구 상세 지도에서 볼 수 있습니다.</p>
-        <button type="button" className="button primary" onClick={() => onOpenRegion(region.code, id)}>{region.short_name} 상세 지도에서 보기</button>
-      </> : <>
-        <p className="muted">{sgg?.name ?? '이 시·군·구'}는 아직 분석 지역으로 준비하지 않았습니다. 준비하면 에너지·탄소·건물·용도지역 지표를 이 격자까지 봅니다.</p>
-        <Link className="button secondary" to="/regions">전국 지역에서 준비하기</Link>
-      </>}
+        <p>{region.short_name}은 상세 자료 지역입니다. 이 격자의 에너지 관측·탄소·건물·용도지역·법적 상한과 읍면동별 합계를 시·군·구 지도에서 봅니다.</p>
+        <button type="button" className="button primary" onClick={() => onOpenRegion(region.code, id)}>{region.short_name} 지도에서 보기</button>
+      </> : unit ? <>
+        <p>{unit.level === 'BASIC' ? `${unit.short_name}은 기본 지도(전국 공통 자료)가 있습니다.` : `${unit.short_name}은 처음 열면 전국 자료로 500m 격자·읍면동 지도를 만듭니다(몇 초~1분).`} 에너지·탄소·건물·용도지역은 그 지도에서 상세 자료 수집을 시작하면 채워집니다.</p>
+        <button type="button" className="button primary" onClick={() => onOpenRegion(unit.code, id)}>{unit.short_name} 지도 열기 (읍면동 포함)</button>
+      </> : <p className="muted">이 격자의 시·군·구를 법정 행정구역과 연결하지 못해 시·군·구 지도를 열 수 없습니다. <Link to="/regions">전국 지역</Link>에서 확인하세요.</p>}
     </section>
     <p className="muted small">격자 {index + 1} / {grid.cells.length.toLocaleString('ko-KR')} · SGIS 공식 500m 격자</p>
   </aside>;
@@ -270,5 +275,5 @@ function cellTooltip(grid: ProvinceGrid, index: number, metric: ProvinceMetric):
   const value = rowValue(grid.fields, row, metric.key);
   const regionIndex = rowValue(grid.fields, row, 'region');
   const region = regionIndex !== null && regionIndex >= 0 ? grid.regions[regionIndex] : null;
-  return `<div class="map-tip"><strong>${escapeHtml(sgg?.name ?? '시·군·구 미상')}</strong><span>${escapeHtml(metric.label)} (${metric.resolution})</span><b>${value === null ? '값 없음' : escapeHtml(formatMetric(value, metric.unit, metric.digits))}</b>${region ? `<span>분석 준비 지역 · 눌러서 상세</span>` : ''}</div>`;
+  return `<div class="map-tip"><strong>${escapeHtml(sgg?.name ?? '시·군·구 미상')}</strong><span>${escapeHtml(metric.label)} (${metric.resolution})</span><b>${value === null ? '값 없음' : escapeHtml(formatMetric(value, metric.unit, metric.digits))}</b>${region ? `<span>상세 자료 지역 · 눌러서 보기</span>` : '<span>눌러서 시·군·구 지도로</span>'}</div>`;
 }

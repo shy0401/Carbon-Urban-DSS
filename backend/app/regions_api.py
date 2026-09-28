@@ -156,6 +156,25 @@ def prepare(code: str, request: PrepareInput | None = None) -> dict[str, Any]:
         return region_summary(region)
 
 
+@router.post("/{code}/open")
+def open_region_map(code: str) -> dict[str, Any]:
+    """Make any 시·군·구 openable on the map: build its analysis cells from the national layers (seconds, once)."""
+    from .region_prepare import open_region
+    with Session() as db:
+        try:
+            region = open_region(db, code, log=lambda message: None)
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from None
+        except RuntimeError as exc:
+            raise HTTPException(409, str(exc)) from None
+        if not region.grid_count:
+            step = (region.datasets or {}).get("grid") or {}
+            raise HTTPException(503, step.get("message") or "이 지역의 500m 격자를 만들지 못했습니다")
+        body = region_summary(region)
+        body["short_name"] = short_name(region.name)
+        return body
+
+
 class NationalInput(BaseModel):
     datasets: list[Literal["admin_units", "sgis_national", "kapt_national", "grid500", "ordinances"]] = Field(
         default=["admin_units", "sgis_national", "kapt_national", "grid500", "ordinances"], min_length=1)
