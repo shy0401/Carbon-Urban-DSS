@@ -37,6 +37,15 @@ export function cellId(grid: ProvinceGrid, row: Array<number | null>): string {
   return `cell_${Number(row[grid.fields.indexOf('x')]) * 500}_${Number(row[grid.fields.indexOf('y')]) * 500}`;
 }
 
+/** Fit the 시·도 into the part of the map not covered by the floating legend column (left 320px on wide screens). */
+function fitProvince(map: maplibregl.Map, bbox: [number, number, number, number] | null) {
+  if (!bbox) return;
+  const width = map.getContainer().clientWidth;
+  const stacked = typeof window !== 'undefined' && !!window.matchMedia?.('(max-width: 760px)').matches;
+  const left = stacked ? 24 : Math.min(320, Math.max(24, width - 240));
+  map.fitBounds(bbox, { padding: { top: 40, bottom: 40, left, right: stacked ? 24 : 40 }, duration: 0 });
+}
+
 /** Group the 시·도 menu: 도 first, then 특별시·광역시 (server order inside each group). */
 export function menuGroups(provinces: ProvinceSummary[]): Array<[ProvinceSummary['kind'], ProvinceSummary[]]> {
   return (['PROVINCE', 'METRO'] as const).map((kind) => [kind, provinces.filter((p) => p.kind === kind && !p.excluded)] as [ProvinceSummary['kind'], ProvinceSummary[]]).filter(([, items]) => items.length);
@@ -59,6 +68,8 @@ export function ProvinceMap({ provinceCode, onProvince, onOpenRegion, offline }:
   const [basemap, setBasemap] = useState(true);
   const [basemapFailed, setBasemapFailed] = useState(false);
   const [selected, setSelected] = useState<number | null>(null);
+  // The first view follows the stage size (detail panel, mobile stacking) until the user pans or zooms.
+  const view = useRef<{ bbox: [number, number, number, number] | null; moved: boolean }>({ bbox: null, moved: false });
   const data = grid.data && grid.data.code === provinceCode ? grid.data : null;
   const metric = PROVINCE_METRICS.find((m) => m.key === metricKey) ?? PROVINCE_METRICS[0];
   const features = useMemo(() => (data ? provinceFeatures(data) : null), [data]);
@@ -82,6 +93,8 @@ export function ProvinceMap({ provinceCode, onProvince, onOpenRegion, offline }:
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
     map.addControl(new maplibregl.ScaleControl({ maxWidth: 96, unit: 'metric' }), 'bottom-left');
     map.addControl(new maplibregl.AttributionControl({ compact: true, customAttribution: '격자·통계 SGIS, 단지 K-apt' }), 'bottom-right');
+    map.on('movestart', (e) => { if ((e as { originalEvent?: unknown }).originalEvent) view.current.moved = true; });
+    map.on('resize', () => { if (!view.current.moved) fitProvince(map, view.current.bbox); });
     map.on('error', (e) => { if (isBasemapError(e as { sourceId?: string; error?: { message?: string } })) { setBasemapFailed(true); if (map.getLayer('basemap')) map.removeLayer('basemap'); } });
     map.on('load', () => {
       map.addSource('pv-cells', { type: 'geojson', data: EMPTY, promoteId: 'i' });
@@ -119,8 +132,9 @@ export function ProvinceMap({ provinceCode, onProvince, onOpenRegion, offline }:
     const prepared = new Set((data?.regions ?? []).map((r) => r.code));
     const bounds = data ? { ...data.boundaries, features: data.boundaries.features.map((f) => ({ ...f, properties: { ...f.properties, prepared: prepared.has(String(f.properties?.region ?? '')) } })) } : EMPTY;
     (map.getSource('pv-bounds') as maplibregl.GeoJSONSource).setData(bounds);
-    map.resize(); // the stage may have changed size while the grid loaded (menu, mobile stacking)
-    if (data?.bbox) map.fitBounds(data.bbox, { padding: { top: 40, bottom: 40, left: map.getContainer().clientWidth > 760 ? 320 : 30, right: 40 }, duration: 0 });
+    view.current = { bbox: data?.bbox ?? null, moved: false };
+    map.resize(); // the stage may have changed size while the grid loaded
+    fitProvince(map, view.current.bbox);
   }, [features, data, ready]);
   useEffect(() => {
     const map = mapRef.current; if (!map?.getLayer('pv-fill')) return;
