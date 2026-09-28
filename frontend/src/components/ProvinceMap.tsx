@@ -43,7 +43,7 @@ export function menuGroups(provinces: ProvinceSummary[]): Array<[ProvinceSummary
 }
 
 export function ProvinceMap({ provinceCode, onProvince, onOpenRegion, offline }: {
-  provinceCode: string; onProvince: (code: string) => void; onOpenRegion: (regionCode: string, gridId: string) => void; offline: boolean | null;
+  provinceCode: string; onProvince: (code: string) => void; onOpenRegion: (regionCode: string, gridId: string | null) => void; offline: boolean | null;
 }) {
   const list = useApi<ProvinceList>('/map/provinces');
   const grid = useApi<ProvinceGrid>(`/map/province/${provinceCode}`);
@@ -154,6 +154,10 @@ export function ProvinceMap({ provinceCode, onProvince, onOpenRegion, offline }:
       {grid.error && !grid.loading && <div className="map-loading"><ErrorState message={grid.error} onRetry={grid.reload} /></div>}
       <div className="map-rail">
         <div className="province-title"><strong>{summary?.name ?? data?.name ?? ''}</strong><span>500m 격자 {formatMetric(data?.meta.cells ?? summary?.cells ?? null, '개')}</span></div>
+        {summary && <div className="province-prepared" aria-label="분석 준비 지역">
+          <span>분석 준비 지역</span>
+          {summary.prepared.length ? summary.prepared.map((r) => <button key={r.code} type="button" onClick={() => onOpenRegion(r.code, null)} title={`${r.name}: 에너지·탄소·건물·용도지역 상세 (${r.grid_count.toLocaleString('ko-KR')}격자)`}>{r.short_name} 상세 →</button>) : <Link to="/regions">없음 · 전국 지역에서 준비</Link>}
+        </div>}
         <div className="metric-picker">
           <button className="metric-trigger" aria-haspopup="listbox" aria-expanded={pickerOpen} onClick={() => setPickerOpen(!pickerOpen)}>
             <span><small>격자 색 (지표 하나)</small><strong>{metric.label}</strong></span><em>{metric.unit}</em><ChevronDown size={16} aria-hidden="true" />
@@ -194,7 +198,7 @@ export function ProvinceMap({ provinceCode, onProvince, onOpenRegion, offline }:
   </div>;
 }
 
-function CellDetail({ grid, index, row, metric, onClose, onOpenRegion }: { grid: ProvinceGrid; index: number; row: Array<number | null>; metric: ProvinceMetric; onClose: () => void; onOpenRegion: (regionCode: string, gridId: string) => void }) {
+function CellDetail({ grid, index, row, metric, onClose, onOpenRegion }: { grid: ProvinceGrid; index: number; row: Array<number | null>; metric: ProvinceMetric; onClose: () => void; onOpenRegion: (regionCode: string, gridId: string | null) => void }) {
   const sgg = grid.sigungu[Number(rowValue(grid.fields, row, 'sgg'))];
   const regionIndex = rowValue(grid.fields, row, 'region');
   const region = regionIndex !== null && regionIndex >= 0 ? grid.regions[regionIndex] : null;

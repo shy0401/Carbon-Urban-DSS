@@ -66,7 +66,7 @@ export function MapPage() {
   useEffect(() => () => setBasemapStatus('not-on-map'), []);
   const go = (next: Record<string, string>) => setParams((old) => { const p = new URLSearchParams(old); for (const [k, v] of Object.entries(next)) p.set(k, v); return p; });
   const chooseProvince = (code: string) => { storeProvince(code); go({ view: 'province', sido: code }); };
-  const openRegion = (code: string, grid: string) => { setScope({ region: code === defaultRegion ? null : code, gridId: grid }); go({ view: 'region' }); };
+  const openRegion = (code: string, grid: string | null) => { setScope({ region: code === defaultRegion ? null : code, gridId: grid }); go({ view: 'region' }); };
   const description = view === 'province'
     ? '시·도를 고르면 그 시·도 전체를 SGIS 공식 500m 격자로 나눠 전국 공통 지표(인구·주택·공동주택)로 칠합니다. 굵은 테두리의 분석 준비 지역은 격자를 눌러 시·군·구 상세로 이어집니다.'
     : `${regionName}의 500m 분석 격자(격자당 250,000m²)에 에너지·탄소·건물·용도지역 지표를 칠합니다. 격자를 누르면 모든 분석 화면의 대상지가 바뀝니다.`;
