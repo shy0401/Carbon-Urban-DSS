@@ -63,9 +63,9 @@ describe('MapPage views and layers', () => {
   });
   it('keeps one overlay at a time and leaves the grid and boundary alone', async () => {
     const { toggleLayer } = await import('./MapPage');
-    const base = { grids: true, buildings: false, complexes: false, boundary: true, zoning: true, admin: false };
+    const base = { grids: true, buildings: false, complexes: false, boundary: true, dongs: true, zoning: true, admin: false };
     const next = toggleLayer(base, 'admin', true);
-    expect(next).toEqual({ grids: true, buildings: false, complexes: false, boundary: true, zoning: false, admin: true });
+    expect(next).toEqual({ grids: true, buildings: false, complexes: false, boundary: true, dongs: true, zoning: false, admin: true });
     expect(toggleLayer(next, 'boundary', false)).toMatchObject({ admin: true, boundary: false });
     expect(toggleLayer(next, 'admin', false)).toMatchObject({ admin: false, zoning: false, grids: true });
   });
