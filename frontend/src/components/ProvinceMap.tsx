@@ -119,6 +119,7 @@ export function ProvinceMap({ provinceCode, onProvince, onOpenRegion, offline }:
     const prepared = new Set((data?.regions ?? []).map((r) => r.code));
     const bounds = data ? { ...data.boundaries, features: data.boundaries.features.map((f) => ({ ...f, properties: { ...f.properties, prepared: prepared.has(String(f.properties?.region ?? '')) } })) } : EMPTY;
     (map.getSource('pv-bounds') as maplibregl.GeoJSONSource).setData(bounds);
+    map.resize(); // the stage may have changed size while the grid loaded (menu, mobile stacking)
     if (data?.bbox) map.fitBounds(data.bbox, { padding: { top: 40, bottom: 40, left: map.getContainer().clientWidth > 760 ? 320 : 30, right: 40 }, duration: 0 });
   }, [features, data, ready]);
   useEffect(() => {
@@ -173,7 +174,7 @@ export function ProvinceMap({ provinceCode, onProvince, onOpenRegion, offline }:
           <div className="legend-head"><strong>{metric.label}</strong><span className="unit">{metric.unit}</span><button type="button" className="legend-toggle" aria-expanded={legendOpen} onClick={() => setLegendOpen((open) => !open)}>{legendOpen ? '범례 접기' : '범례 펼치기'}</button></div>
           <p className={`resolution-tag res-${metric.resolution}`}>{metric.resolution === '1km' ? '1km 격자 값 (같은 1km 안 500m 격자 4개는 같은 값)' : '500m 격자 안에서 센 값'}</p>
           {classification.classes.length ? <ul className="legend-classes">{classification.classes.map((c, i) => <li key={i}><i style={{ background: c.color }} /><span>{rangeLabel(c, metric.digits, i === classification.classes.length - 1)}</span><em>{c.count.toLocaleString('ko-KR')}격자</em></li>)}</ul> : <p className="map-empty-hint">{data ? '이 시·도에는 이 지표 값이 없습니다.' : '격자를 불러오면 표시합니다.'}</p>}
-          {classification.missing > 0 && <div className="legend-missing"><i className="is-missing" /><span>{metric.resolution === '1km' ? '통계 없음·비공개 (0 아님)' : '값 없음 (0 아님)'}</span><em>{classification.missing.toLocaleString('ko-KR')}격자</em></div>}
+          {classification.missing > 0 && <div className="legend-missing"><i className="is-missing" /><span>{metric.resolution === '500m' ? '값 없음 (0 아님)' : metric.unit === '%' ? '통계 없음 또는 분모 20 미만 (0 아님)' : '통계 없음·비공개 (0 아님)'}</span><em>{classification.missing.toLocaleString('ko-KR')}격자</em></div>}
           <ul className="layer-key" aria-label="선 기호">
             {visible.sigungu && <li><i className="key-line" />시·군·구 경계</li>}
             {visible.prepared && <li><i className="key-line prepared" />분석 준비 지역 (상세 지표 있음){data?.regions.length ? `: ${data.regions.map((r) => r.short_name).join(', ')}` : ': 없음'}</li>}
@@ -185,7 +186,7 @@ export function ProvinceMap({ provinceCode, onProvince, onOpenRegion, offline }:
         <button className="tool-button" aria-expanded={layersOpen} onClick={() => setLayersOpen(!layersOpen)}><Layers3 size={16} aria-hidden="true" />레이어<b>{Object.values(visible).filter(Boolean).length}</b></button>
         {layersOpen && <section className="map-layers map-popover" aria-label="레이어">
           <LayerGroupTitle title="격자 색" note="지표 하나" />
-          <LayerToggle label="500m 격자" hint={`지도 지표: ${metric.label}`} swatch="fill" checked={visible.cells} onChange={(v) => setVisible({ ...visible, cells: v })} />
+          <LayerToggle label="500m 격자" hint={`지도 지표: ${metric.label}`} swatch="fill" colors={classification.classes.map((c) => c.color)} checked={visible.cells} onChange={(v) => setVisible({ ...visible, cells: v })} />
           <LayerGroupTitle title="경계선" />
           <LayerToggle label="시·군·구 경계" swatch="line" checked={visible.sigungu} onChange={(v) => setVisible({ ...visible, sigungu: v })} />
           <LayerToggle label="분석 준비 지역" hint="에너지·탄소·건물·용도지역 상세 지표가 있는 시·군·구" swatch="prepared" checked={visible.prepared} onChange={(v) => setVisible({ ...visible, prepared: v })} />

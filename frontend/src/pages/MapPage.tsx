@@ -292,7 +292,7 @@ function RegionDetailMap({ offline }: { offline: boolean | null }) {
           </div>
           {layersOpen && <section className="map-layers map-popover" aria-label="레이어">
             <LayerGroupTitle title="격자 색" note="지표 하나" />
-            <LayerToggle swatch="fill" label="분석 격자 (500m)" checked={visible.grids} onChange={toggle('grids')} hint={`지도 지표: ${metric.label}${overlayOn ? '. 겹쳐 보기 중에는 옅게' : ''}`} />
+            <LayerToggle swatch="fill" colors={classification.classes.map((c) => c.color)} label="분석 격자 (500m)" checked={visible.grids} onChange={toggle('grids')} hint={`지도 지표: ${metric.label}${overlayOn ? '. 겹쳐 보기 중에는 옅게' : ''}`} />
             <LayerGroupTitle title="경계선" />
             <LayerToggle swatch="line" label={`${regionName} 경계`} checked={visible.boundary} onChange={toggle('boundary')} hint={data.boundary_source} />
             <LayerGroupTitle title="겹쳐 보기" note="한 번에 하나" />

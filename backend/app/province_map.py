@@ -31,6 +31,7 @@ EXCLUDED = {"50": "제주특별자치도는 이 화면에서 제외합니다"}
 FIELDS = ["x", "y", "sgg", "pop", "hh", "housing", "workers", "elderly_pct", "old_housing_pct", "apartment_pct",
           "complexes", "complex_year", "region"]
 MIN_BASE = 20  # 비율의 분모가 이보다 작으면 비움 (sgis_grid와 같은 규칙)
+PAYLOAD_VERSION = 2  # 응답 모양·계산이 바뀌면 올려서 캐시를 새로 만든다
 _MEMORY: dict[str, bytes] = {}
 
 
@@ -219,15 +220,39 @@ def build_province(db: Any, province: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _core_range(values: list[int], gap: int = 20, share: float = 0.04) -> tuple[int, int]:
+    """Min/max of cell coordinates (÷500) without small far-off islands (경북의 울릉도 등).
+
+    A jump wider than ``gap`` cells (10 km of sea) that cuts off less than ``share`` of the cells is left out of the
+    first view only; those cells are still in the payload and draw when the map is moved.
+    """
+    ordered = sorted(values)
+    n = len(ordered)
+    limit = n * share
+    lo, hi = 0, n - 1
+    for i in range(1, n):
+        if i > limit:
+            break
+        if ordered[i] - ordered[i - 1] > gap:
+            lo = i
+    for i in range(n - 2, -1, -1):
+        if n - 1 - i > limit:
+            break
+        if ordered[i + 1] - ordered[i] > gap:
+            hi = i
+    return ordered[lo], ordered[hi]
+
+
 def _bbox(cells: list[list[Any]]) -> list[float] | None:
+    """First-view bounds in lon/lat of the main body of the 시·도 (see ``_core_range``)."""
     if not cells:
         return None
-    xs = [c[0] * 500 for c in cells]
-    ys = [c[1] * 500 for c in cells]
+    x0, x1 = _core_range([c[0] for c in cells])
+    y0, y1 = _core_range([c[1] for c in cells])
     try:
         from pyproj import Transformer
         to = Transformer.from_crs(5179, 4326, always_xy=True).transform
-        corners = [to(x, y) for x in (min(xs), max(xs) + 500) for y in (min(ys), max(ys) + 500)]
+        corners = [to(x, y) for x in (x0 * 500, x1 * 500 + 500) for y in (y0 * 500, y1 * 500 + 500)]
     except Exception:  # noqa: BLE001 - no projection library (tests)
         return None
     return [round(min(c[0] for c in corners), 5), round(min(c[1] for c in corners), 5), round(max(c[0] for c in corners), 5), round(max(c[1] for c in corners), 5)]
@@ -236,7 +261,7 @@ def _bbox(cells: list[list[Any]]) -> list[float] | None:
 def _cache_key(db: Any, province: dict[str, Any]) -> str:
     """Changes when the grid, the statistics, the complexes or the prepared regions change (not their status)."""
     prepared = sorted((r["code"], int(r.get("grid_count") or 0)) for r in province.get("prepared", []))
-    parts = [province["code"], ",".join(province["sgis_codes"]), str(province["cells"]), json.dumps(prepared)]
+    parts = [str(PAYLOAD_VERSION), province["code"], ",".join(province["sgis_codes"]), str(province["cells"]), json.dumps(prepared)]
     for sql in ("SELECT count(*) FROM national_complexes", "SELECT max(year) FROM sgis_grid_cells",
                 "SELECT count(*) FROM grid_regions"):
         try:

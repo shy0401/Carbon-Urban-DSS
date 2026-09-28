@@ -73,6 +73,17 @@ def test_share_needs_a_base_of_twenty():
     assert province_map._share(25, 100) == 25.0
 
 
+def test_first_view_leaves_out_small_far_islands_only():
+    mainland = list(range(2200, 2320)) * 50  # 6,000 cells over 60 km
+    ulleung = [2560] * 120  # 2% of the cells, 120 km of sea away
+    assert province_map._core_range(mainland + ulleung) == (2200, 2319)
+    assert province_map._core_range(ulleung + mainland, gap=20) == (2200, 2319)
+    # A big detached part (more than 4% of the cells) stays in view.
+    assert province_map._core_range(mainland + [2560] * 600) == (2200, 2560)
+    # Near islands (gap under 10 km) stay too.
+    assert province_map._core_range(mainland + [2335] * 50) == (2200, 2335)
+
+
 def test_cache_key_ignores_preparation_status(monkeypatch):
     class Db:
         def scalar(self, _stmt):

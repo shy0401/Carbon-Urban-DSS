@@ -56,3 +56,11 @@ describe('시·도 menu', () => {
     expect(menuGroups([p('41', 'PROVINCE')]).map(([kind]) => kind)).toEqual(['PROVINCE']);
   });
 });
+
+describe('layer swatch', () => {
+  it('shows the metric classes as equal bands (no gradient blending between classes)', async () => {
+    const { swatchGradient } = await import('./LayerToggle');
+    expect(swatchGradient([])).toBeUndefined();
+    expect(swatchGradient(['#111', '#222'])).toBe('linear-gradient(90deg, #111 0.0% 50.0%, #222 50.0% 100.0%)');
+  });
+});
