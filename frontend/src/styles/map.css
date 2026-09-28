@@ -257,8 +257,9 @@ small.resolution-tag { margin: 0 0 0 var(--sp-1); }
 .dong-rank { width: 100%; border-collapse: collapse; font-size: var(--fs-caption); }
 .dong-rank th, .dong-rank td { padding: 4px var(--sp-1); border-bottom: 1px solid var(--line); text-align: left; font-weight: 400; }
 .dong-rank thead th { color: var(--ink-3); font-weight: 500; }
-.dong-rank td:nth-child(2) { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.dong-rank .bar-cell { width: 34%; }
+.dong-rank td:nth-child(2), .dong-rank td:nth-child(3) { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.dong-rank thead th:nth-child(3) { text-align: right; }
+.dong-rank .bar-cell { width: 28%; }
 .dong-rank .bar-cell i { display: block; height: 8px; border-radius: 1px; background: var(--seq-4); }
 .dong-rank tr.active { background: var(--prov-observed-bg); }
 .dong-rank tr.active .bar-cell i { background: var(--primary); }

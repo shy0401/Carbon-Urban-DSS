@@ -78,14 +78,15 @@ export function DongPanel({ data, index, grids, complexes, metric, regionName, o
     <section className="detail-section" aria-label="읍면동 비교">
       <h3>동별 비교: {metric.label} <small className="muted">{metric.unit}</small></h3>
       <table className="dong-rank">
-        <thead><tr><th scope="col">행정동</th><th scope="col">값</th><th scope="col"><span className="sr-only">막대</span></th></tr></thead>
+        <thead><tr><th scope="col">행정동</th><th scope="col">값</th><th scope="col" title="값 있는 격자가 덮는 행정동 면적 비율">덮음</th><th scope="col"><span className="sr-only">막대</span></th></tr></thead>
         <tbody>{ranks.map((r) => <tr key={r.index} className={r.index === index ? 'active' : undefined}>
           <th scope="row"><button type="button" className="link-button" aria-current={r.index === index ? 'true' : undefined} onClick={() => onSelect(r.index)}>{r.name}</button></th>
           <td>{r.result.value === null ? <span className="muted">없음</span> : formatMetric(r.result.value, '', r.result.kind === 'sum' ? 0 : metric.digits)}</td>
+          <td className="muted">{r.result.value === null || COMPLEX_KEYS.has(metric.key) ? '' : formatMetric(r.result.coverage * 100, '%', 0)}</td>
           <td className="bar-cell">{r.result.value !== null && top > 0 && <i style={{ width: `${Math.max(2, (r.result.value / top) * 100)}%` }} aria-hidden="true" />}</td>
         </tr>)}</tbody>
       </table>
-      <p className="muted">합계 지표는 격자 값을 행정동과 겹친 면적 비율로 나눠 더하고, 비율·원단위는 겹친 비율(연면적·세대수가 있으면 그것)로 가중 평균합니다. "없음"은 0이 아니라 값 있는 격자가 없다는 뜻입니다. {data.source}</p>
+      <p className="muted">합계 지표는 격자 값을 행정동과 겹친 면적 비율로 나눠 더하고("덮음" = 값 있는 격자가 덮는 동 면적 비율, 낮으면 합계가 작게 나옵니다), 비율·원단위는 겹친 비율(연면적·세대수가 있으면 그것)로 가중 평균합니다. "없음"은 0이 아니라 값 있는 격자가 없다는 뜻입니다. {data.source}</p>
     </section>
   </aside>;
 }
