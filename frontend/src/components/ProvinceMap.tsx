@@ -38,12 +38,20 @@ export function cellId(grid: ProvinceGrid, row: Array<number | null>): string {
 }
 
 /** Fit the 시·도 into the part of the map not covered by the floating legend column (left 320px on wide screens). */
-function fitProvince(map: maplibregl.Map, bbox: [number, number, number, number] | null) {
-  if (!bbox) return;
+function freeArea(map: maplibregl.Map) {
   const width = map.getContainer().clientWidth;
   const stacked = typeof window !== 'undefined' && !!window.matchMedia?.('(max-width: 760px)').matches;
-  const left = stacked ? 24 : Math.min(320, Math.max(24, width - 240));
-  map.fitBounds(bbox, { padding: { top: 40, bottom: 40, left, right: stacked ? 24 : 40 }, duration: 0 });
+  return { left: stacked ? 24 : Math.min(320, Math.max(24, width - 240)), right: stacked ? 24 : 40 };
+}
+function fitProvince(map: maplibregl.Map, bbox: [number, number, number, number] | null) {
+  if (!bbox) return;
+  const { left, right } = freeArea(map);
+  map.fitBounds(bbox, { padding: { top: 40, bottom: 40, left, right }, duration: 0 });
+}
+/** Keep the clicked cell in the uncovered part of the map when the detail column opens or closes (zoom unchanged). */
+function keepInView(map: maplibregl.Map, point: [number, number]) {
+  const { left, right } = freeArea(map);
+  map.panTo(point, { offset: [(left - right) / 2, 0], duration: 0 });
 }
 
 /** Group the 시·도 menu: 도 first, then 특별시·광역시 (server order inside each group). */
@@ -69,7 +77,7 @@ export function ProvinceMap({ provinceCode, onProvince, onOpenRegion, offline }:
   const [basemapFailed, setBasemapFailed] = useState(false);
   const [selected, setSelected] = useState<number | null>(null);
   // The first view follows the stage size (detail panel, mobile stacking) until the user pans or zooms.
-  const view = useRef<{ bbox: [number, number, number, number] | null; moved: boolean }>({ bbox: null, moved: false });
+  const view = useRef<{ bbox: [number, number, number, number] | null; moved: boolean; focus: [number, number] | null }>({ bbox: null, moved: false, focus: null });
   const data = grid.data && grid.data.code === provinceCode ? grid.data : null;
   const metric = PROVINCE_METRICS.find((m) => m.key === metricKey) ?? PROVINCE_METRICS[0];
   const features = useMemo(() => (data ? provinceFeatures(data) : null), [data]);
@@ -94,7 +102,7 @@ export function ProvinceMap({ provinceCode, onProvince, onOpenRegion, offline }:
     map.addControl(new maplibregl.ScaleControl({ maxWidth: 96, unit: 'metric' }), 'bottom-left');
     map.addControl(new maplibregl.AttributionControl({ compact: true, customAttribution: '격자·통계 SGIS, 단지 K-apt' }), 'bottom-right');
     map.on('movestart', (e) => { if ((e as { originalEvent?: unknown }).originalEvent) view.current.moved = true; });
-    map.on('resize', () => { if (!view.current.moved) fitProvince(map, view.current.bbox); });
+    map.on('resize', () => { const v = view.current; if (v.moved) return; if (v.focus) keepInView(map, v.focus); else fitProvince(map, v.bbox); });
     map.on('error', (e) => { if (isBasemapError(e as { sourceId?: string; error?: { message?: string } })) { setBasemapFailed(true); if (map.getLayer('basemap')) map.removeLayer('basemap'); } });
     map.on('load', () => {
       map.addSource('pv-cells', { type: 'geojson', data: EMPTY, promoteId: 'i' });
@@ -117,7 +125,7 @@ export function ProvinceMap({ provinceCode, onProvince, onOpenRegion, offline }:
         popup.current?.setLngLat(e.lngLat).setHTML(cellTooltip(current.data, Number(p.i), current.metric)).addTo(map);
       });
       map.on('mouseleave', 'pv-fill', () => { map.getCanvas().style.cursor = ''; map.setFilter('pv-hover', ['==', ['get', 'i'], -1]); popup.current?.remove(); });
-      map.on('click', 'pv-fill', (e) => { const i = e.features?.[0]?.properties?.i; if (i !== undefined) setSelected(Number(i)); });
+      map.on('click', 'pv-fill', (e) => { const i = e.features?.[0]?.properties?.i; if (i !== undefined) { view.current.focus = [e.lngLat.lng, e.lngLat.lat]; setSelected(Number(i)); } });
       map.on('idle', () => { const el = container.current; if (el && map.getLayer('pv-fill')) el.dataset.renderedFeatures = String(map.queryRenderedFeatures({ layers: ['pv-fill'] }).length); });
       setReady((n) => n + 1);
     });
@@ -132,7 +140,7 @@ export function ProvinceMap({ provinceCode, onProvince, onOpenRegion, offline }:
     const prepared = new Set((data?.regions ?? []).map((r) => r.code));
     const bounds = data ? { ...data.boundaries, features: data.boundaries.features.map((f) => ({ ...f, properties: { ...f.properties, prepared: prepared.has(String(f.properties?.region ?? '')) } })) } : EMPTY;
     (map.getSource('pv-bounds') as maplibregl.GeoJSONSource).setData(bounds);
-    view.current = { bbox: data?.bbox ?? null, moved: false };
+    view.current = { bbox: data?.bbox ?? null, moved: false, focus: null };
     map.resize(); // the stage may have changed size while the grid loaded
     fitProvince(map, view.current.bbox);
   }, [features, data, ready]);
@@ -141,6 +149,7 @@ export function ProvinceMap({ provinceCode, onProvince, onOpenRegion, offline }:
     map.setPaintProperty('pv-fill', 'fill-color', stepColor(metric.key, classification) as unknown as maplibregl.ExpressionSpecification);
   }, [metric.key, classification, ready]);
   useEffect(() => {
+    if (selected === null) view.current.focus = null;
     const map = mapRef.current; if (!map?.getLayer('pv-selected')) return;
     const filter: maplibregl.FilterSpecification = ['==', ['get', 'i'], selected ?? -1];
     map.setFilter('pv-selected', filter); map.setFilter('pv-selected-halo', filter);
