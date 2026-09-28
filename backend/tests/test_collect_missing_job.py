@@ -111,3 +111,24 @@ def test_an_older_timer_does_not_start_a_job_that_waits_for_a_later_time(monkeyp
     monkeypatch.setattr(history, 'lock_held', lambda *a, **k: True)
     tasks.run_collection('j1')
     assert started == ['j1']  # a live run holds the guard: this delivery does nothing
+
+
+def test_overdue_waiting_job_actually_starts_when_resumed(monkeypatch):
+    # The timed resume is lost when the PC or worker was off at the resume time. Reading the missing
+    # plan re-queues it; that delivery must start the run instead of being taken for an older timer.
+    from datetime import datetime, timedelta, timezone
+    db, job = make_job()
+    job.status = 'WAITING'
+    job.resume_at = datetime.now(timezone.utc) - timedelta(hours=9)
+    db.commit()
+    sent, started = [], []
+    monkeypatch.setattr(history, 'lock_held', lambda *a, **k: None)
+    monkeypatch.setattr(tasks.run_collection, 'delay', lambda job_id: sent.append(job_id))
+    monkeypatch.setattr(tasks, 'run_all_missing', lambda db, job: started.append(job.id))
+    monkeypatch.setattr(tasks, 'Session', lambda: db)
+    monkeypatch.setattr(db, 'close', lambda: None, raising=False)
+    tasks.resume_overdue(db)
+    assert sent == ['j1']
+    tasks.run_collection('j1')
+    assert started == ['j1']
+    assert tasks.resume_overdue(db) is None or sent == ['j1']  # not queued a second time

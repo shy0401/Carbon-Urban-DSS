@@ -176,10 +176,17 @@ def resume_overdue(db):
         except Exception: pass
         return stale
     job=db.scalar(select(CollectionJob).where(CollectionJob.status=='WAITING'))
-    if job and job.resume_at and job.resume_at+timedelta(minutes=10)<now():
-        job.resume_at=now()+timedelta(hours=1);db.commit()  # avoid re-queuing on every poll
+    if not job or not job.resume_at:
+        return job
+    from datetime import timezone
+    resume=job.resume_at if job.resume_at.tzinfo else job.resume_at.replace(tzinfo=timezone.utc)
+    if resume+timedelta(minutes=10)<now():
+        # QUEUED (not a later resume_at): a later resume_at made the worker take this delivery for an
+        # outdated timer and skip it, so a job whose timer was lost never started again.
+        job.status='QUEUED';job.resume_at=None;job.message='예약 시각이 지나(PC·작업자가 꺼져 있었음) 이어서 수집합니다';db.commit()
         try: run_collection.delay(job.id)
-        except Exception: pass
+        except Exception:
+            job.status='WAITING';job.resume_at=now();db.commit()
     return job
 
 def queue_collection(db,datasets,start,end,scope='limited'):
