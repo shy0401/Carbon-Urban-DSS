@@ -9,16 +9,19 @@ import type { MetricDef } from './mapMetrics';
  *   "값 있는 면적 비율"(coverage)을 같이 보여 준다 — 합계는 관측된 부분의 합이지 동 전체의 참값이 아니다.
  * - 원단위·비율 지표: 가중 평균. 가중치는 그 비율의 분모(연면적·세대수·건물 수·대장 연면적)가 있으면 그것 × share,
  *   없으면 겹친 면적(share)이다.
- * - 인구·가구는 격자에서 모으지 않고 SGIS 행정동 공식 값을 쓴다.
+ * - 인구·가구는 SGIS 행정동 공식 값을 먼저 보여 준다. 500m 격자 통계(주택·종사자 등)는 합계 규칙으로 모은다.
  */
 export const SUM_KEYS = new Set([
   'electricity_kwh_annual', 'gas_kwh_annual', 'electricity_carbon_t', 'gas_carbon_t', 'bldg_electricity_kwh', 'bldg_gas_kwh', 'bldg_carbon_t',
   'building_count', 'complex_households', 'complex_count', 'reg_buildings', 'reg_gfa_m2',
+  'sgis500_population', 'sgis500_households', 'sgis500_housing', 'sgis500_workers',
 ]);
 export const WEIGHT_KEYS: Record<string, string> = {
   electricity_kwh_per_m2: 'electricity_area_m2', gas_kwh_per_m2: 'gas_area_m2', electricity_carbon_kg_per_m2: 'electricity_area_m2',
   electricity_kwh_per_household: 'electricity_households', bldg_kwh_per_m2: 'bldg_area_m2', avg_floors: 'building_count',
   residential_building_share: 'building_count', reg_residential_gfa_pct: 'reg_gfa_m2', reg_old_gfa_pct: 'reg_gfa_m2',
+  // 기준연도 인구로 가중하면 Σ(증감)/Σ(기준 인구), 곧 동 전체의 증감률이 된다 (두 해 모두 20명 이상인 격자만).
+  sgis500_pop_change_pct: 'sgis500_base_population',
 };
 
 export interface DongAggregate {

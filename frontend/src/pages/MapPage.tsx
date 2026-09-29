@@ -10,6 +10,7 @@ import { MissingValue } from '../components/MissingValue';
 import { PageHeader } from '../components/PageHeader';
 import { ProvenanceBadge } from '../components/ProvenanceBadge';
 import { ProvinceMap } from '../components/ProvinceMap';
+import { Sgis500Detail } from '../components/Sgis500Detail';
 import { ShareBar } from '../components/ShareBar';
 import { ErrorState, LoadingState } from '../components/Status';
 import { WeatherChart } from '../components/WeatherChart';
@@ -89,7 +90,7 @@ export function MapPage() {
 const BUILDING_MIN_ZOOM = 14;
 const EMPTY: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] };
 const DEFAULT_METRIC_ORDER = ['far_est_pct', 'coverage_pct', 'residential_zone_ratio', 'complex_households', 'electricity_kwh_per_m2'];
-const BASIC_METRIC_ORDER = ['sgis_pop_density', 'sgis_housing_density', 'complex_count'];
+const BASIC_METRIC_ORDER = ['sgis500_population', 'sgis_pop_density', 'sgis_housing_density', 'complex_count'];
 const HATCH = 'hatch-missing';
 const MISSING_NOTICE: Record<'zoning' | 'admin', string> = {
   zoning: '용도지역 자료 미확보: VWorld 또는 원본 파일 승인 후 표시됩니다.',
@@ -432,7 +433,7 @@ function GridDetail({ props: p, year, name, dongs, metric, classification, detai
   const weather = details?.weather ?? [];
   const osm = p.building_source === 'OSM';
   return <aside className="map-detail" aria-label="선택 격자 상세">
-    <header className="detail-head"><div><h2>{name || '선택 격자'}</h2><code className="grid-id">{p.id}</code>{p.sgis500_code && <code className="grid-id official" title="SGIS 공식 500m 격자 코드 (경계 API). 통계값은 자료신청 후 결합">SGIS {p.sgis500_code}</code>}{dongs && <p className="grid-dongs">{dongs}</p>}</div><div className="detail-actions"><button className="icon-link" aria-label="선택 격자로 확대" onClick={onFocus}><LocateFixed size={17} /></button><button className="icon-link" aria-label="상세 닫기" onClick={onClose}><X size={17} /></button></div></header>
+    <header className="detail-head"><div><h2>{name || '선택 격자'}</h2><code className="grid-id">{p.id}</code>{p.sgis500_code && <code className="grid-id official" title={p.sgis500_status ? 'SGIS 공식 500m 격자 코드 (자료제공 신청 통계와 같은 격자)' : 'SGIS 공식 500m 격자 코드 (경계 API)'}>SGIS {p.sgis500_code}</code>}{dongs && <p className="grid-dongs">{dongs}</p>}</div><div className="detail-actions"><button className="icon-link" aria-label="선택 격자로 확대" onClick={onFocus}><LocateFixed size={17} /></button><button className="icon-link" aria-label="상세 닫기" onClick={onClose}><X size={17} /></button></div></header>
     <section className="detail-section current-metric" aria-label="지도 지표 값">
       <h3>{metric.label}</h3>
       <p className="detail-figure">{value === null ? <MissingValue reason="이 격자에는 이 지표를 계산할 관측 자료가 없습니다." /> : <>{cls && <i className="class-swatch" style={{ background: cls.color }} aria-hidden="true" />}{formatMetric(value, '', metric.digits)}<span className="unit">{metric.unit}</span></>}</p>
@@ -488,6 +489,7 @@ function GridDetail({ props: p, year, name, dongs, metric, classification, detai
         <Fact label="연면적 합 (공표값)" value={p.complex_gfa_m2} unit="m²" why={p.complex_gfa_excluded ? `연면적 이상값 ${p.complex_gfa_excluded}개 단지 제외` : undefined} missingText="연면적 공표값 없음" />
       </dl>
     </section>
+    <Sgis500Detail p={p} />
     <SgisDetail p={p} />
     <div className="grid-actions"><Link className="button primary" to="/simulation">이 격자 시뮬레이션</Link><Link className="button secondary" to="/reports">보고서 작성</Link></div>
   </aside>;

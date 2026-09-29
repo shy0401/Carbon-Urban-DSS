@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { classify } from '../lib/mapMetrics';
-import { PROVINCE_METRICS, rowValue } from '../lib/provinceMetrics';
+import { DEFAULT_PROVINCE_METRIC_500, groupOf, PROVINCE_GROUPS, PROVINCE_METRICS, rowValue } from '../lib/provinceMetrics';
 import type { ProvinceGrid, ProvinceSummary } from '../types';
 import { cellId, menuGroups, provinceFeatures } from './ProvinceMap';
 
@@ -41,6 +41,28 @@ describe('province 500m grid', () => {
     const c = classify(grid.cells.map((row) => rowValue(grid.fields, row, metric.key)), metric.breaks, metric.ramp);
     expect(c.valued).toBe(1);
     expect(c.missing).toBe(1);
+  });
+});
+
+describe('SGIS 500m 격자 통계 (자료제공 신청분)', () => {
+  const fields = [...FIELDS, 'pop5', 'hh5', 'housing5', 'workers5', 'pop_change5'];
+  const rows = [[...grid.cells[0], 310, 120, 110, 45, -12.5], [...grid.cells[1], null, null, null, null, null]];
+  it('reads the cells\' own values and leaves cells without a row empty (not 0)', () => {
+    expect(rowValue(fields, rows[0], 'pop5')).toBe(310);
+    expect(rowValue(fields, rows[1], 'pop5')).toBeNull();
+    expect(rowValue(FIELDS, grid.cells[0], 'pop5')).toBeNull(); // older payload without the fields
+  });
+  it('groups the metrics by source and shows population change on a diverging ramp around 0', () => {
+    expect(PROVINCE_GROUPS.map((g) => g.key)).toEqual(['sgis500', 'sgis1k', 'kapt']);
+    expect(PROVINCE_METRICS.filter((m) => m.group === 'sgis500').map((m) => m.key)).toEqual(['pop5', 'hh5', 'housing5', 'workers5', 'pop_change5']);
+    for (const m of PROVINCE_METRICS) expect(groupOf(m).key).toBe(m.group);
+    const change = PROVINCE_METRICS.find((m) => m.key === 'pop_change5')!;
+    expect(change.ramp).toBe('diff');
+    const c = classify(rows.map((row) => rowValue(fields, row, change.key)), change.breaks, change.ramp);
+    expect(c.classes).toHaveLength(5);
+    expect(c.missing).toBe(1);
+    expect(PROVINCE_METRICS.find((m) => m.key === DEFAULT_PROVINCE_METRIC_500)?.group).toBe('sgis500');
+    for (const m of PROVINCE_METRICS.filter((x) => x.group === 'sgis500')) expect(m.definition).toContain('0이 아니라 결측');
   });
 });
 

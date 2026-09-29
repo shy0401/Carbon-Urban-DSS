@@ -51,11 +51,13 @@ LABELS = {
 SOURCE_ID = {"sgis": "sgis_admin", "kma_asos": "weather_kma", "building_register": "building_official", "sgis_grid_500m": "sgis_grid"}
 
 # Things no API call can fetch: the provider hands out a file after an application.
+SGIS_REQUEST_URL = "https://sgis.mods.go.kr/view/pss/dataProvdIntrcn"
+
 MANUAL_SOURCES = (
     {"id": "sgis_grid", "label": "SGIS 공식 500m 격자 통계값 (인구·가구 총괄)",
      "why": "500m 격자의 경계·코드는 SGIS API로 자동 수집합니다(위 표). 1km 격자 통계(2024)는 공공데이터포털 파일로 적용되어 있습니다. 500m 격자의 통계값은 공개 API·파일에 없어 SGIS에 자료제공을 신청해야 합니다(500m는 총괄 항목만 제공).",
-     "how": "SGIS 자료제공 → 소지역 통계 → 격자(500m) 신청 (지역: 전북특별자치도 전주시, 항목: 인구·가구 총괄, 연도: 2015~2024) → 받은 CSV/SHP를 '파일 업로드'로 가져오기 (격자코드 예: 다마62a48a)",
-     "link": "https://sgis.kostat.go.kr/view/pss/openDataIntrcn"},
+     "how": "SGIS 자료제공 → 격자 통계(500m) 신청 (항목: 인구·가구·주택·사업체·종사자 총괄, 연도: 2015~2024) → 받은 CSV를 data/raw/sgis_grid_500m에 풀기 → 'python -m app.cli import-sgis-grid500' (API 시작 때도 자동으로 읽음)",
+     "link": SGIS_REQUEST_URL},
     {"id": "factors_gas", "label": "가스 배출계수·열량 기준 (CO₂·CH₄·N₂O, GWP)",
      "why": "건축HUB 가스 사용량은 kWh로 오지만(공공데이터포털 15135963) 총발열량·순발열량 중 어느 기준으로 환산했는지 공개 페이지에 없습니다. 온실가스 지침은 순발열량 × 56,100 kgCO₂/TJ를 쓰므로, 기준에 따라 kWh당 계수가 약 0.182(총발열량 환산) 또는 0.202(순발열량 환산) kgCO₂로 10.9% 달라집니다. K-apt 가스는 단지 공용분(㎥)만 보고되는 경우가 많아 두 자료를 맞대어 기준을 추정할 수도 없었습니다(2026-09-27, 대조 가능 56쌍, 비율 불안정).",
      "how": "건축HUB 'OpenAPI활용가이드_건축HUB_건물에너지_1.0.hwp'의 환산 기준 확인 또는 한국부동산원 문의 → 온실가스종합정보센터 최신 국가 고유 배출계수(도시가스 LNG, CH₄·N₂O 포함)와 함께 값·단위·기준을 등록",
@@ -495,6 +497,24 @@ def history_status(data_dir: str | Path | None = None) -> dict[str, Any]:
     return {"items": state["items"], "runs": state["runs"][-5:], "summary": summary}
 
 
+def manual_sources(data_dir: str | Path | None = None) -> list[dict[str, Any]]:
+    """MANUAL_SOURCES, with the SGIS 500m item replaced once its files are in DATA_DIR/raw/sgis_grid_500m:
+    gone when every theme × block is there, otherwise a re-request of exactly the missing files."""
+    from .sgis_grid500 import missing_files, missing_text, scan
+    root = Path(data_dir or os.getenv("DATA_DIR", "data")) / "raw" / "sgis_grid_500m"
+    if not scan(root)[0]:
+        return list(MANUAL_SOURCES)
+    gaps = missing_files(root)
+    out = [item for item in MANUAL_SOURCES if item["id"] != "sgis_grid"]
+    if gaps:
+        out.insert(0, {
+            "id": "sgis_grid", "label": "SGIS 500m 격자 통계: 빠진 파일 재신청",
+            "why": f"받은 500m 격자 통계는 적용했지만 일부 주제·블록 파일이 받은 묶음에 없습니다: {missing_text(gaps)}. 이 칸의 격자는 지도에 '통계 없음'으로 나오며 0으로 채우지 않습니다.",
+            "how": "SGIS 자료제공에서 같은 조건으로 빠진 주제·블록만 다시 신청 → 받은 CSV를 data/raw/sgis_grid_500m에 추가 → API 재시작 또는 'python -m app.cli import-sgis-grid500'",
+            "link": SGIS_REQUEST_URL, "missing": gaps})
+    return out
+
+
 def plan_missing(db: Any, start_year: int, end_year: int, *, data_dir: str | Path | None = None,
                  blockers: dict[str, str] | None = None, check_db: bool = True) -> dict[str, Any]:
     """What a run would do now, without any provider request (for the collection screen)."""
@@ -527,9 +547,10 @@ def plan_missing(db: Any, start_year: int, end_year: int, *, data_dir: str | Pat
     for row in rows:
         for cell in row["cells"]:
             counts[cell["state"]] = counts.get(cell["state"], 0) + 1
+    manual = manual_sources(data_dir)
     return {
-        "years": years, "rows": rows, "manual": list(MANUAL_SOURCES),
+        "years": years, "rows": rows, "manual": manual,
         "summary": {"todo": counts.get("TODO", 0) + counts.get("RETRY", 0), "done": counts.get("DONE", 0) + counts.get("NOT_PUBLISHED", 0),
-                    "blocked": counts.get("BLOCKED", 0), "manual": len(MANUAL_SOURCES), "states": counts},
+                    "blocked": counts.get("BLOCKED", 0), "manual": len(manual), "states": counts},
         "last_run": (progress_file.state.get("runs") or [None])[-1],
     }

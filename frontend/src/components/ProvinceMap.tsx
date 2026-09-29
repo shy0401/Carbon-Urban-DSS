@@ -6,7 +6,7 @@ import { setBasemapStatus } from '../hooks/useBasemapStatus';
 import { useApi } from '../hooks/useApi';
 import { formatMetric } from '../lib/format';
 import { classify, rangeLabel, stepColor, type Classification } from '../lib/mapMetrics';
-import { DEFAULT_PROVINCE_METRIC, PROVINCE_METRICS, rowValue, type ProvinceMetric } from '../lib/provinceMetrics';
+import { DEFAULT_PROVINCE_METRIC, DEFAULT_PROVINCE_METRIC_500, groupOf, PROVINCE_GROUPS, PROVINCE_METRICS, rowValue, type ProvinceMetric } from '../lib/provinceMetrics';
 import { cellRing } from '../lib/tm5179';
 import { LINE_ON_BASEMAP, TOKENS } from '../theme/palette';
 import type { ProvinceGrid, ProvinceList, ProvinceSummary, ProvinceUnit } from '../types';
@@ -68,7 +68,7 @@ export function ProvinceMap({ provinceCode, onProvince, onOpenRegion, offline }:
   const mapRef = useRef<maplibregl.Map | null>(null);
   const popup = useRef<maplibregl.Popup | null>(null);
   const [ready, setReady] = useState(0);
-  const [metricKey, setMetricKey] = useState(DEFAULT_PROVINCE_METRIC);
+  const [metricKey, setMetricKey] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [layersOpen, setLayersOpen] = useState(false);
   const [legendOpen, setLegendOpen] = useState(() => typeof window === 'undefined' || window.innerWidth > 720);
@@ -79,7 +79,8 @@ export function ProvinceMap({ provinceCode, onProvince, onOpenRegion, offline }:
   // The first view follows the stage size (detail panel, mobile stacking) until the user pans or zooms.
   const view = useRef<{ bbox: [number, number, number, number] | null; moved: boolean; focus: [number, number] | null }>({ bbox: null, moved: false, focus: null });
   const data = grid.data && grid.data.code === provinceCode ? grid.data : null;
-  const metric = PROVINCE_METRICS.find((m) => m.key === metricKey) ?? PROVINCE_METRICS[0];
+  const has500 = !!data?.meta.with_stats500;
+  const metric = PROVINCE_METRICS.find((m) => m.key === (metricKey ?? (has500 ? DEFAULT_PROVINCE_METRIC_500 : DEFAULT_PROVINCE_METRIC))) ?? PROVINCE_METRICS[0];
   const features = useMemo(() => (data ? provinceFeatures(data) : null), [data]);
   const classification = useMemo<Classification>(() => (data ? classify(data.cells.map((row) => rowValue(data.fields, row, metric.key)), metric.breaks, metric.ramp) : { classes: [], lowerBounds: [], valued: 0, missing: 0, min: null, max: null }), [data, metric]);
   const refs = useRef({ data, metric, classification }); refs.current = { data, metric, classification };
@@ -192,21 +193,21 @@ export function ProvinceMap({ provinceCode, onProvince, onOpenRegion, offline }:
           </button>
           {pickerOpen && <section className="map-metrics map-popover" aria-label="지도 지표">
             <header><strong>전국 공통 지표</strong><small>모든 시·도에 있는 자료</small></header>
-            {(['1km', '500m'] as const).map((res) => <div className="metric-group" key={res}><span>{res === '1km' ? '인구·주택 (SGIS, 소속 1km 격자 값)' : '공동주택 (K-apt, 500m 격자 안)'}</span>
-              {PROVINCE_METRICS.filter((m) => m.resolution === res).map((m) => <button key={m.key} className={`metric-option${m.key === metric.key ? ' active' : ''}`} aria-pressed={m.key === metric.key} onClick={() => { setMetricKey(m.key); setPickerOpen(false); }}><span>{m.label} <small>{m.unit}</small></span><em>{m.resolution}</em></button>)}
+            {PROVINCE_GROUPS.filter((g) => g.key !== 'sgis500' || has500 || metric.group === 'sgis500').map((g) => <div className="metric-group" key={g.key}><span>{g.label}</span>
+              {PROVINCE_METRICS.filter((m) => m.group === g.key).map((m) => <button key={m.key} className={`metric-option${m.key === metric.key ? ' active' : ''}`} aria-pressed={m.key === metric.key} onClick={() => { setMetricKey(m.key); setPickerOpen(false); }}><span>{m.label} <small>{m.unit}</small></span><em>{m.resolution}</em></button>)}
             </div>)}
           </section>}
         </div>
         <section className={`map-legend${legendOpen ? '' : ' collapsed'}`} aria-label="지표 범례">
           <div className="legend-head"><strong>{metric.label}</strong><span className="unit">{metric.unit}</span><button type="button" className="legend-toggle" aria-expanded={legendOpen} onClick={() => setLegendOpen((open) => !open)}>{legendOpen ? '범례 접기' : '범례 펼치기'}</button></div>
-          <p className={`resolution-tag res-${metric.resolution}`}>{metric.resolution === '1km' ? '1km 격자 값 (같은 1km 안 500m 격자 4개는 같은 값)' : '500m 격자 안에서 센 값'}</p>
+          <p className={`resolution-tag res-${metric.resolution}`}>{groupOf(metric).tag}{metric.group === 'sgis500' && data?.meta.sgis500_year ? ` · ${data.meta.sgis500_year}년` : ''}</p>
           {classification.classes.length ? <ul className="legend-classes">{classification.classes.map((c, i) => <li key={i}><i style={{ background: c.color }} /><span>{rangeLabel(c, metric.digits, i === classification.classes.length - 1)}</span><em>{c.count.toLocaleString('ko-KR')}격자</em></li>)}</ul> : <p className="map-empty-hint">{data ? '이 시·도에는 이 지표 값이 없습니다.' : '격자를 불러오면 표시합니다.'}</p>}
-          {classification.missing > 0 && <div className="legend-missing"><i className="is-missing" /><span>{metric.resolution === '500m' ? '값 없음 (0 아님)' : metric.unit === '%' ? '통계 없음 또는 분모 20 미만 (0 아님)' : '통계 없음·비공개 (0 아님)'}</span><em>{classification.missing.toLocaleString('ko-KR')}격자</em></div>}
+          {classification.missing > 0 && <div className="legend-missing"><i className="is-missing" /><span>{metric.group === 'kapt' ? '값 없음 (0 아님)' : metric.key === 'pop_change5' ? '두 해 중 20명 미만 또는 통계 없음 (0 아님)' : metric.unit === '%' ? '통계 없음 또는 분모 20 미만 (0 아님)' : '통계 없음·비공개 (0 아님)'}</span><em>{classification.missing.toLocaleString('ko-KR')}격자</em></div>}
           <ul className="layer-key" aria-label="선 기호">
             {visible.sigungu && <li><i className="key-line" />시·군·구 경계</li>}
             {visible.prepared && <li><i className="key-line prepared" />상세 자료 지역 (에너지·건물·용도지역){data?.regions.length ? `: ${data.regions.map((r) => r.short_name).join(', ')}` : ': 없음'}</li>}
           </ul>
-          <details className="legend-def"><summary>정의·출처·활용</summary><p>{metric.definition}</p><p className="legend-use"><b>활용</b> {metric.use}</p><p className="legend-source">출처: {metric.source}{data ? ` · ${metric.resolution === '1km' ? data.meta.stats_source : data.meta.complex_source}` : ''}</p></details>
+          <details className="legend-def"><summary>정의·출처·활용</summary><p>{metric.definition}</p><p className="legend-use"><b>활용</b> {metric.use}</p><p className="legend-source">출처: {metric.source}{data ? ` · ${(metric.group === 'sgis500' ? data.meta.stats500_source : metric.group === 'sgis1k' ? data.meta.stats_source : data.meta.complex_source) ?? ''}` : ''}</p></details>
         </section>
       </div>
       <div className="map-tools">
@@ -239,12 +240,19 @@ function CellDetail({ grid, index, row, metric, units, onClose, onOpenRegion }: 
       <h3>{metric.label} <small className={`resolution-tag res-${metric.resolution}`}>{metric.resolution}</small></h3>
       <p className="detail-figure">{value(metric.key) === null ? <span className="muted">값 없음 (0 아님)</span> : <>{formatMetric(value(metric.key), '', metric.digits)}<span className="unit">{metric.unit}</span></>}</p>
     </section>
+    {grid.meta.with_stats500 ? <section className="detail-section" aria-label="인구와 주택 (500m 격자)">
+      <h3>인구·주택 <small className="resolution-tag res-500m">SGIS {grid.meta.sgis500_year ?? ''} 500m 격자 자체</small></h3>
+      <dl className="fact-list">
+        {PROVINCE_METRICS.filter((m) => m.group === 'sgis500').map((m) => <div className={`fact${value(m.key) === null ? ' missing' : ''}`} key={m.key}><dt>{m.label}{m.key === 'pop_change5' && grid.meta.sgis500_base_year ? ` (${grid.meta.sgis500_base_year}→${grid.meta.sgis500_year})` : ''}</dt><dd>{value(m.key) === null ? <span className="muted">{m.key === 'pop_change5' ? '20명 미만·통계 없음' : '통계 없음 (0 아님)'}</span> : <>{formatMetric(value(m.key), '', m.digits)}<span className="unit">{m.unit}</span></>}</dd></div>)}
+      </dl>
+      <p className="muted">격자 자체의 공식 통계입니다. 인구 부문 5 미만은 0 또는 5, 사업체 부문 3 미만은 0 또는 3으로 대체됐고, 그 이상도 최대 ±7(사업체 ±4) 잡음이 있습니다.</p>
+    </section> : null}
     <section className="detail-section" aria-label="인구와 주택">
       <h3>인구·주택 <small className="resolution-tag res-1km">SGIS {grid.meta.sgis_year ?? ''} 1km 격자</small></h3>
       <dl className="fact-list">
-        {PROVINCE_METRICS.filter((m) => m.resolution === '1km').map((m) => <div className="fact" key={m.key}><dt>{m.label}</dt><dd>{value(m.key) === null ? <span className="muted">없음</span> : <>{formatMetric(value(m.key), '', m.digits)}<span className="unit">{m.unit}</span></>}</dd></div>)}
+        {PROVINCE_METRICS.filter((m) => m.group === 'sgis1k').map((m) => <div className="fact" key={m.key}><dt>{m.label}</dt><dd>{value(m.key) === null ? <span className="muted">없음</span> : <>{formatMetric(value(m.key), '', m.digits)}<span className="unit">{m.unit}</span></>}</dd></div>)}
       </dl>
-      <p className="muted">이 500m 격자를 품은 1km 격자 전체 값이며 500m로 나누지 않았습니다(500m 통계는 자료신청 대상).</p>
+      <p className="muted">이 500m 격자를 품은 1km 격자 전체 값이며 500m로 나누지 않았습니다(연령·주택유형 등 세부 항목은 1km로만 제공).</p>
     </section>
     <section className="detail-section" aria-label="공동주택">
       <h3>공동주택 <small className="resolution-tag res-500m">500m 격자 안</small></h3>

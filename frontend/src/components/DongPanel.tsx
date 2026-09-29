@@ -7,7 +7,7 @@ import type { DongData, GridProps } from '../types';
 
 /** 읍면동 요약에 늘 보여 주는 지표 (값이 없으면 "자료 없음"). */
 const KEY_FACTS = ['electricity_kwh_annual', 'gas_kwh_annual', 'electricity_carbon_t', 'bldg_electricity_kwh', 'building_count', 'far_est_pct',
-  'reg_far_pct', 'sgis_elderly_pct', 'sgis_old_housing_pct', 'sgis_apartment_pct'];
+  'reg_far_pct', 'sgis500_housing', 'sgis500_workers', 'sgis500_pop_change_pct', 'sgis_elderly_pct', 'sgis_old_housing_pct', 'sgis_apartment_pct'];
 const COMPLEX_KEYS = new Set(['complex_count', 'complex_households']);
 
 function exactComplex(key: string, c: DongComplexes | undefined): DongAggregate {

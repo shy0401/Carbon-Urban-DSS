@@ -4,8 +4,10 @@
 전국에 이미 있는 자료만으로 시·도 전체를 SGIS 공식 500m 격자로 보여 준다.
 
 * 격자: SGIS 공식 500m 격자 경계·코드 (``sgis_official_grid_cells``, 전국 수집).
-* 인구·가구·주택·종사자·65세 이상·노후주택·아파트 비율: 그 500m 격자를 품은 SGIS 1km 격자의 값
-  (500m 통계는 자료신청 대상이라 1km 값을 그대로 보여 주고, 그렇다고 표시한다).
+* 인구·가구·주택·종사자 (500m): SGIS 자료제공 신청으로 받은 그 500m 격자 자체의 총괄 통계(``sgis_grid500_values``,
+  받은 경우에만). 인구 증감률은 2015년 대비(두 해 모두 20명 이상일 때만).
+* 인구·가구·주택·종사자·65세 이상·노후주택·아파트 비율 (1km): 그 500m 격자를 품은 SGIS 1km 격자의 값
+  (연령·주택유형 등 세부 항목은 1km로만 제공된다).
 * 공동주택 단지 수·평균 사용승인연도: K-apt 전국 단지 목록의 좌표를 500m 격자에 넣은 값.
 * 분석 준비 지역: 준비된 시·군·구의 격자는 에너지·탄소 등 상세 지표를 '시·군·구 상세'에서 본다.
 
@@ -29,9 +31,9 @@ router = APIRouter(prefix="/api/map", tags=["map"])
 
 EXCLUDED = {"50": "제주특별자치도는 이 화면에서 제외합니다"}
 FIELDS = ["x", "y", "sgg", "pop", "hh", "housing", "workers", "elderly_pct", "old_housing_pct", "apartment_pct",
-          "complexes", "complex_year", "region"]
+          "complexes", "complex_year", "region", "pop5", "hh5", "housing5", "workers5", "pop_change5"]
 MIN_BASE = 20  # 비율의 분모가 이보다 작으면 비움 (sgis_grid와 같은 규칙)
-PAYLOAD_VERSION = 2  # 응답 모양·계산이 바뀌면 올려서 캐시를 새로 만든다
+PAYLOAD_VERSION = 3  # 응답 모양·계산이 바뀌면 올려서 캐시를 새로 만든다
 _MEMORY: dict[str, bytes] = {}
 
 
@@ -146,6 +148,14 @@ FROM (SELECT ST_Transform(ST_SetSRID(ST_MakePoint(longitude, latitude), 4326), 5
 GROUP BY 1, 2
 """
 
+GRID500_SQL = """
+SELECT c.x_min::bigint AS x, c.y_min::bigint AS y, v.population AS pop, v.households AS hh, v.housing, v.workers, b.population AS base_pop
+FROM sgis_official_grid_cells c
+JOIN sgis_grid500_values v ON v.grid_cd = c.grid_cd AND v.year = :year
+LEFT JOIN sgis_grid500_values b ON b.grid_cd = c.grid_cd AND b.year = :base
+WHERE c.size_m = 500 AND left(split_part(c.adm_cd, ',', 1), 2) = ANY(:sidos)
+"""
+
 BOUNDARY_SQL = """
 SELECT adm_code, adm_name, region_code, ST_AsGeoJSON(ST_Transform(ST_SimplifyPreserveTopology(geom, 80), 4326), 5) AS g
 FROM national_units WHERE year = :year AND level = 'SIGUNGU' AND left(adm_code, 2) = ANY(:sidos) AND geom IS NOT NULL
@@ -189,12 +199,13 @@ def build_province(db: Any, province: dict[str, Any]) -> dict[str, Any]:
                 prepared.setdefault((int(float(x)), int(float(y))), index[region_code])
             except (ValueError, KeyError):
                 continue
+    grid500, info500 = _grid500(db, sidos)
     unit_year = db.scalar(select(func.max(NationalUnit.year)))
     names = {u.adm_code: (u.adm_name, u.region_code) for u in db.scalars(select(NationalUnit).where(NationalUnit.year == unit_year, NationalUnit.level == "SIGUNGU"))}
     sigungu: list[dict[str, Any]] = []
     sgg_index: dict[str, int] = {}
     cells = []
-    counts = {"with_stats": 0, "no_stat": 0, "with_complexes": 0, "prepared": 0}
+    counts = {"with_stats": 0, "no_stat": 0, "with_complexes": 0, "prepared": 0, "with_stats500": 0}
     for r in rows:
         x, y = int(r.x), int(r.y)
         if r.sgg not in sgg_index:
@@ -209,8 +220,11 @@ def build_province(db: Any, province: dict[str, Any]) -> dict[str, Any]:
             counts["no_stat"] += 1
         counts["with_complexes"] += n > 0
         counts["prepared"] += region_i >= 0
+        own = grid500.get((x, y))
+        counts["with_stats500"] += own is not None
         cells.append([x // 500, y // 500, sgg_index[r.sgg], _num(r.pop), _num(r.hh), _num(r.housing), _num(r.workers),
-                      _share(r.age65, r.ageall), _share(r.old, r.years), _share(r.apt, r.types), n, yr, region_i])
+                      _share(r.age65, r.ageall), _share(r.old, r.years), _share(r.apt, r.types), n, yr, region_i,
+                      *(own if own is not None else (None, None, None, None, None))])
     boundaries = {"type": "FeatureCollection", "features": []}
     try:
         for b in db.execute(text(BOUNDARY_SQL), {"year": unit_year, "sidos": sidos}):
@@ -223,10 +237,27 @@ def build_province(db: Any, province: dict[str, Any]) -> dict[str, Any]:
         "code": province["code"], "name": province["name"], "kind": province["kind"], "sgis_codes": sidos,
         "fields": FIELDS, "cells": cells, "sigungu": sigungu, "regions": regions, "boundaries": boundaries,
         "bbox": _bbox(cells),
-        "meta": {"cells": len(cells), "sgis_year": year, "complex_month": snapshot, **counts,
+        "meta": {"cells": len(cells), "sgis_year": year, "complex_month": snapshot, **counts, **info500,
                  "grid_source": "SGIS 공식 500m 격자 (경계·코드)", "stats_source": f"SGIS {year or ''} 1km 격자 통계 (소속 1km 격자 값)",
                  "complex_source": f"K-apt 공동주택 단지 목록 {snapshot or ''} (좌표)"},
     }
+
+
+def _grid500(db: Any, sidos: list[str]) -> tuple[dict[tuple[int, int], tuple[Any, ...]], dict[str, Any]]:
+    """{(x, y): (pop, hh, housing, workers, pop change %)} from the SGIS 500m statistics (자료제공 신청분), if loaded."""
+    from .sgis_grid500 import SOURCE_TEXT, change_pct, coverage
+    info = coverage(db)
+    year, base = info["last_year"], info["base_year"]
+    meta = {"sgis500_year": year, "sgis500_base_year": base if base != year else None,
+            "stats500_source": f"{SOURCE_TEXT} {year}년" if year else None}
+    if not year:
+        return {}, meta
+    try:
+        rows = db.execute(text(GRID500_SQL), {"year": year, "base": base if base and base != year else -1, "sidos": sidos}).all()
+    except Exception:  # noqa: BLE001 - table missing (not deployed yet): the 1km values still draw
+        db.rollback()
+        return {}, meta
+    return {(int(r.x), int(r.y)): (_num(r.pop), _num(r.hh), _num(r.housing), _num(r.workers), change_pct(r.base_pop, r.pop)) for r in rows}, meta
 
 
 def _core_range(values: list[int], gap: int = 20, share: float = 0.04) -> tuple[int, int]:
@@ -271,6 +302,9 @@ def _cache_key(db: Any, province: dict[str, Any]) -> str:
     """Changes when the grid, the statistics, the complexes or the prepared regions change (not their status)."""
     prepared = sorted((r["code"], int(r.get("grid_count") or 0)) for r in province.get("prepared", []))
     parts = [str(PAYLOAD_VERSION), province["code"], ",".join(province["sgis_codes"]), str(province["cells"]), json.dumps(prepared)]
+    from .sgis_grid500 import coverage
+    grid500 = coverage(db)
+    parts.append(f"{grid500['last_year']}:{grid500['base_year']}:{grid500['rows']}")
     for sql in ("SELECT count(*) FROM national_complexes", "SELECT max(year) FROM sgis_grid_cells",
                 "SELECT count(*) FROM grid_regions"):
         try:

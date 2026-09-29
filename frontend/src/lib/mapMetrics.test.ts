@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { TOKENS } from '../theme/palette';
-import { classIndex, classify, METRIC_GROUPS, METRICS, quantileBounds, rangeLabel, SGIS_GROUP, stepColor, withMetricValues } from './mapMetrics';
+import { classIndex, classify, METRIC_GROUPS, METRICS, quantileBounds, rangeLabel, SGIS500_GROUP, SGIS_GROUP, stepColor, withMetricValues } from './mapMetrics';
 import type { GridProps } from '../types';
 
 describe('map classification', () => {
@@ -76,6 +76,22 @@ describe('map classification', () => {
     expect(pop.basis(none)).toBeNull();
     expect(pop.value({} as GridProps)).toBeNull(); // bundle not loaded yet
     for (const metric of sgis) expect(metric.definition).toContain('500m로 나눈 값이 아닙니다');
+  });
+  it('SGIS 500m metrics read the cell itself, stay missing without a row and flag replaced small values', () => {
+    const byKey = Object.fromEntries(METRICS.map((m) => [m.key, m]));
+    expect(METRIC_GROUPS).toContain(SGIS500_GROUP);
+    const pop = byKey.sgis500_population;
+    const observed = { sgis500_status: 'OBSERVED', sgis500_code: '다마62a48a', sgis500_year: 2024, sgis500_population: 5, sgis500_pop_density: 20, sgis500_small: ['population'] } as unknown as GridProps;
+    expect(pop.group).toBe(SGIS500_GROUP);
+    expect(pop.value(observed)).toBe(5);
+    expect(pop.basis(observed)).toContain('500m 격자 다마62a48a · 2024년');
+    expect(pop.basis(observed)).toContain('작은 값');
+    const none = { sgis500_status: 'NO_STAT', sgis500_year: 2024 } as unknown as GridProps;
+    expect(pop.value(none)).toBeNull();
+    expect(pop.value({} as GridProps)).toBeNull();
+    const change = byKey.sgis500_pop_change_pct;
+    expect(change.ramp).toBe('diff');
+    expect(change.basis({ ...observed, sgis500_pop_change_pct: 20, sgis500_base_year: 2015, sgis500_base_population: 100, sgis500_population: 120 } as unknown as GridProps)).toBe('2015년 100 명 → 2024년 120 명');
   });
   it('every metric states its formula and source (근거 유형 배지는 서버 필드가 없어 달지 않음)', () => {
     for (const metric of METRICS) {

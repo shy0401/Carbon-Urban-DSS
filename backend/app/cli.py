@@ -22,7 +22,7 @@ def init_tables():
         except Exception:db.rollback()
 
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument('command',choices=['demo','online','status','enrich','collect','collect-history','collect-missing','validate-models','snapshot','llm-dataset','llm-eval','import-sgis-grid',
+    parser=argparse.ArgumentParser();parser.add_argument('command',choices=['demo','online','status','enrich','collect','collect-history','collect-missing','validate-models','snapshot','llm-dataset','llm-eval','import-sgis-grid','import-sgis-grid500',
         'national-admin','national-sgis','national-complexes','national-grid500','national-ordinances','national-all','prepare-region','regions']);parser.add_argument('--year',type=int,default=DEFAULT_YEAR)
     parser.add_argument('--from',dest='from_year',type=int,default=2015);parser.add_argument('--to',dest='to_year',type=int,default=DEFAULT_YEAR)
     parser.add_argument('--datasets',default='',help='comma-separated: sgis,kma_asos,kapt_energy,energy,vworld_zoning,vworld_buildings,vworld_cadastral,building_register');parser.add_argument('--force',action='store_true')
@@ -87,6 +87,11 @@ def main():
             from .sgis_grid import import_sgis_grid,meta
             result=import_sgis_grid(db,args.file,force=args.force)
             print(json.dumps(dict(result,loaded={k:meta(db)[k] for k in ('year','cells','stat_rows')}),ensure_ascii=False))
+        elif args.command=='import-sgis-grid500':
+            # SGIS 500m 격자 통계 (자료제공 신청분): DATA_DIR/raw/sgis_grid_500m/**/<연도>년_<주제>_<블록>_500M.csv
+            from .sgis_grid500 import import_sgis_grid500
+            result=import_sgis_grid500(db,args.file,force=args.force,log=lambda m:print(m,flush=True))
+            print(json.dumps(result,ensure_ascii=False,default=str))
         elif args.command=='validate-models':
             from .model_service import model_status
             print(json.dumps(model_status(db,args.year,train=True,region=args.region),ensure_ascii=False,indent=2))

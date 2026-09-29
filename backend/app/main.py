@@ -90,6 +90,9 @@ def _warm_caches_in_background():
                 dashboard(db,None,DEFAULT_YEAR)
             from .area import warm_inputs
             warm_inputs(2015,DEFAULT_YEAR)
+            from .sgis_grid500 import data_root,import_sgis_grid500,scan
+            if scan(data_root())[0]:
+                with Session() as db:import_sgis_grid500(db)
         except Exception as exc:  # noqa: BLE001 - warming is best effort
             print('캐시 예열 실패:',type(exc).__name__,exc)
     threading.Thread(target=warm,name='warm-caches',daemon=True).start()
@@ -114,6 +117,8 @@ from .province_map import router as province_map_router
 app.include_router(province_map_router)
 from .dongs import router as dongs_router
 app.include_router(dongs_router)
+from .sgis_grid500 import router as sgis_grid500_router  # also registers sgis_grid500_values before create_all
+app.include_router(sgis_grid500_router)
 from .regions import RegionNotReady,DEFAULT_REGION,region_for_grid
 
 def _scope(db,region):
@@ -371,6 +376,8 @@ def map_data(year:int=Query(DEFAULT_YEAR,ge=2000,le=2100),region:str|None=Query(
         complexes=complex_features(db,sc)
         from .sgis_grid import grid_metric_properties
         sgis_props=grid_metric_properties(db,ids)
+        from .sgis_grid500 import grid500_properties,coverage as grid500_coverage,project_code
+        grid500=grid500_properties(db,ids)
         from .register_grid import grid_register_summary,map_properties as register_properties
         register=grid_register_summary(db)
         from .energy_parcels import grid_building_energy,map_properties as building_energy_properties,year_complete
@@ -412,7 +419,9 @@ def map_data(year:int=Query(DEFAULT_YEAR,ge=2000,le=2100),region:str|None=Query(
             # Parent SGIS 1km cell densities/shares (official, noisy); absent when no bundle is loaded.
             p.update(sgis_props.get(grid_id,{}))
             # Official SGIS 500m cell code that coincides with this project cell (API boundary; no statistics).
-            p['sgis500_code']=official.get(grid_id)
+            p['sgis500_code']=official.get(grid_id) or (project_code(grid_id) if grid500 else None)
+            # Own SGIS 500m cell statistics (자료제공 신청분): totals only, disclosure noise included; NO_STAT = no row, not 0.
+            p.update(grid500.get(grid_id,{}))
             # 건축물대장 표제부 linked to this grid: official floor area, FAR floor area, use mix.
             p.update(register_properties(register.get(grid_id)))
             # Every metered building of the grid (건축HUB by 법정동, placed through the cadastral parcel).
@@ -435,6 +444,7 @@ def map_data(year:int=Query(DEFAULT_YEAR,ge=2000,le=2100),region:str|None=Query(
             'building_energy':{'grids':len(building_energy),'parcels':sum(v['parcels'] for v in building_energy.values()),'complete':year_complete(year),'source':'건축HUB 건물에너지 (법정동 단위 전 지번, 연속지적으로 격자 배치)'} if building_energy else None,
             'register':{'grids':len(register),'buildings':sum(r['buildings'] for r in register.values()),'source':'건축HUB 건축물대장 표제부 (격자 연결분)'} if register else None,
             'sgis_grid':{'year':next((v.get('sgis1k_year') for v in sgis_props.values()),None),'source':'SGIS 격자 통계 1km (공공데이터포털 15141768)','note':'소속 1km 공식 격자의 밀도·비율이며 500m로 나눈 값이 아닙니다. 비밀보호 잡음(±7) 포함.'} if sgis_props else None,
+            'sgis_grid500':dict({k:v for k,v in grid500_coverage(db).items() if k in ('first_year','last_year','base_year','source')},cells=sum(1 for v in grid500.values() if v.get('sgis500_status')=='OBSERVED'),note='격자 자체의 500m 공식 통계(총괄 항목). 인구 5 미만은 0 또는 5, 사업체 3 미만은 0 또는 3으로 대체, 그 이상 최대 ±7(사업체 ±4) 잡음. 통계 없음은 0이 아닙니다.') if grid500 else None,
             'sgis_grid_official':dict(official_grid_meta(db),source='SGIS OpenAPI grid/data.geojson (grid_level_div=500m)') if official else None,
             'selected_sector':serialize(sector) if sector else None,'center':list(sc.center) if sc.center else [127.148,35.8242],'bbox':list(sc.bbox) if sc.bbox else None,'crs':'EPSG:5179','grid_size_m':500,'grid_area_m2':250000,'year':year,'offline_mode':offline_mode(),
             'region':{'code':sc.code,'name':sc.name,'short_name':sc.short,'status':sc.status,'grids':len(ids),'level':_level(db,sc.code)},

@@ -68,8 +68,9 @@ export const SEQ_RAMP = [t['seq-1'], t['seq-2'], t['seq-3'], t['seq-4'], t['seq-
 export const DIFF_RAMP = [t['diff-neg-2'], t['diff-neg-1'], t['diff-zero'], t['diff-pos-1'], t['diff-pos-2']];
 export const PLAN_COLORS = [t['plan-a'], t['plan-b'], t['plan-c']];
 
-export type RampName = 'load' | 'gain' | 'seq';
-export const RAMPS: Record<RampName, string[]> = { load: LOAD_RAMP, gain: GAIN_RAMP, seq: SEQ_RAMP };
+/** diff: 증감(음수 ↔ 0 ↔ 양수), 가운데는 중립 회색. */
+export type RampName = 'load' | 'gain' | 'seq' | 'diff';
+export const RAMPS: Record<RampName, string[]> = { load: LOAD_RAMP, gain: GAIN_RAMP, seq: SEQ_RAMP, diff: DIFF_RAMP };
 
 /** 용도지역 세부 이름(공식 명칭) → 토큰. 이름에 포함된 핵심어로 찾고, 없으면 null(해치). */
 const ZONE_RULES: Array<[string, TokenName]> = [

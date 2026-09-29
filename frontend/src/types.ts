@@ -227,6 +227,19 @@ export interface GridProps {
   /** Official SGIS 500m cell code with the same corner as this cell (API boundary; no statistics). */
   sgis500_code?: string | null;
   /** SGIS 1km parent cell (absent until the bundle is loaded). Densities are per km² of the 1km cell. */
+  /** Own SGIS 500m cell statistics (자료제공 신청분). NO_STAT: no row in the files (not 0). */
+  sgis500_year?: number;
+  sgis500_status?: 'OBSERVED' | 'NO_STAT';
+  sgis500_population?: number | null;
+  sgis500_households?: number | null;
+  sgis500_housing?: number | null;
+  sgis500_businesses?: number | null;
+  sgis500_workers?: number | null;
+  sgis500_pop_density?: number | null;
+  sgis500_base_year?: number | null;
+  sgis500_base_population?: number | null;
+  sgis500_pop_change_pct?: number | null;
+  sgis500_small?: string[];
   sgis1k_code?: string | null;
   sgis1k_year?: number;
   sgis1k_status?: 'OBSERVED' | 'NO_STAT';
@@ -245,6 +258,10 @@ export interface GridProps {
   sgis1k_small?: string[];
   [key: string]: unknown;
 }
+
+/** GET /api/sgis-grid/500m/cell/{grid_id}: every loaded year of one SGIS 500m cell (years without a row are left out). */
+export interface Sgis500Year { year: number; population: number | null; male: number | null; female: number | null; households: number | null; housing: number | null; businesses: number | null; workers: number | null }
+export interface Sgis500Series { code: string; years: number[]; series: Sgis500Year[]; source: string; note: string }
 
 export interface MapData {
   grids: GeoJSON.FeatureCollection<GeoJSON.Geometry, GridProps>;
@@ -269,6 +286,8 @@ export interface MapData {
   year?: number;
   offline_mode?: boolean;
   sgis_grid?: { year: number | null; source: string; note: string } | null;
+  /** SGIS 500m 격자 통계 (자료제공 신청분) coverage for this region's cells. */
+  sgis_grid500?: { first_year: number | null; last_year: number | null; base_year: number | null; source: string; cells: number; note: string } | null;
   register?: { grids: number; buildings: number; source: string } | null;
   building_energy?: { grids: number; parcels: number; complete: boolean; source: string } | null;
 }
@@ -526,6 +545,8 @@ export interface ProvinceGrid {
   meta: {
     cells: number; sgis_year: number | null; complex_month: string | null; with_stats: number; no_stat: number; with_complexes: number; prepared: number;
     grid_source: string; stats_source: string; complex_source: string;
+    /** SGIS 500m 격자 통계 (자료제공 신청분): cells with their own 500m row, latest and base years. */
+    with_stats500?: number; sgis500_year?: number | null; sgis500_base_year?: number | null; stats500_source?: string | null;
   };
 }
 

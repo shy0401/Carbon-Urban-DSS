@@ -29,6 +29,12 @@ const fmt = (value: number | null | undefined, unit = '', digits = 0) => formatM
 const GRID = '250,000 m²';
 const FACTOR_YEARS = ' 배출계수(2020~2022년 평균, 2025-03-31 공표)는 2025년 이후 연도에만 적용하므로 2024년 이전을 고르면 비어 있습니다(0 아님). 여러 해를 같은 계수로 비교하려면 지역 시뮬레이션을 씁니다.';
 export const SGIS_GROUP = '인구·주택 (SGIS 1km)';
+export const SGIS500_GROUP = '인구·주택 (SGIS 500m)';
+const SGIS500_SOURCE = 'SGIS 500m 격자 통계 (자료제공 신청분)';
+const SGIS500_NOTE = '이 500m 격자 자체의 SGIS 공식 통계입니다(총괄 항목만 제공). 비밀보호를 위해 인구 부문 5 미만은 0 또는 5, 사업체 부문 3 미만은 0 또는 3으로 대체했고, 그 이상 값에도 최대 ±7(사업체 ±4)의 잡음이 있습니다. 통계가 없는 격자는 0이 아니라 결측입니다.';
+const small500 = (p: GridProps, key: string) => (Array.isArray(p.sgis500_small) && p.sgis500_small.includes(key) ? ' · 작은 값(0·5 또는 0·3으로 대체될 수 있음)' : '');
+const sgis500Basis = (p: GridProps, key: string, extra: string | null = null) =>
+  p.sgis500_status === 'OBSERVED' && n(p[`sgis500_${key}`]) !== null ? `500m 격자 ${p.sgis500_code ?? ''} · ${p.sgis500_year}년${extra ? ` · ${extra}` : ''}${small500(p, key)}` : null;
 const SGIS_SOURCE = 'SGIS 격자 통계 1km (공공데이터포털 15141768)';
 const SGIS_NOTE = '이 500m 격자가 속한 1km 공식 격자의 값입니다. 같은 1km 격자의 500m 격자 4개는 같은 값이며, 500m로 나눈 값이 아닙니다. 비밀보호 잡음(인구 ±7)이 들어 있습니다.';
 const suspectCount = (p: GridProps) => (typeof p.electricity_suspect_parcels === 'number' ? p.electricity_suspect_parcels : 0);
@@ -39,7 +45,7 @@ export const PERCENT_BREAKS = [20, 40, 60, 80];
 
 export const REGISTER_GROUP = '건축물대장';
 export const BUILDING_ENERGY_GROUP = '건물 전체 에너지 (건축HUB)';
-export const METRIC_GROUPS = ['에너지 관측', '에너지 원단위', '탄소', BUILDING_ENERGY_GROUP, '도시 형태', REGISTER_GROUP, '토지이용', SGIS_GROUP, '데이터 품질'] as const;
+export const METRIC_GROUPS = ['에너지 관측', '에너지 원단위', '탄소', BUILDING_ENERGY_GROUP, '도시 형태', REGISTER_GROUP, '토지이용', SGIS500_GROUP, SGIS_GROUP, '데이터 품질'] as const;
 
 export const METRICS: MetricDef[] = [
   {
@@ -249,6 +255,49 @@ export const METRICS: MetricDef[] = [
     basis: (p) => p.use_share_pct ? Object.entries(p.use_share_pct).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, v]) => `${USE_NAME[k] ?? k} ${v.toFixed(1)}%`).join(' · ') : null,
     source: 'VWorld 건물용도코드',
     use: '실제 건물 쓰임을 용도지역과 비교합니다.',
+  },
+  {
+    key: 'sgis500_population', label: '인구', unit: '명', group: SGIS500_GROUP, ramp: 'seq', digits: 0,
+    value: (p) => (p.sgis500_status === 'OBSERVED' ? n(p.sgis500_population) : null),
+    definition: `${SGIS500_NOTE} 총인구(내국인·외국인 포함, 인구주택총조사 등록센서스 기준)입니다.`,
+    formula: '500m 격자 총인구(to_in_001)',
+    basis: (p) => sgis500Basis(p, 'population', n(p.sgis500_pop_density) !== null ? `밀도 ${fmt(p.sgis500_pop_density, '명/km²')}` : null),
+    breaks: [25, 250, 1250, 2500], source: SGIS500_SOURCE,
+    use: '사람이 실제로 사는 500m 격자를 찾고, 에너지 관측이 없는 격자의 생활 수요 규모를 가늠합니다. 1km 값보다 동네 단위 차이가 잘 드러납니다.',
+  },
+  {
+    key: 'sgis500_households', label: '가구', unit: '가구', group: SGIS500_GROUP, ramp: 'seq', digits: 0,
+    value: (p) => (p.sgis500_status === 'OBSERVED' ? n(p.sgis500_households) : null),
+    definition: `${SGIS500_NOTE} 일반가구 수입니다.`,
+    formula: '500m 격자 총가구(to_ga_001)',
+    basis: (p) => sgis500Basis(p, 'households'), breaks: [10, 100, 500, 1000], source: SGIS500_SOURCE,
+    use: '주거 에너지 수요 단위(가구)가 몰린 곳을 봅니다. 세대당 전력과 함께 보면 관측 단지가 격자 가구의 얼마를 대표하는지 알 수 있습니다.',
+  },
+  {
+    key: 'sgis500_housing', label: '주택', unit: '호', group: SGIS500_GROUP, ramp: 'seq', digits: 0,
+    value: (p) => (p.sgis500_status === 'OBSERVED' ? n(p.sgis500_housing) : null),
+    definition: `${SGIS500_NOTE} 총주택(거처) 수입니다.`,
+    formula: '500m 격자 총주택(to_ho_001)',
+    basis: (p) => sgis500Basis(p, 'housing'), breaks: [10, 100, 500, 1000], source: SGIS500_SOURCE,
+    use: '주택 재고가 많은 곳, 개보수 대상 주택이 모인 곳을 찾습니다.',
+  },
+  {
+    key: 'sgis500_workers', label: '종사자', unit: '명', group: SGIS500_GROUP, ramp: 'seq', digits: 0,
+    value: (p) => (p.sgis500_status === 'OBSERVED' ? n(p.sgis500_workers) : null),
+    definition: `${SGIS500_NOTE} 사업체 종사자 수(사업체 부문, 잡음 ±4)입니다.`,
+    formula: '500m 격자 총종사자(to_em_020)',
+    basis: (p) => sgis500Basis(p, 'workers', n(p.sgis500_businesses) !== null ? `사업체 ${fmt(p.sgis500_businesses, '곳')}` : null),
+    breaks: [25, 125, 500, 1250], source: SGIS500_SOURCE,
+    use: '상업·업무·산업 활동이 몰린 격자(비주거 에너지 수요)를 찾습니다. 주거 원단위에 상업이 섞였는지 판단할 때도 씁니다.',
+  },
+  {
+    key: 'sgis500_pop_change_pct', label: '인구 증감률', unit: '%', group: SGIS500_GROUP, ramp: 'diff', digits: 1,
+    value: (p) => (p.sgis500_status === 'OBSERVED' ? n(p.sgis500_pop_change_pct) : null), breaks: [-20, -5, 5, 20],
+    definition: `${SGIS500_NOTE} 기준연도(2015년)와 최근 연도의 500m 격자 총인구를 비교합니다. 두 해 모두 20명 이상일 때만 내며(작은 값 대체·잡음 때문), 그렇지 않으면 결측입니다.`,
+    formula: '(최근 연도 총인구 − 2015년 총인구) ÷ 2015년 총인구 × 100',
+    basis: (p) => (n(p.sgis500_pop_change_pct) !== null ? `${p.sgis500_base_year}년 ${fmt(p.sgis500_base_population, '명')} → ${p.sgis500_year}년 ${fmt(p.sgis500_population, '명')}` : null),
+    source: SGIS500_SOURCE,
+    use: '인구가 빠지는 곳(수요 감소·빈집)과 느는 곳(신규 개발)을 가려, 에너지 사용 변화가 인구 때문인지 원단위 때문인지 나눠 봅니다.',
   },
   {
     key: 'sgis_pop_density', label: '인구밀도', unit: '명/km²', group: SGIS_GROUP, ramp: 'seq', digits: 0,

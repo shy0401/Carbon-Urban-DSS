@@ -270,3 +270,16 @@ small.resolution-tag { margin: 0 0 0 var(--sp-1); }
 .province-prepared em { font-style: normal; color: var(--ink-3); }
 .province-prepared .unit-open { flex: 1 1 100%; display: flex; }
 .province-prepared .unit-open select { width: 100%; height: 30px; font-size: var(--fs-caption); }
+
+/* SGIS 500m 격자 통계: 연도별 인구 선과 값 표 */
+.spark { margin: var(--sp-3) 0 0; }
+.spark svg { display: block; width: 100%; height: auto; max-height: 72px; overflow: visible; }
+.spark-line { fill: none; stroke: var(--seq-4); stroke-width: 2; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+.spark-dot { fill: var(--seq-5); stroke: var(--surface, #fff); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.spark figcaption { display: flex; justify-content: space-between; font-size: var(--fs-caption); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.sgis500-years { margin-top: var(--sp-2); font-size: var(--fs-caption); }
+.sgis500-years summary { cursor: pointer; color: var(--ink-2); }
+.compact-table { width: 100%; border-collapse: collapse; font-size: var(--fs-caption); margin-top: var(--sp-2); }
+.compact-table th, .compact-table td { padding: 3px var(--sp-1); border-bottom: 1px solid var(--line); text-align: right; font-weight: 400; font-variant-numeric: tabular-nums; }
+.compact-table th:first-child, .compact-table thead th { color: var(--ink-3); }
+.compact-table th[scope="row"] { text-align: left; }

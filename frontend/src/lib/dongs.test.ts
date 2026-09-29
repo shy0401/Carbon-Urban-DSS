@@ -33,6 +33,20 @@ describe('읍면동 aggregation', () => {
   });
 });
 
+describe('SGIS 500m 격자 통계를 읍면동으로', () => {
+  it('adds totals by share and turns cell changes into the 행정동 change (weighted by base-year population)', () => {
+    const grids = new Map<string, GridProps>([
+      ['p', cell('p', { sgis500_workers: 100, sgis500_pop_change_pct: 50, sgis500_base_population: 100 })],
+      ['q', cell('q', { sgis500_workers: 40, sgis500_pop_change_pct: -10, sgis500_base_population: 1000 })],
+      ['r', cell('r', { sgis500_workers: null, sgis500_pop_change_pct: null, sgis500_base_population: null })],
+    ]);
+    const shares = new Map([['p', 1], ['q', 0.5], ['r', 1]]);
+    expect(aggregate('sgis500_workers', v('sgis500_workers'), grids, shares).value).toBe(120);
+    // (50×100×1 + (−10)×1000×0.5) / (100 + 500) = 0 : the 행정동 as a whole did not change.
+    expect(aggregate('sgis500_pop_change_pct', v('sgis500_pop_change_pct'), grids, shares).value).toBeCloseTo(0);
+  });
+});
+
 describe('읍면동 lookups', () => {
   const data = {
     region: '41110', year: 2024, source: '', boundaries: { type: 'FeatureCollection', features: [] },
