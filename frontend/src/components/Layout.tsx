@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useSystemInfo } from '../hooks/useSystemInfo';
 import { AnalysisScopeBar } from './AnalysisScopeBar';
+import { RegionOpenNotice } from './RegionOpenNotice';
 import { SystemStatus } from './SystemStatus';
 import { TitleBlock } from './TitleBlock';
 
@@ -39,6 +40,7 @@ export function Layout() {
         <div className="mobile-top"><button className="menu-button" aria-label="메뉴 열기" onClick={() => setOpen(true)}><Menu size={20} /></button><strong>Carbon Urban DSS</strong></div>
         <div className="shell-scope"><TitleBlock /><AnalysisScopeBar /></div>
       </header>
+      <RegionOpenNotice />
       <Outlet />
     </main>
   </div>;

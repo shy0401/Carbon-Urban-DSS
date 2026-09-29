@@ -130,3 +130,11 @@
   .main-shell { margin: 0 !important; }
   .page { padding: 0 !important; max-width: none !important; }
 }
+
+/* 고른 시·군·구의 기본 지도를 만드는 동안 머리 아래에 한 줄로 알림 */
+.region-open-notice { display: flex; align-items: center; gap: var(--sp-2); margin: var(--sp-3) var(--sp-6) 0; padding: var(--sp-2) var(--sp-3); border: 1px solid var(--line); border-left: 3px solid var(--info); border-radius: var(--r-map); background: var(--info-bg); color: var(--ink); font-size: var(--fs-label); line-height: 1.5; }
+.region-open-notice.bad { border-left-color: var(--danger); background: var(--danger-bg); }
+.region-open-notice > svg { flex: none; }
+.region-open-notice .button { margin-left: auto; }
+@media (max-width: 1023px) { .region-open-notice { margin: var(--sp-2) var(--sp-4) 0; } }
+.region-open-notice.basic { border-left-color: var(--ink-3); background: var(--surface); color: var(--ink-2); }

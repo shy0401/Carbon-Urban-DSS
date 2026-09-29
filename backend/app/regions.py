@@ -486,10 +486,10 @@ def scope(db: Any, code: str | None = None) -> Scope:
     code = (code or DEFAULT_REGION).strip()
     region = get_region(db, code)
     if region is None and code != DEFAULT_REGION:
-        raise RegionNotReady(f"아직 준비하지 않은 지역입니다: {code}. 전국 화면에서 '이 지역 준비'를 먼저 실행하세요")
+        raise RegionNotReady(f"아직 지도를 만들지 않은 지역입니다(준비하지 않은 지역): {code}. 지도를 열면 전국 공통 자료로 몇 초 만에 만듭니다")
     grid_ids = region_grid_ids(db, code)
     if code != DEFAULT_REGION and not grid_ids:
-        raise RegionNotReady(f"{region.name if region else code}의 분석 격자가 아직 없습니다. 지역 준비가 끝나면 열립니다")
+        raise RegionNotReady(f"{region.name if region else code}의 분석 격자가 아직 없습니다. 지도를 열면 전국 공통 자료로 몇 초 만에 만듭니다")
     foreign_legal, foreign_sgis = _other_regions(db, code) if code == DEFAULT_REGION else ((), ())
     if region is None:  # legacy database without the region tables filled
         return Scope(DEFAULT_REGION, "전북특별자치도 전주시", "전주시", grid_ids, ("52111", "52113"), (), JEONJU_CENTER, None, None, "READY", True,

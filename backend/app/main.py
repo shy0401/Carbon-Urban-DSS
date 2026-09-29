@@ -119,6 +119,8 @@ from .dongs import router as dongs_router
 app.include_router(dongs_router)
 from .sgis_grid500 import router as sgis_grid500_router  # also registers sgis_grid500_values before create_all
 app.include_router(sgis_grid500_router)
+from .national_map import router as national_map_router
+app.include_router(national_map_router)
 from .regions import RegionNotReady,DEFAULT_REGION,region_for_grid
 
 def _scope(db,region):

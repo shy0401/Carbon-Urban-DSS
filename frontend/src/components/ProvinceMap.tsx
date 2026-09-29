@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { setBasemapStatus } from '../hooks/useBasemapStatus';
 import { useApi } from '../hooks/useApi';
-import { formatMetric } from '../lib/format';
+import { formatMetric, withTopic } from '../lib/format';
 import { classify, rangeLabel, stepColor, type Classification } from '../lib/mapMetrics';
 import { DEFAULT_PROVINCE_METRIC, DEFAULT_PROVINCE_METRIC_500, groupOf, PROVINCE_GROUPS, PROVINCE_METRICS, rowValue, type ProvinceMetric } from '../lib/provinceMetrics';
 import { cellRing } from '../lib/tm5179';
@@ -264,10 +264,10 @@ function CellDetail({ grid, index, row, metric, units, onClose, onOpenRegion }: 
     <section className="detail-section" aria-label="시·군·구와 읍면동 지도">
       <h3>시·군·구 · 읍면동 지도</h3>
       {region ? <>
-        <p>{region.short_name}은 상세 자료 지역입니다. 이 격자의 에너지 관측·탄소·건물·용도지역·법적 상한과 읍면동별 합계를 시·군·구 지도에서 봅니다.</p>
+        <p>{withTopic(region.short_name)} 상세 자료 지역입니다. 이 격자의 에너지 관측·탄소·건물·용도지역·법적 상한과 읍면동별 합계를 시·군·구 지도에서 봅니다.</p>
         <button type="button" className="button primary" onClick={() => onOpenRegion(region.code, id)}>{region.short_name} 지도에서 보기</button>
       </> : unit ? <>
-        <p>{unit.level === 'BASIC' ? `${unit.short_name}은 기본 지도(전국 공통 자료)가 있습니다.` : `${unit.short_name}은 처음 열면 전국 자료로 500m 격자·읍면동 지도를 만듭니다(몇 초~1분).`} 에너지·탄소·건물·용도지역은 그 지도에서 상세 자료 수집을 시작하면 채워집니다.</p>
+        <p>{unit.level === 'BASIC' ? `${withTopic(unit.short_name)} 기본 지도(전국 공통 자료)가 있습니다.` : `${withTopic(unit.short_name)} 처음 열면 전국 자료로 500m 격자·읍면동 지도를 만듭니다(몇 초~1분).`} 에너지·탄소·건물·용도지역은 그 지도에서 상세 자료 수집을 시작하면 채워집니다.</p>
         <button type="button" className="button primary" onClick={() => onOpenRegion(unit.code, id)}>{unit.short_name} 지도 열기 (읍면동 포함)</button>
       </> : <p className="muted">이 격자의 시·군·구를 법정 행정구역과 연결하지 못해 시·군·구 지도를 열 수 없습니다. <Link to="/regions">전국 지역</Link>에서 확인하세요.</p>}
     </section>

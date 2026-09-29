@@ -79,3 +79,11 @@ export function share(part: number | null | undefined, total: number | null | un
   if (part === null || part === undefined || !total) return null;
   return (part / total) * 100;
 }
+
+/** 이름 뒤 보조사: 받침이 있으면 '은', 없으면 '는' ("완주군은", "수원시는"). */
+export function withTopic(name: string): string {
+  const last = name.trim().slice(-1);
+  const code = last.charCodeAt(0) - 0xac00;
+  if (code < 0 || code > 11171) return `${name}은(는)`;
+  return `${name}${code % 28 ? '은' : '는'}`;
+}

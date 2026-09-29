@@ -501,6 +501,7 @@ export interface RegionSummary extends RegionRef {
 export interface NationalMeta {
   admin_units: number; sigungu: number; regions: number; sgis_year: number | null; sgis_sigungu: number; sgis_emd: number;
   complexes: number; grid500_official: number; grid1k_year: number | null; grid1k_cells: number;
+  grid500_stats?: { first_year: number | null; last_year: number | null; cells: number; rows: number };
   sources: Record<string, { status: string; quality: string | null; collected_at: string | null; coverage: string | null } | null>;
   /** 시·군 도시·군계획 조례 수집 결과 (조례를 내는 기관 수와 상태별 개수). */
   ordinances?: { issuers: number; counts: Record<string, number> };
@@ -532,6 +533,31 @@ export interface ProvinceSummary {
   units?: ProvinceUnit[];
   excluded?: string | null;
 }
+/** GET /api/map/national: 전국 시·도와 시·군·구의 전국 공통 지표 (값이 없으면 null, 0 아님). */
+export interface NationalMetrics {
+  population: number | null; households: number | null; area_km2: number | null; density: number | null;
+  pop500: number | null; pop500_base: number | null; pop_change_pct: number | null; housing500: number | null; workers500: number | null;
+  complexes: number | null;
+}
+export type NationalLevel = 'DETAILED' | 'BASIC' | 'NONE' | 'UNLINKED';
+export interface NationalProvince {
+  code: string; name: string; kind: 'PROVINCE' | 'METRO'; excluded: string | null; sgis_codes: string[]; cells: number; regions: number;
+  metrics: NationalMetrics; notes: Record<string, string>; detailed: number; basic: number; energy_regions: number; label: [number, number] | null;
+}
+export interface NationalRegion {
+  code: string; name: string; short_name: string; sido: string | null; linked: boolean; level: NationalLevel; status: string | null;
+  metrics: NationalMetrics; notes: Record<string, string>; energy: { kapt_complexes: number; building_parcels: number };
+}
+export interface NationalData {
+  provinces: NationalProvince[]; boundaries: GeoJSON.FeatureCollection; regions: NationalRegion[]; fields: string[];
+  meta: { sgis_year: number | null; grid500_year: number | null; grid500_base_year: number | null; complex_month: string | null; gaps: string | null;
+    sources: Record<'admin' | 'grid500' | 'complexes' | 'boundaries', string>; energy_note: string };
+}
+/** GET /api/map/national/{sido}: 한 시·도의 시·군·구 경계 (속성: code, name, linked, level, label, 지표). */
+export interface NationalProvinceRegions { code: string; boundaries: GeoJSON.FeatureCollection }
+/** GET /api/regions/catalog */
+export interface RegionCatalogEntry { code: string; name: string; short_name: string; sido_name: string; districts: Array<{ code: string; name: string }>; study_status: string }
+
 export interface ProvinceList { provinces: ProvinceSummary[]; excluded: Array<{ code: string; reason: string }> }
 /** GET /api/map/province/{code}: every SGIS 500m cell of one 시·도 as a number row (see ``fields``). */
 export interface ProvinceGrid {

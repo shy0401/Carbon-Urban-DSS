@@ -27,5 +27,13 @@ export function useApi<T>(path: string) {
     return ()=>request.current?.abort();
   }, [reload]);
 
+  // A 시·군·구 map was just built (see useRegionOpen): a screen stopped on "지도를 만들지 않은 지역" reads again.
+  const failed = useRef(false); failed.current = error !== null;
+  useEffect(() => {
+    const onOpened = () => { if (failed.current) void reload(); };
+    window.addEventListener('carbon-region-opened', onOpened);
+    return () => window.removeEventListener('carbon-region-opened', onOpened);
+  }, [reload]);
+
   return { data, loading, error, reload, setData };
 }

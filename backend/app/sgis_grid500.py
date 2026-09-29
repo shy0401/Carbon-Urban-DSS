@@ -130,6 +130,16 @@ def missing_files(root: Path) -> list[dict[str, Any]]:
     return [{"theme": theme, "block": block, "years": years} for (theme, block), years in sorted(gaps.items(), key=lambda kv: (THEMES.index(kv[0][0]), kv[0][1]))]
 
 
+def received_blocks(root: Path) -> dict[tuple[str, int], set[str]]:
+    """{(theme, year): 100km blocks with a 500M file} — a sum over an area is only whole when every block it touches is here."""
+    out: dict[tuple[str, int], set[str]] = {}
+    for path in root.rglob("*_500M.csv") if root.exists() else []:
+        match = FILE_RE.match(path.name)
+        if match and 1990 <= int(match.group(1)) <= 2100:
+            out.setdefault((match.group(2), int(match.group(1))), set()).add(match.group(3))
+    return out
+
+
 def missing_text(gaps: list[dict[str, Any]]) -> str:
     def span(years: list[int]) -> str:
         return f"{years[0]}~{years[-1]}년" if len(years) > 1 and years[-1] - years[0] + 1 == len(years) else ", ".join(f"{y}년" for y in years)

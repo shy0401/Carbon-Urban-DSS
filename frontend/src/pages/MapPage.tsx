@@ -7,6 +7,7 @@ import { DongPanel } from '../components/DongPanel';
 import { LayerGroupTitle, LayerToggle } from '../components/LayerToggle';
 import { MetricCard } from '../components/MetricCard';
 import { MissingValue } from '../components/MissingValue';
+import { NationalMap } from '../components/NationalMap';
 import { PageHeader } from '../components/PageHeader';
 import { ProvenanceBadge } from '../components/ProvenanceBadge';
 import { ProvinceMap } from '../components/ProvinceMap';
@@ -16,16 +17,17 @@ import { ErrorState, LoadingState } from '../components/Status';
 import { WeatherChart } from '../components/WeatherChart';
 import { setBasemapStatus } from '../hooks/useBasemapStatus';
 import { useApi } from '../hooks/useApi';
+import { NOT_READY, openRegion } from '../hooks/useRegionOpen';
 import { regionParam, useAnalysisScope } from '../hooks/useAnalysisScope';
-import { refreshSystemInfo, useSystemInfo } from '../hooks/useSystemInfo';
+import { useSystemInfo } from '../hooks/useSystemInfo';
 import { api } from '../lib/api';
 import { dongCells } from '../lib/dongs';
-import { formatMetric } from '../lib/format';
+import { formatMetric, withTopic } from '../lib/format';
 import { referenceGrid } from '../lib/mapGrid';
 import { classify, METRIC_GROUPS, METRICS, MISSING_FILL, rangeLabel, stepColor, USE_COLORS, USE_NAME, withMetricValues, ZONE_NAME, type Classification, type MetricDef } from '../lib/mapMetrics';
 import { provenanceFromCode } from '../lib/provenance';
 import { LINE_ON_BASEMAP, SEQ_RAMP, TOKENS, ZONE_DETAIL, ZONE_GROUP_COLOR } from '../theme/palette';
-import type { BuildingViewport, DashboardData, DongData, GridProps, MapData, OverlayData, RegionSummary } from '../types';
+import type { BuildingViewport, DashboardData, DongData, GridProps, MapData, OverlayData } from '../types';
 
 maplibregl.setWorkerUrl(workerUrl);
 
@@ -45,9 +47,11 @@ export function toggleLayer(visible: Record<LayerKey, boolean>, key: LayerKey, o
   return next;
 }
 const PROVINCE_KEY = 'carbon-map-province';
-type MapView = 'province' | 'region';
+type MapView = 'national' | 'province' | 'region';
+/** ?view= : 전국(기본) → 시·도 500m 격자 → 시·군·구·읍면동. */
+export function mapView(param: string | null): MapView { return param === 'region' ? 'region' : param === 'province' ? 'province' : 'national'; }
 
-/** 시·도 코드(법정 2자리): 주소의 sido → 이 브라우저에 기억한 값 → 분석 지역의 시·도. 제주(50)는 이 화면에서 제외. */
+/** 시·도 코드(법정 2자리): 주소의 sido → 이 브라우저에 기억한 값 → 분석 지역의 시·도. 제주(50)는 500m 격자 화면에서 제외. */
 export function pickProvince(param: string | null, stored: string | null, regionCode: string | null): string {
   for (const code of [param, stored, regionCode?.slice(0, 2) ?? null]) if (code && /^\d{2}$/.test(code) && code !== '50') return code;
   return '52';
@@ -55,36 +59,44 @@ export function pickProvince(param: string | null, stored: string | null, region
 function storedProvince(): string | null { try { return localStorage.getItem(PROVINCE_KEY); } catch { return null; } }
 function storeProvince(code: string) { try { localStorage.setItem(PROVINCE_KEY, code); } catch { /* Optional browser storage. */ } }
 
-/** 지도 분석: 1단계 시·도 500m 격자(전국 공통 지표) → 2단계 분석 준비 시·군·구 상세(에너지·탄소·건물·용도지역). */
+/** 지도 분석: 1단계 전국(시·도 → 시·군·구 고르기) → 2단계 시·도 500m 격자(전국 공통 지표) → 3단계 시·군·구 상세·읍면동. */
 export function MapPage() {
   const [params, setParams] = useSearchParams();
-  const view: MapView = params.get('view') === 'region' ? 'region' : 'province';
+  const view = mapView(params.get('view'));
   const { region, setScope } = useAnalysisScope();
   const system = useSystemInfo();
   const defaultRegion = system?.default_region ?? '52110';
   const regionName = system?.region?.short_name ?? '전주시';
   const province = pickProvince(params.get('sido'), storedProvince(), region ?? defaultRegion);
+  const nationalSido = /^\d{2}$/.test(params.get('sido') ?? '') ? params.get('sido') : null;
+  const nationalSgg = params.get('sgg');
   const [offline, setOffline] = useState<boolean | null>(null);
   useEffect(() => { const update = () => { api<{ offline_mode: boolean }>('/system').then((s) => setOffline(s.offline_mode)).catch(() => setOffline(true)); }; update(); window.addEventListener('carbon-system-change', update); return () => window.removeEventListener('carbon-system-change', update); }, []);
   useEffect(() => () => setBasemapStatus('not-on-map'), []);
-  const go = (next: Record<string, string>) => setParams((old) => { const p = new URLSearchParams(old); for (const [k, v] of Object.entries(next)) p.set(k, v); return p; });
-  const chooseProvince = (code: string) => { storeProvince(code); go({ view: 'province', sido: code }); };
+  const go = (next: Record<string, string | null>) => setParams((old) => { const p = new URLSearchParams(old); for (const [k, v] of Object.entries(next)) { if (v === null) p.delete(k); else p.set(k, v); } return p; });
+  const chooseProvince = (code: string) => { storeProvince(code); go({ view: 'province', sido: code, sgg: null }); };
+  const chooseNational = (sido: string | null, sgg: string | null = null) => { if (sido && sido !== '50') storeProvince(sido); go({ view: 'national', sido, sgg }); };
   const openRegion = (code: string, grid: string | null) => {
     setScope({ region: code === defaultRegion ? null : code, gridId: grid });
-    setParams((old) => { const p = new URLSearchParams(old); p.set('view', 'region'); p.delete('dong'); return p; });
+    setParams((old) => { const p = new URLSearchParams(old); p.set('view', 'region'); p.delete('dong'); p.delete('sgg'); return p; });
   };
-  const description = view === 'province'
-    ? '시·도를 고르면 그 시·도 전체를 SGIS 공식 500m 격자로 나눠 전국 공통 지표(인구·주택·공동주택)로 칠합니다. 어느 격자든 누르면 그 시·군·구 지도(읍면동 포함)로 들어갑니다. 굵은 테두리는 에너지·건물·용도지역까지 모은 상세 자료 지역입니다.'
-    : `${regionName}의 500m 분석 격자(격자당 250,000m²)와 읍면동입니다. 격자를 누르면 모든 분석 화면의 대상지가 바뀌고, 읍면동을 고르면 격자 지표를 동 단위로 모아 봅니다.`;
+  const description = view === 'national'
+    ? '전국 시·도를 지도에서 누르거나 왼쪽 메뉴에서 고르면 그 시·도의 시·군·구가 칠해집니다. 시·군·구를 고르면 요약을 보고 그 지도(읍면동 포함)로 들어갑니다. 색은 전국 어디에나 있는 자료(SGIS 인구·가구·500m 격자 통계, K-apt 단지)만 씁니다.'
+    : view === 'province'
+      ? '시·도 전체를 SGIS 공식 500m 격자로 나눠 전국 공통 지표(인구·주택·공동주택)로 칠합니다. 어느 격자든 누르면 그 시·군·구 지도(읍면동 포함)로 들어갑니다. 굵은 테두리는 에너지·건물·용도지역까지 모은 상세 자료 지역입니다.'
+      : `${regionName}의 500m 분석 격자(격자당 250,000m²)와 읍면동입니다. 격자를 누르면 모든 분석 화면의 대상지가 바뀌고, 읍면동을 고르면 격자 지표를 동 단위로 모아 봅니다.`;
   return <div className="page map-page">
     <PageHeader title="도시 탄소 지도" description={description} />
     <nav className="map-views" aria-label="지도 보기">
-      <Link to={`?view=province&sido=${province}`} aria-current={view === 'province' ? 'page' : undefined} onClick={() => storeProvince(province)}><strong>1. 시·도 500m 격자</strong><small>전국 공통 지표, 제주 제외</small></Link>
-      <Link to="?view=region" aria-current={view === 'region' ? 'page' : undefined}><strong>2. 시·군·구 · 읍면동</strong><small>{regionName} 상세 지도</small></Link>
+      <Link to={nationalSido && view === 'national' ? `?view=national&sido=${nationalSido}` : '?view=national'} aria-current={view === 'national' ? 'page' : undefined}><strong>1. 전국 · 시·도 선택</strong><small>지도·메뉴에서 시·도와 시·군·구 고르기</small></Link>
+      <Link to={`?view=province&sido=${province}`} aria-current={view === 'province' ? 'page' : undefined} onClick={() => storeProvince(province)}><strong>2. 시·도 500m 격자</strong><small>전국 공통 지표, 제주 제외</small></Link>
+      <Link to="?view=region" aria-current={view === 'region' ? 'page' : undefined}><strong>3. 시·군·구 · 읍면동</strong><small>{regionName} 지도</small></Link>
     </nav>
-    {view === 'province'
-      ? <ProvinceMap provinceCode={province} onProvince={chooseProvince} onOpenRegion={openRegion} offline={offline} />
-      : <RegionDetailMap offline={offline} />}
+    {view === 'national'
+      ? <NationalMap sido={nationalSido} sgg={nationalSgg} onSido={(code) => chooseNational(code)} onSgg={(code) => chooseNational(code ? (nationalSido ?? code.replace('sgis:', '').slice(0, 2)) : nationalSido, code)} onProvinceGrid={chooseProvince} onOpenRegion={(code) => openRegion(code, null)} offline={offline} />
+      : view === 'province'
+        ? <ProvinceMap provinceCode={province} onProvince={chooseProvince} onOpenRegion={openRegion} offline={offline} />
+        : <RegionDetailMap offline={offline} />}
   </div>;
 }
 const BUILDING_MIN_ZOOM = 14;
@@ -396,14 +408,12 @@ function useOpenRegion(region: string | null, error: string | null, onOpened: ()
     tried.current = region;
     setState({ state: 'opening' });
     try {
-      const opened = await api<RegionSummary>(`/regions/${region}/open`, { method: 'POST', body: '{}' });
+      const opened = await openRegion(region); // shared with the header banner: one request per region
       setState({ state: 'idle', name: opened.short_name ?? opened.name });
-      void refreshSystemInfo(region);
-      window.dispatchEvent(new Event('carbon-regions-change'));
       done.current();
     } catch (e) { setState({ state: 'failed', message: e instanceof Error ? e.message : '지도를 만들지 못했습니다.' }); }
   }, [region]);
-  useEffect(() => { if (region && error && tried.current !== region && /준비하지 않은|격자가 아직 없/.test(error)) void run(); }, [region, error, run]);
+  useEffect(() => { if (region && error && tried.current !== region && NOT_READY.test(error)) void run(); }, [region, error, run]);
   return { ...state, retry: run };
 }
 
@@ -418,7 +428,7 @@ function BasicRegionNote({ code, name }: { code: string; name: string }) {
   };
   return <section className="region-level-note" aria-label="지도 자료 수준">
     <strong>기본 지도</strong>
-    <p>{name}은 전국 공통 자료(SGIS 격자 통계·행정동, K-apt 단지 목록, 조례)만 있습니다. 에너지·탄소·건물·용도지역은 상세 자료를 모으면 채워집니다.</p>
+    <p>{withTopic(name)} 전국 공통 자료(SGIS 격자 통계·행정동, K-apt 단지 목록, 조례)만 있습니다. 에너지·탄소·건물·용도지역은 상세 자료를 모으면 채워집니다.</p>
     {state === 'started' ? <p role="status">상세 자료 수집을 시작했습니다(지역 크기에 따라 몇 시간, 호출 한도가 있는 자료는 다음 날 이어서). <Link to={`/regions?select=${code}`}>진행 보기</Link></p>
       : <button type="button" className="button secondary small" onClick={() => void start()} disabled={state === 'busy'}>{state === 'busy' ? '시작하는 중…' : '상세 자료 수집 시작'}</button>}
     {message && <p className="muted" role="alert">{message}</p>}

@@ -37,7 +37,7 @@ def national_meta(db: Any) -> dict[str, Any]:
         db.rollback()
     grid_year = latest_year(db)
     sources = {}
-    for source_id in ("admin_units", "sgis_national", "kapt_national", "sgis_grid", "sgis_grid_1k", "zoning_ordinances"):
+    for source_id in ("admin_units", "sgis_national", "kapt_national", "sgis_grid", "sgis_grid_1k", "sgis_grid_500m_stats", "zoning_ordinances"):
         source = db.get(DataSource, source_id)
         sources[source_id] = {"status": source.status, "quality": source.quality, "collected_at": source.collected_at.isoformat() if source.collected_at else None,
                               "coverage": source.geographic_coverage} if source else None
@@ -47,8 +47,14 @@ def national_meta(db: Any) -> dict[str, Any]:
         "sgis_emd": _count(db, NationalUnit, NationalUnit.year == year, NationalUnit.level == "EMD") if year else 0,
         "complexes": _count(db, NationalComplex), "grid500_official": _count(db, SgisOfficialGridCell),
         "grid1k_year": grid_year, "grid1k_cells": _count(db, SgisGridCell, SgisGridCell.year == grid_year) if grid_year else 0,
-        "sources": sources, "ordinances": _ordinance_counts(db),
+        "sources": sources, "ordinances": _ordinance_counts(db), "grid500_stats": _grid500(db),
     }
+
+
+def _grid500(db: Any) -> dict[str, Any]:
+    from .sgis_grid500 import coverage
+    info = coverage(db)
+    return {"first_year": info["first_year"], "last_year": info["last_year"], "cells": info["last_cells"], "rows": info["rows"]}
 
 
 def _ordinance_counts(db: Any) -> dict[str, Any]:

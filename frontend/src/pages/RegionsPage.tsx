@@ -27,6 +27,7 @@ const STEP_LABEL: Record<string, string> = { DONE: '완료', SKIPPED: '해당 �
 const NATIONAL_LAYERS: Array<{ key: string; label: string }> = [
   { key: 'admin_units', label: '법정 행정구역 코드' }, { key: 'sgis_national', label: 'SGIS 시군구·행정동 인구·가구·경계' },
   { key: 'kapt_national', label: 'K-apt 공동주택 단지 목록' }, { key: 'sgis_grid_1k', label: 'SGIS 1km 격자 통계' }, { key: 'sgis_grid', label: 'SGIS 공식 500m 격자 경계' },
+  { key: 'sgis_grid_500m_stats', label: 'SGIS 500m 격자 통계 (자료제공 신청분)' },
   { key: 'zoning_ordinances', label: '시·군 도시·군계획 조례 (건폐율·용적률)' },
 ];
 
@@ -109,7 +110,7 @@ export function RegionsPage() {
       <NationalFigure label={`SGIS 인구·가구 ${national.sgis_year ?? ''}`.trim()} value={national.sgis_sigungu} unit="시군구" note={national.sgis_emd ? `행정동 ${national.sgis_emd.toLocaleString('ko-KR')}곳` : '행정동 미수집'} />
       <NationalFigure label="K-apt 공동주택 단지" value={national.complexes} unit="곳" note="전국 단지 목록 (좌표 포함)" />
       <NationalFigure label={`SGIS 1km 격자 ${national.grid1k_year ?? ''}`.trim()} value={national.grid1k_cells} unit="칸" note="인구·가구·주택·사업체 (잡음 포함)" />
-      <NationalFigure label="SGIS 공식 500m 격자" value={national.grid500_official} unit="칸" note="경계·코드 (통계값은 신청 필요)" />
+      <NationalFigure label="SGIS 공식 500m 격자" value={national.grid500_official} unit="칸" note={national.grid500_stats?.last_year ? `경계·코드 · 통계 ${national.grid500_stats.first_year}~${national.grid500_stats.last_year}년 (자료제공 신청분, ${national.grid500_stats.last_year}년 ${national.grid500_stats.cells.toLocaleString('ko-KR')}칸)` : '경계·코드 (통계값은 자료제공 신청 필요)'} />
       <NationalFigure label="도시·군계획 조례" value={(national.ordinances?.counts.PARSED ?? 0) + (national.ordinances?.counts.PARTIAL ?? 0)} unit="곳" note={national.ordinances?.issuers ? `조례 ${national.ordinances.issuers}곳 중 상한을 읽은 곳 (나머지는 시행령)` : '미수집 — 지역은 시행령 상한'} />
     </section>
 
