@@ -1,6 +1,6 @@
 import { X } from 'lucide-react';
 import { useMemo } from 'react';
-import { aggregateMetric, complexesByDong, dongCells, rankDongs, type DongAggregate, type DongComplexes } from '../lib/dongs';
+import { aggregateMetric, complexesByDong, dongCells, rankDongs, WEIGHT_KEYS, type DongAggregate, type DongComplexes } from '../lib/dongs';
 import { formatMetric } from '../lib/format';
 import { METRICS, type MetricDef } from '../lib/mapMetrics';
 import type { DongData, GridProps } from '../types';
@@ -9,6 +9,10 @@ import type { DongData, GridProps } from '../types';
 const KEY_FACTS = ['electricity_kwh_annual', 'gas_kwh_annual', 'electricity_carbon_t', 'bldg_electricity_kwh', 'building_count', 'far_est_pct',
   'reg_far_pct', 'sgis500_housing', 'sgis500_workers', 'sgis500_pop_change_pct', 'sgis_elderly_pct', 'sgis_old_housing_pct', 'sgis_apartment_pct'];
 const COMPLEX_KEYS = new Set(['complex_count', 'complex_households']);
+const WEIGHT_LABEL: Record<string, string> = {
+  electricity_area_m2: '연면적', gas_area_m2: '연면적', electricity_households: '세대수', bldg_area_m2: '대장 연면적', building_count: '건물 수',
+  reg_gfa_m2: '대장 연면적', sgis500_base_population: '2015년 인구',
+};
 
 function exactComplex(key: string, c: DongComplexes | undefined): DongAggregate {
   if (!c) return { value: null, kind: 'sum', coverage: 0, valuedCells: 0 };
@@ -61,7 +65,7 @@ export function DongPanel({ data, index, grids, complexes, metric, regionName, o
         <p className="muted">분석 격자 {dong.cells.toLocaleString('ko-KR')}개가 걸칩니다{coveredPct !== null ? ` (행정동 면적의 ${formatMetric(coveredPct, '%', 0)})` : ''}. 인구·가구는 격자에서 모으지 않은 공식 값입니다.</p>
       </section>
       <section className="detail-section current-metric" aria-label="지도 지표를 행정동으로 모은 값">
-        <h3>{metric.label} <small className="muted">{current?.kind === 'sum' ? '격자 값 × 겹친 비율의 합' : '겹친 비율 가중 평균'}</small></h3>
+        <h3>{metric.label} <small className="muted">{current?.kind === 'sum' ? '격자 값 × 겹친 비율의 합' : WEIGHT_KEYS[metric.key] ? `겹친 비율 × ${WEIGHT_LABEL[WEIGHT_KEYS[metric.key]] ?? '분모'} 가중 평균` : '겹친 비율 가중 평균'}</small></h3>
         {current && <p className="detail-figure"><Value result={current} metric={metric} /></p>}
         {current && coverageText(current, metric.key) && <p className="muted">{coverageText(current, metric.key)}{current.kind === 'sum' && current.coverage < 0.999 && !COMPLEX_KEYS.has(metric.key) ? ' · 값 없는 격자는 빼고 더했으므로 동 전체 합보다 작을 수 있습니다' : ''}</p>}
       </section>

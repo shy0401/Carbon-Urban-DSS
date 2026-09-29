@@ -81,7 +81,7 @@ docker compose exec -T api python -m app.cli enrich --year 2025
 
 ## 5. SGIS 행정통계와 공식 500m 격자
 
-공식 자료: [SGIS 자료제공](https://sgis.kostat.go.kr/view/pss/openDataIntrcn).
+공식 자료: [SGIS 자료제공](https://sgis.mods.go.kr/view/pss/dataProvdIntrcn).
 
 행정구역 인구·가구 API는 구현되어 있다. SGIS 개발자 사이트에서 consumer key/secret을 발급받아 `.env`의 `SGIS_CONSUMER_KEY`, `SGIS_CONSUMER_SECRET`에 넣는다. `SGIS_BASE_YEAR`(기본 2024)부터 SGIS가 공표한 연도를 자동으로 찾아 최대 5년 이전까지 내려가며, 실제 사용한 연도를 기준기간으로 기록한다(2026-09-23 기준 2024년 자료 확보). 연도별 시도·시군구 코드는 SGIS 응답에서 매번 확인하므로 전북특별자치도 코드 변경에도 대응한다. `LIMITED` 이상에서 행정동 인구와 공식 행정동 경계(`hadmarea.geojson`, EPSG:5179)를, `FULL`에서 가구를 적재한다. 토큰은 만료 전까지 메모리/Redis에서 재사용하고 DB·원본 메타데이터에 기록하지 않는다.
 
@@ -94,6 +94,8 @@ docker compose exec -T api python -m app.cli collect --year 2020 --source sgis -
 API 결과는 행정구역 통계이므로 500m 격자로 임의 분배하지 않는다.
 
 **1km 격자 통계(2024)는 적용 완료** (2026-09-25): 공공데이터포털 '국가데이터처_SGIS 격자 통계 및 경계'(15141768) 파일을 전주 범위로 잘라 넣었다. 공식 1km 격자 코드는 좌표에서 바로 계산되고 프로젝트 500m 격자가 그 안에 4개씩 정확히 들어가므로, 500m 격자에는 소속 1km 격자의 밀도·비율을 붙인다(나누지 않음). 절차와 표시 규칙은 [SGIS_GRID.md](SGIS_GRID.md).
+
+**500m 격자 통계는 적용 완료** (2026-09-29): SGIS 자료제공으로 받은 전국 500m 격자 통계(총괄 항목, 2000~2024)를 `data/raw/sgis_grid_500m/`에 풀고 `python -m app.cli import-sgis-grid500`으로 넣었다(API 시작 때도 자동). 빠진 파일(다마 블록 사업체·종사자 2015~2024, 주택 2015~2022)과 표시 규칙은 [SGIS_GRID.md](SGIS_GRID.md). 아래는 처음 신청할 때의 절차다.
 
 공식 500m 자료(총괄 항목만 제공)는 다음 절차로 별도 확보한다.
 

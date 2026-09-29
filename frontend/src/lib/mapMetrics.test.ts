@@ -91,6 +91,8 @@ describe('map classification', () => {
     expect(pop.value({} as GridProps)).toBeNull();
     const change = byKey.sgis500_pop_change_pct;
     expect(change.ramp).toBe('diff');
+    expect(pop.missingLabel).toBe('통계 없음·비공개 (0 아님)');
+    expect(change.missingLabel).toContain('20명 미만');
     expect(change.basis({ ...observed, sgis500_pop_change_pct: 20, sgis500_base_year: 2015, sgis500_base_population: 100, sgis500_population: 120 } as unknown as GridProps)).toBe('2015년 100 명 → 2024년 120 명');
   });
   it('every metric states its formula and source (근거 유형 배지는 서버 필드가 없어 달지 않음)', () => {

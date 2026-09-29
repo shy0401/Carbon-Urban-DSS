@@ -336,7 +336,7 @@ function RegionDetailMap({ offline }: { offline: boolean | null }) {
           <section className={`map-legend${legendOpen ? '' : ' collapsed'}`} aria-label="지표 범례">
             <div className="legend-head"><strong>{metric.label}</strong><span className="unit">{metric.unit}</span><button type="button" className="legend-toggle" aria-expanded={legendOpen} onClick={() => setLegendOpen((open) => !open)}>{legendOpen ? '범례 접기' : '범례 펼치기'}</button></div>
             {classification.classes.length ? <ul className="legend-classes">{classification.classes.map((c, i) => <li key={i}><i style={{ background: c.color }} /><span>{rangeLabel(c, metric.digits, i === classification.classes.length - 1)}</span><em>{c.count.toLocaleString('ko-KR')}격자</em></li>)}</ul> : <p className="map-empty-hint">이 지표는 아직 계산할 관측 자료가 없습니다. 모든 격자를 자료 미확보(해치)로 표시합니다.</p>}
-            {classification.missing > 0 && <div className="legend-missing"><i className="is-missing" /><span>자료 미확보 (0 아님)</span><em>{classification.missing.toLocaleString('ko-KR')}격자</em></div>}
+            {classification.missing > 0 && <div className="legend-missing"><i className="is-missing" /><span>{metric.missingLabel ?? '자료 미확보 (0 아님)'}</span><em>{classification.missing.toLocaleString('ko-KR')}격자</em></div>}
             <div className="legend-coverage"><span>값 있는 격자 {classification.valued.toLocaleString('ko-KR')}/{total.toLocaleString('ko-KR')}</span><b>{formatMetric(classification.valued / Math.max(total, 1) * 100, '%', 1)}</b></div>
             <details className="legend-def"><summary>정의·산식·활용</summary><p>{metric.definition}</p><code>{metric.formula}</code><p className="legend-use"><b>활용</b> {metric.use}</p><p className="legend-source">출처: {metric.source}</p></details>
             <p className="legend-selected"><i aria-hidden="true" />선택 격자</p>
@@ -533,7 +533,7 @@ function gridTooltip(p: GridProps, metric: MetricDef, classification: Classifica
   const raw = p[metric.key]; const value = typeof raw === 'number' ? raw : null;
   const cls = value === null ? null : classification.classes.find((c, i) => (i === classification.classes.length - 1 ? value >= c.from : value >= c.from && value < c.to));
   const extra = [p.residential_zone_ratio !== null ? `주거지역 ${formatMetric(p.residential_zone_ratio, '%', 1)}` : null, p.building_count !== null ? `건물 ${formatMetric(p.building_count, '동')}` : null, p.complex_count ? `공동주택 ${p.complex_count}단지` : null].filter(Boolean).join(', ');
-  return `<div class="map-tip"><strong>${escapeHtml(p.id)}</strong>${dong ? `<span>${escapeHtml(dong)}</span>` : ''}<span>${escapeHtml(metric.label)}</span><b class="tip-class">${cls ? `<i style="background:${cls.color}"></i>` : '<i class="is-missing"></i>'}${value === null ? '자료 미확보 (0 아님)' : `${escapeHtml(formatMetric(value, '', metric.digits))} ${escapeHtml(metric.unit)}`}</b>${extra ? `<span>${escapeHtml(extra)}</span>` : ''}<span>클릭하면 이 격자를 선택합니다</span></div>`;
+  return `<div class="map-tip"><strong>${escapeHtml(p.id)}</strong>${dong ? `<span>${escapeHtml(dong)}</span>` : ''}<span>${escapeHtml(metric.label)}</span><b class="tip-class">${cls ? `<i style="background:${cls.color}"></i>` : '<i class="is-missing"></i>'}${value === null ? escapeHtml(metric.missingLabel ?? '자료 미확보 (0 아님)') : `${escapeHtml(formatMetric(value, '', metric.digits))} ${escapeHtml(metric.unit)}`}</b>${extra ? `<span>${escapeHtml(extra)}</span>` : ''}<span>클릭하면 이 격자를 선택합니다</span></div>`;
 }
 
 function buildingTooltip(p: Record<string, unknown>): string {
