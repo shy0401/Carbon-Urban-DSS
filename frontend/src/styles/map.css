@@ -318,3 +318,13 @@ small.resolution-tag { margin: 0 0 0 var(--sp-1); }
 }
 .missing-blocks ul { display: grid; gap: 2px; margin: var(--sp-1) 0 var(--sp-2); padding-left: var(--sp-4); font-size: var(--fs-caption); color: var(--ink-2); }
 .missing-blocks b { font-weight: 600; color: var(--ink); }
+.province-chip.metro { padding: 1px 5px; }
+.province-chip.metro b { font-size: 11px; font-weight: 500; }
+.menu-summary { display: grid; gap: var(--sp-1); margin: 0 0 var(--sp-3); padding: var(--sp-2); border: 1px solid var(--line); border-radius: var(--r-map); background: var(--canvas); font-size: var(--fs-caption); }
+.menu-summary dl { display: grid; grid-template-columns: 1fr 1fr; gap: 4px var(--sp-2); margin: 0; }
+.menu-summary dt { color: var(--ink-3); }
+.menu-summary dd { margin: 0; font-size: var(--fs-label); font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.menu-summary p { margin: 0; line-height: 1.45; }
+.menu-summary .button { justify-self: start; }
+.map-rail > .map-toast { white-space: normal; text-align: left; }
+@media (max-width: 760px) { .region-rank { max-height: 260px; overflow: auto; } }

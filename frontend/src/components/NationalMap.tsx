@@ -167,9 +167,11 @@ export function NationalMap({ sido, sgg, onSido, onSgg, onProvinceGrid, onOpenRe
     for (const p of data.provinces) {
       if (!p.label) continue;
       const el = document.createElement('button');
-      el.type = 'button'; el.className = 'province-chip';
+      el.type = 'button'; el.className = `province-chip${p.kind === 'METRO' ? ' metro' : ''}`;
       const value = metricValue(p.metrics, metric.key);
-      el.innerHTML = `<b>${escapeHtml(shortProvince(p.name))}</b><span>${value === null ? '—' : escapeHtml(formatMetric(value, '', metric.digits))}</span>`;
+      // 특별시·광역시는 작아서 이름만 (값은 메뉴와 툴팁에)
+      el.innerHTML = `<b>${escapeHtml(shortProvince(p.name))}</b>${p.kind === 'METRO' ? '' : `<span>${value === null ? '—' : escapeHtml(formatMetric(value, '', metric.digits))}</span>`}`;
+      el.title = `${p.name}: ${value === null ? '값 없음' : formatMetric(value, metric.unit, metric.digits)}`;
       el.setAttribute('aria-label', `${p.name} 고르기`);
       el.addEventListener('click', (ev) => { ev.stopPropagation(); refs.current.onSido(p.code); });
       markers.current.push(new maplibregl.Marker({ element: el }).setLngLat(p.label).addTo(map));
@@ -204,7 +206,7 @@ export function NationalMap({ sido, sgg, onSido, onSgg, onProvinceGrid, onOpenRe
     return () => { map.off('resize', onResize); };
   }, [ready]);
 
-  const hasDetail = !!(province || region);
+  const hasDetail = !!region;
   return <div className={`province-workspace national-workspace${hasDetail ? ' has-detail' : ''}`}>
     <nav className="province-menu" aria-label={sido ? '시·군·구 선택' : '시·도 선택'}>
       {!sido ? <>
@@ -218,6 +220,7 @@ export function NationalMap({ sido, sgg, onSido, onSgg, onProvinceGrid, onOpenRe
         </div>)}
       </> : <>
         <header><button type="button" className="icon-link" aria-label="전국으로" onClick={() => onSido(null)}><ArrowLeft size={16} /></button><strong>{province?.name ?? sido}</strong></header>
+        {province && <ProvinceSummaryBox province={province} metric={metric} onProvinceGrid={() => onProvinceGrid(province.code)} />}
         <p className="province-note first">시·군·구 {ranked.length}곳 · {metric.label} 순</p>
         <ul className="region-rank">{ranked.map((r) => { const v = metricValue(r.metrics, metric.key); return <li key={r.code}><button type="button" className={r.code === sgg ? 'active' : ''} aria-current={r.code === sgg ? 'true' : undefined} onClick={() => onSgg(r.code)}>
           <span><i className={`level-dot level-${r.level.toLowerCase()}`} aria-hidden="true" />{r.short_name}</span>
@@ -230,17 +233,15 @@ export function NationalMap({ sido, sgg, onSido, onSgg, onProvinceGrid, onOpenRe
       <div ref={container} className={`map-canvas${showBasemap ? '' : ' no-basemap'}`} aria-label={sido ? `${province?.name ?? ''} 시·군·구 지도` : '전국 시·도 지도'} data-testid="national-map" />
       {national.loading && !data && <div className="map-loading" role="status"><LoadingState label="전국 시·도 경계와 지표를 불러오는 중입니다. 처음에는 경계를 합치느라 수십 초 걸릴 수 있습니다" /></div>}
       {national.error && !national.loading && <div className="map-loading"><ErrorState message={national.error} onRetry={national.reload} /></div>}
-      <div className="map-notices">
-        {sido && regionsGeo?.code === sido && !regionsGeo.data && !regionsGeo.error && <div className="map-toast" role="status">{province?.name ?? ''} 시·군·구 경계를 불러오는 중…</div>}
-        {regionsGeo?.error && <div className="map-toast" role="alert">{regionsGeo.error}</div>}
-        {basemapFailed && !offline && basemap && <div className="map-toast" role="status">배경지도를 불러오지 못했습니다. 경계와 색은 그대로 보입니다.</div>}
-      </div>
       <div className="map-rail">
         <nav className="map-crumbs" aria-label="지도 위치">
           <button type="button" onClick={() => onSido(null)} aria-current={!sido ? 'page' : undefined}>전국</button>
           {province && <><span aria-hidden="true">›</span><button type="button" onClick={() => onSgg(null)} aria-current={sido && !sgg ? 'page' : undefined}>{province.name}</button></>}
           {region && <><span aria-hidden="true">›</span><strong aria-current="page">{region.short_name}</strong></>}
         </nav>
+        {sido && regionsGeo?.code === sido && !regionsGeo.data && !regionsGeo.error && <div className="map-toast" role="status">{province?.name ?? ''} 시·군·구 경계를 불러오는 중…</div>}
+        {regionsGeo?.error && <div className="map-toast" role="alert">{regionsGeo.error}</div>}
+        {basemapFailed && !offline && basemap && <div className="map-toast" role="status">배경지도를 불러오지 못했습니다. 경계와 색은 그대로 보입니다.</div>}
         <div className="metric-picker">
           <button className="metric-trigger" aria-haspopup="listbox" aria-expanded={pickerOpen} onClick={() => setPickerOpen(!pickerOpen)}>
             <span><small>{sido ? '시·군·구 색 (지표 하나)' : '시·도 색 (지표 하나)'}</small><strong>{metric.label}</strong></span><em>{metric.unit}</em><ChevronDown size={16} aria-hidden="true" />
@@ -273,8 +274,7 @@ export function NationalMap({ sido, sgg, onSido, onSgg, onProvinceGrid, onOpenRe
         </section>}
       </div>
     </div>
-    {region ? <RegionDetail region={region} province={province} metric={metric} onClose={() => onSgg(null)} onOpen={() => onOpenRegion(region.code)} onProvinceGrid={() => province && onProvinceGrid(province.code)} />
-      : province ? <ProvinceDetail province={province} data={data} onClose={() => onSido(null)} onProvinceGrid={() => onProvinceGrid(province.code)} /> : null}
+    {region && <RegionDetail region={region} province={province} metric={metric} onClose={() => onSgg(null)} onOpen={() => onOpenRegion(region.code)} onProvinceGrid={() => province && onProvinceGrid(province.code)} />}
   </div>;
 }
 
@@ -291,31 +291,24 @@ function MissingBlocks({ data }: { data: NationalData | null }) {
 
 function MetricFacts({ metrics, notes, excluded }: { metrics: NationalMetrics; notes: Record<string, string>; excluded?: string | null }) {
   return <dl className="fact-list">{NATIONAL_METRICS.map((m) => { const v = metricValue(metrics, m.key); return <div className={`fact${v === null ? ' missing' : ''}`} key={m.key}><dt>{m.label}</dt>
-    <dd>{v === null ? <span className="muted">{missingReason(m, notes, excluded)}</span> : <>{formatMetric(v, '', m.digits)}<span className="unit">{m.unit}</span></>}</dd>
+    <dd>{v === null ? <span className="muted">없음</span> : <>{formatMetric(v, '', m.digits)}<span className="unit">{m.unit}</span></>}</dd>
+    {v === null && <span className="why">{missingReason(m, notes, excluded)}</span>}
     {m.key === 'pop_change_pct' && v !== null && metrics.pop500_base !== null && metrics.pop500 !== null && <span className="why">{formatMetric(metrics.pop500_base, '명')} → {formatMetric(metrics.pop500, '명')} (500m 격자 합)</span>}
     {v !== null && notes[m.key] && <span className="why">{notes[m.key]}</span>}
   </div>; })}</dl>;
 }
 
-function ProvinceDetail({ province, data, onClose, onProvinceGrid }: { province: NationalProvince; data: NationalData | null; onClose: () => void; onProvinceGrid: () => void }) {
-  return <aside className="map-detail" aria-label={`${province.name} 요약`}>
-    <header className="detail-head"><div><h2>{province.name}</h2><small className="muted">시·군·구 {province.regions}곳 · 상세 자료 {province.detailed} · 기본 지도 {province.basic}</small></div>
-      <button type="button" className="icon-link" aria-label="시·도 닫기" onClick={onClose}><X size={16} /></button></header>
-    <section className="detail-section" aria-label="전국 공통 지표">
-      <h3>전국 공통 지표 <small className="muted">SGIS {data?.meta.sgis_year ?? ''} · 500m {data?.meta.grid500_base_year ?? ''}→{data?.meta.grid500_year ?? ''}</small></h3>
-      <MetricFacts metrics={province.metrics} notes={province.notes} excluded={province.excluded} />
-    </section>
-    <section className="detail-section" aria-label="에너지와 탄소">
-      <h3>에너지·탄소</h3>
-      <p>{province.energy_regions ? `에너지 관측(K-apt 월별 에너지 또는 건축HUB 건물 에너지)이 있는 시·군·구 ${province.energy_regions}곳.` : '에너지 관측을 모은 시·군·구가 아직 없습니다.'} {data?.meta.energy_note}</p>
-    </section>
-    <section className="detail-section" aria-label="다음 단계">
-      <h3>다음 단계</h3>
-      <p className="muted">지도나 왼쪽 목록에서 시·군·구를 고르면 요약과 시·군·구 지도(읍면동 포함)로 들어갑니다.</p>
-      <button type="button" className="button primary" onClick={onProvinceGrid} disabled={!!province.excluded || !province.cells} title={province.excluded ?? undefined}>{province.name} 500m 격자 지도</button>
-      {province.excluded && <p className="muted">{province.excluded}. 시·군·구 지도는 열 수 있습니다.</p>}
-    </section>
-  </aside>;
+/** 고른 시·도 요약 (왼쪽 메뉴 위): 지도 폭을 줄이지 않도록 오른쪽 상세 대신 여기에 둔다. */
+function ProvinceSummaryBox({ province, metric, onProvinceGrid }: { province: NationalProvince; metric: NationalMetric; onProvinceGrid: () => void }) {
+  const keys: Array<NationalMetric['key']> = ['population', 'density', 'pop_change_pct', 'complexes'];
+  if (!keys.includes(metric.key)) keys.push(metric.key);
+  return <section className="menu-summary" aria-label={`${province.name} 요약`}>
+    <dl>{keys.map((key) => { const m = NATIONAL_METRICS.find((x) => x.key === key) as NationalMetric; const v = metricValue(province.metrics, key);
+      return <div key={key} title={v === null ? missingReason(m, province.notes, province.excluded) : province.notes[key] ?? undefined}><dt>{m.label}</dt><dd>{v === null ? <span className="muted">없음</span> : formatMetric(v, m.unit, m.digits)}</dd></div>; })}</dl>
+    {metricValue(province.metrics, metric.key) === null && <p className="muted">{metric.label}: {missingReason(metric, province.notes, province.excluded)}</p>}
+    <p className="muted">상세 자료 {province.detailed} · 기본 지도 {province.basic} · 에너지 관측 {province.energy_regions}곳</p>
+    <button type="button" className="button secondary small" onClick={onProvinceGrid} disabled={!!province.excluded || !province.cells} title={province.excluded ?? undefined}>{province.excluded ? '500m 격자 지도 (제외)' : '500m 격자 지도로'}</button>
+  </section>;
 }
 
 function RegionDetail({ region, province, metric, onClose, onOpen, onProvinceGrid }: { region: NationalRegion; province: NationalProvince | null; metric: NationalMetric; onClose: () => void; onOpen: () => void; onProvinceGrid: () => void }) {

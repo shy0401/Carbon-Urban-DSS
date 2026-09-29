@@ -138,3 +138,10 @@
 .region-open-notice .button { margin-left: auto; }
 @media (max-width: 1023px) { .region-open-notice { margin: var(--sp-2) var(--sp-4) 0; } }
 .region-open-notice.basic { border-left-color: var(--ink-3); background: var(--surface); color: var(--ink-2); }
+/* 머리: 표제란과 선택 상자가 한 줄에 안 들어가면 선택 상자를 다음 줄로 (표제란을 눌러 줄이지 않음) */
+.shell-scope { flex-wrap: wrap; row-gap: var(--sp-2); }
+.scope-field select { max-width: 190px; text-overflow: ellipsis; }
+@media (max-width: 760px) {
+  .scope-controls { flex: 1 1 100%; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: var(--sp-2); }
+  .scope-controls .scope-field, .scope-controls .select-wrap, .scope-controls select { min-width: 0; width: 100%; max-width: none; }
+}
