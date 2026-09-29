@@ -37,7 +37,7 @@ from .db import Session
 
 router = APIRouter(prefix="/api/map", tags=["map"])
 
-PAYLOAD_VERSION = 2
+PAYLOAD_VERSION = 3
 MIN_BASE = 20  # 증감률: 두 해 모두 이만큼은 있어야 한다
 FIELDS = ["population", "households", "area_km2", "density", "pop500", "pop500_base", "pop_change_pct", "housing500", "workers500", "complexes"]
 _MEMORY: dict[str, Any] = {}
@@ -110,8 +110,9 @@ def change_pct(before: float | None, after: float | None) -> float | None:
 
 
 def _pct(share: float) -> str:
+    """'0.5%', '0.1% 미만', '99.4%'."""
     value = share * 100
-    return "0.1 미만" if 0 < value < 0.1 else f"{value:.1f}".rstrip("0").rstrip(".")
+    return "0.1% 미만" if 0 < value < 0.1 else f"{value:.1f}".rstrip("0").rstrip(".") + "%"
 
 
 def _names(blocks: Iterable[str]) -> str:
@@ -167,19 +168,19 @@ def grid_values(grid: dict[str, dict[str, Any]]) -> tuple[dict[str, Any], dict[s
         if g.get("sum") is not None and share >= TOTAL_MIN:
             values[field] = _num(g["sum"])
             if share < 0.9999 and g["missing"]:
-                notes[field] = f"빠진 블록({_names(g['missing'])}) 인구 약 {_pct(1 - share)}% 제외"
+                notes[field] = f"빠진 블록({_names(g['missing'])}) 인구 약 {_pct(1 - share)} 제외"
         else:
             values[field] = None
             if g.get("missing") and g.get("year"):
-                notes[field] = f"{_names(g['missing'])} 블록 {g['year']}년 {g['theme']} 파일 없음 (인구의 약 {_pct(1 - share)}%)"
+                notes[field] = f"{_names(g['missing'])} 블록 {g['year']}년 {g['theme']} 파일 없음 (인구의 약 {_pct(1 - share)})"
     c = grid.get("change") or {}
     share = c["covered"] / c["total"] if c.get("total") else 0.0
     values["pop_change_pct"] = change_pct(c.get("base"), c.get("now")) if share >= CHANGE_MIN else None
     if c.get("missing") and c.get("year"):
         if values["pop_change_pct"] is not None and share < 0.9999:
-            notes["pop_change_pct"] = f"빠진 블록({_names(c['missing'])}) 제외, 인구 약 {_pct(share)}% 기준"
+            notes["pop_change_pct"] = f"빠진 블록({_names(c['missing'])}) 제외, 인구 약 {_pct(share)} 기준"
         elif values["pop_change_pct"] is None:
-            notes["pop_change_pct"] = f"{_names(c['missing'])} 블록 인구 파일 없음 (인구의 약 {_pct(1 - share)}%)"
+            notes["pop_change_pct"] = f"{_names(c['missing'])} 블록 인구 파일 없음 (인구의 약 {_pct(1 - share)})"
     return values, notes
 
 

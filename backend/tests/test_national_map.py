@@ -13,6 +13,8 @@ def test_totals_need_the_blocks_with_files_to_hold_99_percent_of_people():
     assert whole[1]["workers500"].startswith("다마 블록 2024년 종사자 파일 없음 (인구의 약 90%")
     # 섬 하나(나마)가 파일 없이 빠진 곳: 빠진 몫이 1% 미만이면 합을 보이고 그 몫을 적는다
     island = grid_values(unit_grid500(SUMS, {"다마": 990.0, "나마": 5.0}, RECEIVED, 2024, 2015))
+    tiny = grid_values(unit_grid500(SUMS, {"다마": 999.0, "나마": 0.5}, RECEIVED, 2024, 2015))
+    assert tiny[1]["pop500"] == "빠진 블록(나마) 인구 약 0.1% 미만 제외"
     assert island[0]["pop500"] == 900 and island[1]["pop500"] == "빠진 블록(나마) 인구 약 0.5% 제외"
     assert island[0]["pop_change_pct"] == 28.6 and "인구 약 99.5% 기준" in island[1]["pop_change_pct"]
     # 제주처럼 파일이 하나도 없는 곳: 전부 비움 (0 아님)
