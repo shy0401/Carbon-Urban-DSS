@@ -551,6 +551,8 @@ export interface NationalRegion {
 export interface NationalData {
   provinces: NationalProvince[]; boundaries: GeoJSON.FeatureCollection; regions: NationalRegion[]; fields: string[];
   meta: { sgis_year: number | null; grid500_year: number | null; grid500_base_year: number | null; complex_month: string | null; gaps: string | null;
+    /** 100km blocks with SGIS 500m cells but no file in the received bundle: people living there (1km grid) and the 시·도 they touch. */
+    missing_blocks?: Array<{ block: string; people: number; provinces: string[] }>;
     sources: Record<'admin' | 'grid500' | 'complexes' | 'boundaries', string>; energy_note: string };
 }
 /** GET /api/map/national/{sido}: 한 시·도의 시·군·구 경계 (속성: code, name, linked, level, label, 지표). */

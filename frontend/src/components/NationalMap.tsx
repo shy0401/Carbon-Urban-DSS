@@ -262,7 +262,7 @@ export function NationalMap({ sido, sgg, onSido, onSgg, onProvinceGrid, onOpenRe
             <li><i className="key-line" />시·도 경계</li>
             {sido && <li><i className="key-line prepared" />상세 자료 시·군·구 (에너지·건물·용도지역)</li>}
           </ul>
-          <details className="legend-def"><summary>정의·출처·활용</summary><p>{metric.definition}</p><p className="legend-use"><b>활용</b> {metric.use}</p><p className="legend-source">출처: {data?.meta.sources[metric.source] ?? ''}</p>{metric.source === 'grid500' && data?.meta.gaps && <p className="muted">받은 묶음에 없는 파일: {data.meta.gaps}</p>}</details>
+          <details className="legend-def"><summary>정의·출처·활용</summary><p>{metric.definition}</p><p className="legend-use"><b>활용</b> {metric.use}</p><p className="legend-source">출처: {data?.meta.sources[metric.source] ?? ''}</p>{metric.source === 'grid500' && <MissingBlocks data={data} />}</details>
         </section>
       </div>
       <div className="map-tools">
@@ -278,10 +278,22 @@ export function NationalMap({ sido, sgg, onSido, onSgg, onProvinceGrid, onOpenRe
   </div>;
 }
 
+/** 500m 통계 파일이 없는 100km 블록과 그 블록에 사는 사람(1km 격자 기준): 다시 신청할 목록. */
+function MissingBlocks({ data }: { data: NationalData | null }) {
+  const blocks = (data?.meta.missing_blocks ?? []).filter((b) => b.people >= 1);
+  if (!blocks.length && !data?.meta.gaps) return null;
+  return <div className="missing-blocks">
+    {blocks.length > 0 && <><p className="muted">500m 격자 통계 파일이 없는 블록 (다시 신청할 목록, 사는 사람은 2024 1km 격자 기준):</p>
+      <ul>{blocks.slice(0, 12).map((b) => <li key={b.block}><b>{b.block}</b> 약 {formatMetric(b.people, '명')} · {b.provinces.map(shortProvince).join('·')}</li>)}</ul></>}
+    {data?.meta.gaps && <p className="muted">받은 블록 중 빠진 주제: {data.meta.gaps}</p>}
+  </div>;
+}
+
 function MetricFacts({ metrics, notes, excluded }: { metrics: NationalMetrics; notes: Record<string, string>; excluded?: string | null }) {
   return <dl className="fact-list">{NATIONAL_METRICS.map((m) => { const v = metricValue(metrics, m.key); return <div className={`fact${v === null ? ' missing' : ''}`} key={m.key}><dt>{m.label}</dt>
     <dd>{v === null ? <span className="muted">{missingReason(m, notes, excluded)}</span> : <>{formatMetric(v, '', m.digits)}<span className="unit">{m.unit}</span></>}</dd>
-    {m.key === 'pop_change_pct' && v !== null && metrics.pop500_base !== null && <span className="why">{formatMetric(metrics.pop500_base, '명')} → {formatMetric(metrics.pop500, '명')} (500m 격자 합)</span>}
+    {m.key === 'pop_change_pct' && v !== null && metrics.pop500_base !== null && metrics.pop500 !== null && <span className="why">{formatMetric(metrics.pop500_base, '명')} → {formatMetric(metrics.pop500, '명')} (500m 격자 합)</span>}
+    {v !== null && notes[m.key] && <span className="why">{notes[m.key]}</span>}
   </div>; })}</dl>;
 }
 

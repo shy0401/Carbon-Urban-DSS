@@ -9,8 +9,10 @@
 * 지표 (모두 전국에 있는 자료만, 없으면 0이 아니라 비움)
   - 인구·가구·면적·인구밀도: SGIS 행정구역 통계(시군구 합, 최근 연도).
   - 500m 인구와 2015년 대비 증감률, 500m 주택·종사자: SGIS 500m 격자 통계(자료제공 신청분)를 공식 500m 격자의
-    시군구 코드로 모은 값. 그 지역 격자가 걸친 100km 블록 중 하나라도 그해·그 주제 파일이 없으면 합을 비운다
-    (일부 블록만 더한 값은 실제보다 작으므로 보여 주지 않는다).
+    시군구 코드로 모은 값. 받은 묶음에 없는 100km 블록이 있으므로, 그 지역 격자 중 파일이 있는 블록에 사는 사람의
+    비중(2024 1km 격자 인구 기준)을 함께 센다. 합계는 그 비중이 99% 이상일 때만 보여 주고 빠진 몫을 적으며,
+    그보다 낮으면 비운다(일부 합을 실제 합처럼 보여 주지 않음). 증감률은 두 해 모두 파일이 있는 같은 블록끼리
+    비교하고 비중이 95% 이상일 때만 낸다.
   - K-apt 공동주택 단지 수: 전국 단지 목록.
   - 에너지·탄소: 전국 자료가 없다(지역마다 수집). 칠하지 않고, 어느 시·군·구에 K-apt 월별 에너지·건축HUB 건물 에너지가
     있는지만 적는다.
@@ -35,11 +37,9 @@ from .db import Session
 
 router = APIRouter(prefix="/api/map", tags=["map"])
 
-PAYLOAD_VERSION = 1
+PAYLOAD_VERSION = 2
 MIN_BASE = 20  # 증감률: 두 해 모두 이만큼은 있어야 한다
 FIELDS = ["population", "households", "area_km2", "density", "pop500", "pop500_base", "pop_change_pct", "housing500", "workers500", "complexes"]
-SUM_FIELDS = ("population", "households", "area_km2", "pop500", "pop500_base", "housing500", "workers500", "complexes")
-THEME_OF = {"pop500": "인구", "pop500_base": "인구", "housing500": "주택", "workers500": "종사자"}
 _MEMORY: dict[str, Any] = {}
 _DYNAMIC: dict[str, Any] = {}
 
@@ -54,9 +54,17 @@ FROM sgis_grid500_values v JOIN sgis_official_grid_cells c ON c.grid_cd = v.grid
 WHERE v.year = ANY(:years) AND c.size_m = 500
 GROUP BY 1, 2, 3
 """
-BLOCKS_SQL = """
-SELECT split_part(adm_cd, ',', 1) AS sgis, left(grid_cd, 2) AS block, count(*) AS cells
-FROM sgis_official_grid_cells WHERE size_m = 500 GROUP BY 1, 2
+WEIGHTS_SQL = """
+WITH k AS (
+  SELECT c.x_min::bigint AS x, c.y_min::bigint AS y, s.value AS pop
+  FROM sgis_grid_cells c JOIN sgis_grid_stats s ON s.grid_cd = c.grid_cd AND s.year = c.year
+  WHERE c.year = :y1k AND c.size_m = 1000 AND s.item = 'to_in_001'
+)
+SELECT split_part(o.adm_cd, ',', 1) AS sgis, left(o.grid_cd, 2) AS block, count(*) AS cells, coalesce(sum(k.pop), 0) / 4.0 AS people
+FROM sgis_official_grid_cells o
+LEFT JOIN k ON k.x = (floor(o.x_min / 1000) * 1000)::bigint AND k.y = (floor(o.y_min / 1000) * 1000)::bigint
+WHERE o.size_m = 500
+GROUP BY 1, 2
 """
 REGION_GEOM_SQL = """
 WITH g AS (
@@ -83,6 +91,11 @@ FROM g
 
 
 # --------------------------------------------------------------------------- pure aggregation (tested without a database)
+GRID_FIELDS = {"pop500": ("pop", "인구", "year"), "pop500_base": ("pop", "인구", "base"), "housing500": ("housing", "주택", "year"), "workers500": ("workers", "종사자", "year")}
+TOTAL_MIN = 0.99   # 합계는 빠진 블록에 사는 인구가 1% 미만일 때만 보여 준다 (그 비율을 함께 적음)
+CHANGE_MIN = 0.95  # 증감률은 두 해 모두 있는 블록이 인구의 95% 이상일 때만 (같은 블록끼리 비교)
+
+
 def _num(value: Any) -> float | int | None:
     if value is None:
         return None
@@ -96,57 +109,92 @@ def change_pct(before: float | None, after: float | None) -> float | None:
     return round((after - before) / before * 100, 1)
 
 
-def unit_grid500(sums: dict[tuple[str, int], dict[str, float]], blocks: Iterable[str], received: dict[tuple[str, int], set[str]],
-                 year: int | None, base: int | None) -> dict[str, float | None]:
-    """500m totals of one SGIS 시군구 from its per-(block, year) sums.
+def _pct(share: float) -> str:
+    value = share * 100
+    return "0.1 미만" if 0 < value < 0.1 else f"{value:.1f}".rstrip("0").rstrip(".")
 
-    A total is left empty when any block the unit's cells touch has no file for that theme and year (partial sums
-    would look like real, smaller totals)."""
-    blocks = set(blocks)
-    out: dict[str, float | None] = {}
 
-    def total(column: str, theme: str, y: int | None) -> float | None:
-        if not y or not blocks:
-            return None
-        if not blocks <= received.get((theme, y), set()):
-            return None
-        values = [sums.get((block, y), {}).get(column) for block in blocks]
-        present = [v for v in values if v is not None]
-        return float(sum(present)) if present else None
+def _names(blocks: Iterable[str]) -> str:
+    blocks = sorted(blocks)
+    return f"{'·'.join(blocks[:4])}{' 등' if len(blocks) > 4 else ''}"
 
-    out["pop500"] = total("pop", "인구", year)
-    out["pop500_base"] = total("pop", "인구", base) if base and base != year else None
-    out["housing500"] = total("housing", "주택", year)
-    out["workers500"] = total("workers", "종사자", year)
+
+def unit_grid500(sums: dict[tuple[str, int], dict[str, float | None]], weights: dict[str, float], received: dict[tuple[str, int], set[str]],
+                 year: int | None, base: int | None) -> dict[str, dict[str, Any]]:
+    """500m sums of one SGIS 시군구 over the blocks that have a file, with how much of the unit they cover.
+
+    ``weights``: {100km block: weight of the unit's cells in it} (the 1km grid population, so a block counts by the people
+    living in it). A total covers ``covered / total`` of the unit; the change compares the same blocks in both years."""
+    total = float(sum(weights.values()))
+    out: dict[str, dict[str, Any]] = {}
+    for field, (column, theme, which) in GRID_FIELDS.items():
+        y = year if which == "year" else (base if base and base != year else None)
+        have = received.get((theme, y), set()) if y else set()
+        inside = [b for b in weights if b in have]
+        values = [v for v in (sums.get((b, y), {}).get(column) for b in inside) if v is not None] if y else []
+        out[field] = {"sum": float(sum(values)) if values else None, "covered": float(sum(weights[b] for b in inside)), "total": total,
+                      "missing": sorted(set(weights) - set(inside)), "theme": theme, "year": y}
+    both = [b for b in weights if year and base and base != year and b in received.get(("인구", year), set()) and b in received.get(("인구", base), set())]
+    now = [v for v in (sums.get((b, year), {}).get("pop") for b in both) if v is not None]
+    then = [v for v in (sums.get((b, base), {}).get("pop") for b in both) if v is not None]
+    out["change"] = {"now": float(sum(now)) if now else None, "base": float(sum(then)) if then else None, "covered": float(sum(weights[b] for b in both)),
+                     "total": total, "missing": sorted(set(weights) - set(both)), "theme": "인구", "year": year}
     return out
 
 
-def combine(items: list[dict[str, Any]]) -> dict[str, Any]:
-    """Metrics of a group of units: sums stay empty when any member is empty for that field (never a partial sum)."""
-    out: dict[str, Any] = {}
-    for field in SUM_FIELDS:
-        values = [item.get(field) for item in items]
-        out[field] = None if not items or any(v is None for v in values) else _num(sum(values))
-    return finish(out)
+def merge_grid(parts: list[dict[str, dict[str, Any]]]) -> dict[str, dict[str, Any]]:
+    """Group of units: partial sums and coverage weights add up; missing blocks are pooled."""
+    out: dict[str, dict[str, Any]] = {}
+    for field in (*GRID_FIELDS, "change"):
+        rows = [p[field] for p in parts if field in p]
+        merged: dict[str, Any] = {"covered": sum(r["covered"] for r in rows), "total": sum(r["total"] for r in rows),
+                                  "missing": sorted(set().union(*(r["missing"] for r in rows))) if rows else [],
+                                  "theme": rows[0]["theme"] if rows else None, "year": rows[0]["year"] if rows else None}
+        for key in (("now", "base") if field == "change" else ("sum",)):
+            values = [r[key] for r in rows if r.get(key) is not None]
+            merged[key] = float(sum(values)) if values else None
+        out[field] = merged
+    return out
 
 
-def finish(metrics: dict[str, Any]) -> dict[str, Any]:
-    area = metrics.get("area_km2")
-    pop = metrics.get("population")
+def grid_values(grid: dict[str, dict[str, Any]]) -> tuple[dict[str, Any], dict[str, str]]:
+    """Display values and notes: a total only when the blocks with files hold ≥99% of the people (the rest is named)."""
+    values: dict[str, Any] = {}
+    notes: dict[str, str] = {}
+    for field in GRID_FIELDS:
+        g = grid.get(field) or {}
+        share = g["covered"] / g["total"] if g.get("total") else 0.0
+        if g.get("sum") is not None and share >= TOTAL_MIN:
+            values[field] = _num(g["sum"])
+            if share < 0.9999 and g["missing"]:
+                notes[field] = f"빠진 블록({_names(g['missing'])}) 인구 약 {_pct(1 - share)}% 제외"
+        else:
+            values[field] = None
+            if g.get("missing") and g.get("year"):
+                notes[field] = f"{_names(g['missing'])} 블록 {g['year']}년 {g['theme']} 파일 없음 (인구의 약 {_pct(1 - share)}%)"
+    c = grid.get("change") or {}
+    share = c["covered"] / c["total"] if c.get("total") else 0.0
+    values["pop_change_pct"] = change_pct(c.get("base"), c.get("now")) if share >= CHANGE_MIN else None
+    if c.get("missing") and c.get("year"):
+        if values["pop_change_pct"] is not None and share < 0.9999:
+            notes["pop_change_pct"] = f"빠진 블록({_names(c['missing'])}) 제외, 인구 약 {_pct(share)}% 기준"
+        elif values["pop_change_pct"] is None:
+            notes["pop_change_pct"] = f"{_names(c['missing'])} 블록 인구 파일 없음 (인구의 약 {_pct(1 - share)}%)"
+    return values, notes
+
+
+def summarize(units: list[dict[str, Any]], complexes: int | None) -> tuple[dict[str, Any], dict[str, str]]:
+    """Metrics of a group of SGIS units: 행정 statistics add up (empty if any member is empty), 500m sums by coverage."""
+    metrics: dict[str, Any] = {}
+    for field in ("population", "households", "area_km2"):
+        values = [u.get(field) for u in units]
+        metrics[field] = None if not units or any(v is None for v in values) else _num(sum(values))
+    grid, notes = grid_values(merge_grid([u["grid"] for u in units if u.get("grid")])) if units else ({}, {})
+    metrics.update(grid)
+    metrics["complexes"] = complexes
+    area, pop = metrics.get("area_km2"), metrics.get("population")
     metrics["density"] = round(pop / area, 1) if pop is not None and area else None
-    metrics["pop_change_pct"] = change_pct(metrics.get("pop500_base"), metrics.get("pop500"))
-    return {field: metrics.get(field) for field in FIELDS}
-
-
-def gap_notes(blocks_by_unit: dict[str, set[str]], units: Iterable[str], received: dict[tuple[str, int], set[str]], year: int | None) -> dict[str, str]:
-    """Why a 500m total is empty: {'housing500': '다마 블록 2024년 주택 파일 없음', ...}."""
-    touched = set().union(*(blocks_by_unit.get(u, set()) for u in units)) if units else set()
-    notes = {}
-    for field, theme in (("pop500", "인구"), ("housing500", "주택"), ("workers500", "종사자")):
-        missing = sorted(touched - received.get((theme, year), set())) if year else []
-        if missing:
-            notes[field] = f"{'·'.join(missing[:4])}{' 등' if len(missing) > 4 else ''} 블록 {year}년 {theme} 파일 없음"
-    return notes
+    return {field: metrics.get(field) for field in FIELDS}, notes
 
 
 # --------------------------------------------------------------------------- database (static part, cached)
@@ -197,17 +245,18 @@ def build_static(db: Any) -> dict[str, Any]:
             sums.setdefault(r["sgis"], {})[(r["block"], int(r["year"]))] = {k: (float(r[k]) if r[k] is not None else None) for k in ("pop", "hh", "housing", "workers")}
     except Exception:  # noqa: BLE001 - no 500m statistics yet
         db.rollback()
-    blocks: dict[str, set[str]] = {}
+    weights: dict[str, dict[str, float]] = {}
     try:
-        for sgis, block, _n in db.execute(text(BLOCKS_SQL)):
-            blocks.setdefault(sgis, set()).add(block)
+        from .sgis_grid import latest_year as latest_1k
+        for sgis, block, cells, people in db.execute(text(WEIGHTS_SQL), {"y1k": latest_1k(db) or 0}):
+            # people decide the coverage; a tiny share per cell keeps uninhabited blocks from dividing by zero
+            weights.setdefault(sgis, {})[block] = float(people or 0) + 0.001 * int(cells)
     except Exception:  # noqa: BLE001
         db.rollback()
-    unit_metrics: dict[str, dict[str, Any]] = {}
+    unit_rows: dict[str, dict[str, Any]] = {}
     for u in units:
-        m = {"population": u["population"], "households": u["households"], "area_km2": (u["area_m2"] / 1e6) if u["area_m2"] else None}
-        m.update(unit_grid500(sums.get(u["adm_code"], {}), blocks.get(u["adm_code"], set()), received, year, base))
-        unit_metrics[u["adm_code"]] = m
+        unit_rows[u["adm_code"]] = {"population": u["population"], "households": u["households"], "area_km2": (u["area_m2"] / 1e6) if u["area_m2"] else None,
+                                    "grid": unit_grid500(sums.get(u["adm_code"], {}), weights.get(u["adm_code"], {}), received, year, base)}
     complexes_region = dict(db.execute(text("SELECT region_code, count(*) FROM national_complexes WHERE region_code IS NOT NULL GROUP BY 1")).all())
     complexes_sido = dict(db.execute(text("SELECT left(coalesce(sigungu_code, bjd_code, region_code), 2), count(*) FROM national_complexes GROUP BY 1")).all())
     snapshot = db.scalar(text("SELECT max(snapshot_month) FROM national_complexes"))
@@ -220,29 +269,38 @@ def build_static(db: Any) -> dict[str, Any]:
     regions: dict[str, dict[str, Any]] = {}
     for code, entry in cat.items():
         members = by_region.get(code, [])
-        metrics = combine([unit_metrics[c] for c in members]) if members else finish({})
-        metrics["complexes"] = int(complexes_region.get(code, 0))
+        metrics, notes = summarize([unit_rows[c] for c in members], int(complexes_region.get(code, 0)))
         regions[code] = {"code": code, "name": entry["name"], "short_name": short_name(entry["name"]), "sido": code[:2],
-                         "sgis_codes": members, "linked": True, "metrics": metrics,
-                         "notes": gap_notes(blocks, members, received, year)}
+                         "sgis_codes": members, "linked": True, "metrics": metrics, "notes": notes}
     provinces_meta = province_list(db)
     sgis_to_legal = {s: p["code"] for p in provinces_meta for s in p["sgis_codes"]}
     unlinked = []
     for u in units:
         if u["region_code"]:
             continue
-        legal = sgis_to_legal.get(u["adm_code"][:2])
-        metrics = combine([unit_metrics[u["adm_code"]]])
-        metrics["complexes"] = None
-        unlinked.append({"code": f"sgis:{u['adm_code']}", "name": u["adm_name"], "short_name": short_name(u["adm_name"] or ""), "sido": legal,
-                         "sgis_codes": [u["adm_code"]], "linked": False, "metrics": metrics, "notes": gap_notes(blocks, [u["adm_code"]], received, year)})
+        metrics, notes = summarize([unit_rows[u["adm_code"]]], None)
+        unlinked.append({"code": f"sgis:{u['adm_code']}", "name": u["adm_name"], "short_name": short_name(u["adm_name"] or ""), "sido": sgis_to_legal.get(u["adm_code"][:2]),
+                         "sgis_codes": [u["adm_code"]], "linked": False, "metrics": metrics, "notes": notes})
     provinces = []
     for p in provinces_meta:
         members = [u["adm_code"] for u in units if u["adm_code"][:2] in p["sgis_codes"]]
-        metrics = combine([unit_metrics[c] for c in members]) if members else finish({})
-        metrics["complexes"] = int(complexes_sido.get(p["code"], 0))
+        metrics, notes = summarize([unit_rows[c] for c in members], int(complexes_sido.get(p["code"], 0)))
         provinces.append({"code": p["code"], "name": p["name"], "kind": p["kind"], "excluded": p.get("excluded"), "sgis_codes": p["sgis_codes"],
-                          "cells": p["cells"], "regions": p["regions"], "metrics": metrics, "notes": gap_notes(blocks, members, received, year)})
+                          "cells": p["cells"], "regions": p["regions"], "metrics": metrics, "notes": notes})
+    # 받은 파일이 없는 블록: 그 블록에 사는 사람(1km 격자 기준)과 걸친 시·도
+    missing_blocks: dict[str, dict[str, Any]] = {}
+    have = received.get(("인구", year), set()) if year else set()
+    for sgis, blocks in weights.items():
+        for block, weight in blocks.items():
+            if block in have:
+                continue
+            item = missing_blocks.setdefault(block, {"block": block, "people": 0.0, "provinces": set()})
+            item["people"] += weight
+            if sgis_to_legal.get(sgis[:2]):
+                item["provinces"].add(sgis_to_legal[sgis[:2]])
+    names = {p["code"]: p["name"] for p in provinces_meta}
+    gaps = sorted(({"block": b["block"], "people": int(round(b["people"])), "provinces": sorted(names.get(c, c) for c in b["provinces"])} for b in missing_blocks.values()),
+                  key=lambda b: -b["people"])
 
     geometry: dict[str, Any] = {}
     labels: dict[str, list[float]] = {}
@@ -259,7 +317,7 @@ def build_static(db: Any) -> dict[str, Any]:
     except Exception:  # noqa: BLE001 - no PostGIS (tests): lists still work
         db.rollback()
     return {
-        "unit_year": unit_year, "year": year, "base": base, "complex_month": snapshot,
+        "unit_year": unit_year, "year": year, "base": base, "complex_month": snapshot, "missing_blocks": gaps,
         "provinces": provinces, "regions": list(regions.values()) + unlinked,
         "geometry": geometry, "labels": labels, "province_geometry": province_geometry,
     }
@@ -350,6 +408,7 @@ def national_payload(db: Any) -> dict[str, Any]:
         "meta": {
             "sgis_year": st["unit_year"], "grid500_year": st["year"], "grid500_base_year": st["base"], "complex_month": st["complex_month"],
             "gaps": missing_text(gaps) if gaps else None,
+            "missing_blocks": st.get("missing_blocks", []),
             "sources": {
                 "admin": f"SGIS {st['unit_year'] or ''} 행정구역 통계 (시군구 합, 비공개 값은 합에서 빠짐)",
                 "grid500": f"{SOURCE_TEXT} {st['year'] or ''}년 (공식 500m 격자의 시군구로 모음)",

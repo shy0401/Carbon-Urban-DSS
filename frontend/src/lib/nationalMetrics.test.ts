@@ -12,6 +12,7 @@ describe('national metrics', () => {
   it('explains empty 500m totals with the missing block, and the change rule', () => {
     expect(missingReason(byKey.workers500, { workers500: '다마 블록 2024년 종사자 파일 없음' })).toBe('다마 블록 2024년 종사자 파일 없음');
     expect(missingReason(byKey.pop_change_pct, {})).toBe('두 해 중 20명 미만 또는 통계 없음');
+    expect(missingReason(byKey.pop_change_pct, { pop_change_pct: '나나 블록 인구 파일 없음' })).toBe('나나 블록 인구 파일 없음');
     expect(missingReason(byKey.housing500, {}, '제외')).toBe('500m 격자 통계를 받지 않은 지역');
     expect(missingReason(byKey.population, {})).toBe('자료 없음');
     expect(byKey.pop_change_pct.ramp).toBe('diff');

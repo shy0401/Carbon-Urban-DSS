@@ -47,7 +47,7 @@ export function metricValue(metrics: NationalMetrics | null | undefined, key: Na
 /** Why a 시·도/시·군·구 has no value for the metric (never shown as 0). */
 export function missingReason(metric: NationalMetric, notes: Record<string, string> | undefined, excluded?: string | null): string {
   if (metric.source === 'grid500') {
-    const note = notes?.[metric.key === 'pop_change_pct' ? 'pop500' : metric.key];
+    const note = notes?.[metric.key];
     if (note) return note;
     if (excluded) return '500m 격자 통계를 받지 않은 지역';
     return metric.key === 'pop_change_pct' ? '두 해 중 20명 미만 또는 통계 없음' : '500m 통계 없음';
