@@ -23,6 +23,7 @@ import { useSystemInfo } from '../hooks/useSystemInfo';
 import { api } from '../lib/api';
 import { dongCells } from '../lib/dongs';
 import { formatMetric, withTopic } from '../lib/format';
+import { addHatchImage, HATCH } from '../lib/mapHatch';
 import { referenceGrid } from '../lib/mapGrid';
 import { classify, METRIC_GROUPS, METRICS, MISSING_FILL, rangeLabel, stepColor, USE_COLORS, USE_NAME, withMetricValues, ZONE_NAME, type Classification, type MetricDef } from '../lib/mapMetrics';
 import { provenanceFromCode } from '../lib/provenance';
@@ -103,7 +104,6 @@ const BUILDING_MIN_ZOOM = 14;
 const EMPTY: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] };
 const DEFAULT_METRIC_ORDER = ['far_est_pct', 'coverage_pct', 'residential_zone_ratio', 'complex_households', 'electricity_kwh_per_m2'];
 const BASIC_METRIC_ORDER = ['sgis500_population', 'sgis_pop_density', 'sgis_housing_density', 'complex_count'];
-const HATCH = 'hatch-missing';
 const MISSING_NOTICE: Record<'zoning' | 'admin', string> = {
   zoning: '용도지역 자료 미확보: VWorld 또는 원본 파일 승인 후 표시됩니다.',
   admin: '행정동 인구 자료 미확보: SGIS 인구·가구를 수집한 뒤 표시됩니다.',
@@ -561,17 +561,6 @@ function complexTooltip(p: Record<string, unknown>): string {
 /** 격자 면 불투명도 0.85 (DESIGN.md 6). 건물이 보이는 확대 14 이상, 또는 겹쳐 보기 레이어를 켰을 때는 옅게 한다. */
 export function gridOpacity(faded = false): maplibregl.ExpressionSpecification { return faded ? ['interpolate', ['linear'], ['zoom'], 13.5, 0.3, 16, 0.15] : ['interpolate', ['linear'], ['zoom'], 13.5, 0.85, 15, 0.35, 16, 0.2]; }
 function missingFilter(key: string): maplibregl.FilterSpecification { return ['==', ['get', key], null]; }
-
-/** 해치 패턴 이미지(45°, --hatch 선 / --prov-missing-bg 바탕) — fill-pattern용. */
-function addHatchImage(map: maplibregl.Map) {
-  if (map.hasImage(HATCH)) return;
-  const size = 16; const canvas = document.createElement('canvas'); canvas.width = size; canvas.height = size;
-  const ctx = canvas.getContext('2d'); if (!ctx) return;
-  ctx.fillStyle = TOKENS['prov-missing-bg']; ctx.fillRect(0, 0, size, size);
-  ctx.strokeStyle = TOKENS.hatch; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.moveTo(0, size); ctx.lineTo(size, 0); ctx.moveTo(-4, 4); ctx.lineTo(4, -4); ctx.moveTo(size - 4, size + 4); ctx.lineTo(size + 4, size - 4); ctx.stroke();
-  map.addImage(HATCH, ctx.getImageData(0, 0, size, size), { pixelRatio: 2 });
-}
 
 function useColor(): unknown[] { return ['match', ['coalesce', ['get', 'use_category'], 'RESIDENTIAL'], ...USE_COLORS.filter(([, c]) => c).flatMap(([key, color]) => [key, color]), MISSING_FILL]; }
 

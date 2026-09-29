@@ -6,6 +6,7 @@ import { setBasemapStatus } from '../hooks/useBasemapStatus';
 import { useApi } from '../hooks/useApi';
 import { api } from '../lib/api';
 import { formatMetric } from '../lib/format';
+import { addHatchImage, HATCH } from '../lib/mapHatch';
 import { classify, rangeLabel, stepColor, type Classification } from '../lib/mapMetrics';
 import { DEFAULT_NATIONAL_METRIC, levelLabel, metricValue, missingReason, NATIONAL_METRICS, provinceGroups, shortProvince, type NationalMetric } from '../lib/nationalMetrics';
 import { LINE_ON_BASEMAP, TOKENS } from '../theme/palette';
@@ -117,6 +118,10 @@ export function NationalMap({ sido, sgg, onSido, onSgg, onProvinceGrid, onOpenRe
       map.addSource('nt-sgg', { type: 'geojson', data: EMPTY });
       map.addLayer({ id: 'nt-prov-fill', type: 'fill', source: 'nt-prov', paint: { 'fill-color': TOKENS['prov-missing-bg'], 'fill-opacity': 0.85 } });
       map.addLayer({ id: 'nt-sgg-fill', type: 'fill', source: 'nt-sgg', paint: { 'fill-color': TOKENS['prov-missing-bg'], 'fill-opacity': 0.88 } });
+      addHatchImage(map);
+      // 값 없는 곳은 해치 (램프의 가장 옅은 색과 구분, 0이 아님)
+      map.addLayer({ id: 'nt-prov-missing', type: 'fill', source: 'nt-prov', filter: ['==', ['get', 'v'], null], paint: { 'fill-pattern': HATCH, 'fill-opacity': 0.9 } });
+      map.addLayer({ id: 'nt-sgg-missing', type: 'fill', source: 'nt-sgg', filter: ['==', ['get', 'code'], ''], paint: { 'fill-pattern': HATCH, 'fill-opacity': 0.9 } });
       map.addLayer({ id: 'nt-sgg-line', type: 'line', source: 'nt-sgg', paint: { 'line-color': TOKENS.surface, 'line-width': 1 } });
       map.addLayer({ id: 'nt-prov-line', type: 'line', source: 'nt-prov', paint: { 'line-color': TOKENS['ink-2'], 'line-width': ['interpolate', ['linear'], ['zoom'], 5, 0.8, 9, 1.6] } });
       map.addLayer({ id: 'nt-sgg-detailed-halo', type: 'line', source: 'nt-sgg', filter: ['==', ['get', 'level'], 'DETAILED'], paint: { 'line-color': TOKENS['select-halo'], 'line-width': 5 } });
@@ -184,6 +189,9 @@ export function NationalMap({ sido, sgg, onSido, onSgg, onProvinceGrid, onOpenRe
     map.setFilter('nt-prov-selected', ['==', ['get', 'code'], sido ?? '']);
     (map.getSource('nt-sgg') as maplibregl.GeoJSONSource).setData(sido && sggData ? sggData.boundaries : EMPTY);
     map.setPaintProperty('nt-sgg-fill', 'fill-color', stepColor(metric.key, sggClasses) as unknown as maplibregl.ExpressionSpecification);
+    map.setFilter('nt-sgg-missing', ['==', ['get', metric.key], null]);
+    map.setFilter('nt-prov-missing', sido ? ['all', ['==', ['get', 'v'], null], ['!=', ['get', 'code'], sido]] : ['==', ['get', 'v'], null]);
+    map.setPaintProperty('nt-prov-missing', 'fill-opacity', sido ? 0.3 : 0.9);
     map.setFilter('nt-sgg-selected', ['==', ['get', 'code'], sgg ?? '']); map.setFilter('nt-sgg-selected-halo', ['==', ['get', 'code'], sgg ?? '']);
   }, [sido, sgg, sggData, sggClasses, metric.key, ready]);
   // 화면 맞춤: 전국 ↔ 고른 시·도 (지표를 바꿔도 다시 맞추지 않는다)
@@ -258,7 +266,7 @@ export function NationalMap({ sido, sgg, onSido, onSgg, onProvinceGrid, onOpenRe
           <div className="legend-head"><strong>{metric.label}</strong><span className="unit">{metric.unit}</span><button type="button" className="legend-toggle" aria-expanded={legendOpen} onClick={() => setLegendOpen((open) => !open)}>{legendOpen ? '범례 접기' : '범례 펼치기'}</button></div>
           <p className="resolution-tag res-1km">{sido ? `${province?.name ?? ''} 안 시·군·구끼리 나눈 구간` : '전국 시·도끼리 나눈 구간'}</p>
           {classes.classes.length ? <ul className="legend-classes">{classes.classes.map((c, i) => <li key={i}><i style={{ background: c.color }} /><span>{rangeLabel(c, metric.digits, i === classes.classes.length - 1)}</span><em>{c.count.toLocaleString('ko-KR')}곳</em></li>)}</ul> : <p className="map-empty-hint">{data ? '값이 있는 곳이 없습니다.' : '불러오면 표시합니다.'}</p>}
-          {classes.missing > 0 && <div className="legend-missing"><i className="is-missing" /><span>{metric.source === 'grid500' ? '빠진 블록·통계 없음 (0 아님)' : '자료 없음 (0 아님)'}</span><em>{classes.missing}곳</em></div>}
+          {classes.missing > 0 && <div className="legend-missing"><i className="is-missing" /><span>{metric.source === 'grid500' ? '빠진 블록·통계 없음 (0 아님, 해치)' : '자료 없음 (0 아님, 해치)'}</span><em>{classes.missing}곳</em></div>}
           <ul className="layer-key" aria-label="선 기호">
             <li><i className="key-line" />시·도 경계</li>
             {sido && <li><i className="key-line prepared" />상세 자료 시·군·구 (에너지·건물·용도지역)</li>}
