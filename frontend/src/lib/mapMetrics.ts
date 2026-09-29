@@ -452,6 +452,7 @@ export function withMetricValues(collection: GeoJSON.FeatureCollection<GeoJSON.G
 export function rangeLabel(item: MetricClass, digits: number, last: boolean): string {
   const f = (v: number) => formatMetric(v, '', digits);
   if (item.from === item.to) return f(item.from);
-  if (item.to < item.from) return `${f(item.from)} 이상`;
+  // 고정 구간이 값 범위 밖이면 빈 구간: 첫 구간은 '경계 미만', 마지막 구간은 '경계 이상'으로 적는다.
+  if (item.to < item.from) return last ? `${f(item.from)} 이상` : `${f(item.to)} 미만`;
   return last ? `${f(item.from)} ~ ${f(item.to)}` : `${f(item.from)} ~ ${f(item.to)} 미만`;
 }

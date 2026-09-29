@@ -95,6 +95,14 @@ describe('map classification', () => {
     expect(change.missingLabel).toContain('20명 미만');
     expect(change.basis({ ...observed, sgis500_pop_change_pct: 20, sgis500_base_year: 2015, sgis500_base_population: 100, sgis500_population: 120 } as unknown as GridProps)).toBe('2015년 100 명 → 2024년 120 명');
   });
+  it('labels empty fixed classes outside the data range by their bound', () => {
+    const c = classify([-5.5, 2, 12, 88.9], [-10, -3, 3, 10], 'diff');
+    expect(c.classes[0].count).toBe(0);
+    expect(rangeLabel(c.classes[0], 1, false)).toBe('-10 미만');
+    expect(rangeLabel(c.classes[4], 1, true)).toBe('10 ~ 88.9');
+    const high = classify([1, 2], [5, 10], 'seq');
+    expect(rangeLabel(high.classes[2], 0, true)).toBe('10 이상');
+  });
   it('every metric states its formula and source (근거 유형 배지는 서버 필드가 없어 달지 않음)', () => {
     for (const metric of METRICS) {
       expect(metric.formula.length).toBeGreaterThan(3);
