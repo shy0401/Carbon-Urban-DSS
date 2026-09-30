@@ -1,7 +1,8 @@
 import type { RampName } from '../theme/palette';
 import type { NationalMetrics } from '../types';
 
-/** Indicators of the national (전국) map: only layers every 시·도 and 시·군·구 has. Energy and carbon are not national yet. */
+/** Indicators of the national (전국) map: only layers every 시·도 and 시·군·구 has. Energy use is not national yet;
+ *  greenhouse gas comes from the GIR regional inventory (시·군·구 official statistics). */
 export interface NationalMetric {
   key: keyof NationalMetrics;
   label: string;
@@ -10,7 +11,7 @@ export interface NationalMetric {
   ramp: RampName;
   /** Fixed class lower bounds (after the first class); quantiles otherwise. */
   breaks?: number[];
-  source: 'admin' | 'grid500' | 'complexes';
+  source: 'admin' | 'grid500' | 'complexes' | 'ghg';
   definition: string;
   use: string;
 }
@@ -35,6 +36,15 @@ export const NATIONAL_METRICS: NationalMetric[] = [
   { key: 'complexes', label: 'K-apt 공동주택 단지', unit: '단지', digits: 0, ramp: 'seq', source: 'complexes',
     definition: 'K-apt 의무관리 공동주택 단지 목록의 단지 수입니다(소규모 공동주택은 목록에 없을 수 있음).',
     use: '공동주택 에너지 관측(K-apt 월별 에너지)을 받을 수 있는 규모를 봅니다.' },
+  { key: 'ghg_building', label: '건물 등 온실가스', unit: '천 tCO₂eq', digits: 0, ramp: 'load', source: 'ghg',
+    definition: '온실가스종합정보센터 지역 온실가스 인벤토리(최근 2023년)의 가정·상업·공공·농림어업 배출입니다: 연료 연소(직접) + 전력·열 사용(간접). 공식 통계이며 이 도구가 계산한 값이 아닙니다.',
+    use: '건물 에너지 탄소의 시·도·시·군·구 규모를 비교하고, 상세 자료를 모은 지역의 격자 탄소 합계를 맞대어 보는 기준으로 씁니다.' },
+  { key: 'ghg_building_change_pct', label: '건물 등 배출 증감률 (2018년 대비)', unit: '%', digits: 1, ramp: 'diff', breaks: [-20, -5, 5, 20], source: 'ghg',
+    definition: '건물 등 배출(직접 + 전력·열 간접)의 2018년(국가 감축목표 기준 연도) 대비 최근 연도 증감률입니다. 전력 배출계수 변화도 들어 있습니다.',
+    use: '감축이 빠른 곳과 늘어난 곳(신도시·인구 유입)을 가려, 목표 감축 노력을 어디에 둘지 봅니다.' },
+  { key: 'ghg_total', label: '온실가스 총배출량', unit: '천 tCO₂eq', digits: 0, ramp: 'load', source: 'ghg',
+    definition: '지역 온실가스 인벤토리의 총배출량(직접, 흡수원 제외, 수송은 주행거리(VKT) 기준)입니다. 발전소·산업단지가 있는 곳이 크게 나옵니다.',
+    use: '지역 배출에서 건물 부문이 차지하는 몫을 가늠합니다(산업·발전이 많은 곳과 구별).' },
 ];
 
 export const DEFAULT_NATIONAL_METRIC: NationalMetric['key'] = 'density';
@@ -52,6 +62,7 @@ export function missingReason(metric: NationalMetric, notes: Record<string, stri
     if (excluded) return '500m 격자 통계를 받지 않은 지역';
     return metric.key === 'pop_change_pct' ? '두 해 중 20명 미만 또는 통계 없음' : '500m 통계 없음';
   }
+  if (metric.source === 'ghg') return notes?.[metric.key] ?? 'GIR 지역 인벤토리 값 없음';
   return '자료 없음';
 }
 

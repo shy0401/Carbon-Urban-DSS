@@ -256,10 +256,10 @@ export function NationalMap({ sido, sgg, onSido, onSgg, onProvinceGrid, onOpenRe
           </button>
           {pickerOpen && <section className="map-metrics map-popover" aria-label="지도 지표">
             <header><strong>전국 공통 지표</strong><small>모든 시·도·시·군·구에 있는 자료</small></header>
-            {(['admin', 'grid500', 'complexes'] as const).map((source) => <div className="metric-group" key={source}><span>{source === 'admin' ? '인구·가구 (SGIS 행정구역 통계)' : source === 'grid500' ? '500m 격자 통계를 모은 값 (SGIS)' : '공동주택 (K-apt 단지 목록)'}</span>
+            {(['admin', 'grid500', 'complexes', 'ghg'] as const).map((source) => <div className="metric-group" key={source}><span>{SOURCE_GROUP[source]}</span>
               {NATIONAL_METRICS.filter((m) => m.source === source).map((m) => <button key={m.key} className={`metric-option${m.key === metric.key ? ' active' : ''}`} aria-pressed={m.key === metric.key} onClick={() => { setMetricKey(m.key); setPickerOpen(false); }}><span>{m.label} <small>{m.unit}</small></span></button>)}
             </div>)}
-            <p className="muted">에너지·탄소는 전국 자료가 없어 시·군·구마다 모읍니다(상세 자료). 이 화면에서는 칠하지 않습니다.</p>
+            <p className="muted">온실가스는 공식 지역 인벤토리 값입니다{data?.meta.ghg_year ? ` (${data.meta.ghg_year}년)` : ''}. 에너지 사용량(전력·가스 관측)은 전국 자료가 없어 시·군·구마다 모읍니다(상세 자료).</p>
           </section>}
         </div>
         <section className={`map-legend${legendOpen ? '' : ' collapsed'}`} aria-label="지표 범례">
@@ -307,6 +307,11 @@ function MetricFacts({ metrics, notes, excluded }: { metrics: NationalMetrics; n
 }
 
 /** 고른 시·도 요약 (왼쪽 메뉴 위): 지도 폭을 줄이지 않도록 오른쪽 상세 대신 여기에 둔다. */
+const SOURCE_GROUP: Record<NationalMetric['source'], string> = {
+  admin: '인구·가구 (SGIS 행정구역 통계)', grid500: '500m 격자 통계를 모은 값 (SGIS)', complexes: '공동주택 (K-apt 단지 목록)',
+  ghg: '온실가스 (온실가스종합정보센터 지역 인벤토리)',
+};
+
 function ProvinceSummaryBox({ province, metric, onProvinceGrid }: { province: NationalProvince; metric: NationalMetric; onProvinceGrid: () => void }) {
   const keys: Array<NationalMetric['key']> = ['population', 'density', 'pop_change_pct', 'complexes'];
   if (!keys.includes(metric.key)) keys.push(metric.key);
@@ -314,6 +319,7 @@ function ProvinceSummaryBox({ province, metric, onProvinceGrid }: { province: Na
     <dl>{keys.map((key) => { const m = NATIONAL_METRICS.find((x) => x.key === key) as NationalMetric; const v = metricValue(province.metrics, key);
       return <div key={key} title={v === null ? missingReason(m, province.notes, province.excluded) : province.notes[key] ?? undefined}><dt>{m.label}</dt><dd>{v === null ? <span className="muted">없음</span> : formatMetric(v, m.unit, m.digits)}</dd></div>; })}</dl>
     {metricValue(province.metrics, metric.key) === null && <p className="muted">{metric.label}: {missingReason(metric, province.notes, province.excluded)}</p>}
+    {province.gas && <p className="muted" data-testid="province-gas">도시가스 판매량 {province.gas.year}년 {formatMetric(province.gas.thousand_m3 / 1000, '백만㎥', 0)}{province.gas.change_pct !== null ? ` (${province.gas.base_year}년 대비 ${province.gas.change_pct > 0 ? '+' : ''}${formatMetric(province.gas.change_pct, '%', 1)})` : ''}{province.gas.parts.length > 1 ? ` · ${province.gas.parts.join('·')} 합` : ''} · 한국가스공사</p>}
     <p className="muted">상세 자료 {province.detailed} · 기본 지도 {province.basic} · 에너지 관측 {province.energy_regions}곳</p>
     <button type="button" className="button secondary small" onClick={onProvinceGrid} disabled={!!province.excluded || !province.cells} title={province.excluded ?? undefined}>{province.excluded ? '500m 격자 지도 (제외)' : '500m 격자 지도로'}</button>
   </section>;

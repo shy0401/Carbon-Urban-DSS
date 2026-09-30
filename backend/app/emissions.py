@@ -28,6 +28,46 @@ def ensure_gas_factor(db):
     db.commit()
     return GAS_FACTOR
 
+# 이전 공표 전력 배출계수 (소비단). 공표일부터 다음 공표 전까지의 계산 연도에 쓴다(factors_for: 그해 말까지 공표된 것 중 최신).
+# 원문 PDF는 data/raw/research/gir/b<게시물>_*.pdf, 확인용 텍스트(pdftotext -layout)는 같은 이름의 .txt.
+HISTORIC_ELECTRICITY = (
+    {"id": "gir-2018-approved-consumption", "board": 44, "factor": 0.4594, "reference_year": 2018, "effective_from": "2019-01-02",
+     "evidence": ("0.4567", "0.0036", "0.0085", "소비단"),
+     "source": "GIR 2018 승인 국가고유 배출계수 / 전력 소비단",
+     "notes": "게시일 2019-01-02. 원문은 CO2 0.4567 t/MWh, CH4 0.0036 kg/MWh, N2O 0.0085 kg/MWh만 있어 CO2eq는 "
+              "당시 지침('96 IPCC, SAR)의 GWP(CH4 21, N2O 310)로 합산한 값(0.45941). 2019~2021년 계산에 적용."},
+    {"id": "gir-2021-approved-consumption", "board": 56, "factor": 0.4781, "reference_year": 2021, "effective_from": "2022-01-10",
+     "evidence": ("0.4781", "소비단"),
+     "source": "GIR 2021 승인 국가 온실가스 배출계수 / 전력 소비단",
+     "notes": "게시일 2022-01-10(수정본). CO2eq 0.4781 tCO2eq/MWh. 2022~2024년 계산에 적용(2024 승인 계수는 2025-03-31 공표)."},
+)
+# 2025-12-18 공표된 2025 승인 계수(2023년 단년 0.4173, 2021~23 평균 0.4330)는 2025년 계산을 바꾸므로 자동 등록하지 않는다.
+LATEST_PENDING = {"board": 86, "published": "2025-12-18", "single_2023": 0.4173, "avg_2021_2023": 0.4330}
+
+
+def _gir_evidence(board):
+    folder=RAW/'research'/'gir'
+    for txt in sorted(folder.glob(f'b{board}_*.txt')):
+        pdf=txt.with_suffix('.pdf')
+        if pdf.exists():return pdf,txt.read_text(encoding='utf-8',errors='replace')
+    return None,None
+
+
+def collect_historic_factors(db):
+    """Register the older GIR electricity factors whose PDF and text evidence are in data/raw/research/gir."""
+    registered=[]
+    for item in HISTORIC_ELECTRICITY:
+        pdf,text=_gir_evidence(item['board'])
+        if not pdf:continue
+        if not all(s in text for s in item['evidence']):raise ValueError(f"배출계수 증빙 불일치: {pdf.name}")
+        url=f"https://www.gir.go.kr/home/board/read.do?boardId={item['board']}&boardMasterId=2&menuId=36"
+        db.merge(EmissionFactor(id=item['id'],energy_type='ELECTRICITY',factor=item['factor'],factor_unit='kgCO2eq/kWh',reference_year=item['reference_year'],
+                                source=item['source'],source_url=url,effective_from=item['effective_from'],notes=item['notes']+' tCO2eq/MWh = kgCO2eq/kWh.'))
+        registered.append(item['id'])
+    db.commit()
+    return registered
+
+
 def collect_factors(db):
     path=RAW/'research'/'gir_2024_approved_electricity_factors.pdf'
     evidence=RAW/'research'/'gir_2024_approved_electricity_factors.txt'
@@ -39,5 +79,12 @@ def collect_factors(db):
     record_asset(db,'factors',{'path':str(path),'url':GIR_URL,'timestamp':path.stat().st_mtime},1,'2024 승인 /2020–2022 통계/2025-03-31 공표')
     source=db.get(DataSource,'factors');source.source_url=GIR_URL;source.reference_period='2024 승인 / 2025-03-31 공표';source.limitation=f'전기 소비단 0.4541 kgCO2eq/kWh (GIR 승인). 도시가스는 고정 규칙의 가정 계수 {GAS_FACTOR} kgCO2eq/kWh (IPCC 2006 기본값, 총발열량 기준 kWh 가정; 순발열량이면 {GAS_NCV_FACTOR:.4f}).'
     ensure_gas_factor(db)
-    update_source(db,'factors',2,2,status='PARTIAL',quality='전기 GIR 승인 계수 / 가스 가정 계수(IPCC 2006, 공식 계수 확인 필요)',missing=0)
-    return 1
+    historic=collect_historic_factors(db)
+    if historic:
+        source=db.get(DataSource,'factors')
+        source.reference_period='2018·2021·2024 승인 (공표일부터 적용)'
+        source.limitation=(f'전기 소비단: 2019~2021년 0.4594(2018 승인, CO2eq 환산), 2022~2024년 0.4781(2021 승인), 2025년 0.4541(2024 승인) kgCO2eq/kWh. '
+                           f"2025-12-18 공표 2025 승인 계수(2023년 {LATEST_PENDING['single_2023']}, 2021~23 평균 {LATEST_PENDING['avg_2021_2023']})는 적용 여부 결정 전이라 쓰지 않음. "
+                           f'도시가스는 고정 규칙의 가정 계수 {GAS_FACTOR} kgCO2eq/kWh.')
+    update_source(db,'factors',2+len(historic),2+len(historic),status='PARTIAL',quality='전기 GIR 승인 계수(공표 회차별) / 가스 가정 계수(IPCC 2006, 공식 계수 확인 필요)',missing=0)
+    return 1+len(historic)

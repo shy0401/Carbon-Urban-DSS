@@ -18,6 +18,13 @@ describe('national metrics', () => {
     expect(byKey.pop_change_pct.ramp).toBe('diff');
     expect(NATIONAL_METRICS.every((m) => m.definition && m.use)).toBe(true);
   });
+  it('adds the GIR greenhouse gas inventory with its own reasons for empty places', () => {
+    expect(byKey.ghg_building.source).toBe('ghg');
+    expect(byKey.ghg_building.unit).toBe('천 tCO₂eq');
+    expect(byKey.ghg_building_change_pct.ramp).toBe('diff');
+    expect(missingReason(byKey.ghg_total, { ghg_total: '2026년 개편으로 생긴 구' })).toBe('2026년 개편으로 생긴 구');
+    expect(missingReason(byKey.ghg_building, {})).toBe('GIR 지역 인벤토리 값 없음');
+  });
   it('lists 도 first, then 특별시·광역시, in code order', () => {
     const groups = provinceGroups([{ code: '52', kind: 'PROVINCE' }, { code: '11', kind: 'METRO' }, { code: '41', kind: 'PROVINCE' }] as const as never as Array<{ code: string; kind: 'PROVINCE' | 'METRO' }>);
     expect(groups.map(([kind, items]) => [kind, items.map((i) => i.code)])).toEqual([['PROVINCE', ['41', '52']], ['METRO', ['11']]]);

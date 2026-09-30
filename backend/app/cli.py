@@ -8,7 +8,7 @@ from .catalog import seed_sources
 from .settings import DATA_DIR,DEFAULT_YEAR
 
 def init_tables():
-    from . import official,kapt,kapt_energy,kma_asos,sgis,sgis_grid,vworld,energy_parcels,sgis_grid_official,regions,national,ordinances
+    from . import official,kapt,kapt_energy,kma_asos,sgis,sgis_grid,vworld,energy_parcels,sgis_grid_official,regions,national,ordinances,sgis_grid500,regional_stats
     try:from . import imports
     except ImportError:pass
     with engine.begin() as c:c.execute(text('CREATE EXTENSION IF NOT EXISTS postgis'))
@@ -22,7 +22,7 @@ def init_tables():
         except Exception:db.rollback()
 
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument('command',choices=['demo','online','status','enrich','collect','collect-history','collect-missing','validate-models','snapshot','llm-dataset','llm-eval','import-sgis-grid','import-sgis-grid500',
+    parser=argparse.ArgumentParser();parser.add_argument('command',choices=['demo','online','status','enrich','collect','collect-history','collect-missing','validate-models','snapshot','llm-dataset','llm-eval','import-sgis-grid','import-sgis-grid500','import-regional-stats',
         'national-admin','national-sgis','national-complexes','national-grid500','national-ordinances','national-all','prepare-region','regions']);parser.add_argument('--year',type=int,default=DEFAULT_YEAR)
     parser.add_argument('--from',dest='from_year',type=int,default=2015);parser.add_argument('--to',dest='to_year',type=int,default=DEFAULT_YEAR)
     parser.add_argument('--datasets',default='',help='comma-separated: sgis,kma_asos,kapt_energy,energy,vworld_zoning,vworld_buildings,vworld_cadastral,building_register');parser.add_argument('--force',action='store_true')
@@ -92,6 +92,11 @@ def main():
             from .sgis_grid500 import import_sgis_grid500
             result=import_sgis_grid500(db,args.file,force=args.force,log=lambda m:print(m,flush=True))
             print(json.dumps(result,ensure_ascii=False,default=str))
+        elif args.command=='import-regional-stats':
+            # GIR 지역 온실가스 인벤토리(DATA_DIR/raw/research/gir/regional_*/*.xlsx), 가스공사 시·도 도시가스(DATA_DIR/raw/gas/*.csv)
+            from .regional_stats import import_all,row_counts
+            result=import_all(db,force=args.force)
+            print(json.dumps(dict(result,rows=row_counts(db)),ensure_ascii=False))
         elif args.command=='validate-models':
             from .model_service import model_status
             print(json.dumps(model_status(db,args.year,train=True,region=args.region),ensure_ascii=False,indent=2))

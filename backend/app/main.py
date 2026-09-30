@@ -93,6 +93,11 @@ def _warm_caches_in_background():
             from .sgis_grid500 import data_root,import_sgis_grid500,scan
             if scan(data_root())[0]:
                 with Session() as db:import_sgis_grid500(db)
+            # GIR 지역 온실가스 인벤토리·가스공사 시·도 판매량 (data/raw/research/gir, data/raw/gas): 새 파일만 읽음
+            from .regional_stats import import_all
+            with Session() as db:
+                loaded=import_all(db)
+                if any(loaded.values()):print('지역 통계 가져오기:',loaded)
         except Exception as exc:  # noqa: BLE001 - warming is best effort
             print('캐시 예열 실패:',type(exc).__name__,exc)
     threading.Thread(target=warm,name='warm-caches',daemon=True).start()
@@ -118,6 +123,7 @@ app.include_router(province_map_router)
 from .dongs import router as dongs_router
 app.include_router(dongs_router)
 from .sgis_grid500 import router as sgis_grid500_router  # also registers sgis_grid500_values before create_all
+from . import regional_stats  # noqa: F401 - registers gir_regional_ghg, citygas_sido_monthly before create_all
 app.include_router(sgis_grid500_router)
 from .national_map import router as national_map_router
 app.include_router(national_map_router)

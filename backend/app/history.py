@@ -69,8 +69,8 @@ MANUAL_SOURCES = (
     # 전국·시·군·구 분석으로 넓히는 데 필요한 자료 (2026-09-29 검토, docs/NATIONWIDE_DATA.md)
     {"id": "kepco_sigungu", "label": "한전 시군구별 전력사용량 (전국 시·군·구)",
      "why": "지금 전력 관측은 상세 자료를 모은 시·군·구(전주·수원의 건축HUB·K-apt)에만 있어, 전국 시·군·구의 전력·전력 탄소를 비교할 수 없습니다. 한전 파일은 전국 시·군·구 단위라 전국 지도에 전력·탄소 지표를 더할 수 있습니다.",
-     "how": "공공데이터포털 '한국전력공사_시군구별 전력사용량' 파일 내려받기 → data/raw/kepco/에 두기 (받은 파일의 열 구성에 맞춰 가져오기를 추가)",
-     "link": "https://www.data.go.kr/data/3069444/fileData.do"},
+     "how": "한전 홈페이지 '전력판매량(시군구별)' 게시판에서 월별 엑셀 내려받기(내려받기 전 이용 목적 설문을 한 번 답해야 함) → data/raw/kepco/에 두기 (받은 파일의 열 구성에 맞춰 가져오기를 추가)",
+     "link": "https://www.kepco.co.kr/home/customer/library/electricity-statistics/sales-volume/boardList.do"},
     {"id": "gas_sido", "label": "시·도별 도시가스 판매량 (한국가스공사, 월별)",
      "why": "도시가스 사용량은 전국 시·군·구 단위 공개 통계를 찾지 못했습니다(서울시만 구별 통계). 시·도 단위 판매량으로 가스 탄소의 시·도 총량을 비교할 수 있습니다.",
      "how": "공공데이터포털 '한국가스공사_월별 시도별 도시가스 판매현황' 파일 내려받기 → data/raw/gas/",
@@ -522,21 +522,43 @@ def history_status(data_dir: str | Path | None = None) -> dict[str, Any]:
     return {"items": state["items"], "runs": state["runs"][-5:], "summary": summary}
 
 
+FACTORS_YEARLY_DONE = {
+    "id": "factors_yearly", "label": "전력 배출계수: 2025 승인 계수 적용 여부 결정",
+    "why": "공식 전력 배출계수는 해마다가 아니라 공표 회차마다 나옵니다. 받은 원문(2018·2021·2024·2025 승인)으로 2019~2021년은 0.4594(2018 승인), "
+           "2022~2024년은 0.4781(2021 승인), 2025년은 0.4541(2024 승인)을 씁니다. 2025-12-18 공표된 2025 승인 계수(2023년 단년 0.4173, 2021~23 평균 0.4330)를 "
+           "2025년 계산에 쓰면 2025년 전력 탄소가 약 5~8% 줄어 결과가 바뀌므로 자동으로 바꾸지 않았습니다. 2019년 전에 공표된 전력 계수 원문은 이 게시판에 없어 2015~2018년 전력 탄소는 비웁니다.",
+    "how": "2025년 계산에 2025 승인 계수(단년 또는 3년 평균)를 쓸지 정한 뒤 등록 (원문: data/raw/research/gir/b86_2_*.pdf)",
+    "link": "https://www.gir.go.kr/home/board/read.do?boardId=86&boardMasterId=2&menuId=36",
+}
+
+
 def manual_sources(data_dir: str | Path | None = None) -> list[dict[str, Any]]:
-    """MANUAL_SOURCES, with the SGIS 500m item replaced once its files are in DATA_DIR/raw/sgis_grid_500m:
-    gone when every theme × block is there, otherwise a re-request of exactly the missing files."""
+    """MANUAL_SOURCES, adjusted to what is already in DATA_DIR/raw:
+
+    * SGIS 500m: gone when every theme × block is there, otherwise a re-request of exactly the missing files.
+    * GIR 지역 인벤토리(raw/research/gir/regional_*), 가스공사 판매량(raw/gas): gone once the files are there.
+    * 연도별 전력 배출계수: once the GIR 원문(raw/research/gir/b44·b56·b86) is there, only the 2025 decision is left."""
+    from .regional_stats import gas_files, gir_files
     from .sgis_grid500 import missing_files, missing_text, scan
-    root = Path(data_dir or os.getenv("DATA_DIR", "data")) / "raw" / "sgis_grid_500m"
-    if not scan(root)[0]:
-        return list(MANUAL_SOURCES)
-    gaps = missing_files(root)
-    out = [item for item in MANUAL_SOURCES if item["id"] != "sgis_grid"]
-    if gaps:
-        out.insert(0, {
-            "id": "sgis_grid", "label": "SGIS 500m 격자 통계: 빠진 파일 재신청",
-            "why": f"받은 500m 격자 통계는 적용했지만 일부 주제·블록 파일이 받은 묶음에 없습니다: {missing_text(gaps)}. 이 칸의 격자는 지도에 '통계 없음'으로 나오며 0으로 채우지 않습니다.",
-            "how": "SGIS 자료제공에서 같은 조건으로 빠진 주제·블록만 다시 신청 → 받은 CSV를 data/raw/sgis_grid_500m에 추가 → API 재시작 또는 'python -m app.cli import-sgis-grid500'",
-            "link": SGIS_REQUEST_URL, "missing": gaps})
+    raw = Path(data_dir or os.getenv("DATA_DIR", "data")) / "raw"
+    root = raw / "sgis_grid_500m"
+    out = list(MANUAL_SOURCES)
+    if scan(root)[0]:
+        gaps = missing_files(root)
+        out = [item for item in out if item["id"] != "sgis_grid"]
+        if gaps:
+            out.insert(0, {
+                "id": "sgis_grid", "label": "SGIS 500m 격자 통계: 빠진 파일 재신청",
+                "why": f"받은 500m 격자 통계는 적용했지만 일부 주제·블록 파일이 받은 묶음에 없습니다: {missing_text(gaps)}. 이 칸의 격자는 지도에 '통계 없음'으로 나오며 0으로 채우지 않습니다.",
+                "how": "SGIS 자료제공에서 같은 조건으로 빠진 주제·블록만 다시 신청 → 받은 CSV를 data/raw/sgis_grid_500m에 추가 → API 재시작 또는 'python -m app.cli import-sgis-grid500'",
+                "link": SGIS_REQUEST_URL, "missing": gaps})
+    if gir_files(raw):
+        out = [item for item in out if item["id"] != "gir_regional"]
+    if gas_files(raw):
+        out = [item for item in out if item["id"] != "gas_sido"]
+    gir = raw / "research" / "gir"
+    if all(any(gir.glob(f"b{board}_*.pdf")) for board in (44, 56, 86)):
+        out = [FACTORS_YEARLY_DONE if item["id"] == "factors_yearly" else item for item in out]
     return out
 
 
