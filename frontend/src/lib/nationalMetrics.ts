@@ -39,7 +39,7 @@ export const NATIONAL_METRICS: NationalMetric[] = [
   { key: 'ghg_building', label: '건물 등 온실가스', unit: '천 tCO₂eq', digits: 0, ramp: 'load', source: 'ghg',
     definition: '온실가스종합정보센터 지역 온실가스 인벤토리(최근 2023년)의 가정·상업·공공·농림어업 배출입니다: 연료 연소(직접) + 전력·열 사용(간접). 공식 통계이며 이 도구가 계산한 값이 아닙니다.',
     use: '건물 에너지 탄소의 시·도·시·군·구 규모를 비교하고, 상세 자료를 모은 지역의 격자 탄소 합계를 맞대어 보는 기준으로 씁니다.' },
-  { key: 'ghg_building_change_pct', label: '건물 등 배출 증감률 (2018년 대비)', unit: '%', digits: 1, ramp: 'diff', breaks: [-20, -5, 5, 20], source: 'ghg',
+  { key: 'ghg_building_change_pct', label: '건물 등 배출 증감률 (2018년 대비)', unit: '%', digits: 1, ramp: 'diff', breaks: [-15, -5, 5, 15], source: 'ghg',
     definition: '건물 등 배출(직접 + 전력·열 간접)의 2018년(국가 감축목표 기준 연도) 대비 최근 연도 증감률입니다. 전력 배출계수 변화도 들어 있습니다.',
     use: '감축이 빠른 곳과 늘어난 곳(신도시·인구 유입)을 가려, 목표 감축 노력을 어디에 둘지 봅니다.' },
   { key: 'ghg_total', label: '온실가스 총배출량', unit: '천 tCO₂eq', digits: 0, ramp: 'load', source: 'ghg',

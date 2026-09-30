@@ -22,10 +22,11 @@ import csv
 import io
 import os
 import re
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterable
 
-from sqlalchemy import Float, Integer, String, delete, func, insert, select
+from sqlalchemy import Float, Integer, String, delete, func, insert, select, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .db import Base
@@ -276,8 +277,28 @@ def import_gas(db: Any, root: Path | None = None, force: bool = False) -> int:
     return written
 
 
+LOCK_KEY = 5_000_600  # pg advisory lock: the API start-up import and a CLI run never load the same file at once
+
+
+@contextmanager
+def _import_lock(db: Any):
+    bind = db.get_bind()
+    if bind.dialect.name != "postgresql":
+        yield
+        return
+    with bind.connect() as connection:
+        connection.execute(text("SELECT pg_advisory_lock(:k)"), {"k": LOCK_KEY})
+        try:
+            yield
+        finally:
+            connection.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": LOCK_KEY})
+            connection.commit()
+
+
 def import_all(db: Any, root: Path | None = None, force: bool = False) -> dict[str, int]:
-    return {"gir": import_gir(db, root, force), "gas": import_gas(db, root, force)}
+    """Both sources; files already loaded are skipped (checked again after waiting for another importer)."""
+    with _import_lock(db):
+        return {"gir": import_gir(db, root, force), "gas": import_gas(db, root, force)}
 
 
 def row_counts(db: Any) -> tuple[int, int]:
