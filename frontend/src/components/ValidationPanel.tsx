@@ -18,6 +18,7 @@ export interface ValidationData {
   } | null;
   population: { year: number | null; admin: number; grid500: number | null; ratio: number | null; note?: string | null } | null;
   grid_link: { year: number; parcels: number; linked: number; share: number } | null;
+  gas_completeness?: { year: number; parcels: number; full: number; bimonthly: number; partial: number; full_gwh: number; bimonthly_gwh: number; partial_gwh: number } | null;
   notes: string[];
 }
 
@@ -33,6 +34,7 @@ export function ValidationPanel({ regionQuery }: { regionQuery: string }) {
   const e = data.electricity;
   const k = data.kapt_vs_hub;
   const g = data.ghg;
+  const gc = data.gas_completeness;
   return <section className="panel validation-panel" aria-label="공식 통계와 맞대기" data-testid="validation-panel">
     <div className="panel-title"><h3>공식 통계와 맞대기 ({data.region.short_name} 합계)</h3></div>
     <p className="muted">같은 양을 다른 기관이 센 통계와 비교합니다. 어느 한쪽을 정답으로 보지 않고, 차이와 그 까닭(포함 범위)을 함께 봅니다.</p>
@@ -47,6 +49,9 @@ export function ValidationPanel({ regionQuery }: { regionQuery: string }) {
     {k && <><h4>K-apt 관리비 전력 ↔ 건축HUB (같은 단지·같은 해)</h4>
       <p>{formatMetric(k.pairs, '쌍')}: K-apt는 건축HUB의 중앙값 <b>{pct(k.median)}</b> (10~90%: {pct(k.p10)}~{pct(k.p90)}), ±20% 안 {pct(k.within_20pct)}.</p>
       <p className="validation-note">두 출처는 같은 단지라도 세는 범위가 달라 섞지 않습니다. 지역 시뮬레이션의 연도별 전력은 K-apt 한 출처로, 건물 전체 에너지는 건축HUB로 따로 봅니다.</p></>}
+    {gc && <><h4>가스 지번의 연간 완전성 ({gc.year})</h4>
+      <p>{formatMetric(gc.parcels, '곳')} 중 12개월 {formatMetric(gc.full, '곳')} ({num(gc.full_gwh, 'GWh', 1)}), 여름 격월 고지 <b>{formatMetric(gc.bimonthly, '곳')}</b> ({num(gc.bimonthly_gwh, 'GWh', 1)}), 달이 실제로 빠짐 {formatMetric(gc.partial, '곳')} ({num(gc.partial_gwh, 'GWh', 1)}).</p>
+      <p className="validation-note">여름(6~9월)에 한 달을 건너뛰고 다음 달에 두 달 치를 함께 고지하는 지번은 한 해 사용량이 모두 담겨 있어 연간 합계에 넣습니다. 달이 실제로 빠진 지번은 연간 합계에서 뺍니다(0으로 채우지 않음).</p></>}
     {g && <><h4>온실가스: 지역 인벤토리 ↔ 이 도구 계산</h4>
       <dl className="compact-list">
         <div><dt>인벤토리 {g.gir_year}년 건물 등</dt><dd>연료(직접) {num(g.gir_building_direct_kt)} · 전력 {num(g.gir_building_electricity_kt)} · 열 {num(g.gir_building_heat_kt)} 천 tCO₂eq</dd></div>

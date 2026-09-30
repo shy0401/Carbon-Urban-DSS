@@ -87,3 +87,13 @@ def test_area_gas_total_keeps_summer_bimonthly_parcels():
     out = yearly_energy(gas + gap, area, complexes, [2025])[2025]
     assert out["gas"]["kwh"] == 10_000.0 and out["gas"]["complete_parcels"] == 1
     assert out["electricity"]["kwh"] is None and out["electricity"]["partial_parcels"] == 1
+
+
+def test_gas_completeness_splits_full_bimonthly_and_gaps():
+    from app.validation import completeness_summary
+    every = [f"2025{m:02d}" for m in range(1, 13)]
+    skip = [ym for ym in every if ym not in ("202506", "202508")]
+    gap = [ym for ym in every if ym not in ("202503",)]
+    s = completeness_summary(2025, [(every, 1e6), (skip, 2e6), (gap, 3e6), (every, 1e6)])
+    assert s == {"year": 2025, "parcels": 4, "full": 2, "bimonthly": 1, "partial": 1, "full_gwh": 2.0, "bimonthly_gwh": 2.0, "partial_gwh": 3.0}
+    assert completeness_summary(2025, []) is None

@@ -60,6 +60,28 @@ def ratio_summary(ratios: Iterable[float]) -> dict[str, Any] | None:
             "p90": round(values[max(0, int(n * 0.9) - 1)], 3), "within_20pct": round(sum(1 for r in values if 0.8 <= r <= 1.2) / n, 3)}
 
 
+def completeness_summary(year: int, parcels: list[tuple[list[str], float | None]]) -> dict[str, Any] | None:
+    """Gas parcel-years by how much of the year their rows cover (full 12 / summer bi-monthly / real gaps)."""
+    from .grid_metrics import annual_complete, bimonthly_only
+    if not parcels:
+        return None
+    full = bim = 0
+    kwh_full = kwh_bim = kwh_gap = 0.0
+    for months, kwh in parcels:
+        value = float(kwh or 0.0)
+        if bimonthly_only("GAS", months):
+            bim += 1
+            kwh_bim += value
+        elif annual_complete("GAS", months):
+            full += 1
+            kwh_full += value
+        else:
+            kwh_gap += value
+    n = len(parcels)
+    return {"year": year, "parcels": n, "full": full, "bimonthly": bim, "partial": n - full - bim,
+            "full_gwh": round(kwh_full / 1e6, 1), "bimonthly_gwh": round(kwh_bim / 1e6, 1), "partial_gwh": round(kwh_gap / 1e6, 1)}
+
+
 # --------------------------------------------------------------------------- database
 def region_validation(db: Any, region: str | None = None) -> dict[str, Any]:
     from .models import EnergyMonthly
@@ -193,10 +215,23 @@ def region_validation(db: Any, region: str | None = None) -> dict[str, Any]:
     except Exception:  # noqa: BLE001
         db.rollback()
 
+    # 가스 지번의 연간 완전성: 12개월 / 여름 격월 고지 / 실제로 빠진 달
+    gas_completeness = None
+    try:
+        gas_year = max((int(ym[:4]) for ym in hub["GAS"]), default=None)
+        if gas_year and sc.legal_codes:
+            rows = db.execute(text("""
+              SELECT array_agg(use_ym), sum(usage_kwh) FROM energy_monthly
+              WHERE source = :hub AND energy_type = 'GAS' AND usage_kwh IS NOT NULL AND use_ym LIKE :y AND sigungu_code = ANY(:legal)
+              GROUP BY sigungu_code, bjdong_code, lot_type, bun, ji"""), {"hub": HUB, "y": f"{gas_year}%", "legal": list(sc.legal_codes)}).all()
+            gas_completeness = completeness_summary(gas_year, [(list(m), k) for m, k in rows])
+    except Exception:  # noqa: BLE001 - array_agg needs PostgreSQL
+        db.rollback()
+
     if not hub_years:
         notes.append("이 지역에는 아직 건축HUB 지번 에너지가 없습니다(상세 자료 수집 후 비교)")
     return {"region": {"code": sc.code, "name": sc.name, "short_name": sc.short}, "electricity": electricity, "kapt_vs_hub": kapt_pairs,
-            "ghg": ghg, "population": population, "grid_link": link, "notes": notes,
+            "ghg": ghg, "population": population, "grid_link": link, "gas_completeness": gas_completeness, "notes": notes,
             "sources": {"hub": "건축HUB 건물에너지 (지번 월별, 모든 지번)", "kepco": "한국전력공사 시군구별 전력판매량 (계약종별)",
                         "kapt": "K-apt 공동주택 관리비 에너지 (단지 월별)", "gir": "온실가스종합정보센터 지역 온실가스 인벤토리",
                         "sgis": "SGIS 행정구역 통계·500m 격자 통계"}}
