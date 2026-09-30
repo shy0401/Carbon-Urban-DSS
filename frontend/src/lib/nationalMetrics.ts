@@ -42,7 +42,7 @@ export const NATIONAL_METRICS: NationalMetric[] = [
   { key: 'elec_home_per_household', label: '가구당 주택용 전력', unit: 'kWh/가구', digits: 0, ramp: 'load', source: 'kepco',
     definition: '한전 주택용 전력판매량 ÷ SGIS 일반가구 수입니다(두 자료 모두 SGIS 행정구역 통계와 같은 해). 주택용 계약이 아닌 공동주택 공용·일부 세대는 빠질 수 있습니다.',
     use: '가구 규모를 걸러 주거 전력 사용 강도를 비교합니다(냉난방 방식·주택 유형·기후 차이).' },
-  { key: 'elec_building_change_pct', label: '건물 전력 증감률 (2018년 대비)', unit: '%', digits: 1, ramp: 'diff', breaks: [-5, 5, 15, 30], source: 'kepco',
+  { key: 'elec_building_change_pct', label: '건물 전력 증감률 (2018년 대비)', unit: '%', digits: 1, ramp: 'diff', breaks: [-10, -3, 3, 15], source: 'kepco',
     definition: '건물 전력(주택용+일반용+교육용)의 2018년 대비 최근 연도 증감률입니다.',
     use: '전력 수요가 빠르게 느는 곳(신도시·전기화)과 정체된 곳을 가립니다.' },
   { key: 'elec_total', label: '전력 사용량 합계', unit: 'GWh', digits: 0, ramp: 'load', source: 'kepco',
