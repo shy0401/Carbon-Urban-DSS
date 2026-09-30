@@ -9,6 +9,33 @@ from __future__ import annotations
 from typing import Any, Iterable
 
 MONTHS_PER_YEAR = 12
+# 하절기 격월 검침·고지: a city-gas supplier skips one summer month and bills it with the next one, so that
+# month has no row and the next row holds two months. Measured in 수원 2025 (삼천리 supply area): 2,009 gas
+# parcels have every month except exactly 7·9 or 6·8, and their October (after a skipped September) is 2.9×
+# the October of the other group relative to May. Such a year is a complete annual total; its months are not
+# (so monthly models still use 12-month parcels only). A missing month outside 6~9, or two missing in a row,
+# is a real gap.
+BIMONTHLY_GAS_MONTHS = frozenset({6, 7, 8, 9})
+
+
+def _month_numbers(months: Iterable[Any]) -> set[int]:
+    return {int(str(m)[-2:]) for m in months}
+
+
+def annual_complete(energy_type: str | None, months: Iterable[Any]) -> bool:
+    """Whether a parcel-year's rows add up to the whole year (months: 1~12 or 'YYYYMM')."""
+    have = _month_numbers(months)
+    if len(have) >= MONTHS_PER_YEAR:
+        return True
+    if energy_type != "GAS" or not have:
+        return False
+    missing = set(range(1, MONTHS_PER_YEAR + 1)) - have
+    return all(m in BIMONTHLY_GAS_MONTHS and (m + 1) in have for m in missing)
+
+
+def bimonthly_only(energy_type: str | None, months: Iterable[Any]) -> bool:
+    """Annual total complete only through summer bi-monthly billing (fewer than 12 rows)."""
+    return len(_month_numbers(months)) < MONTHS_PER_YEAR and annual_complete(energy_type, months)
 # Plausible K-apt gross floor area (연면적, incl. common areas and underground parking) per household.
 # Outside this range the published value is a data-entry error (e.g. 1,261,967 m² per household).
 MIN_GFA_PER_HOUSEHOLD = 20.0
@@ -70,7 +97,7 @@ def grid_energy_intensity(rows: Iterable[dict[str, Any]], households_by_code: di
         target = result.setdefault(grid_id, {}).setdefault(energy_type, {"observed_parcels": 0, "complete_parcels": 0, "suspect_parcels": 0, "kwh": 0.0, "area_m2": 0.0, "area_parcels": 0, "kwh_with_area": 0.0, "households": 0, "household_parcels": 0, "kwh_with_households": 0.0})
         target["observed_parcels"] += 1
         values = item["months"]
-        if len(values) < MONTHS_PER_YEAR or any(value is None for value in values.values()):
+        if not annual_complete(energy_type, values) or any(value is None for value in values.values()):
             continue
         annual = float(sum(values.values()))
         if energy_type == "ELECTRICITY" and electricity_plausibility(annual, households_by_code.get(code))[0] == "SUSPECT":

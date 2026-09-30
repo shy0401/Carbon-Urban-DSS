@@ -23,7 +23,7 @@ from typing import Any, Iterable
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from .grid_metrics import electricity_plausibility
+from .grid_metrics import annual_complete, electricity_plausibility
 
 ZONE_LABEL = {"RESIDENTIAL": "주거지역", "COMMERCIAL": "상업지역", "INDUSTRIAL": "공업지역", "GREEN": "녹지지역", "OTHER": "관리·농림·기타"}
 EARTH_RADIUS_M = 6_371_008.8
@@ -231,7 +231,8 @@ def yearly_energy(rows: Iterable[dict[str, Any]], area: dict[str, Any], complexe
 
     rows: {use_ym 'YYYYMM', energy_type, usage_kwh, grid_id, kapt_code|None, parcel, source?}
     A row belongs to the area through its complex (point in area) or, without a complex,
-    through its grid. Only parcels with 12 observed months enter the annual sum.
+    through its grid. Only parcels whose rows cover the whole year enter the annual sum (12 months, or
+    for gas a summer month billed with the next one: ``grid_metrics.annual_complete``).
     ``source`` ('KAPT' | 'HUB') keeps one provider only (rows without a source always count).
     """
     grid_ids, codes = set(area["grid_ids"]), set(area["complex_codes"])
@@ -256,7 +257,7 @@ def yearly_energy(rows: Iterable[dict[str, Any]], area: dict[str, Any], complexe
         entry: dict[str, Any] = {"year": year}
         for etype, key in (("ELECTRICITY", "electricity"), ("GAS", "gas")):
             parcels = {p: m for (p, t, y), m in months.items() if t == etype and y == year}
-            complete = {p: m for p, m in parcels.items() if len(m) == 12}
+            complete = {p: m for p, m in parcels.items() if annual_complete(etype, m)}
             suspect = []
             if etype == "ELECTRICITY":
                 # Partial meters (common areas only) or meters with other buildings: kept out of totals.

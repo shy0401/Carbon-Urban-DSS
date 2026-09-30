@@ -215,6 +215,7 @@ export interface GridProps {
   bldg_kwh_per_m2?: number | null;
   bldg_carbon_t?: number | null;
   bldg_suspect?: number | null;
+  bldg_gas_bimonthly?: number | null;
   /** 건축물대장 표제부 linked to the grid (null until collected). */
   reg_buildings?: number | null;
   reg_area_issues?: number | null;

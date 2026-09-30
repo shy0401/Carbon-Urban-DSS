@@ -77,3 +77,13 @@ def test_existing_change_uses_complexes_reported_in_every_observed_year():
     m = before_after(history, 2023, 2)["metrics"]["electricity"]
     assert m["existing_complexes"] == 1 and m["existing_change_pct"] == 10.0  # A only: 1,000 → 1,100
     assert m["total_change_pct"] == 110.0  # the totals still show the new reporter (that is why the same-set figure exists)
+
+
+def test_area_gas_total_keeps_summer_bimonthly_parcels():
+    complexes = {"A1": {"kapt_code": "A1", "approval_year": 2000, "households": 500, "gfa": 50000, "floor_area_ok": True}}
+    area = {"grid_ids": ["g1"], "complex_codes": ["A1"]}
+    gas = [r for r in rows_for("A1", "HUB", 1000.0, 2025, "GAS") if r["use_ym"] not in ("202507", "202509")]
+    gap = [r for r in rows_for("A1", "HUB", 1000.0, 2025, "ELECTRICITY") if r["use_ym"] != "202507"]
+    out = yearly_energy(gas + gap, area, complexes, [2025])[2025]
+    assert out["gas"]["kwh"] == 10_000.0 and out["gas"]["complete_parcels"] == 1
+    assert out["electricity"]["kwh"] is None and out["electricity"]["partial_parcels"] == 1

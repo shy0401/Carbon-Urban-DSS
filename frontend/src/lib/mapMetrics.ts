@@ -3,6 +3,9 @@ import { RAMPS, TOKENS, type RampName } from '../theme/palette';
 import { USE_NAME, ZONE_NAME } from './labels';
 import { formatMetric } from './format';
 
+/** 하절기 격월 검침: 여름 한 달을 건너뛰고 다음 달에 두 달 치를 함께 고지하는 도시가스 지번도 연간 합계에 넣는다. */
+const BIMONTHLY_GAS = '여름(6~9월)에 한 달을 건너뛰고 다음 달에 두 달 치를 함께 고지하는 격월 검침 지번(예: 수원 2025년 약 2,000곳)은 행이 10~11개여도 한 해 사용량이 모두 담겨 있어 합계에 넣습니다. 연속 두 달 이상 빠지거나 여름 밖의 달이 빠진 지번은 뺍니다.';
+
 /** One map indicator: what it is, how it is computed, and the basis for a given grid. */
 export interface MetricDef {
   key: string;
@@ -68,8 +71,8 @@ export const METRICS: MetricDef[] = [
   {
     key: 'gas_kwh_annual', label: '연간 가스 사용량', unit: 'kWh/년', group: '에너지 관측', ramp: 'load', digits: 0,
     value: (p) => n(p.gas_kwh_annual),
-    definition: '12개월 모두 관측된 지번의 도시가스 사용량(건축HUB kWh 환산값) 합계입니다.',
-    formula: 'Σ 월별 가스(kWh), 12개월 관측 지번만',
+    definition: `12개월 모두 관측된 지번의 도시가스 사용량(건축HUB kWh 환산값) 합계입니다. ${BIMONTHLY_GAS}`,
+    formula: 'Σ 월별 가스(kWh), 연간이 모두 담긴 지번만',
     basis: (p) => p.gas_complete_parcels ? `12개월 관측 지번 ${p.gas_complete_parcels}곳 합계` : null,
     source: '건축HUB 건물에너지',
     use: '난방(가스) 수요가 큰 격자를 찾습니다. 가스 탄소는 도시가스 가정 계수로 따로 계산합니다.',
@@ -140,9 +143,9 @@ export const METRICS: MetricDef[] = [
   {
     key: 'bldg_gas_kwh', label: '건물 전체 연간 가스', unit: 'kWh/년', group: BUILDING_ENERGY_GROUP, ramp: 'load', digits: 0,
     value: (p) => n(p.bldg_gas_kwh),
-    definition: '격자 안에서 12개월 모두 계측된 모든 지번의 도시가스 사용량(kWh 환산) 합계입니다.',
-    formula: 'Σ 월별 가스(kWh), 12개월 계측 지번',
-    basis: (p) => (p.bldg_gas_complete ? `12개월 계측 지번 ${p.bldg_gas_complete}곳` : null),
+    definition: `격자 안에서 12개월 모두 계측된 모든 지번의 도시가스 사용량(kWh 환산) 합계입니다. ${BIMONTHLY_GAS}`,
+    formula: 'Σ 월별 가스(kWh), 연간이 모두 담긴 계측 지번',
+    basis: (p) => (p.bldg_gas_complete ? `연간 계측 지번 ${p.bldg_gas_complete}곳${p.bldg_gas_bimonthly ? ` (여름 격월 검침 ${p.bldg_gas_bimonthly}곳 포함)` : ''}` : null),
     source: '건축HUB 건물에너지 (법정동 단위 전 지번)',
     use: '건물 난방 수요가 큰 격자를 찾습니다. 건물 전체 가스 탄소는 아직 지도 지표로 두지 않았습니다.',
   },

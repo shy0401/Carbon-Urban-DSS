@@ -28,6 +28,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from .cache import CachedClient, ExternalError, parse_cached_response
 from .db import Base
 from .domain import parse_energy
+from .grid_metrics import annual_complete, bimonthly_only
 
 URL = "https://apis.data.go.kr/1613000/BldEngyHubService/"
 OPERATIONS = {"ELECTRICITY": "getBeElctyUsgInfo", "GAS": "getBeGasUsgInfo"}
@@ -251,8 +252,10 @@ def _register_area(db: Any) -> dict[str, float]:
 def summarize_parcels(parcels: list[dict[str, Any]], grid_of: dict[str, str], area_of: dict[str, float]) -> dict[str, dict[str, Any]]:
     """parcels: {pnu, energy_type, months, kwh} per parcel-year → per-grid all-building energy.
 
-    Totals use parcels observed in all 12 months; the intensity uses those of them with a register
-    floor area and a plausible 2~1,500 kWh/m²·년.
+    Totals use parcels whose rows cover the whole year (all 12 months, or for gas every month but
+    summer months billed with the next one: ``annual_complete``; ``month_list`` gives the months, else
+    ``months`` must be 12); the intensity uses those of them with a register floor area and a plausible
+    2~1,500 kWh/m²·년.
     """
     out: dict[str, dict[str, Any]] = {}
     for p in parcels:
@@ -263,9 +266,13 @@ def summarize_parcels(parcels: list[dict[str, Any]], grid_of: dict[str, str], ar
                                         "area_parcels": 0, "area_m2": 0.0, "area_kwh": 0.0, "suspect": 0})
         item["parcels"].add(p["pnu"])
         target = item[p["energy_type"]]
-        if p["months"] < 12 or p["kwh"] is None:
+        month_list = p.get("month_list")
+        complete = annual_complete(p["energy_type"], month_list) if month_list is not None else p["months"] >= 12
+        if not complete or p["kwh"] is None:
             continue
         target["complete"] += 1
+        if month_list is not None and bimonthly_only(p["energy_type"], month_list):
+            item["bimonthly"] = item.get("bimonthly", 0) + 1
         target["kwh"] += p["kwh"]
         if p["energy_type"] == "ELECTRICITY":
             area = area_of.get(p["pnu"])
@@ -284,6 +291,7 @@ def summarize_parcels(parcels: list[dict[str, Any]], grid_of: dict[str, str], ar
             "parcels": len(item["parcels"]),
             "electricity_complete": e["complete"], "electricity_kwh": round(e["kwh"], 1) if e["complete"] else None,
             "gas_complete": g["complete"], "gas_kwh": round(g["kwh"], 1) if g["complete"] else None,
+            "gas_bimonthly": item.get("bimonthly", 0),
             "area_parcels": item["area_parcels"], "area_m2": round(item["area_m2"], 1) if item["area_parcels"] else None,
             "kwh_per_m2": round(item["area_kwh"] / item["area_m2"], 2) if item["area_parcels"] else None,
             "suspect": item["suspect"],
@@ -303,14 +311,19 @@ def grid_building_energy(db: Any, year: int) -> dict[str, dict[str, Any]]:
         grid_of = _parcel_grid(db)
         if not grid_of:
             return {}
+        # the months themselves (not only their count): gas billed bi-monthly in summer skips a month
+        agg = func.array_agg if db.get_bind().dialect.name == "postgresql" else func.group_concat
         rows = db.execute(
             select(EnergyMonthly.sigungu_code, EnergyMonthly.bjdong_code, EnergyMonthly.lot_type, EnergyMonthly.bun, EnergyMonthly.ji,
-                   EnergyMonthly.energy_type, func.count(EnergyMonthly.use_ym.distinct()), func.sum(EnergyMonthly.usage_kwh))
+                   EnergyMonthly.energy_type, agg(EnergyMonthly.use_ym), func.sum(EnergyMonthly.usage_kwh))
             .where(EnergyMonthly.use_ym.between(lo, hi), EnergyMonthly.source == HUB, EnergyMonthly.usage_kwh.is_not(None))
             .group_by(EnergyMonthly.sigungu_code, EnergyMonthly.bjdong_code, EnergyMonthly.lot_type, EnergyMonthly.bun, EnergyMonthly.ji, EnergyMonthly.energy_type)
         ).all()
-        parcels = [{"pnu": parcel_pnu(sg, bd, lot, bun, ji), "energy_type": et, "months": int(months), "kwh": float(kwh) if kwh is not None else None}
-                   for sg, bd, lot, bun, ji, et, months, kwh in rows]
+        parcels = []
+        for sg, bd, lot, bun, ji, et, yms, kwh in rows:
+            month_list = sorted(set(yms.split(",") if isinstance(yms, str) else yms))
+            parcels.append({"pnu": parcel_pnu(sg, bd, lot, bun, ji), "energy_type": et, "months": len(month_list), "month_list": month_list,
+                            "kwh": float(kwh) if kwh is not None else None})
         _GRID_CACHE.clear()
         _GRID_CACHE[key] = summarize_parcels(parcels, grid_of, _register_area(db))
     return _GRID_CACHE[key]
@@ -320,9 +333,10 @@ def map_properties(item: dict[str, Any] | None, factor: float | None) -> dict[st
     if not item:
         return {"bldg_parcels": None, "bldg_electricity_kwh": None, "bldg_gas_kwh": None, "bldg_electricity_complete": None,
                 "bldg_gas_complete": None, "bldg_area_m2": None, "bldg_area_parcels": None, "bldg_kwh_per_m2": None,
-                "bldg_carbon_t": None, "bldg_suspect": None}
+                "bldg_carbon_t": None, "bldg_suspect": None, "bldg_gas_bimonthly": None}
     kwh = item["electricity_kwh"]
     return {"bldg_parcels": item["parcels"], "bldg_electricity_kwh": kwh, "bldg_gas_kwh": item["gas_kwh"],
             "bldg_electricity_complete": item["electricity_complete"], "bldg_gas_complete": item["gas_complete"],
             "bldg_area_m2": item["area_m2"], "bldg_area_parcels": item["area_parcels"], "bldg_kwh_per_m2": item["kwh_per_m2"],
-            "bldg_carbon_t": round(kwh * factor / 1000, 1) if kwh is not None and factor else None, "bldg_suspect": item["suspect"]}
+            "bldg_carbon_t": round(kwh * factor / 1000, 1) if kwh is not None and factor else None, "bldg_suspect": item["suspect"],
+            "bldg_gas_bimonthly": item.get("gas_bimonthly", 0)}

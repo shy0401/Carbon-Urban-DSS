@@ -70,3 +70,27 @@ def test_partial_or_mixed_meters_are_kept_out_of_totals_and_ratios():
     assert result["kwh"] == 420000.0 and result["kwh_per_household"] == 4200.0
     base = consistent_baseline(data, MONTHS, None, {"A": 100, "P": 211})
     assert base["parcels"] == ["A"] and "P" in base["excluded_parcels"]
+
+
+def test_summer_bimonthly_gas_counts_as_a_whole_year():
+    from app.grid_metrics import annual_complete, bimonthly_only
+    every = [f"2025{m:02d}" for m in range(1, 13)]
+    skip_7_9 = [ym for ym in every if ym not in ("202507", "202509")]
+    assert annual_complete("GAS", skip_7_9) and bimonthly_only("GAS", skip_7_9)
+    assert annual_complete("GAS", [m for m in range(1, 13) if m not in (6, 8)])
+    assert not annual_complete("ELECTRICITY", skip_7_9)                      # electricity is read every month
+    assert not annual_complete("GAS", [m for m in range(1, 13) if m not in (7, 8)])   # two in a row: a real gap
+    assert not annual_complete("GAS", [m for m in range(1, 13) if m != 9 and m != 10])  # October missing too
+    assert not annual_complete("GAS", [m for m in range(1, 13) if m != 3])  # outside summer
+    assert annual_complete("GAS", every) and not bimonthly_only("GAS", every)
+
+
+def test_grid_totals_keep_bimonthly_gas_parcels():
+    from app.energy_parcels import summarize_parcels
+    months = [f"2025{m:02d}" for m in range(1, 13) if m not in (7, 9)]
+    parcels = [{"pnu": "A", "energy_type": "GAS", "months": 10, "month_list": months, "kwh": 5000.0},
+               {"pnu": "B", "energy_type": "GAS", "months": 10, "month_list": [f"2025{m:02d}" for m in range(1, 11)], "kwh": 9.0},
+               {"pnu": "B", "energy_type": "ELECTRICITY", "months": 10, "month_list": months, "kwh": 7.0}]
+    grid = summarize_parcels(parcels, {"A": "g", "B": "g"}, {})["g"]
+    assert grid["gas_complete"] == 1 and grid["gas_kwh"] == 5000.0 and grid["gas_bimonthly"] == 1
+    assert grid["electricity_complete"] == 0 and grid["electricity_kwh"] is None
