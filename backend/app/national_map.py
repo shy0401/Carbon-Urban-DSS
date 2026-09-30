@@ -17,6 +17,8 @@
   - 온실가스: 온실가스종합정보센터 지역 온실가스 인벤토리(시·군·구, 최근 2023년, ``regional_stats``). 총배출량(VKT 기준),
     건물 등(가정·상업·공공·농림어업의 연료 + 전력·열 간접), 2018년 대비 건물 등 증감률. 개편 전 이름이라 2026년에 새로
     생긴 인천 네 구는 비우고, 개편 전 자치구(중구·동구·서구, 연결 안 됨)에 값을 둔다.
+  - 전력: 한전 시군구별 전력판매량(최근 12개월이 모두 있는 해). 합계, 건물 전력(주택용+일반용+교육용), 2018년 대비
+    건물 전력 증감률, 가구당 주택용 전력(SGIS 가구와 같은 해).
   - 도시가스 판매량: 한국가스공사 시·도 월별(시·도 요약에만, 시·군·구 단위 자료 없음).
   - 에너지 사용량(전력·가스 관측): 전국 자료가 없다(지역마다 수집). 칠하지 않고, 어느 시·군·구에 K-apt 월별 에너지·
     건축HUB 건물 에너지가 있는지만 적는다.
@@ -44,8 +46,10 @@ router = APIRouter(prefix="/api/map", tags=["map"])
 PAYLOAD_VERSION = 4
 MIN_BASE = 20  # 증감률: 두 해 모두 이만큼은 있어야 한다
 FIELDS = ["population", "households", "area_km2", "density", "pop500", "pop500_base", "pop_change_pct", "housing500", "workers500", "complexes",
-          "ghg_total", "ghg_building", "ghg_building_change_pct"]
+          "ghg_total", "ghg_building", "ghg_building_change_pct",
+          "elec_total", "elec_building", "elec_building_change_pct", "elec_home_per_household"]
 GHG_FIELDS = ("ghg_total", "ghg_building", "ghg_building_change_pct")
+ELEC_FIELDS = ("elec_total", "elec_building", "elec_building_change_pct", "elec_home_per_household")
 _MEMORY: dict[str, Any] = {}
 _DYNAMIC: dict[str, Any] = {}
 
@@ -239,6 +243,45 @@ def attach_ghg(regions: list[dict[str, Any]], provinces: list[dict[str, Any]], g
             p["notes"]["ghg_total"] = f"{'·'.join(names)} 합 (GIR은 개편 전 광역 단위)"
 
 
+def attach_kepco(regions: list[dict[str, Any]], provinces: list[dict[str, Any]], kepco: dict[tuple[str, str], dict[tuple[str, int], float | None]],
+                 year: int | None, household_year: int | None) -> None:
+    """한전 시군구별 전력판매량을 시·군·구·시·도 지표에 붙인다 (없는 곳은 비우고 까닭을 적음). In place."""
+    from collections import Counter
+    from .regional_stats import REORGANIZED_NOTE, add_values, kepco_metrics, match_region
+    def empty(row: dict[str, Any], why: str) -> None:
+        for f in ELEC_FIELDS:
+            row["metrics"][f] = None
+            row["notes"][f] = why
+    if not kepco or not year:
+        for row in (*regions, *provinces):
+            empty(row, "한전 시군구별 전력판매량을 아직 가져오지 않음")
+        return
+    current = {k: v for k, v in kepco.items() if ("합계", year) in v}  # places of the latest full year
+    index = {k: k for k in current}
+    linked = Counter(r["sido"] for r in regions if r.get("linked"))
+    def fill(row: dict[str, Any], values: dict[tuple[str, int], float | None]) -> None:
+        row["metrics"].update(kepco_metrics(values, year, households=row["metrics"].get("households"), household_year=household_year))
+        if row["metrics"]["elec_building_change_pct"] is None and row["metrics"]["elec_building"] is not None:
+            row["notes"]["elec_building_change_pct"] = "2018년 값이 없음"
+        if row["metrics"]["elec_home_per_household"] is None and row["metrics"]["elec_building"] is not None:
+            row["notes"]["elec_home_per_household"] = f"{household_year}년 주택용 전력 또는 가구 수가 없음"
+    for row in regions:
+        hit = match_region(index, row.get("sido"), row.get("short_name") or "", linked[row.get("sido")] == 1)
+        if hit is None:
+            empty(row, REORGANIZED_NOTE.replace("GIR 2023", f"한전 {year}") if row.get("sido") == "28" and row.get("linked")
+                  else "한전 시군구별 전력판매량에 이 시·군·구가 없음")
+            continue
+        fill(row, current[hit])
+        if not row.get("linked") and row.get("sido") == "28":
+            row["notes"]["elec_total"] = f"2026년 개편 전 자치구 기준 (한전 {year})"
+    for p in provinces:
+        parts = [v for k, v in current.items() if k[0] == p["code"]]
+        if not parts:
+            empty(p, "한전 시군구별 전력판매량에 이 시·도가 없음")
+            continue
+        fill(p, add_values(parts))
+
+
 # --------------------------------------------------------------------------- database (static part, cached)
 def _years(db: Any) -> tuple[int | None, int | None]:
     from .sgis_grid500 import coverage
@@ -334,6 +377,9 @@ def build_static(db: Any) -> dict[str, Any]:
     from .regional_stats import BASE_YEAR, gas_by_province, gir_latest_year, gir_values
     ghg_year = gir_latest_year(db)
     attach_ghg([*regions.values(), *unlinked], provinces, gir_values(db, [y for y in (ghg_year, BASE_YEAR) if y]) if ghg_year else {}, ghg_year)
+    from .regional_stats import kepco_values
+    kepco, kepco_year = kepco_values(db)
+    attach_kepco([*regions.values(), *unlinked], provinces, kepco, kepco_year, unit_year)
     gas = gas_by_province(db)
     for p in provinces:
         p["gas"] = gas.get(p["code"])
@@ -368,7 +414,7 @@ def build_static(db: Any) -> dict[str, Any]:
     except Exception:  # noqa: BLE001 - no PostGIS (tests): lists still work
         db.rollback()
     return {
-        "unit_year": unit_year, "year": year, "base": base, "complex_month": snapshot, "missing_blocks": gaps, "ghg_year": ghg_year, "gas_year": gas_year,
+        "unit_year": unit_year, "year": year, "base": base, "complex_month": snapshot, "missing_blocks": gaps, "ghg_year": ghg_year, "gas_year": gas_year, "kepco_year": kepco_year,
         "provinces": provinces, "regions": list(regions.values()) + unlinked,
         "geometry": geometry, "labels": labels, "province_geometry": province_geometry,
     }
@@ -453,13 +499,13 @@ def national_payload(db: Any) -> dict[str, Any]:
         if g:
             features.append({"type": "Feature", "id": i, "geometry": g["geometry"], "properties": {"i": i, "code": p["code"], "name": p["name"]}})
     from .sgis_grid500 import SOURCE_TEXT, data_root, missing_files, missing_text
-    from .regional_stats import BASE_YEAR, GAS_SOURCE_TEXT, GIR_SOURCE_TEXT
+    from .regional_stats import BASE_YEAR, GAS_SOURCE_TEXT, GIR_SOURCE_TEXT, KEPCO_SOURCE_TEXT
     gaps = missing_files(data_root())
     return {
         "provinces": provinces, "boundaries": {"type": "FeatureCollection", "features": features}, "regions": rows, "fields": FIELDS,
         "meta": {
             "sgis_year": st["unit_year"], "grid500_year": st["year"], "grid500_base_year": st["base"], "complex_month": st["complex_month"],
-            "ghg_year": st.get("ghg_year"), "ghg_base_year": BASE_YEAR, "gas_year": st.get("gas_year"),
+            "ghg_year": st.get("ghg_year"), "ghg_base_year": BASE_YEAR, "gas_year": st.get("gas_year"), "kepco_year": st.get("kepco_year"),
             "gaps": missing_text(gaps) if gaps else None,
             "missing_blocks": st.get("missing_blocks", []),
             "sources": {
@@ -469,8 +515,9 @@ def national_payload(db: Any) -> dict[str, Any]:
                 "boundaries": "SGIS 시군구 경계 (표시용 단순화)",
                 "ghg": f"{GIR_SOURCE_TEXT} {st.get('ghg_year') or ''}년, 총배출량은 수송 VKT 기준 (단위 천 tCO₂eq = Gg)",
                 "gas": GAS_SOURCE_TEXT,
+                "kepco": f"{KEPCO_SOURCE_TEXT} {st.get('kepco_year') or ''}년, 건물 전력 = 주택용+일반용+교육용 (가구당은 {st['unit_year'] or ''}년 주택용 ÷ SGIS 가구)",
             },
-            "energy_note": "에너지 사용량(전력·가스)은 전국 자료가 없어 지역마다 수집합니다. 온실가스는 온실가스종합정보센터 지역 인벤토리(시·군·구)로 칠합니다.",
+            "energy_note": "전력은 한전 시군구별 판매량, 온실가스는 온실가스종합정보센터 지역 인벤토리로 시·군·구까지 칠합니다. 건물·격자 단위 에너지(건축HUB·K-apt)는 지역마다 수집합니다.",
         },
     }
 

@@ -14,7 +14,16 @@
 * 한국가스공사 '월별 시도별 도시가스 판매현황'(공공데이터포털 15040819, 천㎥, 1989-01~2024-12, cp949 CSV,
   data/raw/gas/*.csv). 시·도 단위뿐이다(시·군·구 단위 공개 통계 없음).
 
-두 자료 모두 전국 지도(``national_map``)의 시·도·시·군·구 지표로 쓴다. 값이 없는 곳은 0이 아니라 비운다.
+* 한국전력공사 시군구별 전력판매량(한전 누리집 '전력판매량' 게시판 월별 엑셀, kWh, data/raw/kepco/*.xlsx).
+  - 시트 '계약종별'(주택용·일반용·교육용·산업용·농사용·가로등·심야·합계)과 '용도업종별'. 3행이 머리줄
+    (연도·시도·시군구·구분·1월~12월). 한 파일은 한 해의 1월부터 그 파일의 달까지(뒤 달은 0으로 채워져 있어 비운다).
+  - 같은 해 파일이 여럿이면 더 많은 달이 든 파일이 이긴다(12월분 = 그해 전체).
+  - 이름은 그해 행정구역: 2018년 인천 '남구'는 '미추홀구', 2023년 전 경북 '군위군'은 대구 '군위군'으로 잇는다.
+    2026년 파일에는 개편 전후 이름(광주·전남과 광주전남통합특별시, 인천 옛 구와 새 구)이 함께 있어 연간 지표에는
+    12개월이 모두 있는 해(2025년까지)만 쓴다.
+  - 건물 전력 = 주택용 + 일반용 + 교육용(산업용·농사용·가로등·심야 제외).
+
+세 자료 모두 전국 지도(``national_map``)의 시·도·시·군·구 지표로 쓴다. 값이 없는 곳은 0이 아니라 비운다.
 """
 from __future__ import annotations
 
@@ -26,7 +35,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterable
 
-from sqlalchemy import Float, Integer, String, delete, func, insert, select, text
+from sqlalchemy import JSON, Float, Integer, String, delete, func, insert, select, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .db import Base
@@ -76,6 +85,30 @@ class CitygasSidoMonthly(Base):
     sido: Mapped[str] = mapped_column(String, index=True)      # 가스공사 열 이름 (서울, 인천, …)
     year_month: Mapped[str] = mapped_column(String, index=True)
     thousand_m3: Mapped[float | None] = mapped_column(Float, nullable=True)
+    source_file: Mapped[str] = mapped_column(String)
+
+
+KEPCO_URL = "https://www.kepco.co.kr/home/customer/library/electricity-statistics/sales-volume/boardList.do"
+KEPCO_SOURCE_TEXT = "한국전력공사 시군구별 전력판매량 (계약종별, kWh)"
+KEPCO_SIDO = {"서울특별시": "11", "부산광역시": "26", "대구광역시": "27", "인천광역시": "28", "광주광역시": "12", "대전광역시": "30",
+              "울산광역시": "31", "세종특별자치시": "36", "경기도": "41", "강원도": "51", "강원특별자치도": "51", "충청북도": "43",
+              "충청남도": "44", "전라북도": "52", "전북특별자치도": "52", "전라남도": "12", "광주전남통합특별시": "12",
+              "전남광주통합특별시": "12", "경상북도": "47", "경상남도": "48", "제주특별자치도": "50"}
+# 그해 이름 → 지금 시·도·이름 (행정구역이 바뀐 곳)
+KEPCO_ALIASES = {("28", "남구"): ("28", "미추홀구"), ("47", "군위군"): ("27", "군위군")}
+BUILDING_USES = ("주택용", "일반용", "교육용")
+
+
+class KepcoSigunguMonthly(Base):
+    __tablename__ = "kepco_sigungu_monthly"
+    id: Mapped[str] = mapped_column(String, primary_key=True)  # "<year>:<kind>:<시도>:<시군구>:<구분>"
+    year: Mapped[int] = mapped_column(Integer, index=True)
+    kind: Mapped[str] = mapped_column(String)                  # 'contract'(계약종별) | 'industry'(용도업종별)
+    sido: Mapped[str] = mapped_column(String)                  # 그해 한전 표기 (전라북도, 전북특별자치도 …)
+    sgg: Mapped[str] = mapped_column(String)
+    category: Mapped[str] = mapped_column(String, index=True)  # 공백 없앤 구분 (합계, 주택용 …)
+    months: Mapped[list] = mapped_column(JSON)                 # 1~12월 kWh, 파일에 아직 없는 달은 null
+    last_month: Mapped[int] = mapped_column(Integer)
     source_file: Mapped[str] = mapped_column(String)
 
 
@@ -157,6 +190,54 @@ def parse_citygas(content: str) -> list[tuple[str, str, float | None]]:
             cell = cell.strip().replace(",", "")
             out.append((name, row[0].strip(), float(cell) if cell not in ("", "-") else None))
     return out
+
+
+def parse_kepco_sheet(rows: list[list[Any]]) -> tuple[list[tuple[int, str, str, str, list[float | None]]], int]:
+    """(연도, 시도, 시군구, 구분, 1~12월 kWh) of one 한전 sheet and the last month the file reports.
+
+    Months after that month are 0 in the file (not reported yet) and become None."""
+    start = next((i + 1 for i, r in enumerate(rows[:10]) if r and r[0] == "연도"), None)
+    if start is None:
+        raise ValueError("한전 시트에 '연도' 머리줄이 없습니다")
+    body = []
+    for r in rows[start:]:
+        r = (list(r) + [None] * 16)[:16]
+        if not isinstance(r[0], (int, float)) or not r[1] or not r[2] or not r[3]:
+            continue
+        months = [float(v) if isinstance(v, (int, float)) else None for v in r[4:16]]
+        body.append((int(r[0]), str(r[1]).strip(), str(r[2]).strip(), re.sub(r"\s+", "", str(r[3])), months))
+    last = max((m + 1 for _, _, _, _, months in body for m, v in enumerate(months) if v), default=0)
+    return [(y, sido, sgg, cat, [v if i < last else None for i, v in enumerate(months)]) for y, sido, sgg, cat, months in body], last
+
+
+def kepco_key(sido: str, sgg: str) -> tuple[str, str] | None:
+    """(지금 시·도 코드, 이름) of a 한전 row; None for places outside the map (개성시 등)."""
+    code = KEPCO_SIDO.get(sido)
+    if not code:
+        return None
+    return KEPCO_ALIASES.get((code, sgg), (code, sgg))
+
+
+def annual(months: list[float | None] | None) -> float | None:
+    """Yearly kWh only when all 12 months are reported."""
+    if not months or len(months) < 12 or any(v is None for v in months[:12]):
+        return None
+    return float(sum(months[:12]))
+
+
+def kepco_metrics(values: dict[tuple[str, int], float | None], year: int, base: int = BASE_YEAR, households: float | None = None,
+                  household_year: int | None = None) -> dict[str, float | None]:
+    """Map metrics of one area from {(구분, 연도): kWh}: 전력 합계·건물 전력(GWh), 2018 대비 건물 전력 증감률, 가구당 주택용."""
+    def building(y: int) -> float | None:
+        parts = [values.get((c, y)) for c in BUILDING_USES]
+        return None if any(p is None for p in parts) else float(sum(parts))
+    total = values.get(("합계", year))
+    now = building(year)
+    home = values.get(("주택용", household_year)) if household_year else None
+    return {"elec_total": round(total / 1e6, 1) if total is not None else None,
+            "elec_building": round(now / 1e6, 1) if now is not None else None,
+            "elec_building_change_pct": change_pct(building(base), now),
+            "elec_home_per_household": round(home / households) if home is not None and households else None}
 
 
 def decode(raw: bytes) -> str:
@@ -295,19 +376,61 @@ def _import_lock(db: Any):
             connection.commit()
 
 
+def kepco_files(root: Path | None = None) -> list[Path]:
+    root = root or data_root()
+    return sorted(p for p in (root / "kepco").glob("*.xlsx") if not p.name.startswith("~$"))
+
+
+def import_kepco(db: Any, root: Path | None = None, force: bool = False) -> int:
+    """한전 시군구별 전력판매량: each file holds one year; a year is replaced only by a file with more months."""
+    from openpyxl import load_workbook
+    written = 0
+    for path in kepco_files(root):
+        name = path.name
+        if not force and _loaded(db, KepcoSigunguMonthly, name):
+            continue
+        wb = load_workbook(path, read_only=True, data_only=True)
+        try:
+            sheets = {("contract" if "계약" in ws.title else "industry"): parse_kepco_sheet([list(r) for r in ws.iter_rows(values_only=True)])
+                      for ws in wb.worksheets if "계약" in ws.title or "업종" in ws.title}
+        finally:
+            wb.close()
+        for kind, (rows, last) in sheets.items():
+            years = sorted({r[0] for r in rows})
+            for year in years:
+                have = db.scalar(select(func.max(KepcoSigunguMonthly.last_month)).where(
+                    KepcoSigunguMonthly.year == year, KepcoSigunguMonthly.kind == kind, KepcoSigunguMonthly.source_file != name))
+                if have and have >= last and not force:
+                    continue  # another file already holds this year with at least as many months
+                db.execute(delete(KepcoSigunguMonthly).where(KepcoSigunguMonthly.year == year, KepcoSigunguMonthly.kind == kind))
+                payload = {}
+                for y, sido, sgg, cat, months in rows:
+                    if y == year:
+                        rid = f"{y}:{kind}:{sido}:{sgg}:{cat}"
+                        payload[rid] = {"id": rid, "year": y, "kind": kind, "sido": sido, "sgg": sgg, "category": cat, "months": months,
+                                        "last_month": last, "source_file": name}
+                items = list(payload.values())
+                for start in range(0, len(items), 5000):
+                    db.execute(insert(KepcoSigunguMonthly), items[start:start + 5000])
+                written += len(items)
+        db.commit()
+    return written
+
+
 def import_all(db: Any, root: Path | None = None, force: bool = False) -> dict[str, int]:
-    """Both sources; files already loaded are skipped (checked again after waiting for another importer)."""
+    """Every source; files already loaded are skipped (checked again after waiting for another importer)."""
     with _import_lock(db):
-        return {"gir": import_gir(db, root, force), "gas": import_gas(db, root, force)}
+        return {"gir": import_gir(db, root, force), "gas": import_gas(db, root, force), "kepco": import_kepco(db, root, force)}
 
 
-def row_counts(db: Any) -> tuple[int, int]:
+def row_counts(db: Any) -> tuple[int, int, int]:
     try:
         return (int(db.scalar(select(func.count()).select_from(GirRegionalGhg)) or 0),
-                int(db.scalar(select(func.count()).select_from(CitygasSidoMonthly)) or 0))
+                int(db.scalar(select(func.count()).select_from(CitygasSidoMonthly)) or 0),
+                int(db.scalar(select(func.count()).select_from(KepcoSigunguMonthly)) or 0))
     except Exception:  # noqa: BLE001 - tables missing
         db.rollback()
-        return 0, 0
+        return 0, 0, 0
 
 
 # --------------------------------------------------------------------------- readers for the national map
@@ -358,6 +481,23 @@ def gas_by_province(db: Any, year: int | None = None) -> dict[str, dict[str, Any
             summary["parts"] = sorted(parts)
             out[code] = summary
     return out
+
+
+def kepco_values(db: Any) -> tuple[dict[tuple[str, str], dict[tuple[str, int], float | None]], int | None]:
+    """{(시·도 코드, 이름): {(구분, 연도): 연간 kWh}} (계약종별, 12개월이 모두 있는 해) and the latest such year."""
+    out: dict[tuple[str, str], dict[tuple[str, int], float | None]] = {}
+    try:
+        rows = list(db.execute(select(KepcoSigunguMonthly.year, KepcoSigunguMonthly.sido, KepcoSigunguMonthly.sgg, KepcoSigunguMonthly.category,
+                                      KepcoSigunguMonthly.months).where(KepcoSigunguMonthly.kind == "contract", KepcoSigunguMonthly.last_month == 12)))
+    except Exception:  # noqa: BLE001 - table missing
+        db.rollback()
+        return {}, None
+    for year, sido, sgg, category, months in rows:
+        key = kepco_key(sido, sgg)
+        if key:
+            out.setdefault(key, {})[(category, int(year))] = annual(months)
+    latest = max((int(r[0]) for r in rows), default=None)
+    return out, latest
 
 
 def region_index(values: dict[tuple[str, str], Any]) -> dict[tuple[str, str], tuple[str, str]]:

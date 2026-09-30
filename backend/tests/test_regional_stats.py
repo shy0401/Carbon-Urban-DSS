@@ -1,6 +1,6 @@
 """GIR 지역 온실가스 인벤토리·가스공사 시·도 도시가스 판매량: 읽기, 요약, 전국 지도 연결 (DB 없이)."""
 from app import regional_stats as rs
-from app.national_map import FIELDS, attach_ghg, summarize
+from app.national_map import FIELDS, attach_ghg, attach_kepco, summarize
 
 
 def gir_sheet(scale: float = 1.0) -> list[list]:
@@ -103,11 +103,13 @@ def test_manual_list_drops_collected_files_and_keeps_the_factor_decision(tmp_pat
     (raw / "research" / "gir" / "regional_2025" / "x.xlsx").write_bytes(b"")
     (raw / "gas").mkdir()
     (raw / "gas" / "kogas.csv").write_text("연월,서울\n", encoding="utf-8")
+    (raw / "kepco").mkdir()
+    (raw / "kepco" / "kepco_sigungu_2025.xlsx").write_bytes(b"")
     for board in (44, 56, 86):
         (raw / "research" / "gir" / f"b{board}_1_승인.pdf").write_bytes(b"")
     items = manual_sources(tmp_path)
     ids = [i["id"] for i in items]
-    assert "gir_regional" not in ids and "gas_sido" not in ids and len(items) == len(MANUAL_SOURCES) - 2
+    assert "gir_regional" not in ids and "gas_sido" not in ids and "kepco_sigungu" not in ids and len(items) == len(MANUAL_SOURCES) - 3
     factor = next(i for i in items if i["id"] == "factors_yearly")
     assert "2025 승인" in factor["label"] and "0.4781" in factor["why"]
 
@@ -138,3 +140,51 @@ def test_historic_electricity_factors_need_matching_evidence(tmp_path, monkeypat
         assert "증빙 불일치" in str(exc)
     else:
         raise AssertionError("evidence without the published value must be refused")
+
+
+def kepco_sheet(year: int, rows: list[tuple[str, str, str, list[float]]]) -> list[list]:
+    """한전 시트 모양: 1행 제목, 2행 단위, 3행 머리줄, 4행부터 값 (뒤 달은 0)."""
+    out = [["시군구별 계약종별별 전력사용량"] + [None] * 15, [None] * 15 + ["(단위 : kWh)"],
+           ["연도", "시도", "시군구", "계약종별"] + [f"{m}월" for m in range(1, 13)]]
+    for sido, sgg, cat, months in rows:
+        out.append([year, sido, sgg, cat] + list(months) + [0] * (12 - len(months)))
+    return out
+
+
+def test_kepco_sheet_blanks_the_months_not_reported_yet():
+    rows, last = rs.parse_kepco_sheet(kepco_sheet(2026, [("서울특별시", "종로구", "합 계", [10, 20, 30]), ("서울특별시", "종로구", "심 야", [0, 1, 0])]))
+    assert last == 3
+    assert rows[0] == (2026, "서울특별시", "종로구", "합계", [10.0, 20.0, 30.0] + [None] * 9)
+    assert rows[1][3] == "심야" and rows[1][4][:3] == [0.0, 1.0, 0.0]  # a real 0 inside the reported months stays 0
+    assert rs.annual(rows[0][4]) is None and rs.annual([1.0] * 12) == 12.0
+    assert rs.kepco_key("인천광역시", "남구") == ("28", "미추홀구") and rs.kepco_key("경상북도", "군위군") == ("27", "군위군")
+    assert rs.kepco_key("전라북도", "전주시") == rs.kepco_key("전북특별자치도", "전주시") == ("52", "전주시")
+    assert rs.kepco_key("황해북도", "개성시") is None
+
+
+def kepco_values(total: float, home: float, general: float, school: float, base_scale: float = 0.8) -> dict:
+    now = {("합계", 2025): total, ("주택용", 2025): home, ("일반용", 2025): general, ("교육용", 2025): school, ("주택용", 2024): home * 0.9}
+    base = {("합계", 2018): total * base_scale, ("주택용", 2018): home * base_scale, ("일반용", 2018): general * base_scale, ("교육용", 2018): school * base_scale}
+    return {**now, **base}
+
+
+def test_kepco_metrics_and_map_rows():
+    m = rs.kepco_metrics(kepco_values(5e9, 1e9, 1.5e9, 0.2e9), 2025, households=300_000, household_year=2024)
+    assert m == {"elec_total": 5000.0, "elec_building": 2700.0, "elec_building_change_pct": 25.0, "elec_home_per_household": 3000}
+    kepco = {("52", "전주시"): kepco_values(5e9, 1e9, 1.5e9, 0.2e9), ("52", "완주군"): kepco_values(2e9, 0.2e9, 0.3e9, 0.05e9),
+             ("28", "중구"): kepco_values(3e9, 0.5e9, 1e9, 0.1e9)}
+    regions = [region("52110", "전주시", "52"), region("52710", "완주군", "52"), region("28125", "제물포구", "28"),
+               region("sgis:23010", "중구", "28", linked=False), region("52130", "군산시", "52")]
+    provinces = [dict(region("52", "전북특별자치도", "52"), code="52"), dict(region("11", "서울특별시", "11"), code="11")]
+    attach_kepco(regions, provinces, kepco, 2025, 2024)
+    by = {r["code"]: r for r in regions}
+    assert by["52110"]["metrics"]["elec_building"] == 2700.0 and by["52110"]["metrics"]["elec_home_per_household"] == 900_000_000  # fixture: 1 가구
+    assert by["28125"]["metrics"]["elec_total"] is None and "한전 2025" in by["28125"]["notes"]["elec_total"]
+    assert by["sgis:23010"]["metrics"]["elec_total"] == 3000.0 and "개편 전" in by["sgis:23010"]["notes"]["elec_total"]
+    assert by["52130"]["metrics"]["elec_total"] is None and "없음" in by["52130"]["notes"]["elec_total"]
+    p = {x["code"]: x for x in provinces}
+    assert p["52"]["metrics"]["elec_total"] == 7000.0 and p["52"]["metrics"]["elec_building_change_pct"] == 25.0
+    assert p["11"]["metrics"]["elec_total"] is None
+    empty = [region("52110", "전주시", "52")]
+    attach_kepco(empty, [], {}, None, 2024)
+    assert empty[0]["metrics"]["elec_building"] is None and "가져오지 않음" in empty[0]["notes"]["elec_building"]

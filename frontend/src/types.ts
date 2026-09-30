@@ -540,6 +540,8 @@ export interface NationalMetrics {
   complexes: number | null;
   /** GIR 지역 온실가스 인벤토리 (천 tCO₂eq = Gg, 최근 연도). 건물 등 = 가정·상업·공공·농림어업의 연료 + 전력·열 간접. */
   ghg_total: number | null; ghg_building: number | null; ghg_building_change_pct: number | null;
+  /** 한전 시군구별 전력판매량 (GWh, 최근 12개월이 모두 있는 해). 건물 = 주택용+일반용+교육용. 가구당 = 주택용 kWh ÷ SGIS 가구 (같은 해). */
+  elec_total: number | null; elec_building: number | null; elec_building_change_pct: number | null; elec_home_per_household: number | null;
 }
 /** 한국가스공사 시·도 도시가스 판매량 (천㎥, 12개월 모두 있는 해만). */
 export interface NationalGas { year: number; thousand_m3: number; base_year: number; base_thousand_m3: number | null; change_pct: number | null; parts: string[] }
@@ -556,10 +558,10 @@ export interface NationalRegion {
 export interface NationalData {
   provinces: NationalProvince[]; boundaries: GeoJSON.FeatureCollection; regions: NationalRegion[]; fields: string[];
   meta: { sgis_year: number | null; grid500_year: number | null; grid500_base_year: number | null; complex_month: string | null; gaps: string | null;
-    ghg_year?: number | null; ghg_base_year?: number | null; gas_year?: number | null;
+    ghg_year?: number | null; ghg_base_year?: number | null; gas_year?: number | null; kepco_year?: number | null;
     /** 100km blocks with SGIS 500m cells but no file in the received bundle: people living there (1km grid) and the 시·도 they touch. */
     missing_blocks?: Array<{ block: string; people: number; provinces: string[] }>;
-    sources: Record<'admin' | 'grid500' | 'complexes' | 'boundaries', string> & Partial<Record<'ghg' | 'gas', string>>; energy_note: string };
+    sources: Record<'admin' | 'grid500' | 'complexes' | 'boundaries', string> & Partial<Record<'ghg' | 'gas' | 'kepco', string>>; energy_note: string };
 }
 /** GET /api/map/national/{sido}: 한 시·도의 시·군·구 경계 (속성: code, name, linked, level, label, 지표). */
 export interface NationalProvinceRegions { code: string; boundaries: GeoJSON.FeatureCollection }

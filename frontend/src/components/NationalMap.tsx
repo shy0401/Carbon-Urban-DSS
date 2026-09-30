@@ -256,10 +256,10 @@ export function NationalMap({ sido, sgg, onSido, onSgg, onProvinceGrid, onOpenRe
           </button>
           {pickerOpen && <section className="map-metrics map-popover" aria-label="지도 지표">
             <header><strong>전국 공통 지표</strong><small>모든 시·도·시·군·구에 있는 자료</small></header>
-            {(['admin', 'grid500', 'complexes', 'ghg'] as const).map((source) => <div className="metric-group" key={source}><span>{SOURCE_GROUP[source]}</span>
+            {(['admin', 'grid500', 'complexes', 'kepco', 'ghg'] as const).map((source) => <div className="metric-group" key={source}><span>{SOURCE_GROUP[source]}</span>
               {NATIONAL_METRICS.filter((m) => m.source === source).map((m) => <button key={m.key} className={`metric-option${m.key === metric.key ? ' active' : ''}`} aria-pressed={m.key === metric.key} onClick={() => { setMetricKey(m.key); setPickerOpen(false); }}><span>{m.label} <small>{m.unit}</small></span></button>)}
             </div>)}
-            <p className="muted">온실가스는 공식 지역 인벤토리 값입니다{data?.meta.ghg_year ? ` (${data.meta.ghg_year}년)` : ''}. 에너지 사용량(전력·가스 관측)은 전국 자료가 없어 시·군·구마다 모읍니다(상세 자료).</p>
+            <p className="muted">전력은 한전 판매량{data?.meta.kepco_year ? ` (${data.meta.kepco_year}년)` : ''}, 온실가스는 공식 지역 인벤토리{data?.meta.ghg_year ? ` (${data.meta.ghg_year}년)` : ''} 값입니다. 건물·격자 단위 에너지(건축HUB·K-apt)는 시·군·구마다 모읍니다(상세 자료).</p>
           </section>}
         </div>
         <section className={`map-legend${legendOpen ? '' : ' collapsed'}`} aria-label="지표 범례">
@@ -309,6 +309,7 @@ function MetricFacts({ metrics, notes, excluded }: { metrics: NationalMetrics; n
 /** 고른 시·도 요약 (왼쪽 메뉴 위): 지도 폭을 줄이지 않도록 오른쪽 상세 대신 여기에 둔다. */
 const SOURCE_GROUP: Record<NationalMetric['source'], string> = {
   admin: '인구·가구 (SGIS 행정구역 통계)', grid500: '500m 격자 통계를 모은 값 (SGIS)', complexes: '공동주택 (K-apt 단지 목록)',
+  kepco: '전력 (한전 시군구별 판매량)',
   ghg: '온실가스 (온실가스종합정보센터 지역 인벤토리)',
 };
 

@@ -536,9 +536,9 @@ def manual_sources(data_dir: str | Path | None = None) -> list[dict[str, Any]]:
     """MANUAL_SOURCES, adjusted to what is already in DATA_DIR/raw:
 
     * SGIS 500m: gone when every theme × block is there, otherwise a re-request of exactly the missing files.
-    * GIR 지역 인벤토리(raw/research/gir/regional_*), 가스공사 판매량(raw/gas): gone once the files are there.
+    * GIR 지역 인벤토리(raw/research/gir/regional_*), 가스공사 판매량(raw/gas), 한전 시군구 전력(raw/kepco): gone once the files are there.
     * 연도별 전력 배출계수: once the GIR 원문(raw/research/gir/b44·b56·b86) is there, only the 2025 decision is left."""
-    from .regional_stats import gas_files, gir_files
+    from .regional_stats import gas_files, gir_files, kepco_files
     from .sgis_grid500 import missing_files, missing_text, scan
     raw = Path(data_dir or os.getenv("DATA_DIR", "data")) / "raw"
     root = raw / "sgis_grid_500m"
@@ -556,6 +556,8 @@ def manual_sources(data_dir: str | Path | None = None) -> list[dict[str, Any]]:
         out = [item for item in out if item["id"] != "gir_regional"]
     if gas_files(raw):
         out = [item for item in out if item["id"] != "gas_sido"]
+    if kepco_files(raw):
+        out = [item for item in out if item["id"] != "kepco_sigungu"]
     gir = raw / "research" / "gir"
     if all(any(gir.glob(f"b{board}_*.pdf")) for board in (44, 56, 86)):
         out = [FACTORS_YEARLY_DONE if item["id"] == "factors_yearly" else item for item in out]

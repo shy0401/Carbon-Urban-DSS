@@ -11,7 +11,7 @@ export interface NationalMetric {
   ramp: RampName;
   /** Fixed class lower bounds (after the first class); quantiles otherwise. */
   breaks?: number[];
-  source: 'admin' | 'grid500' | 'complexes' | 'ghg';
+  source: 'admin' | 'grid500' | 'complexes' | 'kepco' | 'ghg';
   definition: string;
   use: string;
 }
@@ -36,6 +36,18 @@ export const NATIONAL_METRICS: NationalMetric[] = [
   { key: 'complexes', label: 'K-apt 공동주택 단지', unit: '단지', digits: 0, ramp: 'seq', source: 'complexes',
     definition: 'K-apt 의무관리 공동주택 단지 목록의 단지 수입니다(소규모 공동주택은 목록에 없을 수 있음).',
     use: '공동주택 에너지 관측(K-apt 월별 에너지)을 받을 수 있는 규모를 봅니다.' },
+  { key: 'elec_building', label: '건물 전력 사용량', unit: 'GWh', digits: 0, ramp: 'load', source: 'kepco',
+    definition: '한전 시군구별 전력판매량의 주택용 + 일반용 + 교육용(최근 12개월이 모두 있는 해)입니다. 산업용·농사용·가로등·심야는 뺍니다. 관측(판매) 통계입니다.',
+    use: '시·군·구끼리 건물 전력 수요 규모를 비교하고, 상세 자료를 모은 지역의 건축HUB 지번 합계와 맞대어 덮은 범위를 확인합니다.' },
+  { key: 'elec_home_per_household', label: '가구당 주택용 전력', unit: 'kWh/가구', digits: 0, ramp: 'load', source: 'kepco',
+    definition: '한전 주택용 전력판매량 ÷ SGIS 일반가구 수입니다(두 자료 모두 SGIS 행정구역 통계와 같은 해). 주택용 계약이 아닌 공동주택 공용·일부 세대는 빠질 수 있습니다.',
+    use: '가구 규모를 걸러 주거 전력 사용 강도를 비교합니다(냉난방 방식·주택 유형·기후 차이).' },
+  { key: 'elec_building_change_pct', label: '건물 전력 증감률 (2018년 대비)', unit: '%', digits: 1, ramp: 'diff', breaks: [-5, 5, 15, 30], source: 'kepco',
+    definition: '건물 전력(주택용+일반용+교육용)의 2018년 대비 최근 연도 증감률입니다.',
+    use: '전력 수요가 빠르게 느는 곳(신도시·전기화)과 정체된 곳을 가립니다.' },
+  { key: 'elec_total', label: '전력 사용량 합계', unit: 'GWh', digits: 0, ramp: 'load', source: 'kepco',
+    definition: '한전 시군구별 전력판매량의 계약종별 합계(산업용 포함)입니다.',
+    use: '건물 전력이 차지하는 몫을 가늠합니다(산업단지가 있는 곳과 구별).' },
   { key: 'ghg_building', label: '건물 등 온실가스', unit: '천 tCO₂eq', digits: 0, ramp: 'load', source: 'ghg',
     definition: '온실가스종합정보센터 지역 온실가스 인벤토리(최근 2023년)의 가정·상업·공공·농림어업 배출입니다: 연료 연소(직접) + 전력·열 사용(간접). 공식 통계이며 이 도구가 계산한 값이 아닙니다.',
     use: '건물 에너지 탄소의 시·도·시·군·구 규모를 비교하고, 상세 자료를 모은 지역의 격자 탄소 합계를 맞대어 보는 기준으로 씁니다.' },
@@ -63,6 +75,7 @@ export function missingReason(metric: NationalMetric, notes: Record<string, stri
     return metric.key === 'pop_change_pct' ? '두 해 중 20명 미만 또는 통계 없음' : '500m 통계 없음';
   }
   if (metric.source === 'ghg') return notes?.[metric.key] ?? 'GIR 지역 인벤토리 값 없음';
+  if (metric.source === 'kepco') return notes?.[metric.key] ?? '한전 시군구별 전력판매량 값 없음';
   return '자료 없음';
 }
 
