@@ -36,7 +36,22 @@ def monthly_energy(db,grid_id=None,year=2025,clause=None):
 
 _POOLED={}
 
-def pooled_baseline(db,year,sc=None):
+def heating_group(heating_type):
+    """'district' for 지역난방 (heat bought from a network: little gas), 'individual' otherwise, None when unknown."""
+    text=str(heating_type or '').strip()
+    if not text or text=='-':return None
+    return 'district' if '지역' in text else 'individual'
+
+def grid_heating(complexes):
+    """Heating group of a grid from its complexes, weighted by floor area (None: no complex with a known type)."""
+    weights={}
+    for c in complexes:
+        group=heating_group(getattr(c,'heating_type',None));area=getattr(c,'gross_floor_area_m2',None) or 0
+        if group:weights[group]=weights.get(group,0)+(area if area>0 else 1)
+    if not weights:return None
+    return max(weights,key=weights.get)
+
+def pooled_baseline(db,year,sc=None,heating=None):
     """Consistent baseline over every K-apt-linked parcel of a region (``sc``; None = all regions).
 
     Used when the selected grid has no parcel observed in all 12 months: the plan is then scaled with the
@@ -49,28 +64,45 @@ def pooled_baseline(db,year,sc=None):
     try:rows=[{'energy_type':t,'use_ym':ym,'usage_kwh':v,'kapt_code':c} for t,ym,v,c in db.execute(query)]
     except Exception:
         db.rollback();return None
-    key=(sc.code if sc is not None else '*',year,len(rows),sum(r['usage_kwh'] for r in rows))
-    if key in _POOLED:return _POOLED[key]
     complexes=list(db.scalars(select(ApartmentComplex)))
+    if heating:
+        # 지역난방 단지는 가스를 거의 쓰지 않는다(수원 2025 중앙값 3.0 vs 개별난방 71.8 kWh/m²): 같은 난방 방식끼리만 평균
+        allowed={c.kapt_code for c in complexes if heating_group(c.heating_type)==heating}
+        rows=[r for r in rows if r['kapt_code'] in allowed]
+    key=(sc.code if sc is not None else '*',year,heating,len(rows),sum(r['usage_kwh'] for r in rows))
+    if key in _POOLED:return _POOLED[key]
     areas,_=validated_complex_areas(complexes)
     base=consistent_baseline(rows,month_range(f'{year}-01',f'{year}-12'),areas,{c.kapt_code:c.households for c in complexes}) if rows else None
     if len(_POOLED)>32:_POOLED.clear()
     _POOLED[key]=base
     return base
 
-def baseline_estimate(db,year,sc,factors):
-    """Pooled baseline for a grid without its own: the region first, then every prepared region."""
+def baseline_estimate(db,year,sc,factors,grid_id=None):
+    """Pooled baseline for a grid without its own: the region first, then every prepared region.
+
+    The pool keeps the grid's heating group (its complexes' 난방방식) when it is known, because a region that mixes
+    지역난방 and 개별난방 (수원: 258 vs 188 complexes) has two gas intensities 20× apart."""
     from .regions import DEFAULT_REGION,scope
+    from .kapt import ApartmentComplex
     region=sc if sc is not None else scope(db,DEFAULT_REGION)
+    heating=grid_heating(db.scalars(select(ApartmentComplex).where(ApartmentComplex.grid_id==grid_id)).all()) if grid_id else None
+    mixed=None
+    if not heating:
+        groups=[heating_group(c.heating_type) for c in db.scalars(select(ApartmentComplex)) if region.owns_complex(c.bjd_code,c.grid_id)]
+        known=[g for g in groups if g]
+        if known and 0.1<=sum(g=='district' for g in known)/len(known)<=0.9:mixed=True
     for basis,target in (('REGION_POOLED',region),('ALL_REGIONS_POOLED',None)):
-        base=pooled_baseline(db,year,target)
+        base=pooled_baseline(db,year,target,heating)
         if base:
             monthly=[]
             for r in base['monthly']:
                 e=carbon_kg(r['electricity_kwh'],factors.get('ELECTRICITY'));g=carbon_kg(r['gas_kwh'],factors.get('GAS'))
                 monthly.append(dict(r,electricity_carbon_kg=e,gas_carbon_kg=g,carbon_kg=e+g if e is not None and g is not None else None))
             label=f'{region.short} 관측 공동주택 평균 원단위' if basis=='REGION_POOLED' else '준비된 모든 지역의 관측 공동주택 평균 원단위'
-            return {'basis':basis,'label':label,'area_m2':base['area_m2'],'parcels':len(base['parcels']),'energy_types':base['energy_types'],'monthly':monthly,'data_class':'ESTIMATED'}
+            if heating:label+=f" ({'지역난방' if heating=='district' else '개별·중앙난방'} 단지끼리)"
+            elif mixed:label+=' (지역난방·개별난방 단지가 섞인 평균: 가스는 난방 방식에 따라 크게 다름)'
+            return {'basis':basis,'label':label,'area_m2':base['area_m2'],'parcels':len(base['parcels']),'energy_types':base['energy_types'],'monthly':monthly,'data_class':'ESTIMATED',
+                    'heating':heating,'heating_mixed':bool(mixed)}
     return None
 
 def region_sector(db,sc):
@@ -124,7 +156,7 @@ def dashboard(db,grid_id=None,year=2025,region=None):
     grid_area_issues=[dict(issue,kapt_code=code) for code,issue in area_issues.items() if code in observed_codes]
     e_int=intensity.get('ELECTRICITY') or {}
     base_totals={k:nullable_sum(r[k] for r in baseline_monthly) for k in ['electricity_kwh','gas_kwh','carbon_kg']} if base else {'electricity_kwh':None,'gas_kwh':None,'carbon_kg':None}
-    estimate=baseline_estimate(db,year,sc,factors) if not base and selected_grid else None
+    estimate=baseline_estimate(db,year,sc,factors,selected_grid) if not base and selected_grid else None
     population=meta.get('population');households=meta.get('households')
     source_rows=[]
     for r in db.scalars(select(DataSource).where(DataSource.status!='REPLACED')):

@@ -9,7 +9,7 @@
 * 지표 (모두 전국에 있는 자료만, 없으면 0이 아니라 비움)
   - 인구·가구·면적·인구밀도: SGIS 행정구역 통계(시군구 합, 최근 연도).
   - 500m 인구와 2015년 대비 증감률, 500m 주택·종사자: SGIS 500m 격자 통계(자료제공 신청분)를 공식 500m 격자의
-    시군구 코드로 모은 값. 받은 묶음에 없는 100km 블록이 있으므로, 그 지역 격자 중 파일이 있는 블록에 사는 사람의
+    시군구 코드로 모은 값(경계에 걸친 격자는 걸친 시군구에 똑같이 나눔). 받은 묶음에 없는 100km 블록이 있으므로, 그 지역 격자 중 파일이 있는 블록에 사는 사람의
     비중(2024 1km 격자 인구 기준)을 함께 센다. 합계는 그 비중이 99% 이상일 때만 보여 주고 빠진 몫을 적으며,
     그보다 낮으면 비운다(일부 합을 실제 합처럼 보여 주지 않음). 증감률은 두 해 모두 파일이 있는 같은 블록끼리
     비교하고 비중이 95% 이상일 때만 낸다.
@@ -43,7 +43,7 @@ from .db import Session
 
 router = APIRouter(prefix="/api/map", tags=["map"])
 
-PAYLOAD_VERSION = 4
+PAYLOAD_VERSION = 5
 MIN_BASE = 20  # 증감률: 두 해 모두 이만큼은 있어야 한다
 FIELDS = ["population", "households", "area_km2", "density", "pop500", "pop500_base", "pop_change_pct", "housing500", "workers500", "complexes",
           "ghg_total", "ghg_building", "ghg_building_change_pct",
@@ -57,23 +57,30 @@ UNITS_SQL = """
 SELECT adm_code, adm_name, region_code, population, households, area_m2
 FROM national_units WHERE year = :y AND level = 'SIGUNGU' ORDER BY adm_code
 """
-GRID500_SQL = """
-SELECT split_part(c.adm_cd, ',', 1) AS sgis, left(v.grid_cd, 2) AS block, v.year, count(*) AS cells,
-       sum(v.population) AS pop, sum(v.households) AS hh, sum(v.housing) AS housing, sum(v.workers) AS workers
-FROM sgis_grid500_values v JOIN sgis_official_grid_cells c ON c.grid_cd = v.grid_cd
-WHERE v.year = ANY(:years) AND c.size_m = 500
+# A 500m cell on a 시군구 boundary lists every 시군구 it touches (adm_cd "24050,36630", 6.6% of cells). Its values are
+# split equally among them. Measured against SGIS 행정구역 인구 2024 (238 시군구): giving the whole cell to the first
+# code matched within ±3% for 45% of 시군구 (±10%: 76%), the equal split for 71% (±10%: 98%).
+CELL_SHARES = """
+SELECT grid_cd, left(grid_cd, 2) AS block, x_min, y_min, unnest(codes) AS sgis, 1.0 / cardinality(codes) AS share
+FROM (SELECT grid_cd, x_min, y_min, string_to_array(adm_cd, ',') AS codes FROM sgis_official_grid_cells WHERE size_m = 500) c
+"""
+GRID500_SQL = f"""
+WITH u AS ({CELL_SHARES})
+SELECT u.sgis, u.block, v.year, count(*) AS cells,
+       sum(v.population * u.share) AS pop, sum(v.households * u.share) AS hh, sum(v.housing * u.share) AS housing, sum(v.workers * u.share) AS workers
+FROM sgis_grid500_values v JOIN u ON u.grid_cd = v.grid_cd
+WHERE v.year = ANY(:years)
 GROUP BY 1, 2, 3
 """
-WEIGHTS_SQL = """
+WEIGHTS_SQL = f"""
 WITH k AS (
   SELECT c.x_min::bigint AS x, c.y_min::bigint AS y, s.value AS pop
   FROM sgis_grid_cells c JOIN sgis_grid_stats s ON s.grid_cd = c.grid_cd AND s.year = c.year
   WHERE c.year = :y1k AND c.size_m = 1000 AND s.item = 'to_in_001'
-)
-SELECT split_part(o.adm_cd, ',', 1) AS sgis, left(o.grid_cd, 2) AS block, count(*) AS cells, coalesce(sum(k.pop), 0) / 4.0 AS people
-FROM sgis_official_grid_cells o
-LEFT JOIN k ON k.x = (floor(o.x_min / 1000) * 1000)::bigint AND k.y = (floor(o.y_min / 1000) * 1000)::bigint
-WHERE o.size_m = 500
+), u AS ({CELL_SHARES})
+SELECT u.sgis, u.block, sum(u.share) AS cells, coalesce(sum(k.pop * u.share), 0) / 4.0 AS people
+FROM u
+LEFT JOIN k ON k.x = (floor(u.x_min / 1000) * 1000)::bigint AND k.y = (floor(u.y_min / 1000) * 1000)::bigint
 GROUP BY 1, 2
 """
 REGION_GEOM_SQL = """
@@ -337,7 +344,7 @@ def build_static(db: Any) -> dict[str, Any]:
         from .sgis_grid import latest_year as latest_1k
         for sgis, block, cells, people in db.execute(text(WEIGHTS_SQL), {"y1k": latest_1k(db) or 0}):
             # people decide the coverage; a tiny share per cell keeps uninhabited blocks from dividing by zero
-            weights.setdefault(sgis, {})[block] = float(people or 0) + 0.001 * int(cells)
+            weights.setdefault(sgis, {})[block] = float(people or 0) + 0.001 * float(cells)
     except Exception:  # noqa: BLE001
         db.rollback()
     unit_rows: dict[str, dict[str, Any]] = {}

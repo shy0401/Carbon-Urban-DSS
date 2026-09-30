@@ -28,8 +28,9 @@ def fit_candidates(rows):
     from sklearn.preprocessing import StandardScaler,SplineTransformer
     from sklearn.pipeline import make_pipeline
     features=['month_sin','month_cos']
-    for feature in ['hdd','cdd','area_per_household','households','age','floors','far','bcr','population']:
-        if all(r.get(feature) is not None for r in rows):features.append(feature)
+    for feature in ['hdd','cdd','area_per_household','households','age','floors','far','bcr','population','district_share']:
+        # a feature is used only when every row has it; a constant one (e.g. every grid 개별난방) adds nothing
+        if all(r.get(feature) is not None for r in rows) and len({r[feature] for r in rows})>1:features.append(feature)
     x=np.asarray([[r[f] for f in features] for r in rows],dtype=float)
     area=np.asarray([r['floor_area_m2'] for r in rows]);y=np.asarray([r['usage_kwh'] for r in rows])/area
     groups=np.asarray([r['spatial_block'] for r in rows]);splitter=GroupKFold(n_splits=min(5,len(set(groups))))

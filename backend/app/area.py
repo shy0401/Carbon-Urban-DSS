@@ -226,12 +226,13 @@ def floor_area_ok(gfa: float | None, households: int | None, management_area: fl
 
 
 def yearly_energy(rows: Iterable[dict[str, Any]], area: dict[str, Any], complexes: dict[str, dict[str, Any]],
-                  years: list[int]) -> dict[int, dict[str, Any]]:
+                  years: list[int], source: str | None = None) -> dict[int, dict[str, Any]]:
     """Annual observed energy of the area per year.
 
-    rows: {use_ym 'YYYYMM', energy_type, usage_kwh, grid_id, kapt_code|None, parcel}
+    rows: {use_ym 'YYYYMM', energy_type, usage_kwh, grid_id, kapt_code|None, parcel, source?}
     A row belongs to the area through its complex (point in area) or, without a complex,
     through its grid. Only parcels with 12 observed months enter the annual sum.
+    ``source`` ('KAPT' | 'HUB') keeps one provider only (rows without a source always count).
     """
     grid_ids, codes = set(area["grid_ids"]), set(area["complex_codes"])
     wanted = {str(y) for y in years}
@@ -240,6 +241,8 @@ def yearly_energy(rows: Iterable[dict[str, Any]], area: dict[str, Any], complexe
     for row in rows:
         ym, value = str(row.get("use_ym") or ""), row.get("usage_kwh")
         if len(ym) != 6 or ym[:4] not in wanted or value is None:
+            continue
+        if source and row.get("source") not in (None, source):
             continue
         code = row.get("kapt_code")
         inside = code in codes if code else row.get("grid_id") in grid_ids
@@ -573,7 +576,7 @@ def building_stock(area: dict[str, Any], complexes: dict[str, dict[str, Any]], y
 def city_intensity(energy_rows: list[dict[str, Any]], complexes: dict[str, dict[str, Any]], years: list[int]) -> dict[str, Any] | None:
     """Jeonju-wide observed electricity intensity (latest year with a floor-area-matched 12-month total)."""
     everything = {"grid_ids": sorted({r.get("grid_id") for r in energy_rows if r.get("grid_id")}), "complex_codes": sorted(complexes)}
-    city = yearly_energy(energy_rows, everything, complexes, years)
+    city = yearly_energy(energy_rows, everything, complexes, years, ENERGY_SOURCES["electricity"][0])
     for year in sorted(city, reverse=True):
         item = city[year]["electricity"]
         if item["intensity_kwh_per_m2"]:
@@ -648,16 +651,39 @@ def building_energy_block(grid_ids: list[str], by_year: dict[int, dict[str, dict
             "basis": "건축HUB 건물에너지 법정동 단위 전 지번(단독주택·200세대 미만 공동주택·산업용 등 제외), 12개월 계측 지번 합계, 연속지적 대표점으로 격자 배치"}
 
 
+ENERGY_SOURCES = {"electricity": ("KAPT", "K-apt 관리비 전력 (2015~, 같은 출처로 연도 비교)"),
+                  "gas": ("HUB", "건축HUB 지번 가스 (2024~)")}
+
+
+def consistent_energy(rows: list[dict[str, Any]], area: dict[str, Any], complexes: dict[str, dict[str, Any]],
+                      years: list[int]) -> dict[int, dict[str, Any]]:
+    """Yearly energy with one provider per energy type across all years.
+
+    K-apt reports a complex's electricity from its management fees (2015~); 건축HUB meters the parcel (2024~). For the
+    same complex-year the two differ (K-apt median 77% of 건축HUB, 803 pairs in 전주·수원, 2026-09-30), so a series
+    that switches provider in 2024 would show a jump that is not a change in use. Electricity therefore comes from
+    K-apt in every year and gas from 건축HUB (K-apt gas is mostly the common part only)."""
+    electricity = yearly_energy(rows, area, complexes, years, ENERGY_SOURCES["electricity"][0])
+    gas = yearly_energy(rows, area, complexes, years, ENERGY_SOURCES["gas"][0])
+    out = {}
+    for year in years:
+        entry = dict(electricity[year])
+        entry["gas"] = gas[year]["gas"]
+        entry["sources"] = {k: label for k, (_, label) in ENERGY_SOURCES.items()}
+        out[year] = entry
+    return out
+
+
 def build_history(area: dict[str, Any], years: list[int], inputs: dict[str, Any]) -> dict[str, Any]:
     complexes = inputs["complexes"]
     history = {
         "years": years, "area": {k: v for k, v in area.items()},
-        "energy": yearly_energy(inputs["energy"], area, complexes, years),
+        "energy": consistent_energy(inputs["energy"], area, complexes, years),
         "weather": yearly_weather(inputs["weather"], years),
         "population": yearly_population(inputs["population"], inputs["households"], area, years),
         "events": development_events(area, complexes, years),
         "factor": inputs.get("factor", {}),
-        "factor_basis": "최신 등록 전력 계수를 모든 연도에 동일 적용(연도별 계수 미등록). 전후 차이는 사용량 변화만 반영",
+        "factor_basis": "연도별 공표 계수가 있지만 전후 비교가 사용량 변화만 반영하도록 최신 전력 계수를 모든 연도에 동일 적용",
         "region_label": region_label(inputs.get("region")),
     }
     factor = history["factor"].get("electricity")
@@ -814,8 +840,25 @@ def load_inputs(db: Any, years: list[int], region: str | None = None) -> dict[st
     if clause is not None:
         energy_query = energy_query.where(clause)
     for r in db.scalars(energy_query):
-        energy.append({"use_ym": r.use_ym, "energy_type": r.energy_type, "usage_kwh": r.usage_kwh, "grid_id": r.grid_id,
+        if r.source == "K-apt":
+            continue  # the same K-apt months are read below from apartment_energy_monthly (every year, one parcel key)
+        energy.append({"use_ym": r.use_ym, "energy_type": r.energy_type, "usage_kwh": r.usage_kwh, "grid_id": r.grid_id, "source": "HUB",
                        "kapt_code": (r.raw_record or {}).get("kapt_code"), "parcel": f"{r.sigungu_code}{r.bjdong_code}-{r.lot_type}-{r.bun}-{r.ji}"})
+    try:
+        from .kapt_energy import ApartmentEnergyMonthly
+        kapt_query = select(ApartmentEnergyMonthly.complex_code, ApartmentEnergyMonthly.year_month, ApartmentEnergyMonthly.electricity_quantity).where(
+            ApartmentEnergyMonthly.year_month.between(lo, hi), ApartmentEnergyMonthly.quality_status == "SUCCESS",
+            ApartmentEnergyMonthly.electricity_quantity.is_not(None))
+        seen: set[tuple[str, str]] = set()
+        for code, ym, kwh in db.execute(kapt_query):
+            info = complexes.get(code)
+            if info is None or (code, ym) in seen:
+                continue
+            seen.add((code, ym))
+            energy.append({"use_ym": ym, "energy_type": "ELECTRICITY", "usage_kwh": float(kwh), "grid_id": info.get("grid_id"), "source": "KAPT",
+                           "kapt_code": code, "parcel": f"kapt:{code}"})
+    except Exception:  # noqa: BLE001 - K-apt energy table not created yet
+        db.rollback()
     weather = [{"use_ym": w.use_ym, "hdd": w.hdd, "cdd": w.cdd, "mean_temperature": w.mean_temperature, "source_type": w.source_type}
                for w in weather_rows(db, sc.code, lo, hi)]
     population, households = [], []

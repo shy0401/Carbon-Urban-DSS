@@ -127,6 +127,8 @@ from . import regional_stats  # noqa: F401 - registers gir_regional_ghg, citygas
 app.include_router(sgis_grid500_router)
 from .national_map import router as national_map_router
 app.include_router(national_map_router)
+from .validation import router as validation_router
+app.include_router(validation_router)
 from .regions import RegionNotReady,DEFAULT_REGION,region_for_grid
 
 def _scope(db,region):

@@ -5,7 +5,7 @@ from .models import EnergyMonthly,ModelRun
 from .modeling import fit_candidates,model_eligibility
 
 FEATURE_LABELS={'floor_area_m2':'연면적(분모)','month_sin':'월(계절)','month_cos':'월(계절)','hdd':'난방도일 HDD','cdd':'냉방도일 CDD',
-                'area_per_household':'세대당 연면적','age':'사용승인 후 경과연수'}
+                'area_per_household':'세대당 연면적','age':'사용승인 후 경과연수','district_share':'지역난방 연면적 비율'}
 
 
 def _approval_year(value):
@@ -29,6 +29,7 @@ def model_rows(db,year,typ,region=None):
     from .grid_metrics import electricity_plausibility,validated_complex_areas,MONTHS_PER_YEAR
     from .kapt import ApartmentComplex
     from .regions import DEFAULT_REGION,scope,weather_rows
+    from .service import heating_group
     sc=scope(db,region)
     complexes={c.kapt_code:c for c in db.scalars(select(ApartmentComplex)) if sc.owns_complex(c.bjd_code,c.grid_id)}
     areas,_=validated_complex_areas(complexes.values())
@@ -57,13 +58,15 @@ def model_rows(db,year,typ,region=None):
         per_household=round(sum(a for a,_ in with_households)/sum(h for _,h in with_households),1) if len(with_households)==len(items) else None
         dated=[(a,_approval_year(i.approval_date)) for _,a,i in items if i and _approval_year(i.approval_date)]
         age=round(year-sum(a*y for a,y in dated)/sum(a for a,_ in dated),1) if len(dated)==len(items) else None
+        heated=[(a,heating_group(i.heating_type)) for _,a,i in items if i and heating_group(i.heating_type)]
+        district=round(sum(a for a,g in heated if g=='district')/sum(a for a,_ in heated),3) if len(heated)==len(items) else None
         parts=grid.split('_')
         block=f'{int(parts[-2])//2000}:{int(parts[-1])//2000}' if len(parts)==3 and parts[-2].isdigit() else None
         for ym in sorted(items[0][0]):
             month=int(ym[-2:]);w=weather.get(ym)
             rows.append(dict(grid_id=grid,spatial_block=block,use_ym=ym,usage_kwh=sum(m[ym] for m,_,_ in items),floor_area_m2=area,parcels=len(items),
                              month_sin=math.sin(2*math.pi*month/12),month_cos=math.cos(2*math.pi*month/12),hdd=w.hdd if w else None,cdd=w.cdd if w else None,
-                             area_per_household=per_household,age=age))
+                             area_per_household=per_household,age=age,district_share=district))
     return rows
 
 
@@ -74,10 +77,12 @@ def model_status(db,year,train=False,region=None):
     for typ in ['ELECTRICITY','GAS']:
         rows=model_rows(db,year,typ,sc.code)
         result=fit_candidates(rows) if train else dict(model_eligibility(rows),models=[])
-        used=result['models'][0]['features'] if result.get('models') else ['floor_area_m2','month_sin','month_cos']+[f for f in ['hdd','cdd','area_per_household','age'] if rows and all(r.get(f) is not None for r in rows)]
+        used=result['models'][0]['features'] if result.get('models') else ['floor_area_m2','month_sin','month_cos']+[f for f in ['hdd','cdd','area_per_household','age','district_share'] if rows and all(r.get(f) is not None for r in rows)]
         labels=list(dict.fromkeys(FEATURE_LABELS.get(f,f) for f in used))
+        shares={r.get('district_share') for r in rows if r.get('district_share') is not None}
+        heating_note=None if 'district_share' in used and len(shares)>1 else ('난방방식(이 지역 단지는 모두 같은 방식이라 구분력 없음)' if len(shares)<=1 else '난방방식(일부 격자에 난방방식 미상)')
         result.update(energy_type=typ,training_period=f'{year}-01 ~ {year}-12',features=labels,
-                      unavailable_features=['인구','층수','용적률·건폐율(단지별 공식 값 미연계)','난방방식(전주 단지 97%가 개별난방이라 구분력 없음)' if sc.is_default else '난방방식(구분력 미검토)'],
+                      unavailable_features=['인구','층수','용적률·건폐율(단지별 공식 값 미연계)']+([heating_note] if heating_note else []),
                       scope='K-apt 공동주택 지번 중 12개월 모두 관측되고 연면적·세대당 전력이 타당한 지번만 (격자별 같은 지번 집합)',
                       method='INTENSITY_ESTIMATE',name='관측 월별 연면적 원단위',validation_method='미검증' if not result['validated'] else 'Spatial Block Cross Validation',metrics=None)
         results.append(result)
