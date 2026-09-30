@@ -300,7 +300,7 @@ function BeforeAfterPanel({ comparison, candidates, eventYear, setEventYear, win
           <h4 className="area-subhead">관측 <ProvenanceBadge kind="observed" /></h4>
           <dl className="area-figures">
             <Figure label="전력 연평균 변화" value={m?.electricity.total_change_pct} unit="%" digits={1} signed />
-            <Figure label="기존 단지만의 변화" value={m?.electricity.existing_change_pct} unit="%" digits={1} note="같은 단지끼리 비교" signed />
+            <Figure label="기존 단지만의 변화" value={m?.electricity.existing_change_pct} unit="%" digits={1} note={m?.electricity.existing_complexes ? `전후 모든 해에 보고한 같은 단지 ${m.electricity.existing_complexes}곳끼리` : '같은 단지끼리 비교'} signed />
             <Figure label="개발 후 신규 단지 비중" value={m?.electricity.new_share_pct} unit="%" digits={1} />
           </dl>
           <h4 className="area-subhead">추정 <ProvenanceBadge kind="estimated" /></h4>

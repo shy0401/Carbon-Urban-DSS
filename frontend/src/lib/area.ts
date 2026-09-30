@@ -141,6 +141,8 @@ export interface CarrierComparison {
   existing_before_kwh: number | null;
   existing_after_kwh: number | null;
   existing_change_pct: number | null;
+  /** Existing complexes reported in every before and after year (the change is computed on these only). */
+  existing_complexes?: number;
   new_development_kwh: number | null;
   new_share_pct: number | null;
 }

@@ -61,3 +61,19 @@ def test_constant_features_are_not_used():
     result = fit_candidates(rows)
     features = result["models"][0]["features"]
     assert "district_share" not in features and "age" not in features and "area_per_household" in features
+
+
+def test_existing_change_uses_complexes_reported_in_every_observed_year():
+    from app.area import before_after
+    def year(y, by):
+        return {"electricity": {"kwh": sum(by.values()) or None, "by_cohort": {"2000": sum(by.values())}, "by_complex": by},
+                "gas": {"kwh": None, "by_cohort": {}, "by_complex": {}}, "estimated": {"kwh": None}}
+    # B starts reporting to K-apt in 2023: its 1,000 must not look like a rise in use of the existing buildings
+    energy = {2021: year(2021, {"A": 1000.0}), 2022: year(2022, {"A": 1000.0}), 2023: year(2023, {"A": 1000.0, "B": 1000.0}),
+              2024: year(2024, {"A": 1100.0, "B": 1000.0}), 2025: year(2025, {"A": 1100.0, "B": 1000.0})}
+    history = {"years": list(energy), "energy": energy, "events": {y: {"complexes": 1 if y == 2023 else 0, "households": 10 if y == 2023 else 0} for y in energy},
+               "complexes": [{"kapt_code": "A", "approval_year": 2000}, {"kapt_code": "B", "approval_year": 2001}],
+               "weather": {}, "population": {}, "stock": {}, "factor": {}}
+    m = before_after(history, 2023, 2)["metrics"]["electricity"]
+    assert m["existing_complexes"] == 1 and m["existing_change_pct"] == 10.0  # A only: 1,000 → 1,100
+    assert m["total_change_pct"] == 110.0  # the totals still show the new reporter (that is why the same-set figure exists)

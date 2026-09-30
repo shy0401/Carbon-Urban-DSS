@@ -46,8 +46,13 @@ def fit_candidates(rows):
         prediction=np.empty(len(rows));folds=[]
         for train,test in splitter.split(x,y,groups):
             if build is None:
-                monthly={month:mean(y[i] for i in train if rows[i]['use_ym'][-2:]==month) for month in {rows[i]['use_ym'][-2:] for i in train}}
-                pred=np.array([monthly.get(rows[i]['use_ym'][-2:],float(np.mean(y[train]))) for i in test])
+                # the intensity actually used for grids without their own data: month mean, kept apart by heating group
+                # when grids differ in 지역난방 (the same rule as the pooled baseline in service.baseline_estimate)
+                split='district_share' in features
+                group=lambda i:(rows[i]['use_ym'][-2:],rows[i]['district_share']>=0.5 if split else None)  # noqa: E731
+                monthly={}
+                for i in train:monthly.setdefault(group(i),[]).append(y[i])
+                pred=np.array([mean(monthly[group(i)]) if group(i) in monthly else float(np.mean(y[train])) for i in test])
             else:
                 estimator=build();estimator.fit(x[train],y[train]);pred=estimator.predict(x[test])
             prediction[test]=np.maximum(pred,0)*area[test]

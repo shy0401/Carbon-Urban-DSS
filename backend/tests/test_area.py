@@ -87,7 +87,7 @@ def test_before_after_separates_existing_buildings_from_the_new_development():
     assert result['before_years'] == [2017, 2018, 2019] and result['after_years'] == [2021, 2022, 2023]
     assert m['before_total_kwh'] == 1200000.0 and m['after_total_kwh'] == 1800000.0
     assert m['total_change_pct'] == 50.0
-    assert m['existing_change_pct'] == 0.0
+    assert m['existing_change_pct'] == 0.0 and m['existing_complexes'] == 1  # OLD only: the same complex in every observed year
     assert m['new_development_kwh'] == 600000.0 and m['new_share_pct'] == pytest.approx(33.3, abs=0.1)
     est = result['metrics']['estimated']
     assert est['added_gfa_m2'] == 30000.0 and est['event_change_pct'] == 60.0

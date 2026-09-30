@@ -267,6 +267,7 @@ def yearly_energy(rows: Iterable[dict[str, Any]], area: dict[str, Any], complexe
                         del complete[parcel]
             total = sum(sum(m.values()) for m in complete.values()) if complete else None
             by_cohort: dict[str, float] = defaultdict(float)
+            by_complex: dict[str, float] = {}
             area_m2 = 0.0
             area_kwh = 0.0
             households = 0
@@ -276,6 +277,8 @@ def yearly_energy(rows: Iterable[dict[str, Any]], area: dict[str, Any], complexe
                 info = complexes.get(code) if code else None
                 cohort = str(info["approval_year"]) if info and info.get("approval_year") else "미상"
                 by_cohort[cohort] += sum(m.values())
+                if code:
+                    by_complex[code] = by_complex.get(code, 0.0) + sum(m.values())
                 if info and info.get("floor_area_ok"):
                     area_m2 += info["gfa"]
                     area_kwh += sum(m.values())
@@ -289,6 +292,7 @@ def yearly_energy(rows: Iterable[dict[str, Any]], area: dict[str, Any], complexe
                 "suspect_parcels": len(suspect),
                 "months_max": max((len(m) for m in parcels.values()), default=0),
                 "by_cohort": {k: round(v, 1) for k, v in sorted(by_cohort.items())},
+                "by_complex": {k: round(v, 1) for k, v in sorted(by_complex.items())},
                 "intensity_kwh_per_m2": round(area_kwh / area_m2, 6) if area_m2 else None,
                 "intensity_area_m2": round(area_m2, 1) if area_m2 else None,
                 "kwh_per_household": round(household_kwh / households, 1) if households else None,
@@ -404,14 +408,33 @@ def before_after(history: dict[str, Any], event_year: int | None = None, window:
 
     is_existing = lambda k: k.isdigit() and int(k) < event_year  # noqa: E731
     is_new = lambda k: k == str(event_year)  # noqa: E731
+    approved = {c["kapt_code"]: c.get("approval_year") for c in history.get("complexes", [])}
+
+    def same_complexes(energy: str) -> tuple[set[str], float | None, float | None]:
+        """Existing complexes reported in every before and after year: the change of the same buildings only
+        (a complex that starts or stops reporting K-apt would otherwise look like a change in use)."""
+        # years without any observation are skipped (as in the totals); the complexes must be in every other year
+        before = [y for y in before_years if history["energy"][y][energy].get("by_complex")]
+        after = [y for y in after_years if history["energy"][y][energy].get("by_complex")]
+        if not before or not after:
+            return set(), None, None
+        sets = [set(history["energy"][y][energy]["by_complex"]) for y in before + after]
+        common = {c for c in set.intersection(*sets) if approved.get(c) and approved[c] < event_year}
+        if not common:
+            return set(), None, None
+        mean_of = lambda ys: _mean([sum(history["energy"][y][energy]["by_complex"][c] for c in common) for y in ys])  # noqa: E731
+        return common, mean_of(before), mean_of(after)
     result: dict[str, Any] = {"available": True, "event_year": event_year, "window": window,
                               "before_years": before_years, "after_years": after_years,
                               "event": events.get(event_year), "metrics": {}}
     for energy in ("electricity", "gas"):
         before_total = _mean([history["energy"][y][energy]["kwh"] for y in before_years])
         after_total = _mean([history["energy"][y][energy]["kwh"] for y in after_years])
-        before_existing = _mean([cohort_sum(y, energy, is_existing) for y in before_years])
-        after_existing = _mean([cohort_sum(y, energy, is_existing) for y in after_years])
+        common, before_existing, after_existing = same_complexes(energy)
+        if not common and not any(history["energy"][y][energy].get("by_complex") for y in before_years + after_years):
+            # rows without complex codes (older inputs): fall back to the approval cohorts
+            before_existing = _mean([cohort_sum(y, energy, is_existing) for y in before_years])
+            after_existing = _mean([cohort_sum(y, energy, is_existing) for y in after_years])
         after_new = _mean([cohort_sum(y, energy, is_new) for y in after_years])
         result["metrics"][energy] = {
             "before_total_kwh": before_total, "after_total_kwh": after_total,
@@ -419,6 +442,7 @@ def before_after(history: dict[str, Any], event_year: int | None = None, window:
             "total_change_pct": round((after_total - before_total) / before_total * 100, 1) if before_total and after_total is not None else None,
             "existing_before_kwh": before_existing, "existing_after_kwh": after_existing,
             "existing_change_pct": round((after_existing - before_existing) / before_existing * 100, 1) if before_existing and after_existing is not None else None,
+            "existing_complexes": len(common),
             "new_development_kwh": after_new,
             "new_share_pct": round(after_new / after_total * 100, 1) if after_new is not None and after_total else None,
         }
