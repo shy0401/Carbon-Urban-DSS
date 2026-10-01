@@ -82,3 +82,9 @@ def test_grid_totals_use_complete_parcels_and_register_area_for_intensity():
     assert grid['parcels'] == 4 and grid['electricity_complete'] == 3
     assert grid['electricity_kwh'] == 720010.0 and grid['gas_kwh'] == 80000.0
     assert grid['area_parcels'] == 2 and grid['kwh_per_m2'] == 180.0 and grid['suspect'] == 1
+
+
+def test_jeonbuk_months_before_the_rename_use_the_old_sigungu_code():
+    from app.energy_parcels import request_sigungu
+    assert request_sigungu('52111', '202310') == '45111' and request_sigungu('52113', '202001') == '45113'
+    assert request_sigungu('52111', '202311') == '52111' and request_sigungu('41111', '202101') == '41111'

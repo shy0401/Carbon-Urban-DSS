@@ -1,7 +1,7 @@
 import json,os,uuid,re
 from contextlib import asynccontextmanager
 from typing import Literal
-from fastapi import FastAPI,HTTPException,Query
+from fastapi import FastAPI,HTTPException,Query,Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel,Field,model_validator
@@ -124,6 +124,7 @@ from .dongs import router as dongs_router
 app.include_router(dongs_router)
 from .sgis_grid500 import router as sgis_grid500_router  # also registers sgis_grid500_values before create_all
 from . import regional_stats  # noqa: F401 - registers gir_regional_ghg, citygas_sido_monthly before create_all
+from . import team_grid  # noqa: F401 - registers team_grid500/100, team_developments before create_all
 app.include_router(sgis_grid500_router)
 from .national_map import router as national_map_router
 app.include_router(national_map_router)
@@ -371,7 +372,7 @@ def _level(db,code):
     return detail_level(get_region(db,code)) if code!=DEFAULT_REGION else 'DETAILED'
 
 @app.get('/api/map')
-def map_data(year:int=Query(DEFAULT_YEAR,ge=2000,le=2100),region:str|None=Query(None,max_length=10)):
+def map_data(request:Request,year:int=Query(DEFAULT_YEAR,ge=2000,le=2100),region:str|None=Query(None,max_length=10)):
     from .domain import carbon_kg
     from .overlays import city_boundary,complex_features,grid_building_summary
     from .service import region_sector
@@ -394,6 +395,9 @@ def map_data(year:int=Query(DEFAULT_YEAR,ge=2000,le=2100),region:str|None=Query(
         building_energy=grid_building_energy(db,year)
         from .sgis_grid_official import official_codes,meta as official_grid_meta
         official=official_codes(db)
+        # 팀 데이터셋(탄소공간지도 500m 배출, 국토통계지도 100m 합; 국토통계는 공개 게이트웨이 응답에서 뺌)
+        from .team_grid import map_properties as team_properties,is_public
+        team=team_properties(db,sc.code,year,ids,public=is_public(request),register_ids=register.keys())
         e_factor=(factors.get('ELECTRICITY') or {}).get('factor')
         by_grid={}
         for feature in complexes['features']:
@@ -436,6 +440,7 @@ def map_data(year:int=Query(DEFAULT_YEAR,ge=2000,le=2100),region:str|None=Query(
             p.update(register_properties(register.get(grid_id)))
             # Every metered building of the grid (건축HUB by 법정동, placed through the cadastral parcel).
             p.update(building_energy_properties(building_energy.get(grid_id),e_factor))
+            p.update(team.get(grid_id,{}))
             f['properties']=p;grids.append(f)
         official_buildings=any(b['building_count'] for b in buildings.values()) or not sc.is_default
         spatial_path=DATA/'spatial.json';spatial=json.loads(spatial_path.read_text(encoding='utf-8')) if spatial_path.exists() and sc.is_default else {}

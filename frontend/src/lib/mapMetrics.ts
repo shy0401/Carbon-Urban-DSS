@@ -56,7 +56,23 @@ export const PERCENT_BREAKS = [20, 40, 60, 80];
 
 export const REGISTER_GROUP = '건축물대장';
 export const BUILDING_ENERGY_GROUP = '건물 전체 에너지 (건축HUB)';
-export const METRIC_GROUPS = ['에너지 관측', '에너지 원단위', '탄소', BUILDING_ENERGY_GROUP, '도시 형태', REGISTER_GROUP, '토지이용', SGIS500_GROUP, SGIS_GROUP, '데이터 품질'] as const;
+export const CARBONMAP_GROUP = '건물 배출 (탄소공간지도)';
+export const NGII_GROUP = '국토통계지도 100m';
+export const METRIC_GROUPS = ['에너지 관측', '에너지 원단위', '탄소', BUILDING_ENERGY_GROUP, CARBONMAP_GROUP, '도시 형태', REGISTER_GROUP, NGII_GROUP, '토지이용', SGIS500_GROUP, SGIS_GROUP, '데이터 품질'] as const;
+const CM_SOURCE = '국토교통부 탄소공간지도 500m 건물 배출 (팀 수집: 윤영준, 2026-10-01)';
+const CM_NOTE = '탄소공간지도는 한국부동산원 건물에너지 DB(전기·가스·지역난방)로 산정한 공식 배출이며, 건축HUB API가 빼는 단독주택·소규모 공동주택까지 들어 있습니다. 지도 연도 이전의 가장 가까운 공표 연도(2016·2019·2022·2024)를 씁니다. 건물이 있는데 0인 칸은 원자료 누락으로 보고 비웁니다(0 아님).';
+const NGII_SOURCE = '국토지리정보원 국토통계지도 100m (팀 수집, 국외 반출 금지)';
+const NGII_NOTE = '국토통계지도 100m 격자 값을 이 500m 격자 안에서 더한 것입니다. 이용 조건상 국외 반출이 금지되어 공개 시연 주소에서는 보이지 않습니다.';
+/** 팀 데이터셋이 표시한 문제(급감 의심·건물 없는 배출 등). */
+const cmIssues = (p: GridProps): string => {
+  const f = (p.cm_flags ?? {}) as Record<string, unknown>;
+  const notes: string[] = [];
+  if (['elec_drop_status', 'gas_drop_status', 'heat_drop_status'].some((k) => f[k] === 'suspect_drop')) notes.push('직전 연도보다 급감(원자료 누락 의심)');
+  if (f.elec_underreport_status === 'suspect_low') notes.push('신규 단지 전기 과소 의심');
+  if (p.cm_partial) notes.push('시 경계 칸(시 안쪽 값만)');
+  return notes.length ? ` · ${notes.join(' · ')}` : '';
+};
+const cmBasis = (p: GridProps) => (p.cm_year ? `${p.cm_year}년 탄소공간지도${cmIssues(p)}` : null);
 
 export const METRICS: MetricDef[] = [
   {
@@ -168,6 +184,43 @@ export const METRICS: MetricDef[] = [
     use: '격자별 건물 전력 운영탄소 규모입니다. 도시 단위 감축 목표와 우선 지역을 정할 때 씁니다.',
   },
   {
+    key: 'cm_total_t', label: '건물 배출 합계', unit: 'tCO₂eq/년', group: CARBONMAP_GROUP, ramp: 'load', digits: 0,
+    value: (p) => n(p.cm_total_t), definition: `전기·가스·지역난방 배출의 합입니다. ${CM_NOTE}`,
+    formula: '전기 + 가스 + 지역난방 (탄소공간지도 산정, tCO₂eq)', basis: cmBasis, source: CM_SOURCE,
+    use: '단독주택까지 포함한 건물 배출 총량입니다. 이 도구의 건축HUB 계측(단독주택 제외)과 맞대 빠진 몫을 가늠하고, 우선 관리 격자를 고릅니다.',
+  },
+  {
+    key: 'cm_elec_t', label: '전기 배출', unit: 'tCO₂eq/년', group: CARBONMAP_GROUP, ramp: 'load', digits: 0,
+    value: (p) => n(p.cm_elec_t), definition: `건물 전기 사용의 배출입니다. ${CM_NOTE}`, formula: '탄소공간지도 전기 부문 (tCO₂eq)', basis: cmBasis, source: CM_SOURCE,
+    use: '건축HUB 계측 전력 탄소(건물 전체 전력 탄소)와 같은 칸끼리 비교합니다.',
+  },
+  {
+    key: 'cm_gas_t', label: '가스 배출', unit: 'tCO₂eq/년', group: CARBONMAP_GROUP, ramp: 'load', digits: 0,
+    value: (p) => n(p.cm_gas_t), definition: `건물 도시가스 사용의 배출입니다. ${CM_NOTE}`, formula: '탄소공간지도 가스 부문 (tCO₂eq)', basis: cmBasis, source: CM_SOURCE,
+    use: '난방·급탕 배출이 큰 곳(개별난방 노후 주거)을 찾습니다.',
+  },
+  {
+    key: 'cm_heat_t', label: '지역난방 배출', unit: 'tCO₂eq/년', group: CARBONMAP_GROUP, ramp: 'load', digits: 0,
+    value: (p) => n(p.cm_heat_t), definition: `지역난방 열 사용의 배출입니다(0.1226 tCO₂eq/Gcal 고정). 이 도구의 건축HUB 자료에는 없는 부문입니다. ${CM_NOTE}`,
+    formula: '탄소공간지도 지역난방 부문 (tCO₂eq)', basis: cmBasis, source: CM_SOURCE,
+    use: '지역난방 단지가 많은 곳(세종 등)의 난방 배출을 봅니다. 가스만 보면 빠지는 몫입니다.',
+  },
+  {
+    key: 'cm_change_pct', label: '건물 배출 증감률', unit: '%', group: CARBONMAP_GROUP, ramp: 'diff', digits: 1,
+    value: (p) => n(p.cm_change_pct), breaks: [-15, -5, 5, 15],
+    definition: `팀 데이터셋의 첫 연도(2016년)와 지도 연도에 가까운 공표 연도의 건물 배출 합계를 비교합니다. 2024년은 일부 칸이 원자료 누락으로 급감해 있어(공장·관리지역 등) 그런 칸은 상세에 표시합니다. ${CM_NOTE}`,
+    formula: '(그해 배출 − 2016년 배출) ÷ 2016년 배출 × 100',
+    basis: (p) => (n(p.cm_change_pct) !== null ? `${p.cm_change_base_year}→${p.cm_year}년${cmIssues(p)}` : null), source: CM_SOURCE,
+    use: '개발·인구 변화와 함께 배출이 늘거나 준 곳을 찾습니다. 전력 배출계수 변화도 섞여 있습니다.',
+  },
+  {
+    key: 'cm_kg_per_m2', label: '건물 배출 원단위', unit: 'kgCO₂eq/m²·년', group: CARBONMAP_GROUP, ramp: 'load', digits: 1,
+    value: (p) => n(p.cm_kg_per_m2),
+    definition: `건물 배출 합계를 국토통계지도 추정 연면적으로 나눈 값입니다. ${CM_NOTE} 분모가 국토통계지도라 공개 시연 주소에서는 보이지 않습니다.`,
+    formula: '건물 배출 합계 × 1,000 ÷ 국토통계 추정 연면적', basis: cmBasis, source: `${CM_SOURCE} · ${NGII_SOURCE}`,
+    use: '규모를 뺀 배출 효율로 격자를 비교합니다(단독주택 포함).',
+  },
+  {
     key: 'building_count', label: '건물 수', unit: '동', group: '도시 형태', ramp: 'seq', digits: 0,
     value: (p) => n(p.building_count),
     definition: '대표점이 격자 안에 있는 건물 수입니다. 공식 도로명주소 건물(VWorld)이 없으면 OSM 공동주택 윤곽으로 대체합니다.',
@@ -232,6 +285,15 @@ export const METRICS: MetricDef[] = [
     use: '공식 연면적으로 본 개발 밀도입니다. 추가 개발 여지와 에너지 부하 추정의 연면적 근거로 씁니다.',
   },
   {
+    key: 'team_reg_floor_area_m2', label: '연면적 (건축물대장, 팀 수집)', unit: 'm²', group: REGISTER_GROUP, ramp: 'seq', digits: 0,
+    value: (p) => n(p.team_reg_floor_area_m2),
+    definition: '팀 데이터셋이 건축물대장의 모든 건물을 지번 도형으로 격자에 놓아 더한 연면적입니다. 이 도구가 건축물대장을 받지 않은 지역(세종·부산 강서·서울 강동)에서만 보입니다.',
+    formula: 'Σ 건축물대장 연면적 (지번 도형 → 격자)',
+    basis: (p) => (n(p.team_reg_floor_area_m2) !== null ? `주거 ${fmt(n(p.team_reg_residential_m2), 'm²')} · 비주거 ${fmt(n(p.team_reg_nonresidential_m2), 'm²')} · 세대 ${fmt(n(p.team_reg_dwellings))}` : null),
+    source: '건축물대장 (팀 수집: 윤영준, 2026-10-01)',
+    use: '대장을 아직 받지 않은 지역의 개발 밀도와 주거·비주거 구성을 봅니다.',
+  },
+  {
     key: 'reg_residential_gfa_pct', label: '주거 연면적 비율', unit: '%', group: REGISTER_GROUP, ramp: 'seq', digits: 1,
     value: (p) => n(p.reg_residential_gfa_pct), breaks: PERCENT_BREAKS,
     definition: '주용도가 확인된 대장 건물의 연면적 중 단독·공동주택의 비율입니다.',
@@ -248,6 +310,24 @@ export const METRICS: MetricDef[] = [
     basis: (p) => (p.reg_buildings ? `대장 건물 ${fmt(n(p.reg_buildings), '동')}` : null),
     source: '건축HUB 건축물대장 표제부',
     use: '노후 건물이 많은 곳, 곧 그린리모델링·개보수 우선 지역을 찾습니다.',
+  },
+  {
+    key: 'ngii_population', label: '인구 (100m 합)', unit: '명', group: NGII_GROUP, ramp: 'seq', digits: 0,
+    value: (p) => n(p.ngii_population), breaks: [500, 2000, 5000, 10000],
+    definition: `${NGII_NOTE} 1~5명인 100m 칸은 비공개라 더하지 않았습니다(그만큼 작게 나옴).`,
+    formula: 'Σ 100m 격자 총인구 (공개된 칸)',
+    basis: (p) => (n(p.ngii_population) !== null ? `비공개(1~5명) 100m 칸 ${fmt(n(p.ngii_population_masked_cells), '곳')} 제외` : null),
+    source: NGII_SOURCE,
+    use: 'SGIS와 다른 공식 인구 격자로, 100m 단위 분포를 500m로 모아 비교합니다.',
+  },
+  {
+    key: 'ngii_floor_area_m2', label: '추정 연면적', unit: 'm²', group: NGII_GROUP, ramp: 'seq', digits: 0,
+    value: (p) => n(p.ngii_floor_area_m2),
+    definition: `${NGII_NOTE} 국토통계지도의 건물 수 × 평균 연면적으로 낸 추정입니다.`,
+    formula: 'Σ (100m 칸 건물 수 × 평균 연면적)',
+    basis: (p) => (n(p.ngii_buildings) !== null ? `건물 ${fmt(n(p.ngii_buildings), '동')}${n(p.ngii_approval_year) !== null ? ` · 평균 사용승인 ${Math.round(n(p.ngii_approval_year) as number)}년` : ''}` : null),
+    source: NGII_SOURCE,
+    use: '탄소공간지도 배출을 이 연면적으로 나눠 원단위(kg/m²)를 냅니다.',
   },
   {
     key: 'residential_zone_ratio', label: '주거지역 비율', unit: '%', group: '토지이용', ramp: 'seq', digits: 1,

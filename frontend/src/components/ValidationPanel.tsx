@@ -19,6 +19,12 @@ export interface ValidationData {
   population: { year: number | null; admin: number; grid500: number | null; ratio: number | null; note?: string | null } | null;
   grid_link: { year: number; parcels: number; linked: number; share: number } | null;
   gas_completeness?: { year: number; parcels: number; full: number; bimonthly: number; partial: number; full_gwh: number; bimonthly_gwh: number; partial_gwh: number } | null;
+  carbonmap?: {
+    years: Record<string, { elec_t: number; gas_t: number; heat_t: number; total_t: number; cells: number }>;
+    source: string;
+    cells?: { cells: number; sum_ratio: number; median_ratio: number; within_20pct: number; log_r: number | null; year: number; factor: number };
+    developments?: { cases: number; usable: number };
+  } | null;
   notes: string[];
 }
 
@@ -35,6 +41,8 @@ export function ValidationPanel({ regionQuery }: { regionQuery: string }) {
   const k = data.kapt_vs_hub;
   const g = data.ghg;
   const gc = data.gas_completeness;
+  const cm = data.carbonmap;
+  const cmYears = cm ? Object.entries(cm.years).sort(([a], [b]) => Number(a) - Number(b)) : [];
   return <section className="panel validation-panel" aria-label="공식 통계와 맞대기" data-testid="validation-panel">
     <div className="panel-title"><h3>공식 통계와 맞대기 ({data.region.short_name} 합계)</h3></div>
     <p className="muted">같은 양을 다른 기관이 센 통계와 비교합니다. 어느 한쪽을 정답으로 보지 않고, 차이와 그 까닭(포함 범위)을 함께 봅니다.</p>
@@ -52,6 +60,14 @@ export function ValidationPanel({ regionQuery }: { regionQuery: string }) {
     {gc && <><h4>가스 지번의 연간 완전성 ({gc.year})</h4>
       <p>{formatMetric(gc.parcels, '곳')} 중 12개월 {formatMetric(gc.full, '곳')} ({num(gc.full_gwh, 'GWh', 1)}), 여름 격월 고지 <b>{formatMetric(gc.bimonthly, '곳')}</b> ({num(gc.bimonthly_gwh, 'GWh', 1)}), 달이 실제로 빠짐 {formatMetric(gc.partial, '곳')} ({num(gc.partial_gwh, 'GWh', 1)}).</p>
       <p className="validation-note">여름(6~9월)에 한 달을 건너뛰고 다음 달에 두 달 치를 함께 고지하는 지번은 한 해 사용량이 모두 담겨 있어 연간 합계에 넣습니다. 달이 실제로 빠진 지번은 연간 합계에서 뺍니다(0으로 채우지 않음).</p></>}
+    {cm && cmYears.length > 0 && <><h4>탄소공간지도 500m 건물 배출 (팀 수집)</h4>
+      <div className="table-wrap"><table>
+        <thead><tr><th>연도</th><th className="num">전기</th><th className="num">가스</th><th className="num">지역난방</th><th className="num">합계 (천 tCO₂eq)</th><th className="num">칸</th></tr></thead>
+        <tbody>{cmYears.map(([y, v]) => <tr key={y}><td>{y}</td><td className="num">{num(v.elec_t / 1000, '', 1)}</td><td className="num">{num(v.gas_t / 1000, '', 1)}</td><td className="num">{num(v.heat_t / 1000, '', 1)}</td><td className="num">{num(v.total_t / 1000, '', 1)}</td><td className="num">{num(v.cells)}</td></tr>)}</tbody>
+      </table></div>
+      {cm.cells && <p>{cm.cells.year}년 같은 칸 {formatMetric(cm.cells.cells, '곳')}: 이 도구(건축HUB 전력 × {num(cm.cells.factor, '', 4)}) ÷ 탄소공간지도 전기 = 합계 <b>{pct(cm.cells.sum_ratio)}</b>, 칸별 중앙값 {pct(cm.cells.median_ratio)}, ±20% 안 {pct(cm.cells.within_20pct)}, 로그 상관 {num(cm.cells.log_r, '', 2)}.</p>}
+      {cm.developments && cm.developments.cases > 0 && <p className="muted">개발 사례(연면적이 크게 는 500m 칸 × 두 시점) {formatMetric(cm.developments.cases, '건')}, 전후 모두 쓸 수 있는 것 {formatMetric(cm.developments.usable, '건')}.</p>}
+      <p className="validation-note">탄소공간지도는 한국부동산원 건물에너지 DB로 산정해 단독주택·지역난방까지 들어 있습니다. 건축HUB API(단독주택·소규모 공동주택 제외)보다 넓어서, 같은 칸의 비율은 이 도구가 놓치는 몫을 보여 줍니다. 2024년은 일부 칸이 원자료 누락으로 급감해 있습니다(공장·관리지역 등).</p></>}
     {g && <><h4>온실가스: 지역 인벤토리 ↔ 이 도구 계산</h4>
       <dl className="compact-list">
         <div><dt>인벤토리 {g.gir_year}년 건물 등</dt><dd>연료(직접) {num(g.gir_building_direct_kt)} · 전력 {num(g.gir_building_electricity_kt)} · 열 {num(g.gir_building_heat_kt)} 천 tCO₂eq</dd></div>

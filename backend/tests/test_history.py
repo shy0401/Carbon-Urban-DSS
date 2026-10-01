@@ -177,3 +177,14 @@ def test_provider_outage_stops_the_dataset_for_this_run_and_asks_for_a_later_one
     up = lambda year=None: calls.append(year) or {'status': 'DONE', 'failed': 0, 'retry_rounds': 2}  # noqa: E731
     later = collect_history(FakeDb(), 2024, 2025, datasets=['kapt_energy'], data_dir=tmp_path, runners={'kapt_energy': up}, log=lambda m: None)
     assert calls == [2025, 2025, 2024] and later['provider_retry'] == []
+
+
+def test_energy_years_probed_with_the_new_code_only_are_asked_again(tmp_path):
+    from app.history import ENERGY_PROBE_VERSION, Progress
+    p = Progress(tmp_path / "p.json")
+    p.set("energy", 2022, "NOT_PUBLISHED", probe="건축HUB 법정동 7월 응답 없음")
+    assert not p.done("energy", 2022)
+    p.set("energy", 2022, "NOT_PUBLISHED", probe="x", probe_version=ENERGY_PROBE_VERSION)
+    assert p.done("energy", 2022)
+    p.set("sgis", 2022, "NOT_PUBLISHED")
+    assert p.done("sgis", 2022)

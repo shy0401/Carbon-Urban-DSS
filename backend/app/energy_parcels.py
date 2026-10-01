@@ -4,7 +4,8 @@ The 건축HUB API answers one 법정동 × month with every metered parcel when 
 (``bun=''&ji=''``), 100 rows per page. That is ~4,000 requests per year for the whole city instead
 of ~6,500 for 298 apartment parcels one by one, and it adds offices, shops, schools and large
 apartment blocks alike. Excluded by the provider: 단독주택, 200세대 미만 공동주택(2020-), and
-industrial/transport/power uses. Data exist from 2024-01 (earlier months answer empty).
+industrial/transport/power uses. Data exist from 2020-01; 전북 months up to 2023-10 answer only to the old
+시·군·구 code (45xxx, ``request_sigungu``) — asked with the new code they look empty.
 
 * Rows go into ``energy_monthly`` like the per-parcel collector (same keys, same source name), so the
   apartment analysis keeps working unchanged; ``merge_energy_coordinates`` still links only unique
@@ -72,6 +73,19 @@ def build_parcel_grid(db: Any) -> int:
     return db.scalar(select(func.count()).select_from(ParcelGrid)) or 0
 
 
+# 전북특별자치도 출범(2024-01)으로 시·군·구 코드가 45xxx → 52xxx로 바뀌었다. 건축HUB는 2023-10 사용분까지 옛 코드로만
+# 답한다(팀 데이터셋 urban-carbon의 단지 80곳으로 확인: 새 코드로 물으면 2023년 이전이 모두 빈 응답). 2020-01분부터 있다.
+OLD_SIGUNGU = {"52": ("45", "202310")}
+
+
+def request_sigungu(sigungu: str, use_ym: str) -> str:
+    """The 시·군·구 code 건축HUB expects for that month (old code before the province was renamed)."""
+    rule = OLD_SIGUNGU.get(str(sigungu)[:2])
+    if rule and str(use_ym) <= rule[1]:
+        return rule[0] + str(sigungu)[2:]
+    return str(sigungu)
+
+
 def _request(session: Any, operation: str, params: dict[str, Any], attempts: int = 3) -> tuple[list[dict[str, Any]], int]:
     for attempt in range(attempts):
         response = None
@@ -121,8 +135,8 @@ def probe_year(db: Any, year: int, *, client: Any | None = None, service_key: st
     region = max(regions, key=lambda r: counts.get(f"{r['sigunguCd']}{r['bjdongCd']}", 0))
     total = 0
     for operation in OPERATIONS.values():
-        _, found = _request(session, operation, dict(serviceKey=key, sigunguCd=region["sigunguCd"], bjdongCd=region["bjdongCd"],
-                                                      bun="", ji="", useYm=f"{year}07", numOfRows=PAGE, pageNo=1, _type="json"))
+        _, found = _request(session, operation, dict(serviceKey=key, sigunguCd=request_sigungu(region["sigunguCd"], f"{year}07"),
+                                                      bjdongCd=region["bjdongCd"], bun="", ji="", useYm=f"{year}07", numOfRows=PAGE, pageNo=1, _type="json"))
         total += found
     return total
 
@@ -160,7 +174,7 @@ def collect_energy_all(db: Any, year: int, progress: Callable[[float, str], None
             for energy_type, operation in OPERATIONS.items():
                 page = 1
                 while True:
-                    params = dict(serviceKey=key, sigunguCd=sg, bjdongCd=bd, bun="", ji="", useYm=ym, numOfRows=PAGE, pageNo=page, _type="json")
+                    params = dict(serviceKey=key, sigunguCd=request_sigungu(sg, ym), bjdongCd=bd, bun="", ji="", useYm=ym, numOfRows=PAGE, pageNo=page, _type="json")
                     rows, total = _request(session, operation, params)
                     stats["requests"] += 1
                     for raw in rows:

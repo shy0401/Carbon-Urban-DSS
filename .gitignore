@@ -29,3 +29,6 @@ scripts/llm/out*/
 .venv-llm/
 # 공공데이터포털 SGIS 격자 원본 패키지(전국). scripts/sgis/extract_sgis_grid.py(--national)로 data/raw/sgis_grid_1k에 정리해 씀
 국가데이터처_SGIS*/
+# 팀원 데이터셋 공유 묶음(urban-carbon). 국토통계지도 자료가 있어 국외 반출 금지: Git·외부에 올리지 않음.
+# 이 도구는 필요한 표만 data/raw/team_urban_carbon/<묶음 날짜>/에 복사해 읽음(python -m app.cli import-team-grid)
+urban-carbon_공유_*/

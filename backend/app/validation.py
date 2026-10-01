@@ -228,10 +228,22 @@ def region_validation(db: Any, region: str | None = None) -> dict[str, Any]:
     except Exception:  # noqa: BLE001 - array_agg needs PostgreSQL
         db.rollback()
 
+    # 탄소공간지도 500m 건물 배출(팀 데이터셋): 지역 합계와, 같은 해 이 도구의 건축HUB 전력 탄소를 칸끼리
+    carbonmap = None
+    try:
+        from .team_grid import carbonmap_comparison, developments
+        carbonmap = carbonmap_comparison(db, sc.code)
+        if carbonmap is not None:
+            devs = developments(db, sc.code)
+            usable = [d for d in devs if d.get("pair_usable") in (True, "True")]
+            carbonmap["developments"] = {"cases": len(devs), "usable": len(usable)}
+    except Exception:  # noqa: BLE001
+        db.rollback()
+
     if not hub_years:
         notes.append("이 지역에는 아직 건축HUB 지번 에너지가 없습니다(상세 자료 수집 후 비교)")
     return {"region": {"code": sc.code, "name": sc.name, "short_name": sc.short}, "electricity": electricity, "kapt_vs_hub": kapt_pairs,
-            "ghg": ghg, "population": population, "grid_link": link, "gas_completeness": gas_completeness, "notes": notes,
+            "ghg": ghg, "population": population, "grid_link": link, "gas_completeness": gas_completeness, "carbonmap": carbonmap, "notes": notes,
             "sources": {"hub": "건축HUB 건물에너지 (지번 월별, 모든 지번)", "kepco": "한국전력공사 시군구별 전력판매량 (계약종별)",
                         "kapt": "K-apt 공동주택 관리비 에너지 (단지 월별)", "gir": "온실가스종합정보센터 지역 온실가스 인벤토리",
                         "sgis": "SGIS 행정구역 통계·500m 격자 통계"}}

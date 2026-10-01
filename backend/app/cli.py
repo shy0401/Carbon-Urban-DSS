@@ -8,7 +8,7 @@ from .catalog import seed_sources
 from .settings import DATA_DIR,DEFAULT_YEAR
 
 def init_tables():
-    from . import official,kapt,kapt_energy,kma_asos,sgis,sgis_grid,vworld,energy_parcels,sgis_grid_official,regions,national,ordinances,sgis_grid500,regional_stats
+    from . import official,kapt,kapt_energy,kma_asos,sgis,sgis_grid,vworld,energy_parcels,sgis_grid_official,regions,national,ordinances,sgis_grid500,regional_stats,team_grid
     try:from . import imports
     except ImportError:pass
     with engine.begin() as c:c.execute(text('CREATE EXTENSION IF NOT EXISTS postgis'))
@@ -22,7 +22,7 @@ def init_tables():
         except Exception:db.rollback()
 
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument('command',choices=['demo','online','status','enrich','collect','collect-history','collect-missing','validate-models','snapshot','llm-dataset','llm-eval','import-sgis-grid','import-sgis-grid500','import-regional-stats',
+    parser=argparse.ArgumentParser();parser.add_argument('command',choices=['demo','online','status','enrich','collect','collect-history','collect-missing','validate-models','snapshot','llm-dataset','llm-eval','import-sgis-grid','import-sgis-grid500','import-regional-stats','import-team-grid',
         'national-admin','national-sgis','national-complexes','national-grid500','national-ordinances','national-all','prepare-region','regions']);parser.add_argument('--year',type=int,default=DEFAULT_YEAR)
     parser.add_argument('--from',dest='from_year',type=int,default=2015);parser.add_argument('--to',dest='to_year',type=int,default=DEFAULT_YEAR)
     parser.add_argument('--datasets',default='',help='comma-separated: sgis,kma_asos,kapt_energy,energy,vworld_zoning,vworld_buildings,vworld_cadastral,building_register');parser.add_argument('--force',action='store_true')
@@ -97,6 +97,11 @@ def main():
             from .regional_stats import import_all,row_counts
             result=import_all(db,force=args.force)
             print(json.dumps(dict(result,rows=row_counts(db)),ensure_ascii=False))
+        elif args.command=='import-team-grid':
+            # 팀 데이터셋(urban-carbon): DATA_DIR/raw/team_urban_carbon/<묶음 날짜>/<5자리 코드>_<도시>/<연도>/grid_500m.csv 등
+            from .team_grid import import_team_grid,counts
+            result=import_team_grid(db,Path(args.file) if args.file else None,force=args.force,log=lambda m:print(m,flush=True))
+            print(json.dumps(dict(result,rows=counts(db)),ensure_ascii=False))
         elif args.command=='validate-models':
             from .model_service import model_status
             print(json.dumps(model_status(db,args.year,train=True,region=args.region),ensure_ascii=False,indent=2))

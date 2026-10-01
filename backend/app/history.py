@@ -35,6 +35,7 @@ KAPT_GAP_TOLERANCE = float(os.getenv("KAPT_GAP_TOLERANCE", "0.05"))
 KAPT_MAX_PASSES = int(os.getenv("KAPT_MAX_PASSES", "3"))
 KAPT_PROVIDER_RETRY_H = float(os.getenv("KAPT_PROVIDER_RETRY_H", "2"))
 ENERGY_SCOPE = "all_parcels"  # 건축HUB by 법정동 (every parcel); earlier per-apartment-parcel runs are redone once  # one request per complex-month: collected after everything else
+ENERGY_PROBE_VERSION = 2  # 2: 전북 months up to 2023-10 are asked with the old 45xxx code (energy_parcels.request_sigungu)
 ALL_DATASETS = YEARLY + ONCE
 
 LABELS = {
@@ -143,7 +144,10 @@ class Progress:
         return self.state["items"].get(self.key(dataset, year), {}).get("status")
 
     def done(self, dataset: str, year: int | None) -> bool:
-        return self.status(dataset, year) in {"DONE", "NOT_PUBLISHED"}
+        item = self.state["items"].get(self.key(dataset, year), {})
+        if dataset == "energy" and item.get("status") == "NOT_PUBLISHED" and (item.get("probe_version") or 1) < ENERGY_PROBE_VERSION:
+            return False  # probed with the new 시·군·구 code only (before request_sigungu): ask again
+        return item.get("status") in {"DONE", "NOT_PUBLISHED"}
 
     def set(self, dataset: str, year: int | None, status: str, **detail: Any) -> None:
         self.state["items"][self.key(dataset, year)] = {"status": status, "at": _now(), **detail}
@@ -240,7 +244,7 @@ def _default_runners(db: Any, hooks: dict[str, Any] | None = None) -> dict[str, 
 
         if rows(f"{year}01", f"{year}12") < 1000 and not probe_year(db, year):
             # 2 requests (one busy 법정동, July): 건축HUB has no data before 2024.
-            return {"status": "NOT_PUBLISHED", "scope": ENERGY_SCOPE, "probe": "건축HUB 법정동 7월 응답 없음"}
+            return {"status": "NOT_PUBLISHED", "scope": ENERGY_SCOPE, "probe": "건축HUB 법정동 7월 응답 없음", "probe_version": ENERGY_PROBE_VERSION}
         stats = collect_energy_all(db, year, report)
         merged = merge_energy_coordinates(db, year)
         linked = db.scalar(select(func.count()).select_from(ParcelGrid)) or build_parcel_grid(db)
