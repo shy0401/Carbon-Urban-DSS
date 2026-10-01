@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import math
 from collections import defaultdict
-from typing import Any, Iterable
+from typing import Any, Iterable, Literal
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -497,7 +497,11 @@ def before_after(history: dict[str, Any], event_year: int | None = None, window:
     return result
 
 
-def effort(history: dict[str, Any], plan: dict[str, Any], target_pct: float, pv_yield_kwh_per_kw: float | None = None) -> dict[str, Any]:
+EFFORT_BASIS = {"apartments": "공동주택(K-apt 관리비 전력)", "buildings": "건물 전체(건축HUB 계측 지번, 상가·업무 포함)"}
+
+
+def effort(history: dict[str, Any], plan: dict[str, Any], target_pct: float, pv_yield_kwh_per_kw: float | None = None,
+           basis: str = "apartments") -> dict[str, Any]:
     """How much reduction a future development needs to meet a target.
 
     baseline = latest year with a complete observed electricity total in the area;
@@ -506,14 +510,32 @@ def effort(history: dict[str, Any], plan: dict[str, Any], target_pct: float, pv_
     Returns the required efficiency for new buildings only, for all buildings, and the
     electricity that on-site generation would have to offset. Electricity only unless a
     gas factor is registered.
+
+    basis "apartments": the K-apt apartment series (one source across years).
+    basis "buildings":  every metered parcel of the area's grids (건축HUB, 2024~) — shops, offices and schools
+    included, so a commercial area is measured against the buildings that are actually there.
     """
     if not (0 <= target_pct <= 100):
         raise ValueError("목표 감축률은 0~100% 입니다")
+    if basis not in EFFORT_BASIS:
+        raise ValueError("기준 건물은 apartments 또는 buildings 입니다")
     factor = history.get("factor", {}).get("electricity")
+    if not factor:
+        return {"available": False, "reason": "전력 배출계수가 등록되어 있지 않습니다", "basis": basis, "basis_label": EFFORT_BASIS[basis]}
+    if basis == "buildings":
+        years = (history.get("building_energy") or {}).get("years") or {}
+        base_year = next((y for y in sorted(years, reverse=True)
+                          if years[y].get("complete") and years[y].get("electricity_kwh") and years[y].get("kwh_per_m2") and years[y].get("area_m2")), None)
+        if base_year is None:
+            return {"available": False, "basis": basis, "basis_label": EFFORT_BASIS[basis],
+                    "reason": "구역 안에 12개월 계측된 건축HUB 지번(연면적 확인)이 없어 건물 전체 기준으로 계산할 수 없습니다"}
+        item = years[base_year]
+        return _effort_result(history, plan, target_pct, pv_yield_kwh_per_kw, factor, base_year, "OBSERVED",
+                              float(item["kwh_per_m2"]), float(item["electricity_kwh"]), float(item["area_m2"]), basis,
+                              f"신축 부하 = 계획 연면적 × 구역 건물 전체 관측 전력 원단위 {float(item['kwh_per_m2']):,.2f} kWh/m²·년 "
+                              f"({base_year}년 건축HUB, 12개월 계측 지번 {item.get('electricity_complete') or 0}곳, 연면적 확인 {float(item['area_m2']):,.0f}m²)")
     base_year = next((y for y in sorted(history["energy"], reverse=True)
                       if history["energy"][y]["electricity"]["kwh"] is not None and history["energy"][y]["electricity"]["intensity_kwh_per_m2"]), None)
-    if not factor:
-        return {"available": False, "reason": "전력 배출계수가 등록되어 있지 않습니다"}
     baseline_mode = "OBSERVED"
     if base_year is not None:
         elec = history["energy"][base_year]["electricity"]
@@ -531,6 +553,13 @@ def effort(history: dict[str, Any], plan: dict[str, Any], target_pct: float, pv_
         intensity = city["kwh_per_m2"]
         base_kwh = stock["gfa_m2"] * intensity
         basis_area = stock["gfa_m2"]
+    load_text = (f"신축 부하 = 계획 연면적 × 지역 관측 전력 원단위 {intensity:,.2f} kWh/m²·년 ({base_year}년, 연면적 {basis_area:,.0f}m² 기준)" if baseline_mode == "OBSERVED"
+                 else f"지역 관측이 없어 기준 부하를 추정했습니다: 단지 연면적 {basis_area:,.0f}m² × {history.get('region_label') or '전주'} 관측 원단위 {intensity:,.2f} kWh/m²·년")
+    return _effort_result(history, plan, target_pct, pv_yield_kwh_per_kw, factor, base_year, baseline_mode, intensity, base_kwh, basis_area, basis, load_text)
+
+
+def _effort_result(history: dict[str, Any], plan: dict[str, Any], target_pct: float, pv_yield_kwh_per_kw: float | None, factor: float,
+                   base_year: int, baseline_mode: str, intensity: float, base_kwh: float, basis_area: float, basis: str, load_text: str) -> dict[str, Any]:
     added = plan.get("added_floor_area_m2")
     if added is None and plan.get("floors") and plan.get("building_count") and plan.get("footprint_per_building"):
         added = float(plan["floors"]) * float(plan["building_count"]) * float(plan["footprint_per_building"])
@@ -564,7 +593,7 @@ def effort(history: dict[str, Any], plan: dict[str, Any], target_pct: float, pv_
                       "new_only_efficiency_pct": round(nc / new_c * 100, 1) if new_c > 0 else None})
     return {
         "available": True, "baseline_year": base_year, "target_pct": target_pct,
-        "baseline_mode": baseline_mode, "data_class": "SCENARIO",
+        "baseline_mode": baseline_mode, "data_class": "SCENARIO", "basis": basis, "basis_label": EFFORT_BASIS[basis],
         "intensity_kwh_per_m2": intensity, "intensity_area_m2": basis_area,
         "added_floor_area_m2": round(added, 1), "removed_floor_area_m2": round(removed, 1),
         "baseline_kwh": round(base_kwh, 1), "baseline_kgco2eq": round(base_c, 1),
@@ -574,8 +603,8 @@ def effort(history: dict[str, Any], plan: dict[str, Any], target_pct: float, pv_
         "options": options, "curve": curve, "factor_kgco2eq_per_kwh": factor,
         "scope": "전력 운영탄소 기준 (가스는 배출계수 확정 후 추가)",
         "assumptions": [
-            (f"신축 부하 = 계획 연면적 × 지역 관측 전력 원단위 {intensity:,.2f} kWh/m²·년 ({base_year}년, 연면적 {basis_area:,.0f}m² 기준)" if baseline_mode == "OBSERVED"
-             else f"지역 관측이 없어 기준 부하를 추정했습니다: 단지 연면적 {basis_area:,.0f}m² × {history.get('region_label') or '전주'} 관측 원단위 {intensity:,.2f} kWh/m²·년"),
+            load_text,
+            *(["기준 부하는 구역 격자에 배치된 건축HUB 12개월 계측 지번 전체의 전력입니다(단독주택·200세대 미만 공동주택 등 제공 범위 밖 제외)"] if basis == "buildings" else []),
             "기상은 기준 연도와 같다고 가정합니다 (별도 기상 보정 없음)",
             "가스는 이 계산에 넣지 않았습니다 (가스 배출계수 기준 확정 후 추가)",
             "태양광 설비 용량은 사용자가 입력한 kW당 연 발전량 가정으로만 환산합니다" if pv_yield_kwh_per_kw else "태양광은 연간 상쇄 전력량(kWh)으로만 표시합니다 (설비 용량 환산에는 지역 발전량 근거 필요)",
@@ -825,6 +854,8 @@ def area_facts(history: dict[str, Any], comparison: dict[str, Any] | None = None
         if effort_result.get("baseline_mode") == "ESTIMATED":
             city = history.get("city_intensity") or {}
             add("effort_basis", f"이 지역은 관측 전력이 없어 기준 부하를 단지 연면적 {effort_result['intensity_area_m2']:,.0f}m²와 {history.get('region_label') or '전주'} 관측 원단위 {effort_result['intensity_kwh_per_m2']:,.2f} kWh/m²·년({city.get('year')}년, 관측 지번 {city.get('parcels')}곳 기준)으로 추정했습니다. 관측 지번이 적을수록 추정 오차가 큽니다.", effort_result["intensity_area_m2"], effort_result["intensity_kwh_per_m2"], city.get("year"), city.get("parcels"))
+        if effort_result.get("basis") == "buildings":
+            add("effort_basis", f"감축 노력은 구역 건물 전체(건축HUB 계측 지번, 상가·업무 포함) 기준입니다: {effort_result['baseline_year']}년 전력 {effort_result['baseline_kwh']:,.0f} kWh, 원단위 {effort_result['intensity_kwh_per_m2']:,.2f} kWh/m²·년.", effort_result["baseline_year"], effort_result["baseline_kwh"], effort_result["intensity_kwh_per_m2"])
         add("effort_target", f"{effort_result['baseline_year']}년 대비 {effort_result['target_pct']:,.0f}% 감축을 목표로 하면 계획 반영 후 연간 {effort_result['required_reduction_kgco2eq']:,.0f} kgCO2eq를 줄여야 합니다.", effort_result["baseline_year"], effort_result["target_pct"], effort_result["required_reduction_kgco2eq"])
         if effort_result["already_met"]:
             add("effort_met", "계획을 반영해도 목표 이하이므로 추가 감축이 필요하지 않습니다.")
@@ -1014,7 +1045,8 @@ def prepare_inputs(db: Any, years: list[int], region: str | None = None) -> dict
 
 def analyze(db: Any, spec: dict[str, Any], from_year: int, to_year: int, event_year: int | None = None,
             window: int = 3, plan: dict[str, Any] | None = None, target_pct: float | None = None,
-            pv_yield: float | None = None, *, inputs: dict[str, Any] | None = None, region: str | None = None) -> dict[str, Any]:
+            pv_yield: float | None = None, *, inputs: dict[str, Any] | None = None, region: str | None = None,
+            effort_basis: str = "apartments") -> dict[str, Any]:
     if from_year > to_year or to_year - from_year > 30:
         raise ValueError("분석 기간을 확인하세요 (최대 31년)")
     years = list(range(from_year, to_year + 1))
@@ -1024,7 +1056,7 @@ def analyze(db: Any, spec: dict[str, Any], from_year: int, to_year: int, event_y
     area = resolve_area(spec, inputs["grids"], complex_points, inputs["admin"], inputs["zoning"])
     history = build_history(area, years, inputs)
     comparison = before_after(history, event_year, window)
-    effort_result = effort(history, plan or {}, target_pct, pv_yield) if target_pct is not None else None
+    effort_result = effort(history, plan or {}, target_pct, pv_yield, effort_basis) if target_pct is not None else None
     members = set(area["grid_ids"])
     grid_features = {"type": "FeatureCollection", "features": [
         {"type": "Feature", "id": g["id"], "geometry": g["geometry"], "properties": {"id": g["id"]}}
@@ -1068,6 +1100,8 @@ class AnalyzeInput(BaseModel):
     plan: PlanInput | None = None
     target_pct: float | None = Field(default=None, ge=0, le=100)
     pv_yield_kwh_per_kw: float | None = Field(default=None, gt=0)
+    # 감축 노력의 기준 건물: 공동주택(K-apt) 또는 건물 전체(건축HUB, 상가·업무 포함)
+    effort_basis: Literal["apartments", "buildings"] = "apartments"
 
 
 @router.get("/options")
@@ -1123,7 +1157,7 @@ def area_analyze(request: AnalyzeInput) -> dict[str, Any]:
         try:
             return analyze(db, request.area.model_dump(), request.from_year, request.to_year, request.event_year,
                            request.window, request.plan.model_dump() if request.plan else None, request.target_pct,
-                           request.pv_yield_kwh_per_kw, region=request.region)
+                           request.pv_yield_kwh_per_kw, region=request.region, effort_basis=request.effort_basis)
         except RegionNotReady as exc:
             raise HTTPException(404, str(exc)) from None
         except (ValueError, KeyError) as exc:

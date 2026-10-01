@@ -68,6 +68,9 @@
 .area-effort-form .field-grid { margin-top: 0; }
 .area-effort-form .panel-title { margin-bottom: 0; }
 .area-target { display: grid; gap: var(--sp-1); }
+.area-effort-basis { display: grid; gap: var(--sp-1); }
+.area-effort-basis > span { font-size: var(--fs-label); font-weight: 500; color: var(--ink-2); }
+.area-effort-basis small { line-height: 1.4; }
 .area-target > div { display: grid; grid-template-columns: minmax(0, 1fr) 96px; gap: var(--sp-3); align-items: center; }
 .area-target input[type='range'] { width: 100%; accent-color: var(--primary); }
 .area-headline { margin: 0 0 var(--sp-3); padding: var(--sp-3); border-left: 4px solid var(--line-strong); border-radius: var(--r-map); background: var(--surface-sunk); font-size: var(--fs-body); font-weight: 500; line-height: 1.55; }

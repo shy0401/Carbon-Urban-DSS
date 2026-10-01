@@ -52,6 +52,28 @@ describe('AreaPage', () => {
     expect(screen.getByText('SGIS 격자 통계를 아직 가져오지 않았습니다')).toBeInTheDocument();
   });
 
+  it('감축 노력의 기준을 건물 전체(건축HUB)로 바꾸면 그 기준으로 다시 계산을 요청한다', async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.endsWith('/api/areas/options')) return new Response(JSON.stringify({ admin: [{ code: '35011790', name: '완산구 효자5동' }], admin_geojson: { type: 'FeatureCollection', features: [] }, admin_year: 2024, zones: [], energy_years: [2025], default_grid: 'cell_1' }));
+      if (url.endsWith('/api/areas/collection')) return new Response(JSON.stringify({ items: {}, runs: [], summary: {} }));
+      if (url.endsWith('/api/areas/analyze')) {
+        const body = JSON.parse(String(init?.body)); bodies.push(body);
+        const basis = body.effort_basis === 'buildings' ? 'buildings' : 'apartments';
+        return new Response(JSON.stringify({ ...analysis, effort: { ...analysis.effort, basis, baseline_mode: 'OBSERVED' } }));
+      }
+      if (url.endsWith('/api/area-reports')) return new Response(JSON.stringify([]));
+      return new Response('{}', { status: 404 });
+    });
+    render(<AreaPage />);
+    await waitFor(() => expect(bodies.length).toBeGreaterThan(0));
+    expect(bodies[0]).toMatchObject({ effort_basis: 'apartments' });
+    (await screen.findByRole('tab', { name: '건물 전체 (건축HUB)' })).click();
+    await waitFor(() => expect(bodies.some((b) => b.effort_basis === 'buildings')).toBe(true), { timeout: 3000 });
+    expect(await screen.findByText(/기준 부하 관측 · 2020년 · 건물 전체 \(건축HUB\)/)).toBeInTheDocument();
+  });
+
   it('SGIS 1km 격자 합계는 관측, 면적 비례 인구는 추정으로 따로 보여 준다', async () => {
     const sgis = {
       year: 2024, cells: 3, cells_with_stats: 2, coverage_pct: 33.3, source: 'SGIS',

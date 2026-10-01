@@ -169,9 +169,15 @@ export interface BeforeAfter {
   gaps?: string[];
 }
 
+/** 감축 노력의 기준 건물: 공동주택(K-apt) 또는 구역 건물 전체(건축HUB, 상가·업무 포함). */
+export type EffortBasis = 'apartments' | 'buildings';
+export const EFFORT_BASIS_LABEL: Record<EffortBasis, string> = { apartments: '공동주택 (K-apt)', buildings: '건물 전체 (건축HUB)' };
+
 export interface EffortResult {
   available: boolean;
   reason?: string;
+  basis?: EffortBasis;
+  basis_label?: string;
   baseline_year?: number;
   target_pct?: number;
   baseline_mode?: 'OBSERVED' | 'ESTIMATED';

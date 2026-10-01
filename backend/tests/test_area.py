@@ -110,6 +110,29 @@ def test_effort_is_the_exact_gap_to_the_target():
         effort(history, {}, 120)
 
 
+def test_effort_on_every_metered_building_uses_the_building_energy_block():
+    """A commercial area: the target is measured against the shops and offices that are there (건축HUB), not only the apartments."""
+    area = resolve_area({'type': 'admin', 'code': '35012650'}, GRIDS, POINTS, ADMIN, ZONING)
+    history = build_history(area, YEARS, inputs())
+    history['building_energy'] = {'available': True, 'years': {
+        2024: {'year': 2024, 'electricity_kwh': 5000000.0, 'electricity_complete': 40, 'kwh_per_m2': 60.0, 'area_m2': 80000.0, 'complete': True},
+        2025: {'year': 2025, 'electricity_kwh': 5200000.0, 'electricity_complete': 41, 'kwh_per_m2': 61.0, 'area_m2': 81000.0, 'complete': False}}}
+    result = effort(history, {'added_floor_area_m2': 10000}, 20, 1300, basis='buildings')
+    bau = (5000000 + 60.0 * 10000) * 0.5
+    need = bau - 5000000 * 0.5 * 0.8
+    assert result['basis'] == 'buildings' and result['baseline_year'] == 2024  # 2025 is not a complete year yet
+    assert result['baseline_kwh'] == 5000000.0 and result['intensity_kwh_per_m2'] == 60.0 and result['new_load_kwh'] == 600000.0
+    assert result['required_reduction_kgco2eq'] == pytest.approx(need, abs=0.1)
+    assert result['options']['pv_capacity_kw'] == pytest.approx(need / 0.5 / 1300, abs=0.1)
+    assert '건축HUB' in result['assumptions'][0]
+    history['building_energy'] = {'available': False, 'years': {}}
+    missing = effort(history, {'added_floor_area_m2': 10000}, 20, basis='buildings')
+    assert missing['available'] is False and missing['basis'] == 'buildings'
+    with pytest.raises(ValueError):
+        effort(history, {}, 20, basis='shops')
+    assert effort(history, {'added_floor_area_m2': 40000}, 40)['basis'] == 'apartments'  # unchanged default
+
+
 def test_effort_estimates_the_baseline_when_the_area_has_no_observation():
     area = resolve_area({'type': 'zone', 'category': 'COMMERCIAL'}, GRIDS, POINTS, ADMIN, ZONING)
     history = build_history(area, YEARS, inputs())

@@ -11,7 +11,7 @@ import { EmptyState, ErrorState, LoadingState } from '../components/Status';
 import { useAnalysisScope } from '../hooks/useAnalysisScope';
 import { useApi } from '../hooks/useApi';
 import { api } from '../lib/api';
-import { at, buildSpec, effortHeadline, eventYears, MODE_LABEL, planBody, plannedArea, REPORT_MODE_LABEL, type AreaAnalysis, type AreaMode, type AreaOptions, type AreaReport, type AreaSpec, type BeforeAfter, type EffortResult, type PlanState } from '../lib/area';
+import { at, buildSpec, EFFORT_BASIS_LABEL, effortHeadline, eventYears, MODE_LABEL, planBody, plannedArea, REPORT_MODE_LABEL, type AreaAnalysis, type AreaMode, type AreaOptions, type AreaReport, type AreaSpec, type BeforeAfter, type EffortBasis, type EffortResult, type PlanState } from '../lib/area';
 import { formatDate, formatMetric } from '../lib/format';
 
 const YEARS = Array.from({ length: 17 }, (_, i) => 2010 + i);
@@ -40,6 +40,7 @@ export function AreaPage() {
   const [plan, setPlan] = useState<PlanState>(DEFAULT_PLAN);
   const [target, setTarget] = useState(DEFAULT_TARGET);
   const [pvYield, setPvYield] = useState('');
+  const [effortBasis, setEffortBasis] = useState<EffortBasis>('apartments');
   const [analysis, setAnalysis] = useState<AreaAnalysis | null>(null);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -63,7 +64,7 @@ export function AreaPage() {
     const id = ++revision.current;
     setRunning(true); setError(null);
     const pv = Number(pvYield);
-    const body = { area: spec, region, from_year: fromYear, to_year: toYear, event_year: eventYear, window: windowSize, plan: planBody(plan), target_pct: target, pv_yield_kwh_per_kw: pvYield && pv > 0 ? pv : null };
+    const body = { area: spec, region, from_year: fromYear, to_year: toYear, event_year: eventYear, window: windowSize, plan: planBody(plan), target_pct: target, pv_yield_kwh_per_kw: pvYield && pv > 0 ? pv : null, effort_basis: effortBasis };
     try {
       const result = await api<AreaAnalysis>('/areas/analyze', { method: 'POST', body: JSON.stringify(body) });
       if (id !== revision.current) return;
@@ -74,7 +75,7 @@ export function AreaPage() {
     } finally {
       if (id === revision.current) setRunning(false);
     }
-  }, [fromYear, toYear, eventYear, windowSize, plan, target, pvYield, region]);
+  }, [fromYear, toYear, eventYear, windowSize, plan, target, pvYield, effortBasis, region]);
   const runRef = useRef(run); runRef.current = run;
   // Another region: its 행정동, zones and grids are different, so start over there.
   const shownRegion = useRef(region);
@@ -97,7 +98,7 @@ export function AreaPage() {
     if (!lastSpec.current) return;
     const timer = window.setTimeout(() => { if (lastSpec.current) void runRef.current(lastSpec.current); }, 450);
     return () => window.clearTimeout(timer);
-  }, [fromYear, toYear, eventYear, windowSize, plan, target, pvYield]);
+  }, [fromYear, toYear, eventYear, windowSize, plan, target, pvYield, effortBasis]);
   useEffect(() => {
     if (mode !== 'circle' || !center || lastSpec.current?.type !== 'circle') return;
     const timer = window.setTimeout(() => void runRef.current(specFor('circle')), 450);
@@ -174,7 +175,7 @@ export function AreaPage() {
       <BeforeAfterPanel comparison={analysis.before_after} candidates={eventYears(analysis.history)} eventYear={eventYear} setEventYear={setEventYear} windowSize={windowSize} setWindowSize={setWindowSize} />
 
       <div className="section-label"><h2>미래 개발과 감축 노력</h2><span>목표 감축률을 넣으면 필요한 노력을 계산합니다</span></div>
-      <EffortPanel effort={analysis.effort} plan={plan} setPlan={setPlan} target={target} setTarget={setTarget} pvYield={pvYield} setPvYield={setPvYield} />
+      <EffortPanel effort={analysis.effort} plan={plan} setPlan={setPlan} target={target} setTarget={setTarget} pvYield={pvYield} setPvYield={setPvYield} basis={effortBasis} setBasis={setEffortBasis} />
 
       <div className="section-label"><h2>보고서</h2><span>계산 엔진의 근거 문장으로 작성하고, 로컬 AI 문장은 숫자 검증을 통과할 때만 씁니다</span></div>
       <ReportPanel request={() => ({ area: lastSpec.current, region, from_year: fromYear, to_year: toYear, event_year: eventYear, window: windowSize, plan: planBody(plan), target_pct: target, pv_yield_kwh_per_kw: pvYield && Number(pvYield) > 0 ? Number(pvYield) : null })} label={analysis.history.area.label} />
@@ -322,7 +323,7 @@ function BeforeAfterPanel({ comparison, candidates, eventYear, setEventYear, win
   </section>;
 }
 
-function EffortPanel({ effort, plan, setPlan, target, setTarget, pvYield, setPvYield }: { effort: EffortResult | null; plan: PlanState; setPlan: (p: PlanState) => void; target: number; setTarget: (t: number) => void; pvYield: string; setPvYield: (v: string) => void }) {
+function EffortPanel({ effort, plan, setPlan, target, setTarget, pvYield, setPvYield, basis, setBasis }: { effort: EffortResult | null; plan: PlanState; setPlan: (p: PlanState) => void; target: number; setTarget: (t: number) => void; pvYield: string; setPvYield: (v: string) => void; basis: EffortBasis; setBasis: (b: EffortBasis) => void }) {
   const headline = effortHeadline(effort);
   const num = (key: keyof PlanState, label: string, unit: string, step = 1) => <label className="field" key={key}><span>{label}</span><div><input type="number" min={0} step={step} value={plan[key] as number} onChange={(e) => setPlan({ ...plan, [key]: Math.max(0, Number(e.target.value)) })} /><em>{unit}</em></div></label>;
   const o = effort?.options;
@@ -341,11 +342,14 @@ function EffortPanel({ effort, plan, setPlan, target, setTarget, pvYield, setPvY
         </div>
         <p className="muted">계획 연면적 {formatMetric(plannedArea(plan), 'm²')}</p>
         <label className="area-target"><span>목표 감축률 (기준 연도 대비)</span><div><input type="range" min={0} max={100} step={1} value={target} onChange={(e) => setTarget(Number(e.target.value))} aria-label="목표 감축률 슬라이더" /><div className="with-unit"><input type="number" min={0} max={100} value={target} onChange={(e) => setTarget(Math.min(100, Math.max(0, Number(e.target.value))))} aria-label="목표 감축률" /><em>%</em></div></div></label>
+        <div className="area-effort-basis"><span>기준 건물</span><div className="area-modes small" role="tablist" aria-label="감축 노력 기준 건물">
+          {(['apartments', 'buildings'] as const).map((b) => <button key={b} role="tab" aria-selected={basis === b} onClick={() => setBasis(b)}>{EFFORT_BASIS_LABEL[b]}</button>)}
+        </div><small className="muted">{basis === 'buildings' ? '상가·업무·학교 등 구역의 계측 건물 전체(2024~). 상업지역은 이 기준이 맞습니다.' : '공동주택 관리비 전력(같은 출처로 연도 비교). 주거지역 기본값.'}</small></div>
         <label className="field"><span>태양광 kW당 연 발전량 (선택)</span><div><input type="number" min={0} step={10} value={pvYield} placeholder="근거가 있을 때만 입력" onChange={(e) => setPvYield(e.target.value)} /><em>kWh/kW</em></div></label>
       </div>
       <div className="area-effort-result">
         {!effort ? <EmptyState title="목표를 넣으면 계산합니다" /> : !effort.available ? <EmptyState title="계산할 근거가 없습니다" description={effort.reason} /> : <>
-          <div className="panel-title"><h3>필요한 노력</h3><div className="badge-row"><ProvenanceBadge kind="scenario" /><span className={`status-tag ${effort.baseline_mode === 'OBSERVED' ? 'good' : 'warn'}`}>기준 부하 {effort.baseline_mode === 'OBSERVED' ? '관측' : '추정'} · {effort.baseline_year}년</span></div></div>
+          <div className="panel-title"><h3>필요한 노력</h3><div className="badge-row"><ProvenanceBadge kind="scenario" /><span className={`status-tag ${effort.baseline_mode === 'OBSERVED' ? 'good' : 'warn'}`}>기준 부하 {effort.baseline_mode === 'OBSERVED' ? '관측' : '추정'} · {effort.baseline_year}년{effort.basis ? ` · ${EFFORT_BASIS_LABEL[effort.basis]}` : ''}</span></div></div>
           {headline && <p className={`area-headline ${headline.tone}`} role="status">{headline.text}</p>}
           <EffortBars effort={effort} />
           <dl className="area-figures cols">
