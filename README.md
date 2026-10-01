@@ -24,7 +24,7 @@
 - 그 밖의 메뉴: 대시보드 · 분석 · 모델 · 지역 시뮬레이션(구역의 과거·개발 전후·목표 감축) · 시뮬레이션(계획안·3D 배치·일조) · 수집 데이터 · 검토 보고서 · 전국 지역.
 - 값마다 **관측 · 계산 · 추정 · 시나리오 · 대체 · 자료 없음** 배지가 붙습니다. 빗금과 "자료 없음"은 0이 아닙니다.
 
-자세한 안내: **[사용 안내 (화면 사진과 순서)](docs/USAGE.md)** · [사용 안내 슬라이드 22장 (.pptx)](docs/usage/Carbon-Urban-DSS-guide.pptx) · **소개와 활용 31장**([.pptx](docs/presentation/Carbon-Urban-DSS-소개와-활용.pptx) · [PDF](docs/presentation/Carbon-Urban-DSS-소개와-활용.pdf), 작업 내역·데이터 범위·사용법·업종별 활용 예시 11가지) · [정확도 점검 발표 17장](docs/presentation/Carbon-Urban-DSS-presentation.pptx) · 앱 메뉴 **사용 방법**(`/guide`) · [전국 자료 현황·보충 자료](docs/NATIONWIDE_DATA.md)
+자세한 안내: **[사용 안내 (화면 사진과 순서)](docs/USAGE.md)** · [사용 안내 슬라이드 22장 (.pptx)](docs/usage/Carbon-Urban-DSS-guide.pptx) · **소개와 활용 31장**([.pptx](docs/presentation/Carbon-Urban-DSS-소개와-활용.pptx) · [PDF](docs/presentation/Carbon-Urban-DSS-소개와-활용.pdf), 작업 내역·데이터 범위·사용법·업종별 활용 예시 11가지) · **소개 · 전주 사례 28장**([.pptx](docs/presentation/Carbon-Urban-DSS-소개-전주사례.pptx) · [PDF](docs/presentation/Carbon-Urban-DSS-소개-전주사례.pdf), 데이터→결과·범위, 에코시티·서부신시가지 시뮬레이션) · [정확도 점검 발표 17장](docs/presentation/Carbon-Urban-DSS-presentation.pptx) · 앱 메뉴 **사용 방법**(`/guide`) · [전국 자료 현황·보충 자료](docs/NATIONWIDE_DATA.md)
 
 ## 실행
 
