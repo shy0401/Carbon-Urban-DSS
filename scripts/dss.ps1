@@ -539,6 +539,20 @@ function Invoke-Snapshot([string]$Base = "http://127.0.0.1:$ApiPort") {
     return ($saved -join ', ')
 }
 
+function New-ZipFromFolder([string]$Folder, [string]$ZipPath, [string]$Level = 'Optimal') {
+    # Streams each file into the zip (UTF-8 names, Zip64 when needed). Compress-Archive in Windows
+    # PowerShell 5.1 keeps entries in memory and cannot store files over 2 GB, so it is not used for bundles.
+    Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
+    if (Test-Path -LiteralPath $ZipPath) { Remove-Item -LiteralPath $ZipPath -Force }
+    [System.IO.Compression.ZipFile]::CreateFromDirectory($Folder, $ZipPath, [System.IO.Compression.CompressionLevel]$Level, $false)
+}
+
+function Expand-ZipToFolder([string]$ZipPath, [string]$Folder) {
+    Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
+    if (Test-Path -LiteralPath $Folder) { Remove-Item -LiteralPath $Folder -Recurse -Force }
+    [System.IO.Compression.ZipFile]::ExtractToDirectory($ZipPath, $Folder)
+}
+
 function Invoke-ExportBundle {
     Invoke-Backup 'bundle' | Out-Null
     $source = $script:LatestBackup
@@ -546,8 +560,8 @@ function Invoke-ExportBundle {
     New-Item -ItemType Directory -Force -Path $stage | Out-Null
     foreach ($name in @('db.dump', 'table-counts.tsv', 'raw-manifest.csv', 'manifest.json')) { Copy-Item -LiteralPath (Join-Path $source $name) -Destination $stage }
     $raw = Join-Path $Root 'data\raw'
-    if (Test-Path -LiteralPath $raw) { Compress-Archive -Path (Join-Path $raw '*') -DestinationPath (Join-Path $stage 'raw.zip') -CompressionLevel Optimal }
-    if ($IncludeUploads -and (Test-Path -LiteralPath (Join-Path $Root 'data\uploads'))) { Compress-Archive -Path (Join-Path $Root 'data\uploads\*') -DestinationPath (Join-Path $stage 'uploads.zip') }
+    if (Test-Path -LiteralPath $raw) { New-ZipFromFolder $raw (Join-Path $stage 'raw.zip') }
+    if ($IncludeUploads -and (Test-Path -LiteralPath (Join-Path $Root 'data\uploads'))) { New-ZipFromFolder (Join-Path $Root 'data\uploads') (Join-Path $stage 'uploads.zip') }
     @(
         'Carbon Urban DSS data bundle',
         'Import on a new PC (after git clone and Docker Desktop start):',
@@ -561,7 +575,8 @@ function Invoke-ExportBundle {
     $bundleDir = Join-Path $Root 'data\backups\bundles'
     New-Item -ItemType Directory -Force -Path $bundleDir | Out-Null
     $zip = Join-Path $bundleDir "carbon-dss-bundle-$Stamp.zip"
-    Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -CompressionLevel Optimal
+    # db.dump (pg_dump -Fc) and raw.zip are already compressed: store them as they are.
+    New-ZipFromFolder $stage $zip 'NoCompression'
     $hash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLower()
     Set-Content -LiteralPath "$zip.sha256" -Value "$hash  $(Split-Path -Leaf $zip)" -Encoding ASCII
     $script:Summary.results.bundle = [ordered]@{ zip = $zip; sha256 = $hash; bytes = (Get-Item -LiteralPath $zip).Length }
@@ -572,7 +587,7 @@ function Invoke-ExportBundle {
 function Invoke-ImportBundle {
     if (-not $BundlePath -or -not (Test-Path -LiteralPath $BundlePath)) { throw 'Use -BundlePath <carbon-dss-bundle-*.zip>' }
     $stage = Join-Path $RunDir 'bundle'
-    Expand-Archive -LiteralPath $BundlePath -DestinationPath $stage -Force
+    Expand-ZipToFolder $BundlePath $stage
     foreach ($line in Get-Content -LiteralPath (Join-Path $stage 'SHA256SUMS.txt')) {
         if ($line -match '^([0-9a-f]{64})\s+(.+)$') {
             $actual = (Get-FileHash -LiteralPath (Join-Path $stage $Matches[2]) -Algorithm SHA256).Hash.ToLower()
@@ -594,7 +609,7 @@ function Invoke-ImportBundle {
     $conflicts = @()
     if (Test-Path -LiteralPath (Join-Path $stage 'raw.zip')) {
         $rawStage = Join-Path $stage 'raw'
-        Expand-Archive -LiteralPath (Join-Path $stage 'raw.zip') -DestinationPath $rawStage -Force
+        Expand-ZipToFolder (Join-Path $stage 'raw.zip') $rawStage
         $rawTarget = Join-Path $Root 'data\raw'
         foreach ($file in Get-ChildItem -LiteralPath $rawStage -Recurse -File) {
             $relative = $file.FullName.Substring($rawStage.Length).TrimStart('\', '/')
