@@ -19,7 +19,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 from pydantic import Field
 
-from .area import AnalyzeInput, analyze
+from .area import AnalyzeInput, analyze, only_in
 from .db import Session
 from .models import now
 from .reporting import DecisionReport, local_config, narrative_model
@@ -267,7 +267,7 @@ def area_markdown(s: dict[str, Any]) -> str:
         if t and t.get("same_change_pct") is not None:
             rows.append("")
             rows.append(f"같은 지번 비교({t['from']}→{t['to']}): 두 해 모두 12개월 계측된 지번 {t['same_parcels']:,}곳의 전력 {t['same_from_kwh']:,.0f} → {t['same_to_kwh']:,.0f} kWh "
-                        f"({t['same_change_pct']:+.1f}%). {t['to']}년에만 계측 {t['new_parcels']:,}곳 {t['new_kwh']:,.0f} kWh, {t['from']}년에만 계측 {t['gone_parcels']:,}곳 {t['gone_kwh']:,.0f} kWh "
+                        f"({t['same_change_pct']:+.1f}%). 한 해에만 계측된 지번: {only_in(t['to'], t['new_parcels'], t['new_kwh'])}, {only_in(t['from'], t['gone_parcels'], t['gone_kwh'])} "
                         "(신축·계량 변경·다른 지번으로의 기록 이동이 섞일 수 있음).")
         lines += ["## 건물 전체 에너지 (건축HUB 전 지번)", "\n".join(rows),
                   "상가·업무·학교·대형 공동주택 등 건축HUB가 계측하는 모든 지번의 합계입니다. 단독주택, 200세대 미만 공동주택, 산업·수송용은 제공 범위 밖입니다. 원단위는 같은 필지의 건축물대장 연면적 기준입니다."

@@ -150,6 +150,10 @@ def test_facts_carry_their_numbers_for_verification():
     change = next(f for f in facts if f['id'] == 'change')
     assert change['numbers'] == [50.0] and '+50.0%' in change['text']
     assert all(isinstance(n, (int, float)) for f in facts for n in f['numbers'])
+    # the apartment (K-apt) baseline is stated too, so a summary that also quotes building-wide energy says which one the target uses
+    basis = next(f for f in facts if f['id'] == 'effort_basis')
+    assert '공동주택 단지(K-apt' in basis['text'] and '1,800,000 kWh' in basis['text'] and 1800000 in basis['numbers']
+    assert [f['id'] for f in facts].index('effort_basis') < [f['id'] for f in facts].index('effort_target')
 
 
 def test_building_energy_block_sums_the_area_grids_per_year(tmp_path, monkeypatch):
@@ -198,3 +202,9 @@ def test_building_energy_history_flags_the_2020_provider_gap_and_trend_skips_it(
     trend = facts['building_energy_trend']
     assert trend['signed_pct'] == 10.0 and '+10.0%' in trend['text'] and '2021년과 2025년' in trend['text']
     assert '2020' in facts['building_energy_gap']['text']
+    assert '2025년 1곳(300 kWh)' in trend['text'] and '2021년 1곳(600 kWh)' in trend['text']
+    # nobody metered only in 2021: say so instead of "0곳(0 kWh)" (no observation is not zero use)
+    history['building_energy'] = building_energy_block(['g1'], {2021: g({'a': 400.0}), 2025: g({'a': 440.0, 'c': 300.0})}, 0.5)
+    trend = {f['id']: f for f in area_facts(history)}['building_energy_trend']
+    assert '2021년 없음' in trend['text'] and '0곳' not in trend['text'] and '(0 kWh)' not in trend['text']
+    assert 0 not in trend['numbers'][6:]

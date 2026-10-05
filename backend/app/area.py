@@ -533,7 +533,7 @@ def effort(history: dict[str, Any], plan: dict[str, Any], target_pct: float, pv_
         return _effort_result(history, plan, target_pct, pv_yield_kwh_per_kw, factor, base_year, "OBSERVED",
                               float(item["kwh_per_m2"]), float(item["electricity_kwh"]), float(item["area_m2"]), basis,
                               f"신축 부하 = 계획 연면적 × 구역 건물 전체 관측 전력 원단위 {float(item['kwh_per_m2']):,.2f} kWh/m²·년 "
-                              f"({base_year}년 건축HUB, 12개월 계측 지번 {item.get('electricity_complete') or 0}곳, 연면적 확인 {float(item['area_m2']):,.0f}m²)")
+                              f"({base_year}년 건축HUB, 12개월 계측 지번 {item.get('electricity_complete') or 0:,}곳, 연면적 확인 {float(item['area_m2']):,.0f}m²)")
     base_year = next((y for y in sorted(history["energy"], reverse=True)
                       if history["energy"][y]["electricity"]["kwh"] is not None and history["energy"][y]["electricity"]["intensity_kwh_per_m2"]), None)
     baseline_mode = "OBSERVED"
@@ -802,6 +802,11 @@ def build_history(area: dict[str, Any], years: list[int], inputs: dict[str, Any]
     return history
 
 
+def only_in(year: int | str, parcels: int, kwh: float) -> str:
+    """'2025년 3곳(5,836,169 kWh)', or '2021년 없음' — an empty set has no usage to report, not 0 kWh."""
+    return f"{year}년 {parcels:,}곳({kwh:,.0f} kWh)" if parcels else f"{year}년 없음"
+
+
 def area_facts(history: dict[str, Any], comparison: dict[str, Any] | None = None, effort_result: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     """Verified sentences with the exact numbers they contain (for the report and the LLM checker)."""
     area = history["area"]
@@ -835,16 +840,17 @@ def area_facts(history: dict[str, Any], comparison: dict[str, Any] | None = None
     if latest_be is not None:
         v = be[latest_be]
         carbon = f", 전력 탄소 {v['electricity_carbon_kgco2eq']:,.0f} kgCO2eq" if v.get("electricity_carbon_kgco2eq") is not None else ""
-        add("building_energy", f"건축HUB가 계측하는 구역 안 건물 전체(상가·업무·학교·대형 공동주택 등, 12개월 계측 지번 {v['electricity_complete']}곳)의 {latest_be}년 전력은 {v['electricity_kwh']:,.0f} kWh{carbon}입니다. 단독주택과 200세대 미만 공동주택은 제공 범위 밖입니다.",
+        add("building_energy", f"건축HUB가 계측하는 구역 안 건물 전체(상가·업무·학교·대형 공동주택 등, 12개월 계측 지번 {v['electricity_complete']:,}곳)의 {latest_be}년 전력은 {v['electricity_kwh']:,.0f} kWh{carbon}입니다. 단독주택과 200세대 미만 공동주택은 제공 범위 밖입니다.",
             latest_be, v["electricity_complete"], v["electricity_kwh"], v.get("electricity_carbon_kgco2eq"))
         trend = (history.get("building_energy") or {}).get("trend")
         if trend and trend.get("to") == latest_be and trend.get("same_change_pct") is not None:
             t = trend
-            add("building_energy_trend", f"{t['from']}년과 {t['to']}년 모두 12개월 계측된 같은 지번 {t['same_parcels']}곳의 전력은 {t['same_from_kwh']:,.0f} kWh에서 "
-                f"{t['same_to_kwh']:,.0f} kWh로 {t['same_change_pct']:+,.1f}% 변했습니다. {t['to']}년에만 계측된 지번은 {t['new_parcels']}곳({t['new_kwh']:,.0f} kWh), "
-                f"{t['from']}년에만 계측된 지번은 {t['gone_parcels']}곳({t['gone_kwh']:,.0f} kWh)입니다(신축·계량 변경·다른 지번으로의 기록 이동이 섞일 수 있음).",
-                t["from"], t["to"], t["same_parcels"], t["same_from_kwh"], t["same_to_kwh"], t["same_change_pct"], t["new_parcels"], t["new_kwh"],
-                t["gone_parcels"], t["gone_kwh"], signed_pct=t["same_change_pct"])
+            add("building_energy_trend", f"{t['from']}년과 {t['to']}년 모두 12개월 계측된 같은 지번 {t['same_parcels']:,}곳의 전력은 {t['same_from_kwh']:,.0f} kWh에서 "
+                f"{t['same_to_kwh']:,.0f} kWh로 {t['same_change_pct']:+,.1f}% 변했습니다. 한 해에만 계측된 지번은 {only_in(t['to'], t['new_parcels'], t['new_kwh'])}, "
+                f"{only_in(t['from'], t['gone_parcels'], t['gone_kwh'])}입니다(신축·계량 변경·다른 지번으로의 기록 이동이 섞일 수 있음).",
+                t["from"], t["to"], t["same_parcels"], t["same_from_kwh"], t["same_to_kwh"], t["same_change_pct"],
+                *([t["new_parcels"], t["new_kwh"]] if t["new_parcels"] else []), *([t["gone_parcels"], t["gone_kwh"]] if t["gone_parcels"] else []),
+                signed_pct=t["same_change_pct"])
         gaps = sorted(y for y, w in be.items() if w.get("provider_gap"))
         for y in gaps:
             add("building_energy_gap", f"{y}년 건축HUB 값은 쓰되 비교하지 않습니다: {be[y]['provider_gap']}.", y)
@@ -895,6 +901,10 @@ def area_facts(history: dict[str, Any], comparison: dict[str, Any] | None = None
         if effort_result.get("baseline_mode") == "ESTIMATED":
             city = history.get("city_intensity") or {}
             add("effort_basis", f"이 지역은 관측 전력이 없어 기준 부하를 단지 연면적 {effort_result['intensity_area_m2']:,.0f}m²와 {history.get('region_label') or '전주'} 관측 원단위 {effort_result['intensity_kwh_per_m2']:,.2f} kWh/m²·년({city.get('year')}년, 관측 지번 {city.get('parcels')}곳 기준)으로 추정했습니다. 관측 지번이 적을수록 추정 오차가 큽니다.", effort_result["intensity_area_m2"], effort_result["intensity_kwh_per_m2"], city.get("year"), city.get("parcels"))
+        elif effort_result.get("basis") == "apartments":
+            add("effort_basis", f"감축 노력은 공동주택 단지(K-apt 관리비 전력) 기준입니다: {effort_result['baseline_year']}년 전력 {effort_result['baseline_kwh']:,.0f} kWh, "
+                f"원단위 {effort_result['intensity_kwh_per_m2']:,.2f} kWh/m²·년(연면적 확인 {effort_result['intensity_area_m2']:,.0f}m²).",
+                effort_result["baseline_year"], effort_result["baseline_kwh"], effort_result["intensity_kwh_per_m2"], effort_result["intensity_area_m2"])
         if effort_result.get("basis") == "buildings":
             add("effort_basis", f"감축 노력은 구역 건물 전체(건축HUB 계측 지번, 상가·업무 포함) 기준입니다: {effort_result['baseline_year']}년 전력 {effort_result['baseline_kwh']:,.0f} kWh, 원단위 {effort_result['intensity_kwh_per_m2']:,.2f} kWh/m²·년.", effort_result["baseline_year"], effort_result["baseline_kwh"], effort_result["intensity_kwh_per_m2"])
         add("effort_target", f"{effort_result['baseline_year']}년 대비 {effort_result['target_pct']:,.0f}% 감축을 목표로 하면 계획 반영 후 연간 {effort_result['required_reduction_kgco2eq']:,.0f} kgCO2eq를 줄여야 합니다.", effort_result["baseline_year"], effort_result["target_pct"], effort_result["required_reduction_kgco2eq"])
