@@ -66,15 +66,19 @@ def reference_summary(facts: list[dict[str, Any]], seed: str = "") -> str | None
     """A 4~7 sentence summary made only of the engine's sentences (plus number-free connectives)."""
     by_id = {f["id"]: f for f in facts}
     parts: list[str] = []
+    used: set[str] = set()
     for ids, connectives in SLOTS:
         fact = next((by_id[i] for i in ids if i in by_id), None)
         if not fact:
             continue
+        if fact["id"].startswith("effort_") and fact["id"] != "effort_basis" and "effort_basis" in by_id and "effort_basis" not in used:
+            continue  # an effort amount is only quoted together with its basis (the app checker requires it)
         connective = connectives[_stable(seed + fact["id"]) % len(connectives)] if parts and fact["id"] not in NO_CONNECTIVE else ""
         candidate = connective + fact["text"]
         if len(" ".join(parts + [candidate])) > MAX_SUMMARY:
             continue
         parts.append(candidate)
+        used.add(fact["id"])
     if len(parts) < 2:
         return None
     return " ".join(parts)

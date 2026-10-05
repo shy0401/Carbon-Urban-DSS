@@ -46,3 +46,16 @@ def test_direction_words_are_checked_for_every_signed_change():
     facts = FACTS + [{'id': 'building_energy_trend', 'text': '건물 전체 전력은 2021년에서 2025년으로 +10.0% 변했습니다.', 'numbers': [2021, 2025, 10.0], 'signed_pct': 10.0}]
     assert '증가를 감소로 서술' in verify_narrative('건물 전체 전력은 2021년부터 2025년까지 10.0% 감소했습니다.', facts)
     assert verify_narrative('건물 전체 전력은 2021년부터 2025년까지 10.0% 증가했습니다.', facts) == []
+
+
+def test_effort_amount_without_its_basis_is_rejected():
+    facts = [
+        {'id': 'latest_energy', 'text': '2025년 관측 전력은 84,145,683 kWh입니다.', 'numbers': [2025, 84145683.0]},
+        {'id': 'effort_basis', 'text': '감축 노력은 구역 건물 전체 기준입니다: 2025년 전력 160,874,572 kWh, 원단위 66.26 kWh/m²·년.', 'numbers': [2025, 160874572.0, 66.26]},
+        {'id': 'effort_target', 'text': '2025년 대비 40% 감축을 목표로 하면 계획 반영 후 연간 33,145,897 kgCO2eq를 줄여야 합니다.', 'numbers': [2025, 40, 33145897.0]},
+    ]
+    misleading = '2025년 관측 전력은 84,145,683 kWh입니다. 40% 감축을 목표로 하면 연간 33,145,897 kgCO2eq를 줄여야 합니다.'
+    assert '감축 기준 설명 없이 감축량 서술' in verify_narrative(misleading, facts)
+    stated = '감축 노력은 구역 건물 전체 기준입니다: 2025년 전력 160,874,572 kWh. 40% 감축을 목표로 하면 연간 33,145,897 kgCO2eq를 줄여야 합니다.'
+    assert verify_narrative(stated, facts) == []
+    assert verify_narrative('2025년 관측 전력은 84,145,683 kWh입니다.', facts) == []  # no effort quoted → basis not required

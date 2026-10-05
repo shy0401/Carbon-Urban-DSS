@@ -63,6 +63,27 @@ def allowed_numbers(facts: list[dict[str, Any]]) -> set[str]:
     return allowed
 
 
+EFFORT_FACTS = ("effort_target", "effort_new", "effort_all", "effort_met", "effort_offset")
+
+
+def _signatures(facts: Any) -> set[float]:
+    """Distinctive numbers of the facts: not years and not small round shares that any sentence may repeat."""
+    out: set[float] = set()
+    for fact in facts:
+        for n in fact.get("numbers", []):
+            v = float(n)
+            if (v.is_integer() and 1900 <= v <= 2100) or abs(v) < 100:
+                continue
+            out.add(v)
+    return out
+
+
+def _mentions_any(text: str, values: set[float]) -> bool:
+    tokens = {t.replace(",", "").lstrip("+-") for t in NUMBER.findall(text)}
+    tokens |= {t.rstrip("0").rstrip(".") for t in tokens if "." in t}
+    return any(_variants(v) & tokens for v in values)
+
+
 def verify_narrative(text: str, facts: list[dict[str, Any]]) -> list[str]:
     """Return violations; an empty list means every number and claim is backed by a fact."""
     problems: list[str] = []
@@ -79,6 +100,11 @@ def verify_narrative(text: str, facts: list[dict[str, Any]]) -> list[str]:
     for phrase in FORBIDDEN:
         if phrase in text:
             problems.append(f"허용하지 않는 단정 표현: {phrase}")
+    # A reduction amount means nothing without what it is measured against: when the engine states the basis
+    # (all metered buildings, or an estimated baseline), a summary that quotes the effort must also quote the basis.
+    basis = next((f for f in facts if f["id"] == "effort_basis"), None)
+    if basis and _mentions_any(text, _signatures(f for f in facts if f["id"] in EFFORT_FACTS)) and not _mentions_any(text, _signatures([basis])):
+        problems.append("감축 기준 설명 없이 감축량 서술")
     # Direction words must agree with the sign of every change they describe ('change' predates signed_pct).
     for fact in facts:
         pct = fact.get("signed_pct")
@@ -217,6 +243,12 @@ def area_markdown(s: dict[str, Any]) -> str:
             v = be[year]
             rows.append(f"| {year}{' (일부 결측·비교 제외)' if v.get('provider_gap') else ''} | {v['parcels']:,} | {v['electricity_complete']:,} | {fmt(v.get('electricity_kwh'))} | {fmt(v.get('gas_kwh'))} | "
                         f"{'자료 없음' if v.get('kwh_per_m2') is None else format(v['kwh_per_m2'], ',.1f')} | {fmt(v.get('electricity_carbon_kgco2eq'))} |")
+        t = (h.get("building_energy") or {}).get("trend")
+        if t and t.get("same_change_pct") is not None:
+            rows.append("")
+            rows.append(f"같은 지번 비교({t['from']}→{t['to']}): 두 해 모두 12개월 계측된 지번 {t['same_parcels']:,}곳의 전력 {t['same_from_kwh']:,.0f} → {t['same_to_kwh']:,.0f} kWh "
+                        f"({t['same_change_pct']:+.1f}%). {t['to']}년에만 계측 {t['new_parcels']:,}곳 {t['new_kwh']:,.0f} kWh, {t['from']}년에만 계측 {t['gone_parcels']:,}곳 {t['gone_kwh']:,.0f} kWh "
+                        "(신축·계량 변경·다른 지번으로의 기록 이동이 섞일 수 있음).")
         lines += ["## 건물 전체 에너지 (건축HUB 전 지번)", "\n".join(rows),
                   "상가·업무·학교·대형 공동주택 등 건축HUB가 계측하는 모든 지번의 합계입니다. 단독주택, 200세대 미만 공동주택, 산업·수송용은 제공 범위 밖입니다. 원단위는 같은 필지의 건축물대장 연면적 기준입니다."
                   + "".join(f" {year}년: {be[year]['provider_gap']}." for year in sorted(be, key=lambda y: int(y)) if be[year].get("provider_gap"))]

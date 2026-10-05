@@ -109,6 +109,13 @@ export interface AreaBuildingEnergy {
   available: boolean;
   basis: string;
   years: YearTable<{ year: number; parcels: number; electricity_complete: number; electricity_kwh: number | null; gas_complete: number; gas_kwh: number | null; area_m2: number | null; kwh_per_m2: number | null; electricity_carbon_kgco2eq: number | null; complete?: boolean; provider_gap?: string | null }>;
+  /** 비교 가능한 첫 해와 최근 해: 두 해 모두 12개월 계측된 같은 지번의 변화, 한 해에만 계측된 지번은 따로. */
+  trend?: BuildingEnergyTrend | null;
+}
+
+export interface BuildingEnergyTrend {
+  from: number; to: number; same_parcels: number; same_from_kwh: number; same_to_kwh: number; same_change_pct: number | null;
+  new_parcels: number; new_kwh: number; gone_parcels: number; gone_kwh: number;
 }
 
 /** SGIS 1km 격자 통계 (구역이 걸친 1km 격자 전체 합계 = 관측, 면적 비례 값 = 추정). */

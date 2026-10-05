@@ -110,6 +110,7 @@
 .area-sgis { margin-top: var(--sp-4); }
 .area-building-energy { margin-top: var(--sp-4); }
 .area-building-energy td small { color: var(--ink-3); }
+.area-building-trend { margin: var(--sp-3) 0 0; font-size: 0.92em; }
 
 .area-collect-title { display: block; margin-bottom: var(--sp-1); font-weight: 600; color: var(--ink-2); }
 .area-collect-list { display: flex; flex-wrap: wrap; gap: var(--sp-1) var(--sp-2); }
