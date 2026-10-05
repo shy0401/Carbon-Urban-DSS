@@ -76,6 +76,10 @@ def build_parcel_grid(db: Any) -> int:
 # 전북특별자치도 출범(2024-01)으로 시·군·구 코드가 45xxx → 52xxx로 바뀌었다. 건축HUB는 2023-10 사용분까지 옛 코드로만
 # 답한다(팀 데이터셋 urban-carbon의 단지 80곳으로 확인: 새 코드로 물으면 2023년 이전이 모두 빈 응답). 2020-01분부터 있다.
 OLD_SIGUNGU = {"52": ("45", "202310")}
+HUB_FIRST_YEAR = 2020
+# Months the provider answered only in part (city-wide, 2026-10-05: 전주 2020-09·10 전력 112.9·86.9 GWh against 157.9·137.7 GWh
+# in 2021; large apartment parcels were missing — 팀 사례 자료 TEAM_CASE_JEONJU_DONGS.md). Such a year is kept but not compared.
+HUB_PROVIDER_GAPS = {2020: "2020년 9·10월 제공기관 응답에서 대단지 등 일부 지번이 빠져(전주 전력 9월 112.9, 10월 86.9 GWh로 2021년 같은 달의 72%·63%) 다른 해와 비교하지 않습니다"}
 
 
 def request_sigungu(sigungu: str, use_ym: str) -> str:
@@ -232,7 +236,7 @@ def year_complete(year: int) -> bool:
 
 
 # --------------------------------------------------------------------------- grid aggregates
-_GRID_CACHE: dict[tuple[Any, ...], dict[str, dict[str, Any]]] = {}
+_GRID_CACHE: dict[int, tuple[int, dict[str, dict[str, Any]]]] = {}  # year -> (row count, per-grid values)
 _PARCEL_GRID: dict[int, dict[str, str]] = {}
 
 
@@ -320,8 +324,8 @@ def grid_building_energy(db: Any, year: int) -> dict[str, dict[str, Any]]:
     count = db.scalar(select(func.count()).select_from(EnergyMonthly).where(EnergyMonthly.use_ym.between(lo, hi), EnergyMonthly.source == HUB)) or 0
     if not count:
         return {}
-    key = (year, count)
-    if key not in _GRID_CACHE:
+    hit = _GRID_CACHE.get(year)
+    if hit is None or hit[0] != count:
         grid_of = _parcel_grid(db)
         if not grid_of:
             return {}
@@ -338,9 +342,8 @@ def grid_building_energy(db: Any, year: int) -> dict[str, dict[str, Any]]:
             month_list = sorted(set(yms.split(",") if isinstance(yms, str) else yms))
             parcels.append({"pnu": parcel_pnu(sg, bd, lot, bun, ji), "energy_type": et, "months": len(month_list), "month_list": month_list,
                             "kwh": float(kwh) if kwh is not None else None})
-        _GRID_CACHE.clear()
-        _GRID_CACHE[key] = summarize_parcels(parcels, grid_of, _register_area(db))
-    return _GRID_CACHE[key]
+        _GRID_CACHE[year] = (count, summarize_parcels(parcels, grid_of, _register_area(db)))
+    return _GRID_CACHE[year][1]
 
 
 def map_properties(item: dict[str, Any] | None, factor: float | None) -> dict[str, Any]:

@@ -21,3 +21,28 @@ def test_template_mode_uses_fact_text_verbatim():
     summary = summarize_area(FACTS, use_local=False)
     assert summary['mode'] == 'TEMPLATE'
     assert summary['paragraphs'] == [f['text'] for f in FACTS]
+
+
+def test_report_uses_the_reduction_basis_the_user_chose(monkeypatch):
+    """The area page sends effort_basis; the report must compute the effort on the same buildings."""
+    import contextlib
+    from app import area_report
+    seen = {}
+
+    def fake_analyze(db, spec, *args, **kwargs):
+        seen.update(kwargs)
+        area = {'label': '구역', 'geometry': None}
+        return {'history': {'area': area, 'years': [2025]}, 'before_after': None, 'effort': None, 'facts': FACTS, 'region': None}
+
+    monkeypatch.setattr(area_report, 'analyze', fake_analyze)
+    monkeypatch.setattr(area_report, 'Session', lambda: contextlib.nullcontext(None))
+    request = area_report.AreaReportInput(area={'type': 'grid', 'grid_id': 'cell_1_1'}, from_year=2024, to_year=2025, effort_basis='buildings')
+    snapshot = area_report._snapshot(request)
+    assert seen['effort_basis'] == 'buildings'
+    assert snapshot['request']['effort_basis'] == 'buildings'
+
+
+def test_direction_words_are_checked_for_every_signed_change():
+    facts = FACTS + [{'id': 'building_energy_trend', 'text': '건물 전체 전력은 2021년에서 2025년으로 +10.0% 변했습니다.', 'numbers': [2021, 2025, 10.0], 'signed_pct': 10.0}]
+    assert '증가를 감소로 서술' in verify_narrative('건물 전체 전력은 2021년부터 2025년까지 10.0% 감소했습니다.', facts)
+    assert verify_narrative('건물 전체 전력은 2021년부터 2025년까지 10.0% 증가했습니다.', facts) == []

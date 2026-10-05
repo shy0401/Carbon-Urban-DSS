@@ -512,7 +512,7 @@ def effort(history: dict[str, Any], plan: dict[str, Any], target_pct: float, pv_
     gas factor is registered.
 
     basis "apartments": the K-apt apartment series (one source across years).
-    basis "buildings":  every metered parcel of the area's grids (건축HUB, 2024~) — shops, offices and schools
+    basis "buildings":  every metered parcel of the area's grids (건축HUB, 2020~ where collected) — shops, offices and schools
     included, so a commercial area is measured against the buildings that are actually there.
     """
     if not (0 <= target_pct <= 100):
@@ -676,12 +676,12 @@ def register_events(area: dict[str, Any], rows: list[dict[str, Any]], years: lis
 
 
 def building_energy_block(grid_ids: list[str], by_year: dict[int, dict[str, dict[str, Any]]], factor: float | None) -> dict[str, Any]:
-    """Every metered building of the area's grids (건축HUB by 법정동), per year with data (2024-).
+    """Every metered building of the area's grids (건축HUB by 법정동), per year with data (2020-; 전주 2020~, 수원·완주 2024~).
 
     Complements the apartment series: offices, shops, schools and large apartment blocks together.
     Parcels are placed on grids through the cadastral point, so a grid-based area gets whole parcels.
     """
-    from .energy_parcels import year_complete
+    from .energy_parcels import HUB_PROVIDER_GAPS, year_complete
     members = set(grid_ids)
     years: dict[int, dict[str, Any]] = {}
     for year, grids in sorted(by_year.items()):
@@ -700,20 +700,21 @@ def building_energy_block(grid_ids: list[str], by_year: dict[int, dict[str, dict
             "area_m2": round(area_m2, 1) if area_m2 else None, "kwh_per_m2": round(area_kwh / area_m2, 2) if area_m2 else None,
             "electricity_carbon_kgco2eq": round(electricity * factor, 1) if electricity is not None and factor else None,
             "complete": year_complete(year),
+            "provider_gap": HUB_PROVIDER_GAPS.get(year),
         }
     return {"years": years, "available": bool(years),
             "basis": "건축HUB 건물에너지 법정동 단위 전 지번(단독주택·200세대 미만 공동주택·산업용 등 제외), 12개월 계측 지번 합계, 연속지적 대표점으로 격자 배치"}
 
 
 ENERGY_SOURCES = {"electricity": ("KAPT", "K-apt 관리비 전력 (2015~, 같은 출처로 연도 비교)"),
-                  "gas": ("HUB", "건축HUB 지번 가스 (2024~)")}
+                  "gas": ("HUB", "건축HUB 지번 가스 (전주 2020~, 수원·완주 2024~)")}
 
 
 def consistent_energy(rows: list[dict[str, Any]], area: dict[str, Any], complexes: dict[str, dict[str, Any]],
                       years: list[int]) -> dict[int, dict[str, Any]]:
     """Yearly energy with one provider per energy type across all years.
 
-    K-apt reports a complex's electricity from its management fees (2015~); 건축HUB meters the parcel (2024~). For the
+    K-apt reports a complex's electricity from its management fees (2015~); 건축HUB meters the parcel (2020~). For the
     same complex-year the two differ (K-apt median 77% of 건축HUB, 803 pairs in 전주·수원, 2026-09-30), so a series
     that switches provider in 2024 would show a jump that is not a change in use. Electricity therefore comes from
     K-apt in every year and gas from 건축HUB (K-apt gas is mostly the common part only)."""
@@ -780,8 +781,11 @@ def area_facts(history: dict[str, Any], comparison: dict[str, Any] | None = None
     area = history["area"]
     facts: list[dict[str, Any]] = []
 
-    def add(fid: str, text: str, *numbers: float | int | None) -> None:
-        facts.append({"id": fid, "text": text, "numbers": [n for n in numbers if n is not None]})
+    def add(fid: str, text: str, *numbers: float | int | None, signed_pct: float | None = None) -> None:
+        fact: dict[str, Any] = {"id": fid, "text": text, "numbers": [n for n in numbers if n is not None]}
+        if signed_pct is not None:  # the report checker makes 증가/감소 words agree with this sign
+            fact["signed_pct"] = signed_pct
+        facts.append(fact)
 
     y0, y1 = history["years"][0], history["years"][-1]
     add("scope", f"분석 대상은 {area['label']}이고 기간은 {y0}~{y1}년입니다. 격자 {len(area['grid_ids'])}개와 공동주택 단지 {len(area['complex_codes'])}개가 포함됩니다.", y0, y1, len(area["grid_ids"]), len(area["complex_codes"]))
@@ -807,6 +811,16 @@ def area_facts(history: dict[str, Any], comparison: dict[str, Any] | None = None
         carbon = f", 전력 탄소 {v['electricity_carbon_kgco2eq']:,.0f} kgCO2eq" if v.get("electricity_carbon_kgco2eq") is not None else ""
         add("building_energy", f"건축HUB가 계측하는 구역 안 건물 전체(상가·업무·학교·대형 공동주택 등, 12개월 계측 지번 {v['electricity_complete']}곳)의 {latest_be}년 전력은 {v['electricity_kwh']:,.0f} kWh{carbon}입니다. 단독주택과 200세대 미만 공동주택은 제공 범위 밖입니다.",
             latest_be, v["electricity_complete"], v["electricity_kwh"], v.get("electricity_carbon_kgco2eq"))
+        comparable = sorted(y for y, w in be.items() if w.get("electricity_kwh") and w.get("complete", True) and not w.get("provider_gap"))
+        if len(comparable) >= 2 and comparable[0] != latest_be and latest_be in comparable:
+            first = be[comparable[0]]
+            pct = round((v["electricity_kwh"] - first["electricity_kwh"]) / first["electricity_kwh"] * 100, 1)
+            add("building_energy_trend", f"같은 기준(12개월 계측 지번 합계)으로 구역 건물 전체 전력은 {comparable[0]}년 {first['electricity_kwh']:,.0f} kWh(지번 {first['electricity_complete']}곳)에서 "
+                f"{latest_be}년 {v['electricity_kwh']:,.0f} kWh(지번 {v['electricity_complete']}곳)로 {pct:+,.1f}% 변했습니다. 계측 지번 구성이 해마다 달라 사용 변화와 계측 범위 변화가 함께 들어 있습니다.",
+                comparable[0], first["electricity_kwh"], first["electricity_complete"], latest_be, v["electricity_kwh"], v["electricity_complete"], pct, signed_pct=pct)
+        gaps = sorted(y for y, w in be.items() if w.get("provider_gap"))
+        for y in gaps:
+            add("building_energy_gap", f"{y}년 건축HUB 값은 쓰되 비교하지 않습니다: {be[y]['provider_gap']}.", y)
     sg = history.get("sgis_grid") or {}
     if sg.get("overlap"):
         o = sg["overlap"]
@@ -841,7 +855,7 @@ def area_facts(history: dict[str, Any], comparison: dict[str, Any] | None = None
         if m["before_total_kwh"] is not None and m["after_total_kwh"] is not None:
             add("before_after", f"개발 전 {len(comparison['before_years'])}년 평균 전력은 {m['before_total_kwh']:,.0f} kWh, 개발 후 {len(comparison['after_years'])}년 평균은 {m['after_total_kwh']:,.0f} kWh입니다.", len(comparison["before_years"]), m["before_total_kwh"], len(comparison["after_years"]), m["after_total_kwh"])
             if m["total_change_pct"] is not None:
-                add("change", f"지역 전력은 {m['total_change_pct']:+,.1f}% 변했습니다.", m["total_change_pct"])
+                add("change", f"지역 전력은 {m['total_change_pct']:+,.1f}% 변했습니다.", m["total_change_pct"], signed_pct=m["total_change_pct"])
         if m["new_development_kwh"] is not None:
             add("new_share", f"새로 준공된 단지의 연평균 전력은 {m['new_development_kwh']:,.0f} kWh로 개발 후 지역 전력의 {m['new_share_pct']:,.1f}%입니다.", m["new_development_kwh"], m["new_share_pct"])
         est = comparison["metrics"].get("estimated") or {}
@@ -944,11 +958,11 @@ def load_inputs(db: Any, years: list[int], region: str | None = None) -> dict[st
         db.rollback()
     from .overlays import admin_features, grid_zoning_summary
     from .sgis_grid import grid_values
-    from .energy_parcels import grid_building_energy
+    from .energy_parcels import HUB_FIRST_YEAR, grid_building_energy
     admin, admin_year = admin_features(db, sc=sc)
     building_energy = {}
     for year in years:
-        if year >= 2024:  # 건축HUB has no data before 2024-01
+        if year >= HUB_FIRST_YEAR:  # 건축HUB answers from 2020-01 (전북 up to 2023-10 with the old 45xxx code)
             try:
                 by_grid = grid_building_energy(db, year)
             except Exception:  # noqa: BLE001 - parcel_grid not built yet

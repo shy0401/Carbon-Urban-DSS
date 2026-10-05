@@ -242,7 +242,7 @@ function RegisterPanel({ analysis, eventYear }: { analysis: AreaAnalysis; eventY
   </section>;
 }
 
-/** 구역 격자 안 건축HUB 계측 건물 전체(2024-). 공동주택 시계열과 따로 둔다. */
+/** 구역 격자 안 건축HUB 계측 건물 전체(전주 2020-). 공동주택 시계열과 따로 둔다. */
 function BuildingEnergyPanel({ analysis }: { analysis: AreaAnalysis }) {
   const be = analysis.history.building_energy;
   const years = be ? Object.values(be.years).sort((a, b) => a.year - b.year) : [];
@@ -250,10 +250,10 @@ function BuildingEnergyPanel({ analysis }: { analysis: AreaAnalysis }) {
     <div className="panel-title"><h3>건물 전체 에너지 (건축HUB 전 지번)</h3><ProvenanceBadge kind="observed" detail="12개월 계측 지번" /></div>
     {years.length ? <><div className="table-wrap"><table>
       <thead><tr><th>연도</th><th className="num">계측 지번</th><th className="num">전력 kWh</th><th className="num">가스 kWh</th><th className="num">전력 원단위 kWh/m²</th><th className="num">전력 탄소 tCO₂eq</th></tr></thead>
-      <tbody>{years.map((v) => <tr key={v.year}><td>{v.year}{v.complete === false && <small className="status-tag warn">수집 중</small>}</td><td className="num">{formatMetric(v.parcels)}<small> (12개월 {formatMetric(v.electricity_complete)})</small></td><td className="num">{formatMetric(v.electricity_kwh)}</td><td className="num">{formatMetric(v.gas_kwh)}</td><td className="num">{formatMetric(v.kwh_per_m2, '', 1)}</td><td className="num">{v.electricity_carbon_kgco2eq === null ? '자료 없음' : formatMetric(v.electricity_carbon_kgco2eq / 1000, '', 1)}</td></tr>)}</tbody>
+      <tbody>{years.map((v) => <tr key={v.year}><td>{v.year}{v.complete === false && <small className="status-tag warn">수집 중</small>}{v.provider_gap && <small className="status-tag warn" title={v.provider_gap}>일부 결측·비교 제외</small>}</td><td className="num">{formatMetric(v.parcels)}<small> (12개월 {formatMetric(v.electricity_complete)})</small></td><td className="num">{formatMetric(v.electricity_kwh)}</td><td className="num">{formatMetric(v.gas_kwh)}</td><td className="num">{formatMetric(v.kwh_per_m2, '', 1)}</td><td className="num">{v.electricity_carbon_kgco2eq === null ? '자료 없음' : formatMetric(v.electricity_carbon_kgco2eq / 1000, '', 1)}</td></tr>)}</tbody>
     </table></div>
-    <p className="muted">상가·업무·학교·대형 공동주택 등 건축HUB가 계측하는 모든 지번의 합계입니다(연속지적 대표점으로 격자 배치). 단독주택, 200세대 미만 공동주택, 산업·수송용은 제공 범위 밖이라 빠집니다. 건축HUB는 2024년 1월부터 제공합니다. 원단위는 같은 필지의 건축물대장 연면적 기준입니다.</p></>
-      : <EmptyState title="이 구역의 건물 전체 에너지가 아직 없습니다" description="건축HUB 전 지번 수집(2024년~)이 끝나면 채워집니다. 구역 격자 안에 계측 지번이 없을 수도 있습니다(단독주택 위주)." />}
+    <p className="muted">상가·업무·학교·대형 공동주택 등 건축HUB가 계측하는 모든 지번의 합계입니다(연속지적 대표점으로 격자 배치). 단독주택, 200세대 미만 공동주택, 산업·수송용은 제공 범위 밖이라 빠집니다. 건축HUB는 2020년 1월분부터 있습니다(전주 2020~, 수원·완주 2024~). {years.filter((v) => v.provider_gap).map((v) => `${v.year}년: ${v.provider_gap}. `).join('')}원단위는 같은 필지의 건축물대장 연면적 기준입니다.</p></>
+      : <EmptyState title="이 구역의 건물 전체 에너지가 아직 없습니다" description="건축HUB 전 지번 수집(2020년~)이 끝나면 채워집니다. 구역 격자 안에 계측 지번이 없을 수도 있습니다(단독주택 위주)." />}
   </section>;
 }
 
@@ -344,7 +344,7 @@ function EffortPanel({ effort, plan, setPlan, target, setTarget, pvYield, setPvY
         <label className="area-target"><span>목표 감축률 (기준 연도 대비)</span><div><input type="range" min={0} max={100} step={1} value={target} onChange={(e) => setTarget(Number(e.target.value))} aria-label="목표 감축률 슬라이더" /><div className="with-unit"><input type="number" min={0} max={100} value={target} onChange={(e) => setTarget(Math.min(100, Math.max(0, Number(e.target.value))))} aria-label="목표 감축률" /><em>%</em></div></div></label>
         <div className="area-effort-basis"><span>기준 건물</span><div className="area-modes small" role="tablist" aria-label="감축 노력 기준 건물">
           {(['apartments', 'buildings'] as const).map((b) => <button key={b} role="tab" aria-selected={basis === b} onClick={() => setBasis(b)}>{EFFORT_BASIS_LABEL[b]}</button>)}
-        </div><small className="muted">{basis === 'buildings' ? '상가·업무·학교 등 구역의 계측 건물 전체(2024~). 상업지역은 이 기준이 맞습니다.' : '공동주택 관리비 전력(같은 출처로 연도 비교). 주거지역 기본값.'}</small></div>
+        </div><small className="muted">{basis === 'buildings' ? '상가·업무·학교 등 구역의 계측 건물 전체(건축HUB, 최근 12개월 완비 연도). 상업지역은 이 기준이 맞습니다.' : '공동주택 관리비 전력(같은 출처로 연도 비교). 주거지역 기본값.'}</small></div>
         <label className="field"><span>태양광 kW당 연 발전량 (선택)</span><div><input type="number" min={0} step={10} value={pvYield} placeholder="근거가 있을 때만 입력" onChange={(e) => setPvYield(e.target.value)} /><em>kWh/kW</em></div></label>
       </div>
       <div className="area-effort-result">

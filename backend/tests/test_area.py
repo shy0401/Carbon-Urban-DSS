@@ -1,3 +1,4 @@
+import json
 import pytest
 
 from app.area import (
@@ -169,3 +170,23 @@ def test_building_energy_block_sums_the_area_grids_per_year(tmp_path, monkeypatc
     assert y['parcels'] == 12 and y['electricity_complete'] == 8 and y['electricity_kwh'] == 1000000.0
     assert y['kwh_per_m2'] == 40.0 and y['electricity_carbon_kgco2eq'] == 500000.0
     assert building_energy_block(['g3'], {2025: grids}, 0.5) == {'years': {}, 'available': False, 'basis': block['basis']}
+
+
+def test_building_energy_history_flags_the_2020_provider_gap_and_trend_skips_it(tmp_path, monkeypatch):
+    """2020 건축HUB lacks part of September·October city-wide: it is shown, flagged and kept out of comparisons."""
+    from app.area import building_energy_block
+    monkeypatch.setenv('DATA_DIR', str(tmp_path))
+    (tmp_path / 'ops').mkdir()
+    done = {f'energy:{y}': {'status': 'DONE', 'scope': 'all_parcels'} for y in (2020, 2021, 2025)}
+    (tmp_path / 'ops' / 'history-progress.json').write_text(json.dumps({'items': done}), encoding='utf-8')
+    g = lambda kwh, n: {'g1': {'parcels': n, 'electricity_complete': n, 'electricity_kwh': kwh, 'gas_complete': 0, 'gas_kwh': None,  # noqa: E731
+                               'area_parcels': 0, 'area_m2': None, 'kwh_per_m2': None}}
+    block = building_energy_block(['g1'], {2020: g(600000.0, 8), 2021: g(1000000.0, 10), 2025: g(1100000.0, 11)}, 0.5)
+    assert block['years'][2020]['provider_gap'] and block['years'][2021]['provider_gap'] is None
+    area = resolve_area({'type': 'admin', 'code': '35012650'}, GRIDS, POINTS, ADMIN, ZONING)
+    history = build_history(area, YEARS, inputs())
+    history['building_energy'] = block
+    facts = {f['id']: f for f in area_facts(history)}
+    trend = facts['building_energy_trend']
+    assert trend['signed_pct'] == 10.0 and '2021년' in trend['text'] and '2020년' not in trend['text']  # 2021 → 2025, not 2020
+    assert '+10.0%' in trend['text'] and '2020' in facts['building_energy_gap']['text']

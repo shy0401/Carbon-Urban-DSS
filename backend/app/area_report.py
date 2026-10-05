@@ -79,15 +79,18 @@ def verify_narrative(text: str, facts: list[dict[str, Any]]) -> list[str]:
     for phrase in FORBIDDEN:
         if phrase in text:
             problems.append(f"허용하지 않는 단정 표현: {phrase}")
-    # Direction words must agree with the sign of the change they describe.
-    change = next((f for f in facts if f["id"] == "change"), None)
-    if change and change.get("numbers"):
-        pct = change["numbers"][0]
+    # Direction words must agree with the sign of every change they describe ('change' predates signed_pct).
+    for fact in facts:
+        pct = fact.get("signed_pct")
+        if pct is None and fact["id"] == "change" and fact.get("numbers"):
+            pct = fact["numbers"][0]
+        if not pct:
+            continue
         for sentence in re.split(r"(?<=[.!?다])\s+", text):
             if any(v in sentence for v in _variants(pct)):
-                if pct > 0 and "감소" in sentence:
+                if pct > 0 and "감소" in sentence and "증가를 감소로 서술" not in problems:
                     problems.append("증가를 감소로 서술")
-                if pct < 0 and "증가" in sentence:
+                if pct < 0 and "증가" in sentence and "감소를 증가로 서술" not in problems:
                     problems.append("감소를 증가로 서술")
     return problems
 
@@ -140,7 +143,8 @@ class AreaReportInput(AnalyzeInput):
 def _snapshot(request: AreaReportInput) -> dict[str, Any]:
     with Session() as db:
         result = analyze(db, request.area.model_dump(), request.from_year, request.to_year, request.event_year, request.window,
-                         request.plan.model_dump() if request.plan else None, request.target_pct, request.pv_yield_kwh_per_kw, region=request.region)
+                         request.plan.model_dump() if request.plan else None, request.target_pct, request.pv_yield_kwh_per_kw, region=request.region,
+                         effort_basis=request.effort_basis)
     history = result["history"]
     history_public = {k: v for k, v in history.items() if k != "area"}
     area = {k: v for k, v in history["area"].items() if k != "geometry"}
@@ -211,10 +215,11 @@ def area_markdown(s: dict[str, Any]) -> str:
         rows = ["| 연도 | 계측 지번 | 12개월 전력 지번 | 전력 kWh | 가스 kWh | 전력 원단위 kWh/m² | 전력 탄소 kgCO2eq |", "| --- | --- | --- | --- | --- | --- | --- |"]
         for year in sorted(be, key=lambda y: int(y)):
             v = be[year]
-            rows.append(f"| {year} | {v['parcels']:,} | {v['electricity_complete']:,} | {fmt(v.get('electricity_kwh'))} | {fmt(v.get('gas_kwh'))} | "
+            rows.append(f"| {year}{' (일부 결측·비교 제외)' if v.get('provider_gap') else ''} | {v['parcels']:,} | {v['electricity_complete']:,} | {fmt(v.get('electricity_kwh'))} | {fmt(v.get('gas_kwh'))} | "
                         f"{'자료 없음' if v.get('kwh_per_m2') is None else format(v['kwh_per_m2'], ',.1f')} | {fmt(v.get('electricity_carbon_kgco2eq'))} |")
         lines += ["## 건물 전체 에너지 (건축HUB 전 지번)", "\n".join(rows),
-                  "상가·업무·학교·대형 공동주택 등 건축HUB가 계측하는 모든 지번의 합계입니다. 단독주택, 200세대 미만 공동주택, 산업·수송용은 제공 범위 밖입니다. 원단위는 같은 필지의 건축물대장 연면적 기준입니다."]
+                  "상가·업무·학교·대형 공동주택 등 건축HUB가 계측하는 모든 지번의 합계입니다. 단독주택, 200세대 미만 공동주택, 산업·수송용은 제공 범위 밖입니다. 원단위는 같은 필지의 건축물대장 연면적 기준입니다."
+                  + "".join(f" {year}년: {be[year]['provider_gap']}." for year in sorted(be, key=lambda y: int(y)) if be[year].get("provider_gap"))]
     sg = h.get("sgis_grid") or {}
     if sg.get("overlap"):
         o = sg["overlap"]
