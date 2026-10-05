@@ -76,3 +76,37 @@ def test_model_prompt_carries_only_summary_facts_but_checker_keeps_them_all():
     assert [f['id'] for f in json.loads(facts_prompt(facts))] == ['scope', 'latest_energy']
     assert verify_narrative('구역 인구는 12,345명이고 2025년 관측 전력은 5,309,649 kWh입니다.', facts) == []
     assert {i for ids, _ in SLOTS for i in ids} <= NARRATIVE_FACTS  # every training sentence is visible to the model
+
+
+def test_output_budget_fits_the_longest_training_summary(monkeypatch):
+    import json
+    from app import area_report
+    from app.llm_dataset import MAX_SUMMARY
+    sent = {}
+
+    class FakeResponse:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"done": True, "response": json.dumps({"summary": "요약"})}
+
+    class FakeClient:
+        def __init__(self, *a, **k):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def post(self, url, json=None):
+            sent.update(json)
+            return FakeResponse()
+
+    monkeypatch.setattr(area_report.httpx, "Client", FakeClient)
+    assert area_report.local_narrative([{"id": "scope", "text": "분석 대상은 격자 A입니다.", "numbers": []}], model="m") == "요약"
+    # even at one token per character (digits are single tokens) the longest target plus the JSON wrapper fits
+    assert sent["options"]["num_predict"] >= MAX_SUMMARY + 20
+    assert sent["options"]["num_ctx"] >= sent["options"]["num_predict"] + 1500

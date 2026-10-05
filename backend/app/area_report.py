@@ -124,6 +124,10 @@ def verify_narrative(text: str, facts: list[dict[str, Any]]) -> list[str]:
 AREA_SYSTEM = ("한국어 도시계획 검토 보고서의 요약 문단을 쓴다. 아래 근거 문장 밖의 숫자·연도·사실을 만들지 않는다. "
                "숫자는 근거에 적힌 값 그대로 쓴다. 법적 판단이나 넷제로 달성은 단정하지 않는다. 4~7문장. summary 필드만 출력한다.")
 SUMMARY_SCHEMA = {"type": "object", "properties": {"summary": {"type": "string", "maxLength": 1200}}, "required": ["summary"], "additionalProperties": False}
+# Output token budget. Qwen splits every digit into its own token, so a number-heavy Korean summary can approach one token
+# per character; the training targets run up to llm_dataset.MAX_SUMMARY (1,100) characters. With 600 the JSON was cut
+# mid-string for the longer summaries (2026-10-05: 23 of 40 held-out answers of the retrained model).
+NARRATIVE_MAX_TOKENS = 1280
 
 
 # Facts the summary is written from. The long context sentences (SGIS 1km grid totals, the 2020 provider gap,
@@ -147,7 +151,7 @@ def local_narrative(facts: list[dict[str, Any]], model: str | None = None) -> st
     with httpx.Client(timeout=120, trust_env=False) as client:
         response = client.post(base + "/api/generate", json={
             "model": model or narrative_model(), "stream": False, "format": SUMMARY_SCHEMA, "system": AREA_SYSTEM, "prompt": facts_prompt(facts),
-            "options": {"temperature": 0, "seed": 42, "num_predict": 600, "num_ctx": 4096}, "keep_alive": "2m"})
+            "options": {"temperature": 0, "seed": 42, "num_predict": NARRATIVE_MAX_TOKENS, "num_ctx": 4096}, "keep_alive": "2m"})
         response.raise_for_status()
         body = response.json()
         if not body.get("done"):
