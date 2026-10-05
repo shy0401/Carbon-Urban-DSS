@@ -29,6 +29,9 @@ Actions
   FrontendTest  Vitest + production build inside Linux (docker build --target test)
   ExportBundle  team share bundle: DB dump + data/raw (+uploads) + checksums
   ImportBundle  import a bundle into an EMPTY database on a new PC (-BundlePath)
+  MergeBundle   add a teammate's bundle to THIS database without duplicates (-BundlePath,
+                -DryRun to only count): backup first, rows matched on natural keys, existing
+                rows never changed, new raw files copied, report in merge.json
   VerifyBundle  new-PC simulation: export a bundle, 'git clone' HEAD into a clean
                 folder, import there into a separate project, compare counts,
                 check API/web, then remove that project
@@ -43,11 +46,12 @@ Safety
   * Results are written to data/ops/<timestamp>-<action>/ (summary.json, *.log).
 #>
 param(
-    [ValidateSet('All', 'Doctor', 'Status', 'Backup', 'Rebuild', 'Probe', 'Collect', 'CollectHistory', 'CollectAll', 'Snapshot', 'VerifyRestore', 'FrontendTest', 'E2E', 'ExportBundle', 'ImportBundle', 'VerifyBundle')]
+    [ValidateSet('All', 'Doctor', 'Status', 'Backup', 'Rebuild', 'Probe', 'Collect', 'CollectHistory', 'CollectAll', 'Snapshot', 'VerifyRestore', 'FrontendTest', 'E2E', 'ExportBundle', 'ImportBundle', 'MergeBundle', 'VerifyBundle')]
     [string]$Action = 'All',
     [string]$BundlePath,
     [string]$BackupDir,
     [switch]$IncludeUploads,
+    [switch]$DryRun,
     [switch]$SkipE2E,
     [switch]$SkipCollect,
     [switch]$KeepRestoreProject,
@@ -584,17 +588,21 @@ function Invoke-ExportBundle {
     return "$zip ($([math]::Round((Get-Item -LiteralPath $zip).Length / 1MB, 1)) MB)"
 }
 
-function Invoke-ImportBundle {
-    if (-not $BundlePath -or -not (Test-Path -LiteralPath $BundlePath)) { throw 'Use -BundlePath <carbon-dss-bundle-*.zip>' }
-    $stage = Join-Path $RunDir 'bundle'
-    Expand-ZipToFolder $BundlePath $stage
-    foreach ($line in Get-Content -LiteralPath (Join-Path $stage 'SHA256SUMS.txt')) {
+function Test-BundleChecksums([string]$Stage) {
+    foreach ($line in Get-Content -LiteralPath (Join-Path $Stage 'SHA256SUMS.txt')) {
         if ($line -match '^([0-9a-f]{64})\s+(.+)$') {
-            $actual = (Get-FileHash -LiteralPath (Join-Path $stage $Matches[2]) -Algorithm SHA256).Hash.ToLower()
+            $actual = (Get-FileHash -LiteralPath (Join-Path $Stage $Matches[2]) -Algorithm SHA256).Hash.ToLower()
             if ($actual -ne $Matches[1]) { throw "Checksum mismatch: $($Matches[2])" }
         }
     }
     Write-Log '    checksums OK'
+}
+
+function Invoke-ImportBundle {
+    if (-not $BundlePath -or -not (Test-Path -LiteralPath $BundlePath)) { throw 'Use -BundlePath <carbon-dss-bundle-*.zip>' }
+    $stage = Join-Path $RunDir 'bundle'
+    Expand-ZipToFolder $BundlePath $stage
+    Test-BundleChecksums $stage
     $envFile = Join-Path $Root '.env'
     if (-not (Test-Path -LiteralPath $envFile)) {
         # New PC: compose needs .env. Keys are never part of a bundle; fill them in afterwards.
@@ -644,6 +652,74 @@ function Invoke-ImportBundle {
     return "imported $($imported.Count) tables with identical row counts; health=$($health.status); grids=$grids; web=$($web.StatusCode); raw conflicts kept local: $($conflicts.Count)"
 }
 
+function Invoke-MergeBundle {
+    # Adds a teammate's bundle to this (non-empty) database. Nothing here is overwritten: rows are matched on
+    # natural keys by app.merge_bundle inside the api container, raw files only fill paths that do not exist yet.
+    if (-not $BundlePath -or -not (Test-Path -LiteralPath $BundlePath)) { throw 'Use -BundlePath <carbon-dss-bundle-*.zip>' }
+    $stage = Join-Path $RunDir 'bundle'
+    Expand-ZipToFolder $BundlePath $stage
+    Test-BundleChecksums $stage
+    Assert-Native (Compose-Main @('up', '-d', '--wait', 'postgres', 'redis', 'api')) 'services start'
+    Wait-Postgres 'main'
+    if (-not $DryRun) { Write-Log ('    backup before merge: ' + (Invoke-Backup 'before-merge')) }
+    $raw = [ordered]@{ copied = 0; identical = 0; kept_local = @() }
+    if (Test-Path -LiteralPath (Join-Path $stage 'raw.zip')) {
+        $rawStage = Join-Path $stage 'raw'
+        Expand-ZipToFolder (Join-Path $stage 'raw.zip') $rawStage
+        $rawTarget = Join-Path $Root 'data\raw'
+        foreach ($file in Get-ChildItem -LiteralPath $rawStage -Recurse -File) {
+            $relative = $file.FullName.Substring($rawStage.Length).TrimStart('\', '/')
+            $target = Join-Path $rawTarget $relative
+            if (Test-Path -LiteralPath $target) {
+                if ((Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash -eq (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash) { $raw.identical += 1 } else { $raw.kept_local += $relative.Replace('\', '/') }
+                continue
+            }
+            if (-not $DryRun) {
+                New-Item -ItemType Directory -Force -Path (Split-Path -Parent $target) | Out-Null
+                Copy-Item -LiteralPath $file.FullName -Destination $target
+            }
+            $raw.copied += 1
+        }
+    }
+    Write-Log "    raw files: new $($raw.copied), identical $($raw.identical), kept local (content differs) $($raw.kept_local.Count)"
+    # The bundle's database goes into a throwaway database on the same server; only the merged tables are restored.
+    $source = 'dss_merge_src'
+    $psql = @('exec', '-T', 'postgres', 'psql', '-U', 'carbon', '-v', 'ON_ERROR_STOP=1')
+    $tables = (Compose-Main @('exec', '-T', 'api', 'python', '-m', 'app.merge_bundle', '--list-tables')).Lines | Where-Object { $_ -match '^[a-z0-9_]+$' }
+    if (-not $tables) { throw 'app.merge_bundle --list-tables returned nothing (rebuild api)' }
+    try {
+        Assert-Native (Compose-Main ($psql + @('-d', 'carbon', '-c', "DROP DATABASE IF EXISTS $source WITH (FORCE)"))) 'drop old merge source'
+        Assert-Native (Compose-Main ($psql + @('-d', 'carbon', '-c', "CREATE DATABASE $source"))) 'create merge source'
+        Assert-Native (Compose-Main ($psql + @('-d', $source, '-c', 'CREATE EXTENSION IF NOT EXISTS postgis'))) 'postgis in merge source'
+        Assert-Native (Compose-Main @('cp', (Join-Path $stage 'db.dump'), 'postgres:/tmp/dss-merge.dump')) 'copy dump'
+        $restoreArgs = @('exec', '-T', 'postgres', 'pg_restore', '-U', 'carbon', '-d', $source, '--no-owner', '--no-privileges')
+        foreach ($t in $tables) { $restoreArgs += @('-t', $t) }
+        $restore = Compose-Main ($restoreArgs + @('/tmp/dss-merge.dump'))
+        Write-Log "    pg_restore into $source exit $($restore.Code)"
+        $mergeArgs = @('exec', '-T', 'api', 'python', '-m', 'app.merge_bundle', '--source-db', $source, '--raw-manifest', "$ContainerRunDir/bundle/raw-manifest.csv", '--out', "$ContainerRunDir/merge.json")
+        if ($DryRun) { $mergeArgs += '--dry-run' }
+        $merged = Compose-Main $mergeArgs
+        $reportFile = Join-Path $RunDir 'merge.json'
+        if (-not (Test-Path -LiteralPath $reportFile)) { Assert-Native $merged 'app.merge_bundle'; throw 'merge.json missing' }
+        $report = Get-Content -LiteralPath $reportFile -Raw -Encoding UTF8 | ConvertFrom-Json
+    } finally {
+        Compose-Main ($psql + @('-d', 'carbon', '-c', "DROP DATABASE IF EXISTS $source WITH (FORCE)")) | Out-Null
+        Compose-Main @('exec', '-T', 'postgres', 'rm', '-f', '/tmp/dss-merge.dump') | Out-Null
+    }
+    $script:Summary.results.merge = [ordered]@{ bundle = $BundlePath; dry_run = [bool]$DryRun; raw = $raw; totals = $report.totals; report = $reportFile }
+    Save-Summary
+    $failed = @($report.tables | Where-Object { $_.status -eq 'error' })
+    if ($failed.Count) { throw "merge failed for: $(($failed | ForEach-Object { "$($_.table) ($($_.message))" }) -join '; ')" }
+    $added = @($report.tables | Where-Object { $_.inserted -gt 0 } | ForEach-Object { "$($_.table) +$($_.inserted)" })
+    Remove-Item -LiteralPath $stage -Recurse -Force   # merge.json and summary.json stay in the run folder
+    if (-not $DryRun -and $report.totals.inserted -gt 0) {
+        # Map and region summaries are memoised in the api process.
+        Assert-Native (Compose-Main @('restart', 'api')) 'restart api'
+    }
+    $mode = if ($DryRun) { 'dry run (nothing written)' } else { 'merged' }
+    return "$mode; bundle rows $($report.totals.source_rows), already here $($report.totals.matched) (identical $($report.totals.identical), kept ours $($report.totals.differing)), added $($report.totals.inserted): $($added -join ', '); raw new $($raw.copied), kept local $($raw.kept_local.Count)"
+}
+
 function Invoke-VerifyBundle {
     # New-PC simulation on this machine: export -> clean git clone of HEAD -> import into a separate project.
     $exported = Invoke-ExportBundle
@@ -682,7 +758,7 @@ $selected = $Action
 if ($Action -notin @('Doctor', 'All')) {
     if (-not (Invoke-Step 'Docker engine' { Start-DockerEngine })) { $selected = 'Skip'; $ok = $false }
 }
-if ($selected -in @('Status', 'Probe', 'Collect', 'CollectHistory', 'CollectAll', 'Snapshot')) {
+if ($selected -in @('Status', 'Probe', 'Collect', 'CollectHistory', 'CollectAll', 'Snapshot', 'MergeBundle')) {
     # app.ops runs inside the api image; make sure it contains the current code first.
     # --force-recreate: containers must pick up .env changes (new API keys) as well as new code.
     if (-not (Invoke-Step 'Services up to date' { Assert-Native (Compose-Main @('up', '-d', '--build', '--force-recreate', '--wait', 'api', 'worker')) 'compose up --build'; 'api/worker rebuilt with current code and .env' })) { $selected = 'Skip'; $ok = $false }
@@ -718,6 +794,7 @@ switch ($selected) {
     'E2E' { $ok = Invoke-Step 'Browser E2E (restore-test project must be running)' { Invoke-E2E } }
     'ExportBundle' { $ok = Invoke-Step 'Export team bundle' { Invoke-ExportBundle } }
     'ImportBundle' { $ok = Invoke-Step 'Import team bundle' { Invoke-ImportBundle } }
+    'MergeBundle' { $ok = Invoke-Step 'Merge team bundle' { Invoke-MergeBundle } }
     'VerifyBundle' { $ok = Invoke-Step 'New-PC bundle import (clean clone)' { Invoke-VerifyBundle } }
     'All' {
         $ok = Invoke-Step 'Doctor' { Invoke-Doctor }

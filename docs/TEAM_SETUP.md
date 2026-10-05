@@ -55,6 +55,21 @@ scripts\dss.cmd ImportBundle -BundlePath D:\share\carbon-dss-bundle-20260923-120
 
 실행기는 SHA-256을 검증하고, 대상 DB에 테이블이 이미 있으면 **덮어쓰지 않고 중단**한다. `data/raw`는 없는 파일만 복사하며 내용이 다른 같은 이름 파일은 로컬 것을 유지하고 목록으로 보고한다. 복원 후 전 테이블 행 수를 묶음 기록과 비교하고 api/worker/frontend를 올려 `/api/health`를 확인한다.
 
+### 2.1-1 팀원이 모은 자료를 내 DB에 더하기 (`MergeBundle`)
+
+이미 데이터가 있는 PC에 다른 팀원의 묶음을 **더할 때**는 `ImportBundle`(빈 DB 전용) 대신 `MergeBundle`을 쓴다.
+
+```powershell
+scripts\dss.cmd MergeBundle -BundlePath D:\share\carbon-dss-bundle-20261003-175054.zip -DryRun   # 세기만, 아무것도 쓰지 않음
+scripts\dss.cmd MergeBundle -BundlePath D:\share\carbon-dss-bundle-20261003-175054.zip           # 실제로 더함
+```
+
+- 순서: SHA-256 검증 → (실제 실행이면) `Backup`(`data\backups\<시각>-before-merge`) → 원본 파일 복사 → 묶음 DB를 같은 서버의 임시 DB `dss_merge_src`에 복원 → `app.merge_bundle`이 표마다 비교·추가 → 임시 DB 삭제 → api 재시작.
+- **기존 행은 바꾸지 않는다.** 자연 키(기본 키, `energy_monthly`는 시군구·법정동·대지구분·번·지·연월·종류)로 맞춰 이 PC에 없는 행만 넣는다. 같은 키인데 값이 다르면 이 PC 값을 두고, 열별 차이 수와 예시 키를 보고서에 남긴다. 수집 시각·원본 응답 id(`collected_at`, `raw_source_id` 등)는 비교에서 뺀다.
+- 더하는 표는 관측 자료만이다(에너지, K-apt, 건축물대장, 연속지적·용도지역, SGIS, 기상, 한전·온실가스·도시가스, 원본 기록). 격자·지역 준비 상태·계획안·보고서·수집 작업 기록·배출계수 규칙·팀 CSV 표(국토통계지도 포함)는 이 PC 것을 쓴다. 새 지역 자료가 들어왔다면 그 지역의 지도 준비를 실행해야 화면에 나온다.
+- `data/raw`는 없는 경로만 복사한다. 같은 경로인데 내용이 다르면 이 PC 파일을 두고 목록을 남긴다. `raw_data_assets` 기록은 묶음과 같은 파일이 실제로 이 PC에 있을 때만 더한다(상대 PC 캐시를 가리키는 기록은 빼고).
+- 결과: `data\ops\<시각>-mergebundle\merge.json`(표별 묶음 행·이미 있음·같음·다름(이 PC 값 유지)·추가), `summary.json`. 다시 실행해도 더 들어가는 행은 없다.
+
 ### 2.2 묶음 없이 처음부터
 
 ```powershell
@@ -77,6 +92,7 @@ scripts\dss.cmd Collect
 | `Snapshot` | 지도·대시보드·오버레이·수집 이력 API 응답을 JSON으로 저장(화면 검토용) | `api/*.json` |
 | `VerifyRestore` | 최신 백업을 **별도 프로젝트 `carbon-urban-dss-restoretest`**(포트 8010/5190, 오프라인)에 복원 → 행 수 전수 비교 → 웹·API·지도·오버레이 점검 → pytest → 브라우저 E2E → 이 프로젝트만 정리 | `summary.json`, `pytest-restore.log`, `e2e.log`, `data\validation\*.png` |
 | `FrontendTest` | `docker build --target test frontend` (Vitest + `tsc -b` + Vite 운영 빌드) | `frontend-test.log` |
+| `MergeBundle` | 팀원 묶음을 **이 DB에 더하기**(빈 DB가 아니어도 됨). 백업 후 자연 키로 없는 행만 추가, 기존 행 유지, `-DryRun`은 세기만 | `merge.json`, `data\backups\<시각>-before-merge\` |
 | `VerifyBundle` | **새 PC 모의**: 묶음 내보내기 → 현재 커밋을 `git clone`한 깨끗한 폴더 → 그 폴더의 실행기로 별도 프로젝트(`carbon-urban-dss-importtest`, 포트 8010/5190)에 `ImportBundle` → 행 수·API·지도·웹 확인 → 그 프로젝트만 정리 | `import-test.log`, 복제본의 `data\ops\…-importbundle\summary.json` |
 | `All` | 위 전 과정(마지막에 `VerifyBundle`) | `data\ops\<시각>-all\` |
 
@@ -93,4 +109,4 @@ scripts\dss.cmd Collect
 | VWorld `INVALID_RANGE` | geomFilter 형식 오류. 2026-09-23 수정(`BOX(minx,miny,maxx,maxy)` 일반 소수). 오래된 이미지라면 `scripts\dss.cmd Rebuild` |
 | K-apt `provider_code=04`(HTTP_ERROR) | 제공기관 일시 오류. 이제 3회 재시도하고 실패한 월만 `FAILED`로 남긴 채 계속 진행한다. `scripts\dss.cmd Collect -Datasets kapt_energy`로 그 월만 다시 요청 |
 | K-apt 월별 값이 0 | 해당 단지가 그 달을 입력하지 않은 것(미보고). 0kWh로 쓰지 않고 `NOT_REPORTED`로 둔다 |
-| `ImportBundle`이 "already has N tables"로 중단 | 대상 DB가 비어 있지 않음. 기존 DB를 `Backup`으로 보존한 뒤 새 PC/새 볼륨에서 가져오기 |
+| `ImportBundle`이 "already has N tables"로 중단 | 대상 DB가 비어 있지 않음. 팀원 자료를 더하려면 `MergeBundle`(2.1-1). 묶음으로 통째로 바꾸려면 기존 DB를 `Backup`으로 보존한 뒤 새 PC/새 볼륨에서 가져오기 |
