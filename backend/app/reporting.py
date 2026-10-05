@@ -51,12 +51,31 @@ def local_selection(facts):
         if not body.get('done'):raise ValueError('Incomplete generation')
         return json.loads(body['response'])
 
+# Grid-context sentences the summary may draw on besides the main facts (the rest stay in their report sections).
+SUMMARY_CONTEXT=('building_energy','building_intensity','context_zoning','context_admin','context_complexes','register')
+MIN_SUMMARY=3
+
+def summary_pool(snapshot):
+    """Candidate sentences for the summary: the main facts, then the grid's context facts that describe the place."""
+    context=[f for f in (snapshot.get('context') or {}).get('facts') or [] if f.get('id') in SUMMARY_CONTEXT]
+    return list(snapshot['facts'])+context
+
+def arrange(selected,facts):
+    """The model picks; the report reads in the engine's order, always opens with the scope and has at least 3 sentences."""
+    order={f['id']:i for i,f in enumerate(facts)}
+    chosen={f['id']:f for f in selected}
+    if 'scope' in order:chosen.setdefault('scope',facts[order['scope']])
+    for f in facts:
+        if len(chosen)>=MIN_SUMMARY:break
+        chosen.setdefault(f['id'],f)
+    return sorted(chosen.values(),key=lambda f:order[f['id']])
+
 def summarize(facts,use_local):
     default={'mode':'TEMPLATE','paragraphs':[f['text'] for f in facts[:5]],'model':None,'validation':'계산 엔진 근거 문장 사용'}
     if not use_local:return default
     try:
-        selected=choose_evidence(local_selection(facts),facts)
-        return dict(mode='LOCAL_SLM',paragraphs=[f['text'] for f in selected],model=local_config()[1],validation='근거 ID와 원문 일치 검증 통과')
+        selected=arrange(choose_evidence(local_selection(facts),facts),facts)
+        return dict(mode='LOCAL_SLM',paragraphs=[f['text'] for f in selected],model=local_config()[1],validation='근거 ID와 원문 일치 검증 통과 (범위 문장은 항상 포함, 엔진 순서로 배열)')
     except (httpx.HTTPError,ValueError,KeyError,TypeError):
         return dict(default,mode='TEMPLATE_FALLBACK',reason='로컬 모델에 연결할 수 없거나 응답 검증에 실패하여 검증된 서식으로 작성했습니다.')
 
@@ -71,7 +90,7 @@ def create_snapshot(db,year,grid_id,scenario_ids,region=None):
     if not all(data['annual_complete'].values()) or data['carbon_kg'] is None:
         facts.insert(1,{'id':'missing','text':'기준 자료 또는 배출계수가 부족하여 연간 전체 운영탄소와 탄소 감축률을 확정할 수 없습니다.'})
     else:
-        facts.insert(1,{'id':'annual','text':f'동일 관측 범위의 연간 운영탄소는 {data["carbon_kg"]:,.1f} kgCO2eq입니다.'})
+        facts.insert(1,{'id':'annual','text':f'격자에 매칭된 공동주택 관측 지번 기준 {year}년 연간 운영탄소(전력+가스)는 {data["carbon_kg"]:,.0f} kgCO2eq입니다.'})
     intensity=(data.get('normalized') or {}).get('electricity_kwh_per_m2')
     if intensity is not None:
         area=data['normalized']['electricity_matched_floor_area_m2']
@@ -302,7 +321,7 @@ def create_report(request:ReportInput):
     with Session() as db:
         try:snapshot=create_snapshot(db,request.year,request.grid_id,request.scenario_ids,request.region)
         except ValueError as e:raise HTTPException(422,str(e)) from None
-        snapshot['summary']=summarize(snapshot['facts'],request.use_local_model)
+        snapshot['summary']=summarize(summary_pool(snapshot),request.use_local_model)
         rid=str(uuid.uuid4());db.add(DecisionReport(id=rid,snapshot=snapshot));db.commit()
         return dict(id=rid,**snapshot)
 

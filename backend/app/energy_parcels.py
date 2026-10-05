@@ -281,7 +281,7 @@ def summarize_parcels(parcels: list[dict[str, Any]], grid_of: dict[str, str], ar
         if not grid_id:
             continue
         item = out.setdefault(grid_id, {"parcels": set(), "ELECTRICITY": {"complete": 0, "kwh": 0.0}, "GAS": {"complete": 0, "kwh": 0.0},
-                                        "area_parcels": 0, "area_m2": 0.0, "area_kwh": 0.0, "suspect": 0})
+                                        "area_parcels": 0, "area_m2": 0.0, "area_kwh": 0.0, "suspect": 0, "by_parcel": {}})
         item["parcels"].add(p["pnu"])
         target = item[p["energy_type"]]
         month_list = p.get("month_list")
@@ -293,6 +293,7 @@ def summarize_parcels(parcels: list[dict[str, Any]], grid_of: dict[str, str], ar
             item["bimonthly"] = item.get("bimonthly", 0) + 1
         target["kwh"] += p["kwh"]
         if p["energy_type"] == "ELECTRICITY":
+            item["by_parcel"][p["pnu"]] = p["kwh"]
             area = area_of.get(p["pnu"])
             if area:
                 ratio = p["kwh"] / area
@@ -313,6 +314,8 @@ def summarize_parcels(parcels: list[dict[str, Any]], grid_of: dict[str, str], ar
             "area_parcels": item["area_parcels"], "area_m2": round(item["area_m2"], 1) if item["area_parcels"] else None,
             "kwh_per_m2": round(item["area_kwh"] / item["area_m2"], 2) if item["area_parcels"] else None,
             "suspect": item["suspect"],
+            # 12-month electricity per parcel: lets an area compare the same parcels across years (not serialised by map_properties)
+            "electricity_by_parcel": item["by_parcel"],
         }
     return result
 

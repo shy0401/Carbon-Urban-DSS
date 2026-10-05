@@ -702,8 +702,34 @@ def building_energy_block(grid_ids: list[str], by_year: dict[int, dict[str, dict
             "complete": year_complete(year),
             "provider_gap": HUB_PROVIDER_GAPS.get(year),
         }
-    return {"years": years, "available": bool(years),
+    return {"years": years, "available": bool(years), "trend": same_parcel_trend(members, by_year, years),
             "basis": "건축HUB 건물에너지 법정동 단위 전 지번(단독주택·200세대 미만 공동주택·산업용 등 제외), 12개월 계측 지번 합계, 연속지적 대표점으로 격자 배치"}
+
+
+def same_parcel_trend(members: set[str], by_year: dict[int, dict[str, dict[str, Any]]], years: dict[int, dict[str, Any]]) -> dict[str, Any] | None:
+    """Electricity of the first comparable year against the latest one, split into the parcels metered for 12 months in
+    both years (a change in use of the same buildings) and the parcels metered in only one of them (new or gone meters,
+    new buildings, or a meter recorded under another parcel). Years with a provider gap or still being collected are skipped."""
+    comparable = sorted(y for y, v in years.items() if v.get("electricity_kwh") and v.get("complete") and not v.get("provider_gap"))
+    if len(comparable) < 2:
+        return None
+    first, last = comparable[0], comparable[-1]
+
+    def parcels(year: int) -> dict[str, float]:
+        merged: dict[str, float] = {}
+        for g in members:
+            merged.update((by_year.get(year, {}).get(g) or {}).get("electricity_by_parcel") or {})
+        return merged
+
+    a, b = parcels(first), parcels(last)
+    if not a or not b:
+        return None
+    same = a.keys() & b.keys()
+    same_a, same_b = sum(a[p] for p in same), sum(b[p] for p in same)
+    return {"from": first, "to": last, "same_parcels": len(same), "same_from_kwh": round(same_a, 1), "same_to_kwh": round(same_b, 1),
+            "same_change_pct": round((same_b - same_a) / same_a * 100, 1) if same_a else None,
+            "new_parcels": len(b.keys() - a.keys()), "new_kwh": round(sum(b[p] for p in b.keys() - a.keys()), 1),
+            "gone_parcels": len(a.keys() - b.keys()), "gone_kwh": round(sum(a[p] for p in a.keys() - b.keys()), 1)}
 
 
 ENERGY_SOURCES = {"electricity": ("KAPT", "K-apt 관리비 전력 (2015~, 같은 출처로 연도 비교)"),
@@ -811,13 +837,14 @@ def area_facts(history: dict[str, Any], comparison: dict[str, Any] | None = None
         carbon = f", 전력 탄소 {v['electricity_carbon_kgco2eq']:,.0f} kgCO2eq" if v.get("electricity_carbon_kgco2eq") is not None else ""
         add("building_energy", f"건축HUB가 계측하는 구역 안 건물 전체(상가·업무·학교·대형 공동주택 등, 12개월 계측 지번 {v['electricity_complete']}곳)의 {latest_be}년 전력은 {v['electricity_kwh']:,.0f} kWh{carbon}입니다. 단독주택과 200세대 미만 공동주택은 제공 범위 밖입니다.",
             latest_be, v["electricity_complete"], v["electricity_kwh"], v.get("electricity_carbon_kgco2eq"))
-        comparable = sorted(y for y, w in be.items() if w.get("electricity_kwh") and w.get("complete", True) and not w.get("provider_gap"))
-        if len(comparable) >= 2 and comparable[0] != latest_be and latest_be in comparable:
-            first = be[comparable[0]]
-            pct = round((v["electricity_kwh"] - first["electricity_kwh"]) / first["electricity_kwh"] * 100, 1)
-            add("building_energy_trend", f"같은 기준(12개월 계측 지번 합계)으로 구역 건물 전체 전력은 {comparable[0]}년 {first['electricity_kwh']:,.0f} kWh(지번 {first['electricity_complete']}곳)에서 "
-                f"{latest_be}년 {v['electricity_kwh']:,.0f} kWh(지번 {v['electricity_complete']}곳)로 {pct:+,.1f}% 변했습니다. 계측 지번 구성이 해마다 달라 사용 변화와 계측 범위 변화가 함께 들어 있습니다.",
-                comparable[0], first["electricity_kwh"], first["electricity_complete"], latest_be, v["electricity_kwh"], v["electricity_complete"], pct, signed_pct=pct)
+        trend = (history.get("building_energy") or {}).get("trend")
+        if trend and trend.get("to") == latest_be and trend.get("same_change_pct") is not None:
+            t = trend
+            add("building_energy_trend", f"{t['from']}년과 {t['to']}년 모두 12개월 계측된 같은 지번 {t['same_parcels']}곳의 전력은 {t['same_from_kwh']:,.0f} kWh에서 "
+                f"{t['same_to_kwh']:,.0f} kWh로 {t['same_change_pct']:+,.1f}% 변했습니다. {t['to']}년에만 계측된 지번은 {t['new_parcels']}곳({t['new_kwh']:,.0f} kWh), "
+                f"{t['from']}년에만 계측된 지번은 {t['gone_parcels']}곳({t['gone_kwh']:,.0f} kWh)입니다(신축·계량 변경·다른 지번으로의 기록 이동이 섞일 수 있음).",
+                t["from"], t["to"], t["same_parcels"], t["same_from_kwh"], t["same_to_kwh"], t["same_change_pct"], t["new_parcels"], t["new_kwh"],
+                t["gone_parcels"], t["gone_kwh"], signed_pct=t["same_change_pct"])
         gaps = sorted(y for y, w in be.items() if w.get("provider_gap"))
         for y in gaps:
             add("building_energy_gap", f"{y}년 건축HUB 값은 쓰되 비교하지 않습니다: {be[y]['provider_gap']}.", y)

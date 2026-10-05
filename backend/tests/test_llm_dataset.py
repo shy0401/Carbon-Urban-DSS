@@ -31,12 +31,13 @@ def test_reference_summary_needs_at_least_two_sentences():
 def _fake_engine(monkeypatch):
     inputs = {"admin": [{"properties": {"adm_code": "1"}}, {"properties": {"adm_code": "2"}}, {"properties": {"adm_code": "3"}}],
               "zoning": {"g": {"dominant_zone": "COMMERCIAL"}, "h": {"dominant_zone": "UNKNOWN"}},
-              "complexes": {"A": {"kapt_code": "A", "lon": 127.1, "lat": 35.8}}, "energy": [], "years": [2024, 2025]}
+              "complexes": {"A": {"kapt_code": "A", "lon": 127.1, "lat": 35.8}}, "energy": [], "years": [2024, 2025],
+              "building_energy": {2025: {"cell_1_1": {}, "cell_2_2": {}}}}
     monkeypatch.setattr(llm_dataset, "prepare_inputs", lambda db, years: inputs)
     calls = []
 
-    def analyze(db, spec, f, t, event, window, plan, target, pv, *, inputs):
-        calls.append(spec)
+    def analyze(db, spec, f, t, event, window, plan, target, pv, *, inputs, effort_basis="apartments"):
+        calls.append(dict(spec, basis=effort_basis))
         facts = [dict(FACTS[0], text=FACTS[0]["text"].replace("덕진구 송천1동 (행정동)", json.dumps(spec, ensure_ascii=False))), FACTS[4] | {"text": FACTS[4]["text"].replace("40%", f"{target:.0f}%"), "numbers": [2025, target, 17401119]}, FACTS[5]]
         return {"facts": facts}
     monkeypatch.setattr(llm_dataset, "analyze", analyze)
@@ -46,7 +47,8 @@ def _fake_engine(monkeypatch):
 def test_build_dataset_writes_verified_chat_examples_split_by_area(tmp_path, monkeypatch):
     calls = _fake_engine(monkeypatch)
     manifest = build_dataset(None, 2024, 2025, out_dir=tmp_path, per_area=3, log=lambda m: None)
-    assert {c["type"] for c in calls} == {"admin", "zone", "circle"}
+    assert {c["type"] for c in calls} == {"admin", "zone", "circle", "grid"}
+    assert {c["basis"] for c in calls} == {"apartments", "buildings"}
     assert all(c.get("category") != "UNKNOWN" for c in calls)
     train = [json.loads(l) for l in (tmp_path / "train.jsonl").read_text(encoding="utf-8").splitlines()]
     evalrows = [json.loads(l) for l in (tmp_path / "eval.jsonl").read_text(encoding="utf-8").splitlines()]
@@ -79,3 +81,17 @@ def test_evaluate_counts_pass_rejected_and_error_without_publishing_bad_numbers(
     assert report["violation_kinds"] == {"근거에 없는 숫자": 1}
     saved = json.loads(open(report["saved"], encoding="utf-8").read())
     assert saved["results"][1]["outcome"] == "rejected"
+
+
+def test_reference_summary_states_the_building_basis_and_does_not_chain_an_estimate_as_a_result():
+    facts = FACTS[:3] + [
+        {"id": "building_energy", "text": "건축HUB가 계측하는 구역 안 건물 전체의 2025년 전력은 38,404,995 kWh입니다.", "numbers": [2025, 38404995]},
+        FACTS[3],
+        {"id": "effort_basis", "text": "감축 노력은 구역 건물 전체(건축HUB 계측 지번, 상가·업무 포함) 기준입니다: 2025년 전력 38,404,995 kWh, 원단위 69.30 kWh/m²·년.", "numbers": [2025, 38404995, 69.3]},
+        FACTS[4], FACTS[5]]
+    for seed in ("a", "b", "c", "d"):
+        summary = reference_summary(facts, seed=seed)
+        assert "그 결과 관측이 부족해" not in summary
+        assert summary.index("건물 전체") < summary.index("2019년에") and "감축 노력은 구역 건물 전체" in summary
+        assert summary.index("감축 노력은") < summary.index("40% 감축을")
+        assert verify_narrative(summary, facts) == []

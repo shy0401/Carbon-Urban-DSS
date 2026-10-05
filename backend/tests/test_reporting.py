@@ -93,3 +93,15 @@ def test_area_summary_calls_the_narrative_model(monkeypatch):
     result = area_report.summarize_area(facts, True)
     assert seen['model'] == 'carbon-area-narrator'
     assert result['mode'] == 'LOCAL_SLM_NARRATIVE' and result['model'] == 'carbon-area-narrator'
+
+
+def test_local_selection_keeps_scope_first_engine_order_and_at_least_three_sentences(monkeypatch):
+    from app.reporting import summarize, summary_pool
+    snapshot = {'facts': [{'id': 'scope', 'text': '범위.'}, {'id': 'annual', 'text': '연간.'}, {'id': 'coverage', 'text': '자료.'}, {'id': 'legal', 'text': '판정 아님.'}],
+                'context': {'facts': [{'id': 'official_grid', 'text': '공식 격자.'}, {'id': 'building_energy', 'text': '건물 전체.'}]}}
+    pool = summary_pool(snapshot)
+    assert [f['id'] for f in pool] == ['scope', 'annual', 'coverage', 'legal', 'building_energy']  # official_grid stays in its section
+    monkeypatch.setattr('app.reporting.local_selection', lambda facts: {'fact_ids': ['building_energy']})
+    result = summarize(pool, True)
+    assert result['mode'] == 'LOCAL_SLM'
+    assert result['paragraphs'] == ['범위.', '연간.', '건물 전체.']  # scope added, padded to 3, engine order

@@ -37,18 +37,25 @@ PLANS: tuple[dict[str, float], ...] = (
 )
 
 # Slots in reading order: (fact ids tried in order, connective used when the slot is not first).
+# The building-wide sentences come before the development history, and the reduction basis right before the target, so
+# a summary of a commercial area (effort on every metered building) says what the target is measured against.
 SLOTS: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
     (("scope",), ("",)),
     (("latest_energy", "coverage"), ("", "자료 면에서 ")),
     (("latest_carbon",), ("",)),
+    (("building_energy",), ("", "건물 전체로 보면 ")),
+    (("building_energy_trend",), ("",)),
     (("event",), ("", "개발 이력을 보면 ")),
     (("change", "estimated_change"), ("", "그 결과 ")),
     (("new_share",), ("",)),
+    (("effort_basis",), ("",)),
     (("effort_target",), ("", "앞으로의 개발에 대해서는 ")),
     (("effort_met", "effort_all"), ("", "이때 ")),
     (("effort_offset",), ("",)),
-    (("effort_basis",), ("다만 ",)),
 )
+# Sentences that do not follow from the one before: no connective ('그 결과 관측이 부족해 …' read as a cause).
+NO_CONNECTIVE = frozenset({"estimated_change", "effort_basis", "building_energy_trend"})
+EFFORT_BASES = ("apartments", "apartments", "buildings")
 
 
 def _stable(text: str) -> int:
@@ -63,7 +70,7 @@ def reference_summary(facts: list[dict[str, Any]], seed: str = "") -> str | None
         fact = next((by_id[i] for i in ids if i in by_id), None)
         if not fact:
             continue
-        connective = connectives[_stable(seed + fact["id"]) % len(connectives)] if parts else ""
+        connective = connectives[_stable(seed + fact["id"]) % len(connectives)] if parts and fact["id"] not in NO_CONNECTIVE else ""
         candidate = connective + fact["text"]
         if len(" ".join(parts + [candidate])) > MAX_SUMMARY:
             continue
@@ -73,8 +80,9 @@ def reference_summary(facts: list[dict[str, Any]], seed: str = "") -> str | None
     return " ".join(parts)
 
 
-def _areas(inputs: dict[str, Any], limit_circles: int = 24) -> list[dict[str, Any]]:
-    """Every 행정동, every 용도지역 category, and circles around sampled apartment complexes."""
+def _areas(inputs: dict[str, Any], limit_circles: int = 24, limit_grids: int = 40) -> list[dict[str, Any]]:
+    """Every 행정동, every 용도지역 category, circles around sampled apartment complexes, and sampled 500m grids
+    with metered buildings (the area page opens a single grid from the map)."""
     specs: list[dict[str, Any]] = []
     for feature in inputs["admin"]:
         code = feature["properties"].get("adm_code")
@@ -86,6 +94,11 @@ def _areas(inputs: dict[str, Any], limit_circles: int = 24) -> list[dict[str, An
     step = max(1, len(points) // max(1, limit_circles))
     for i, c in enumerate(points[::step][:limit_circles]):
         specs.append({"type": "circle", "lon": round(c["lon"], 6), "lat": round(c["lat"], 6), "radius_m": (500, 1000, 1500)[i % 3]})
+    metered = (inputs.get("building_energy") or {})
+    latest = max(metered) if metered else None
+    grids = sorted(metered.get(latest, {})) if latest else []
+    step = max(1, len(grids) // max(1, limit_grids))
+    specs += [{"type": "grid", "grid_id": g} for g in grids[::step][:limit_grids]]
     return specs
 
 
@@ -108,7 +121,8 @@ def build_dataset(db: Any, from_year: int, to_year: int, *, out_dir: str | Path 
             target = TARGETS[(_stable(key) + k * 3) % len(TARGETS)]
             plan = PLANS[(_stable(key) // 7 + k) % len(PLANS)]
             try:
-                result = analyze(db, spec, from_year, to_year, None, 3 if k % 2 == 0 else 2, dict(plan), float(target), None, inputs=inputs)
+                result = analyze(db, spec, from_year, to_year, None, 3 if k % 2 == 0 else 2, dict(plan), float(target), None, inputs=inputs,
+                                 effort_basis=EFFORT_BASES[(_stable(key) + k) % len(EFFORT_BASES)])
             except (ValueError, KeyError) as exc:
                 stats["failed_analyses"] += 1
                 log(f"skip {key}: {str(exc)[:80]}")
