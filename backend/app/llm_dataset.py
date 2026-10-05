@@ -46,7 +46,7 @@ SLOTS: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
     (("building_energy",), ("", "건물 전체로 보면 ")),
     (("building_energy_trend",), ("",)),
     (("event",), ("", "개발 이력을 보면 ")),
-    (("change", "estimated_change"), ("", "그 결과 ")),
+    (("change", "estimated_change"), ("", "개발 전후로 ")),  # a before/after difference, not a measured cause ('그 결과')
     (("new_share",), ("",)),
     (("effort_basis",), ("",)),
     (("effort_target",), ("", "앞으로의 개발에 대해서는 ")),

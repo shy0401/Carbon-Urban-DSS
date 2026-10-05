@@ -48,6 +48,8 @@ def main() -> None:
     parser.add_argument("--lr", type=float, default=2e-4)
     parser.add_argument("--rank", type=int, default=16)
     parser.add_argument("--max-len", type=int, default=2048)
+    parser.add_argument("--min-keep", type=float, default=0.9,
+                        help="stop when fewer than this share of training rows fit in --max-len (rows longer than it are dropped)")
     parser.add_argument("--batch", type=int, default=2)
     parser.add_argument("--accum", type=int, default=8)
     parser.add_argument("--limit", type=int, default=None, help="use only the first N training rows (smoke test)")
@@ -78,6 +80,10 @@ def main() -> None:
     lengths = sorted(len(e["input_ids"]) for e in train)
     print(f"train {len(train)}/{len(train_rows)}  eval {len(held)}/{len(eval_rows)}  (dataset {manifest['created_at']})"
           + (f"  tokens min/median/max {lengths[0]}/{lengths[len(lengths) // 2]}/{lengths[-1]}" if lengths else ""))
+    if len(train) < args.min_keep * len(train_rows):
+        # 2026-10-05: 303 rows, only 135 fit in 2,048 tokens; training on the short ones silently skewed the model.
+        raise SystemExit(f"--max-len {args.max_len} 안에 드는 학습 예시가 {len(train)}/{len(train_rows)}개뿐입니다. "
+                         "--max-len을 늘리거나 근거 문장(area_report.NARRATIVE_FACTS)을 줄이세요.")
 
     use_bf16 = torch.cuda.is_available() and torch.cuda.is_bf16_supported()
     if args.load_4bit:

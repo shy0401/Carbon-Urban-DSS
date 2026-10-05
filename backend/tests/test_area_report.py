@@ -59,3 +59,20 @@ def test_effort_amount_without_its_basis_is_rejected():
     stated = '감축 노력은 구역 건물 전체 기준입니다: 2025년 전력 160,874,572 kWh. 40% 감축을 목표로 하면 연간 33,145,897 kgCO2eq를 줄여야 합니다.'
     assert verify_narrative(stated, facts) == []
     assert verify_narrative('2025년 관측 전력은 84,145,683 kWh입니다.', facts) == []  # no effort quoted → basis not required
+
+
+def test_model_prompt_carries_only_summary_facts_but_checker_keeps_them_all():
+    import json
+    from app.area_report import NARRATIVE_FACTS, facts_prompt
+    from app.llm_dataset import SLOTS
+    facts = [
+        {'id': 'scope', 'text': '분석 대상은 격자 A입니다.', 'numbers': []},
+        {'id': 'sgis_grid', 'text': 'SGIS 2024년 1km 격자 기준 인구 12,345명입니다.', 'numbers': [2024, 12345]},
+        {'id': 'building_energy_gap', 'text': '2020년 건축HUB 값은 쓰되 비교하지 않습니다.', 'numbers': [2020]},
+        {'id': 'gap_7', 'text': '개발 전 관측 연도가 없습니다.', 'numbers': []},
+        {'id': 'rules', 'text': '관측이 없는 연도는 0이 아니라 자료 없음으로 두었습니다.', 'numbers': [0]},
+        {'id': 'latest_energy', 'text': '2025년 관측 전력은 5,309,649 kWh입니다.', 'numbers': [2025, 5309649.0]},
+    ]
+    assert [f['id'] for f in json.loads(facts_prompt(facts))] == ['scope', 'latest_energy']
+    assert verify_narrative('구역 인구는 12,345명이고 2025년 관측 전력은 5,309,649 kWh입니다.', facts) == []
+    assert {i for ids, _ in SLOTS for i in ids} <= NARRATIVE_FACTS  # every training sentence is visible to the model

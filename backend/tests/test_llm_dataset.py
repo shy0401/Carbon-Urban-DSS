@@ -91,7 +91,7 @@ def test_reference_summary_states_the_building_basis_and_does_not_chain_an_estim
         FACTS[4], FACTS[5]]
     for seed in ("a", "b", "c", "d"):
         summary = reference_summary(facts, seed=seed)
-        assert "그 결과 관측이 부족해" not in summary
+        assert "그 결과" not in summary  # before/after is a difference, not a measured cause
         assert summary.index("건물 전체") < summary.index("2019년에") and "감축 노력은 구역 건물 전체" in summary
         assert summary.index("감축 노력은") < summary.index("40% 감축을")
         assert verify_narrative(summary, facts) == []

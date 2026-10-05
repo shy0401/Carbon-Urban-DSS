@@ -126,9 +126,20 @@ AREA_SYSTEM = ("한국어 도시계획 검토 보고서의 요약 문단을 쓴�
 SUMMARY_SCHEMA = {"type": "object", "properties": {"summary": {"type": "string", "maxLength": 1200}}, "required": ["summary"], "additionalProperties": False}
 
 
+# Facts the summary is written from. The long context sentences (SGIS 1km grid totals, the 2020 provider gap,
+# comparison-gap notes, the rules line) stay in the report body but are not sent to the model: they made the
+# prompt longer than the 2,048-token training window and no summary sentence is built from them.
+# The checker still sees every fact, so a number from those sentences is not flagged as invented.
+NARRATIVE_FACTS = frozenset({
+    "scope", "coverage", "development", "register", "building_energy", "building_energy_trend",
+    "latest_energy", "latest_carbon", "latest_intensity", "event", "before_after", "change", "new_share",
+    "estimated_change", "effort_basis", "effort_target", "effort_met", "effort_new", "effort_all", "effort_offset",
+})
+
+
 def facts_prompt(facts: list[dict[str, Any]]) -> str:
     """The exact user message the model sees (shared by the app, the training set and the evaluation)."""
-    return json.dumps([{"id": f["id"], "text": f["text"]} for f in facts], ensure_ascii=False)
+    return json.dumps([{"id": f["id"], "text": f["text"]} for f in facts if f["id"] in NARRATIVE_FACTS], ensure_ascii=False)
 
 
 def local_narrative(facts: list[dict[str, Any]], model: str | None = None) -> str:
