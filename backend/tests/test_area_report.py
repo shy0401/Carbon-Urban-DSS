@@ -93,7 +93,7 @@ def test_output_budget_fits_the_longest_training_summary(monkeypatch):
 
     class FakeClient:
         def __init__(self, *a, **k):
-            pass
+            sent["timeout"] = k.get("timeout")
 
         def __enter__(self):
             return self
@@ -110,3 +110,12 @@ def test_output_budget_fits_the_longest_training_summary(monkeypatch):
     # even at one token per character (digits are single tokens) the longest target plus the JSON wrapper fits
     assert sent["options"]["num_predict"] >= MAX_SUMMARY + 20
     assert sent["options"]["num_ctx"] >= sent["options"]["num_predict"] + 1500
+    # the proxies in front of the API must outwait the model call (plus the analysis before it)
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[2]
+    for conf in ("frontend/nginx.conf", "deploy/gateway.conf"):
+        if not (root / conf).exists():  # backend image without the rest of the repository
+            continue
+        text = (root / conf).read_text(encoding="utf-8")
+        wait = int(text.split("proxy_read_timeout ")[1].split("s")[0])
+        assert wait >= sent["timeout"] + 30, conf

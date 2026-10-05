@@ -128,6 +128,11 @@ SUMMARY_SCHEMA = {"type": "object", "properties": {"summary": {"type": "string",
 # per character; the training targets run up to llm_dataset.MAX_SUMMARY (1,100) characters. With 600 the JSON was cut
 # mid-string for the longer summaries (2026-10-05: 23 of 40 held-out answers of the retrained model).
 NARRATIVE_MAX_TOKENS = 1280
+# The retrained writer answers in 30~90 s on the PC's CPU Ollama (longer summaries); loading the model adds ~30 s.
+# The nginx proxies in front of the API wait 240 s (frontend/nginx.conf, deploy/gateway.conf), so this must stay below that
+# minus the area analysis itself. Keeping the model loaded for 10 minutes avoids the reload between consecutive reports.
+NARRATIVE_TIMEOUT_S = 180
+NARRATIVE_KEEP_ALIVE = "10m"
 
 
 # Facts the summary is written from. The long context sentences (SGIS 1km grid totals, the 2020 provider gap,
@@ -148,10 +153,10 @@ def facts_prompt(facts: list[dict[str, Any]]) -> str:
 
 def local_narrative(facts: list[dict[str, Any]], model: str | None = None) -> str:
     base, _ = local_config()
-    with httpx.Client(timeout=120, trust_env=False) as client:
+    with httpx.Client(timeout=NARRATIVE_TIMEOUT_S, trust_env=False) as client:
         response = client.post(base + "/api/generate", json={
             "model": model or narrative_model(), "stream": False, "format": SUMMARY_SCHEMA, "system": AREA_SYSTEM, "prompt": facts_prompt(facts),
-            "options": {"temperature": 0, "seed": 42, "num_predict": NARRATIVE_MAX_TOKENS, "num_ctx": 4096}, "keep_alive": "2m"})
+            "options": {"temperature": 0, "seed": 42, "num_predict": NARRATIVE_MAX_TOKENS, "num_ctx": 4096}, "keep_alive": NARRATIVE_KEEP_ALIVE})
         response.raise_for_status()
         body = response.json()
         if not body.get("done"):
