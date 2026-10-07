@@ -247,6 +247,15 @@
    }
   },
   {
+   "id": "D04",
+   "kind": "dataset",
+   "region": "26440",
+   "title": "부산 강서구 자료 지문",
+   "input": {
+    "region": "26440"
+   }
+  },
+  {
    "id": "J01",
    "kind": "area",
    "region": "52110",
@@ -1759,6 +1768,52 @@
     "window": 3,
     "plan": {
      "added_floor_area_m2": 40000
+    },
+    "target_pct": 20,
+    "effort_basis": "buildings"
+   }
+  },
+  {
+   "id": "B01",
+   "kind": "area",
+   "region": "26440",
+   "screen": "지역 시뮬레이션",
+   "title": "부산 강서 개발지 · 명지1동(명지국제신도시) 감축 20% (공동주택 기준)",
+   "purpose": "2015~2021 사용승인 단지가 많은 신도시 개발지. 과거 K-apt가 들어오면 개발 전후 관측 비교가 가능해짐",
+   "input": {
+    "area": {
+     "type": "admin",
+     "code": "21120590"
+    },
+    "region": "26440",
+    "from_year": 2015,
+    "to_year": 2025,
+    "window": 3,
+    "plan": {
+     "added_floor_area_m2": 60000
+    },
+    "target_pct": 20,
+    "effort_basis": "apartments"
+   }
+  },
+  {
+   "id": "B02",
+   "kind": "area",
+   "region": "26440",
+   "screen": "지역 시뮬레이션",
+   "title": "부산 강서 상업지 · 명지1동 상업 중심 격자 감축 20% (건물 전체 기준)",
+   "purpose": "명지1동에서 건물 전체 전력 − 공동주택 전력이 가장 큰 500m 격자(2025). 용도지역 분류가 아직 \"기타\"로만 나오는 지역이라 격자로 고름",
+   "input": {
+    "area": {
+     "type": "grid",
+     "grid_id": "cell_1128000_1678500"
+    },
+    "region": "26440",
+    "from_year": 2015,
+    "to_year": 2025,
+    "window": 3,
+    "plan": {
+     "added_floor_area_m2": 30000
     },
     "target_pct": 20,
     "effort_basis": "buildings"
