@@ -1,8 +1,8 @@
 {
  "version": 1,
  "about": "고정 시뮬레이션 사례. 입력은 화면이 보내는 값과 같고, expected는 기준 PC가 자료 묶음과 함께 기록한 값입니다. 실행: docker compose -p carbon-urban-dss -f compose.yaml -f compose.demo.yaml exec -T api python -m app.cli verify-cases (docs/USER_MANUAL.md 9절)",
- "recorded_on": null,
- "data_note": null,
+ "recorded_on": "2026-10-08T03:10:17+09:00",
+ "data_note": "PC DB 2026-10-08 03시 (전주·수원·강동 준비 완료, ERA5 일사량 반영, 부산 강서·세종 준비 중)",
  "cases": [
   {
    "id": "D01",
@@ -11,6 +11,123 @@
    "title": "전주시 자료 지문 (계산이 읽는 행 수·합계)",
    "input": {
     "region": "52110"
+   },
+   "expected": {
+    "values": {
+     "region": "52110",
+     "name": "전북특별자치도 전주시",
+     "grids": 916,
+     "building_energy.2019_ELECTRICITY": [
+      308,
+      61362143.0
+     ],
+     "building_energy.2020_ELECTRICITY": [
+      190302,
+      1782493771.0
+     ],
+     "building_energy.2020_GAS": [
+      83175,
+      1659320744.0
+     ],
+     "building_energy.2021_ELECTRICITY": [
+      191379,
+      1837365725.0
+     ],
+     "building_energy.2021_GAS": [
+      84596,
+      1825557980.0
+     ],
+     "building_energy.2022_ELECTRICITY": [
+      194754,
+      1943180882.0
+     ],
+     "building_energy.2022_GAS": [
+      85705,
+      1986145565.0
+     ],
+     "building_energy.2023_ELECTRICITY": [
+      200730,
+      2049935868.0
+     ],
+     "building_energy.2023_GAS": [
+      87526,
+      1824343206.0
+     ],
+     "building_energy.2024_ELECTRICITY": [
+      204370,
+      2152518680.0
+     ],
+     "building_energy.2024_GAS": [
+      89424,
+      1853609448.0
+     ],
+     "building_energy.2025_ELECTRICITY": [
+      206640,
+      2217922244.0
+     ],
+     "building_energy.2025_GAS": [
+      89993,
+      1917136207.0
+     ],
+     "kapt.2019": [
+      688,
+      61372392.0
+     ],
+     "kapt.2020": [
+      4137,
+      491605708.0
+     ],
+     "kapt.2021": [
+      4226,
+      515101959.0
+     ],
+     "kapt.2022": [
+      4271,
+      539685322.0
+     ],
+     "kapt.2023": [
+      4326,
+      588357089.0
+     ],
+     "kapt.2024": [
+      4343,
+      688480792.0
+     ],
+     "kapt.2025": [
+      4416,
+      595359551.0
+     ],
+     "factors": [
+      [
+       "ELECTRICITY",
+       2018,
+       0.4594
+      ],
+      [
+       "ELECTRICITY",
+       2021,
+       0.4781
+      ],
+      [
+       "ELECTRICITY",
+       2024,
+       0.4541
+      ],
+      [
+       "ELECTRICITY",
+       2025,
+       0.433
+      ],
+      [
+       "GAS",
+       2006,
+       0.1826
+      ]
+     ],
+     "solar_months": 132
+    },
+    "facts": [],
+    "facts_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
    }
   },
   {
@@ -20,6 +137,55 @@
    "title": "수원시 자료 지문",
    "input": {
     "region": "41110"
+   },
+   "expected": {
+    "values": {
+     "region": "41110",
+     "name": "경기도 수원시",
+     "grids": 559,
+     "building_energy.2025_ELECTRICITY": [
+      170856,
+      4619199856.0
+     ],
+     "building_energy.2025_GAS": [
+      90577,
+      2206750366.0
+     ],
+     "kapt.2025": [
+      5496,
+      1060455127.0
+     ],
+     "factors": [
+      [
+       "ELECTRICITY",
+       2018,
+       0.4594
+      ],
+      [
+       "ELECTRICITY",
+       2021,
+       0.4781
+      ],
+      [
+       "ELECTRICITY",
+       2024,
+       0.4541
+      ],
+      [
+       "ELECTRICITY",
+       2025,
+       0.433
+      ],
+      [
+       "GAS",
+       2006,
+       0.1826
+      ]
+     ],
+     "solar_months": 132
+    },
+    "facts": [],
+    "facts_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
    }
   },
   {
@@ -29,6 +195,55 @@
    "title": "서울 강동구 자료 지문",
    "input": {
     "region": "11740"
+   },
+   "expected": {
+    "values": {
+     "region": "11740",
+     "name": "서울특별시 강동구",
+     "grids": 125,
+     "building_energy.2025_ELECTRICITY": [
+      51513,
+      1313963646.0
+     ],
+     "building_energy.2025_GAS": [
+      37308,
+      1404616713.0
+     ],
+     "kapt.2025": [
+      1824,
+      392854369.0
+     ],
+     "factors": [
+      [
+       "ELECTRICITY",
+       2018,
+       0.4594
+      ],
+      [
+       "ELECTRICITY",
+       2021,
+       0.4781
+      ],
+      [
+       "ELECTRICITY",
+       2024,
+       0.4541
+      ],
+      [
+       "ELECTRICITY",
+       2025,
+       0.433
+      ],
+      [
+       "GAS",
+       2006,
+       0.1826
+      ]
+     ],
+     "solar_months": 132
+    },
+    "facts": [],
+    "facts_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
    }
   },
   {
@@ -52,6 +267,90 @@
     },
     "target_pct": 20,
     "effort_basis": "apartments"
+   },
+   "expected": {
+    "values": {
+     "label": "덕진구 송천1동 (행정동)",
+     "grids": 19,
+     "complexes": 38,
+     "kapt_electricity_kwh.2015": null,
+     "kapt_electricity_kwh.2016": null,
+     "kapt_electricity_kwh.2017": null,
+     "kapt_electricity_kwh.2018": null,
+     "kapt_electricity_kwh.2019": 14374920.0,
+     "kapt_electricity_kwh.2020": 62485075.0,
+     "kapt_electricity_kwh.2021": 68886840.0,
+     "kapt_electricity_kwh.2022": 76053615.0,
+     "kapt_electricity_kwh.2023": 77741971.0,
+     "kapt_electricity_kwh.2024": 81711247.0,
+     "kapt_electricity_kwh.2025": 84145683.0,
+     "kapt_complete_parcels.2015": 0,
+     "kapt_complete_parcels.2016": 0,
+     "kapt_complete_parcels.2017": 0,
+     "kapt_complete_parcels.2018": 0,
+     "kapt_complete_parcels.2019": 5,
+     "kapt_complete_parcels.2020": 24,
+     "kapt_complete_parcels.2021": 27,
+     "kapt_complete_parcels.2022": 28,
+     "kapt_complete_parcels.2023": 30,
+     "kapt_complete_parcels.2024": 30,
+     "kapt_complete_parcels.2025": 32,
+     "building_electricity_kwh.2020": 40563691.0,
+     "building_electricity_kwh.2021": 84571110.0,
+     "building_electricity_kwh.2022": 107786590.0,
+     "building_electricity_kwh.2023": 130841798.0,
+     "building_electricity_kwh.2024": 167366100.0,
+     "building_electricity_kwh.2025": 171888267.0,
+     "building_parcels.2020": 366,
+     "building_parcels.2021": 420,
+     "building_parcels.2022": 429,
+     "building_parcels.2023": 460,
+     "building_parcels.2024": 469,
+     "building_parcels.2025": 489,
+     "event_year": 2019,
+     "estimated_change_kwh": 33059410.7,
+     "event_added_kwh": 15377254.6,
+     "facts": 23,
+     "effort.available": true,
+     "effort.basis": "apartments",
+     "effort.baseline_year": 2025,
+     "effort.baseline_kwh": 84145683.0,
+     "effort.baseline_kgco2eq": 36435080.7,
+     "effort.bau_kgco2eq": 37567597.6,
+     "effort.target_kgco2eq": 29148064.6,
+     "effort.required_reduction_kgco2eq": 8419533.0,
+     "effort.new_only_efficiency_pct": 743.4,
+     "effort.all_buildings_efficiency_pct": 22.4,
+     "effort.pv_capacity_kw": 16205.2,
+     "effort.pv_yield_kwh_per_kw": 1199.9,
+     "effort.pv_basis": "ESTIMATED"
+    },
+    "facts": [
+     "분석 대상은 덕진구 송천1동 (행정동)이고 기간은 2015~2025년입니다. 격자 19개와 공동주택 단지 38개가 포함됩니다.",
+     "12개월 전력 관측이 있는 연도는 7개(2019, 2020, 2021, 2022, 2023, 2024, 2025)입니다.",
+     "분석 기간에 사용승인된 단지는 16개, 10,911세대입니다.",
+     "건축물대장 기준으로 분석 기간에 사용승인된 건물은 627동, 연면적 2,358,976m²입니다(모든 용도).",
+     "건축HUB가 계측하는 구역 안 건물 전체(상가·업무·학교·대형 공동주택 등, 12개월 계측 지번 489곳)의 2025년 전력은 171,888,267 kWh, 전력 탄소 74,427,620 kgCO2eq입니다. 단독주택과 200세대 미만 공동주택은 제공 범위 밖입니다.",
+     "2021년과 2025년 모두 12개월 계측된 같은 지번 414곳의 전력은 84,437,430 kWh에서 139,498,797 kWh로 +65.2% 변했습니다. 한 해에만 계측된 지번은 2025년 75곳(32,389,470 kWh), 2021년 6곳(133,680 kWh)입니다(신축·계량 변경·다른 지번으로의 기록 이동이 섞일 수 있음).",
+     "2020년 건축HUB 값은 쓰되 비교하지 않습니다: 2020년 9·10월 제공기관 응답에서 대단지 등 일부 지번이 빠져(전주 전력 9월 112.9, 10월 86.9 GWh로 2021년 같은 달의 72%·63%) 다른 해와 비교하지 않습니다.",
+     "SGIS 2024년 1km 격자 기준으로 이 구역이 걸친 1km 격자 8개(통계 있는 격자 8개)의 합계는 인구 83,310명, 가구 31,866, 주택 28,772호, 사업체 종사자 14,935명입니다. 구역은 이 격자 면적의 59.4%라 합계는 구역보다 넓은 범위이며, 공식 통계의 비밀보호 잡음이 들어 있습니다.",
+     "같은 1km 격자들에서 65세 이상 인구 비율은 11.7%, 1인가구 비율은 24.3%, 2000년 이전 준공 주택 비율은 38.7%, 아파트 비율은 88.4%입니다.",
+     "2025년 관측 전력은 84,145,683 kWh(12개월 관측 지번 32곳)입니다.",
+     "같은 해 전력 운영탄소는 36,435,081 kgCO2eq입니다.",
+     "연면적이 확인된 단지 기준 전력 원단위는 29.06 kWh/m²·년입니다.",
+     "2019년에 단지 5개(3,345세대)가 사용승인되었습니다.",
+     "새로 준공된 단지의 연평균 전력은 13,104,183 kWh로 개발 후 지역 전력의 19.0%입니다.",
+     "관측이 부족해 연면적으로 추정하면, 이 개발로 단지 연면적이 527,251m²(+28.1%) 늘어 연간 전력 부하가 약 15,377,255 kWh 늘어난 것으로 추정됩니다(추정값).",
+     "전후 기간에 12개월이 모두 관측된 전력 자료가 부족합니다 (과거 수집 필요)",
+     "감축 노력은 공동주택 단지(K-apt 관리비 전력) 기준입니다: 2025년 전력 84,145,683 kWh, 원단위 29.06 kWh/m²·년(연면적 확인 2,782,908m²).",
+     "2025년 대비 20% 감축을 목표로 하면 계획 반영 후 연간 8,419,533 kgCO2eq를 줄여야 합니다.",
+     "신축만으로 달성하려면 신축 전력 소비를 743.4% 줄여야 합니다. 100%를 넘어 신축만으로는 달성할 수 없습니다.",
+     "기존 건물까지 함께 줄이면 지역 전체 전력 소비를 22.4% 줄여야 합니다.",
+     "같은 목표를 재생에너지로 상쇄하려면 연간 19,444,649 kWh가 필요합니다.",
+     "태양광으로 상쇄하면 2025년 지역 일사량 1,500 kWh/m²와 성능비 0.80로 추정한 발전량 1,200 kWh/kW·년 기준 약 16,205.2 kW가 필요합니다(추정값).",
+     "관측이 없는 연도는 0이 아니라 자료 없음으로 두었고, 행정동 통계는 격자에 배분하지 않았습니다."
+    ],
+    "facts_sha256": "ff19aa57e06b5768558e523c354e340bf314dea3a3acb992a5fa6acc04e174c3"
    }
   },
   {
@@ -75,6 +374,90 @@
     },
     "target_pct": 20,
     "effort_basis": "buildings"
+   },
+   "expected": {
+    "values": {
+     "label": "덕진구 송천1동 (행정동)",
+     "grids": 19,
+     "complexes": 38,
+     "kapt_electricity_kwh.2015": null,
+     "kapt_electricity_kwh.2016": null,
+     "kapt_electricity_kwh.2017": null,
+     "kapt_electricity_kwh.2018": null,
+     "kapt_electricity_kwh.2019": 14374920.0,
+     "kapt_electricity_kwh.2020": 62485075.0,
+     "kapt_electricity_kwh.2021": 68886840.0,
+     "kapt_electricity_kwh.2022": 76053615.0,
+     "kapt_electricity_kwh.2023": 77741971.0,
+     "kapt_electricity_kwh.2024": 81711247.0,
+     "kapt_electricity_kwh.2025": 84145683.0,
+     "kapt_complete_parcels.2015": 0,
+     "kapt_complete_parcels.2016": 0,
+     "kapt_complete_parcels.2017": 0,
+     "kapt_complete_parcels.2018": 0,
+     "kapt_complete_parcels.2019": 5,
+     "kapt_complete_parcels.2020": 24,
+     "kapt_complete_parcels.2021": 27,
+     "kapt_complete_parcels.2022": 28,
+     "kapt_complete_parcels.2023": 30,
+     "kapt_complete_parcels.2024": 30,
+     "kapt_complete_parcels.2025": 32,
+     "building_electricity_kwh.2020": 40563691.0,
+     "building_electricity_kwh.2021": 84571110.0,
+     "building_electricity_kwh.2022": 107786590.0,
+     "building_electricity_kwh.2023": 130841798.0,
+     "building_electricity_kwh.2024": 167366100.0,
+     "building_electricity_kwh.2025": 171888267.0,
+     "building_parcels.2020": 366,
+     "building_parcels.2021": 420,
+     "building_parcels.2022": 429,
+     "building_parcels.2023": 460,
+     "building_parcels.2024": 469,
+     "building_parcels.2025": 489,
+     "event_year": 2019,
+     "estimated_change_kwh": 33059410.7,
+     "event_added_kwh": 15377254.6,
+     "facts": 23,
+     "effort.available": true,
+     "effort.basis": "buildings",
+     "effort.baseline_year": 2025,
+     "effort.baseline_kwh": 171888267.0,
+     "effort.baseline_kgco2eq": 74427619.6,
+     "effort.bau_kgco2eq": 76262327.2,
+     "effort.target_kgco2eq": 59542095.7,
+     "effort.required_reduction_kgco2eq": 16720231.5,
+     "effort.new_only_efficiency_pct": 911.3,
+     "effort.all_buildings_efficiency_pct": 21.9,
+     "effort.pv_capacity_kw": 32181.7,
+     "effort.pv_yield_kwh_per_kw": 1199.9,
+     "effort.pv_basis": "ESTIMATED"
+    },
+    "facts": [
+     "분석 대상은 덕진구 송천1동 (행정동)이고 기간은 2015~2025년입니다. 격자 19개와 공동주택 단지 38개가 포함됩니다.",
+     "12개월 전력 관측이 있는 연도는 7개(2019, 2020, 2021, 2022, 2023, 2024, 2025)입니다.",
+     "분석 기간에 사용승인된 단지는 16개, 10,911세대입니다.",
+     "건축물대장 기준으로 분석 기간에 사용승인된 건물은 627동, 연면적 2,358,976m²입니다(모든 용도).",
+     "건축HUB가 계측하는 구역 안 건물 전체(상가·업무·학교·대형 공동주택 등, 12개월 계측 지번 489곳)의 2025년 전력은 171,888,267 kWh, 전력 탄소 74,427,620 kgCO2eq입니다. 단독주택과 200세대 미만 공동주택은 제공 범위 밖입니다.",
+     "2021년과 2025년 모두 12개월 계측된 같은 지번 414곳의 전력은 84,437,430 kWh에서 139,498,797 kWh로 +65.2% 변했습니다. 한 해에만 계측된 지번은 2025년 75곳(32,389,470 kWh), 2021년 6곳(133,680 kWh)입니다(신축·계량 변경·다른 지번으로의 기록 이동이 섞일 수 있음).",
+     "2020년 건축HUB 값은 쓰되 비교하지 않습니다: 2020년 9·10월 제공기관 응답에서 대단지 등 일부 지번이 빠져(전주 전력 9월 112.9, 10월 86.9 GWh로 2021년 같은 달의 72%·63%) 다른 해와 비교하지 않습니다.",
+     "SGIS 2024년 1km 격자 기준으로 이 구역이 걸친 1km 격자 8개(통계 있는 격자 8개)의 합계는 인구 83,310명, 가구 31,866, 주택 28,772호, 사업체 종사자 14,935명입니다. 구역은 이 격자 면적의 59.4%라 합계는 구역보다 넓은 범위이며, 공식 통계의 비밀보호 잡음이 들어 있습니다.",
+     "같은 1km 격자들에서 65세 이상 인구 비율은 11.7%, 1인가구 비율은 24.3%, 2000년 이전 준공 주택 비율은 38.7%, 아파트 비율은 88.4%입니다.",
+     "2025년 관측 전력은 84,145,683 kWh(12개월 관측 지번 32곳)입니다.",
+     "같은 해 전력 운영탄소는 36,435,081 kgCO2eq입니다.",
+     "연면적이 확인된 단지 기준 전력 원단위는 29.06 kWh/m²·년입니다.",
+     "2019년에 단지 5개(3,345세대)가 사용승인되었습니다.",
+     "새로 준공된 단지의 연평균 전력은 13,104,183 kWh로 개발 후 지역 전력의 19.0%입니다.",
+     "관측이 부족해 연면적으로 추정하면, 이 개발로 단지 연면적이 527,251m²(+28.1%) 늘어 연간 전력 부하가 약 15,377,255 kWh 늘어난 것으로 추정됩니다(추정값).",
+     "전후 기간에 12개월이 모두 관측된 전력 자료가 부족합니다 (과거 수집 필요)",
+     "감축 노력은 구역 건물 전체(건축HUB 계측 지번, 상가·업무 포함) 기준입니다: 2025년 전력 171,888,267 kWh, 원단위 47.08 kWh/m²·년.",
+     "2025년 대비 20% 감축을 목표로 하면 계획 반영 후 연간 16,720,232 kgCO2eq를 줄여야 합니다.",
+     "신축만으로 달성하려면 신축 전력 소비를 911.3% 줄여야 합니다. 100%를 넘어 신축만으로는 달성할 수 없습니다.",
+     "기존 건물까지 함께 줄이면 지역 전체 전력 소비를 21.9% 줄여야 합니다.",
+     "같은 목표를 재생에너지로 상쇄하려면 연간 38,614,853 kWh가 필요합니다.",
+     "태양광으로 상쇄하면 2025년 지역 일사량 1,500 kWh/m²와 성능비 0.80로 추정한 발전량 1,200 kWh/kW·년 기준 약 32,181.7 kW가 필요합니다(추정값).",
+     "관측이 없는 연도는 0이 아니라 자료 없음으로 두었고, 행정동 통계는 격자에 배분하지 않았습니다."
+    ],
+    "facts_sha256": "18c8b607cd4a46f4d637f47ba912349a8ab010f971f649fef64375eab0efc251"
    }
   },
   {
@@ -98,6 +481,89 @@
     },
     "target_pct": 20,
     "effort_basis": "buildings"
+   },
+   "expected": {
+    "values": {
+     "label": "완산구 효자5동 (행정동)",
+     "grids": 26,
+     "complexes": 17,
+     "kapt_electricity_kwh.2015": null,
+     "kapt_electricity_kwh.2016": null,
+     "kapt_electricity_kwh.2017": null,
+     "kapt_electricity_kwh.2018": null,
+     "kapt_electricity_kwh.2019": 1069176.0,
+     "kapt_electricity_kwh.2020": 22472517.0,
+     "kapt_electricity_kwh.2021": 21990944.0,
+     "kapt_electricity_kwh.2022": 22215344.0,
+     "kapt_electricity_kwh.2023": 23274258.0,
+     "kapt_electricity_kwh.2024": 24488720.0,
+     "kapt_electricity_kwh.2025": 25112588.0,
+     "kapt_complete_parcels.2015": 0,
+     "kapt_complete_parcels.2016": 0,
+     "kapt_complete_parcels.2017": 0,
+     "kapt_complete_parcels.2018": 0,
+     "kapt_complete_parcels.2019": 1,
+     "kapt_complete_parcels.2020": 12,
+     "kapt_complete_parcels.2021": 12,
+     "kapt_complete_parcels.2022": 12,
+     "kapt_complete_parcels.2023": 13,
+     "kapt_complete_parcels.2024": 13,
+     "kapt_complete_parcels.2025": 14,
+     "building_electricity_kwh.2020": 86883017.0,
+     "building_electricity_kwh.2021": 129028496.0,
+     "building_electricity_kwh.2022": 133849962.0,
+     "building_electricity_kwh.2023": 142570585.0,
+     "building_electricity_kwh.2024": 152791189.0,
+     "building_electricity_kwh.2025": 160874572.0,
+     "building_parcels.2020": 499,
+     "building_parcels.2021": 517,
+     "building_parcels.2022": 531,
+     "building_parcels.2023": 549,
+     "building_parcels.2024": 560,
+     "building_parcels.2025": 577,
+     "event_year": 2016,
+     "estimated_change_kwh": 4288141.9,
+     "event_added_kwh": 2232556.9,
+     "facts": 22,
+     "effort.available": true,
+     "effort.basis": "buildings",
+     "effort.baseline_year": 2025,
+     "effort.baseline_kwh": 160874572.0,
+     "effort.baseline_kgco2eq": 69658689.7,
+     "effort.bau_kgco2eq": 71810483.2,
+     "effort.target_kgco2eq": 55726951.7,
+     "effort.required_reduction_kgco2eq": 16083531.4,
+     "effort.new_only_efficiency_pct": 747.4,
+     "effort.all_buildings_efficiency_pct": 22.4,
+     "effort.pv_capacity_kw": 30956.3,
+     "effort.pv_yield_kwh_per_kw": 1199.9,
+     "effort.pv_basis": "ESTIMATED"
+    },
+    "facts": [
+     "분석 대상은 완산구 효자5동 (행정동)이고 기간은 2015~2025년입니다. 격자 26개와 공동주택 단지 17개가 포함됩니다.",
+     "12개월 전력 관측이 있는 연도는 7개(2019, 2020, 2021, 2022, 2023, 2024, 2025)입니다.",
+     "분석 기간에 사용승인된 단지는 7개, 2,220세대입니다.",
+     "건축물대장 기준으로 분석 기간에 사용승인된 건물은 515동, 연면적 979,741m²입니다(모든 용도).",
+     "건축HUB가 계측하는 구역 안 건물 전체(상가·업무·학교·대형 공동주택 등, 12개월 계측 지번 577곳)의 2025년 전력은 160,874,572 kWh, 전력 탄소 69,658,690 kgCO2eq입니다. 단독주택과 200세대 미만 공동주택은 제공 범위 밖입니다.",
+     "2021년과 2025년 모두 12개월 계측된 같은 지번 511곳의 전력은 128,838,623 kWh에서 140,083,143 kWh로 +8.7% 변했습니다. 한 해에만 계측된 지번은 2025년 66곳(20,791,429 kWh), 2021년 6곳(189,873 kWh)입니다(신축·계량 변경·다른 지번으로의 기록 이동이 섞일 수 있음).",
+     "2020년 건축HUB 값은 쓰되 비교하지 않습니다: 2020년 9·10월 제공기관 응답에서 대단지 등 일부 지번이 빠져(전주 전력 9월 112.9, 10월 86.9 GWh로 2021년 같은 달의 72%·63%) 다른 해와 비교하지 않습니다.",
+     "SGIS 2024년 1km 격자 기준으로 이 구역이 걸친 1km 격자 10개(통계 있는 격자 10개)의 합계는 인구 72,625명, 가구 34,498, 주택 19,595호, 사업체 종사자 36,154명입니다. 구역은 이 격자 면적의 65.0%라 합계는 구역보다 넓은 범위이며, 공식 통계의 비밀보호 잡음이 들어 있습니다.",
+     "같은 1km 격자들에서 65세 이상 인구 비율은 8.9%, 1인가구 비율은 46.8%, 2000년 이전 준공 주택 비율은 24.3%, 아파트 비율은 77.1%입니다.",
+     "2025년 관측 전력은 25,112,588 kWh(12개월 관측 지번 14곳)입니다.",
+     "같은 해 전력 운영탄소는 10,873,751 kgCO2eq입니다.",
+     "연면적이 확인된 단지 기준 전력 원단위는 27.39 kWh/m²·년입니다.",
+     "2016년에 단지 1개(392세대)가 사용승인되었습니다.",
+     "관측이 부족해 연면적으로 추정하면, 이 개발로 단지 연면적이 76,549m²(+9.3%) 늘어 연간 전력 부하가 약 2,232,557 kWh 늘어난 것으로 추정됩니다(추정값).",
+     "전후 기간에 12개월이 모두 관측된 전력 자료가 부족합니다 (과거 수집 필요)",
+     "감축 노력은 구역 건물 전체(건축HUB 계측 지번, 상가·업무 포함) 기준입니다: 2025년 전력 160,874,572 kWh, 원단위 66.26 kWh/m²·년.",
+     "2025년 대비 20% 감축을 목표로 하면 계획 반영 후 연간 16,083,531 kgCO2eq를 줄여야 합니다.",
+     "신축만으로 달성하려면 신축 전력 소비를 747.4% 줄여야 합니다. 100%를 넘어 신축만으로는 달성할 수 없습니다.",
+     "기존 건물까지 함께 줄이면 지역 전체 전력 소비를 22.4% 줄여야 합니다.",
+     "같은 목표를 재생에너지로 상쇄하려면 연간 37,144,414 kWh가 필요합니다.",
+     "태양광으로 상쇄하면 2025년 지역 일사량 1,500 kWh/m²와 성능비 0.80로 추정한 발전량 1,200 kWh/kW·년 기준 약 30,956.3 kW가 필요합니다(추정값).",
+     "관측이 없는 연도는 0이 아니라 자료 없음으로 두었고, 행정동 통계는 격자에 배분하지 않았습니다."
+    ],
+    "facts_sha256": "f01262631d6f09e078767bcb2d01908f42afdccf3a296e0736c7830fa227e5d0"
    }
   },
   {
@@ -121,6 +587,90 @@
     },
     "target_pct": 20,
     "effort_basis": "buildings"
+   },
+   "expected": {
+    "values": {
+     "label": "상업지역이 가장 넓은 격자 18개",
+     "grids": 18,
+     "complexes": 13,
+     "kapt_electricity_kwh.2015": null,
+     "kapt_electricity_kwh.2016": null,
+     "kapt_electricity_kwh.2017": null,
+     "kapt_electricity_kwh.2018": null,
+     "kapt_electricity_kwh.2019": 1069176.0,
+     "kapt_electricity_kwh.2020": 9178205.0,
+     "kapt_electricity_kwh.2021": 10466449.0,
+     "kapt_electricity_kwh.2022": 10696470.0,
+     "kapt_electricity_kwh.2023": 14309624.0,
+     "kapt_electricity_kwh.2024": 15792161.0,
+     "kapt_electricity_kwh.2025": 15774500.0,
+     "kapt_complete_parcels.2015": 0,
+     "kapt_complete_parcels.2016": 0,
+     "kapt_complete_parcels.2017": 0,
+     "kapt_complete_parcels.2018": 0,
+     "kapt_complete_parcels.2019": 1,
+     "kapt_complete_parcels.2020": 5,
+     "kapt_complete_parcels.2021": 7,
+     "kapt_complete_parcels.2022": 7,
+     "kapt_complete_parcels.2023": 9,
+     "kapt_complete_parcels.2024": 9,
+     "kapt_complete_parcels.2025": 10,
+     "building_electricity_kwh.2020": 219388151.0,
+     "building_electricity_kwh.2021": 233202634.0,
+     "building_electricity_kwh.2022": 244822536.0,
+     "building_electricity_kwh.2023": 275944347.0,
+     "building_electricity_kwh.2024": 281687217.0,
+     "building_electricity_kwh.2025": 299191877.0,
+     "building_parcels.2020": 2663,
+     "building_parcels.2021": 2693,
+     "building_parcels.2022": 2713,
+     "building_parcels.2023": 2788,
+     "building_parcels.2024": 2787,
+     "building_parcels.2025": 2857,
+     "event_year": 2018,
+     "estimated_change_kwh": 6998043.5,
+     "event_added_kwh": 2153365.3,
+     "facts": 23,
+     "effort.available": true,
+     "effort.basis": "buildings",
+     "effort.baseline_year": 2025,
+     "effort.baseline_kwh": 299191877.0,
+     "effort.baseline_kgco2eq": 129550082.7,
+     "effort.bau_kgco2eq": 131235968.2,
+     "effort.target_kgco2eq": 103640066.2,
+     "effort.required_reduction_kgco2eq": 27595902.0,
+     "effort.new_only_efficiency_pct": 1636.9,
+     "effort.all_buildings_efficiency_pct": 21.0,
+     "effort.pv_capacity_kw": 53114.3,
+     "effort.pv_yield_kwh_per_kw": 1199.9,
+     "effort.pv_basis": "ESTIMATED"
+    },
+    "facts": [
+     "분석 대상은 상업지역이 가장 넓은 격자 18개이고 기간은 2015~2025년입니다. 격자 18개와 공동주택 단지 13개가 포함됩니다.",
+     "12개월 전력 관측이 있는 연도는 7개(2019, 2020, 2021, 2022, 2023, 2024, 2025)입니다.",
+     "분석 기간에 사용승인된 단지는 9개, 2,459세대입니다.",
+     "건축물대장 기준으로 분석 기간에 사용승인된 건물은 451동, 연면적 1,164,772m²입니다(모든 용도).",
+     "건축HUB가 계측하는 구역 안 건물 전체(상가·업무·학교·대형 공동주택 등, 12개월 계측 지번 2,857곳)의 2025년 전력은 299,191,877 kWh, 전력 탄소 129,550,083 kgCO2eq입니다. 단독주택과 200세대 미만 공동주택은 제공 범위 밖입니다.",
+     "2021년과 2025년 모두 12개월 계측된 같은 지번 2,549곳의 전력은 228,698,509 kWh에서 241,167,757 kWh로 +5.5% 변했습니다. 한 해에만 계측된 지번은 2025년 308곳(58,024,120 kWh), 2021년 144곳(4,504,125 kWh)입니다(신축·계량 변경·다른 지번으로의 기록 이동이 섞일 수 있음).",
+     "2020년 건축HUB 값은 쓰되 비교하지 않습니다: 2020년 9·10월 제공기관 응답에서 대단지 등 일부 지번이 빠져(전주 전력 9월 112.9, 10월 86.9 GWh로 2021년 같은 달의 72%·63%) 다른 해와 비교하지 않습니다.",
+     "SGIS 2024년 1km 격자 기준으로 이 구역이 걸친 1km 격자 12개(통계 있는 격자 12개)의 합계는 인구 82,104명, 가구 37,780, 주택 26,650호, 사업체 종사자 71,215명입니다. 구역은 이 격자 면적의 37.5%라 합계는 구역보다 넓은 범위이며, 공식 통계의 비밀보호 잡음이 들어 있습니다.",
+     "같은 1km 격자들에서 65세 이상 인구 비율은 17.9%, 1인가구 비율은 43.9%, 2000년 이전 준공 주택 비율은 34.4%, 아파트 비율은 58.5%입니다.",
+     "2025년 관측 전력은 15,774,500 kWh(12개월 관측 지번 10곳)입니다.",
+     "같은 해 전력 운영탄소는 6,830,358 kgCO2eq입니다.",
+     "연면적이 확인된 단지 기준 전력 원단위는 26.39 kWh/m²·년입니다.",
+     "2018년에 단지 3개(574세대)가 사용승인되었습니다.",
+     "새로 준공된 단지의 연평균 전력은 1,086,559 kWh로 개발 후 지역 전력의 15.7%입니다.",
+     "관측이 부족해 연면적으로 추정하면, 이 개발로 단지 연면적이 73,834m²(+19.2%) 늘어 연간 전력 부하가 약 2,153,365 kWh 늘어난 것으로 추정됩니다(추정값).",
+     "전후 기간에 12개월이 모두 관측된 전력 자료가 부족합니다 (과거 수집 필요)",
+     "감축 노력은 구역 건물 전체(건축HUB 계측 지번, 상가·업무 포함) 기준입니다: 2025년 전력 299,191,877 kWh, 원단위 77.87 kWh/m²·년.",
+     "2025년 대비 20% 감축을 목표로 하면 계획 반영 후 연간 27,595,902 kgCO2eq를 줄여야 합니다.",
+     "신축만으로 달성하려면 신축 전력 소비를 1,636.9% 줄여야 합니다. 100%를 넘어 신축만으로는 달성할 수 없습니다.",
+     "기존 건물까지 함께 줄이면 지역 전체 전력 소비를 21.0% 줄여야 합니다.",
+     "같은 목표를 재생에너지로 상쇄하려면 연간 63,731,875 kWh가 필요합니다.",
+     "태양광으로 상쇄하면 2025년 지역 일사량 1,500 kWh/m²와 성능비 0.80로 추정한 발전량 1,200 kWh/kW·년 기준 약 53,114.3 kW가 필요합니다(추정값).",
+     "관측이 없는 연도는 0이 아니라 자료 없음으로 두었고, 행정동 통계는 격자에 배분하지 않았습니다."
+    ],
+    "facts_sha256": "ed76173ab53d20cbfb160b4818d4b2d676704009310882cb21c385e9e9bb8c6f"
    }
   },
   {
@@ -147,6 +697,90 @@
     "target_pct": 30,
     "pv_yield_kwh_per_kw": 1200,
     "effort_basis": "apartments"
+   },
+   "expected": {
+    "values": {
+     "label": "반경 1,000m (35.88012, 127.13219)",
+     "grids": 12,
+     "complexes": 15,
+     "kapt_electricity_kwh.2015": null,
+     "kapt_electricity_kwh.2016": null,
+     "kapt_electricity_kwh.2017": null,
+     "kapt_electricity_kwh.2018": null,
+     "kapt_electricity_kwh.2019": 14374920.0,
+     "kapt_electricity_kwh.2020": 29604529.0,
+     "kapt_electricity_kwh.2021": 33396471.0,
+     "kapt_electricity_kwh.2022": 41739703.0,
+     "kapt_electricity_kwh.2023": 40952099.0,
+     "kapt_electricity_kwh.2024": 43340616.0,
+     "kapt_electricity_kwh.2025": 49208945.0,
+     "kapt_complete_parcels.2015": 0,
+     "kapt_complete_parcels.2016": 0,
+     "kapt_complete_parcels.2017": 0,
+     "kapt_complete_parcels.2018": 0,
+     "kapt_complete_parcels.2019": 5,
+     "kapt_complete_parcels.2020": 10,
+     "kapt_complete_parcels.2021": 11,
+     "kapt_complete_parcels.2022": 13,
+     "kapt_complete_parcels.2023": 13,
+     "kapt_complete_parcels.2024": 13,
+     "kapt_complete_parcels.2025": 15,
+     "building_electricity_kwh.2020": 4620323.0,
+     "building_electricity_kwh.2021": 11700750.0,
+     "building_electricity_kwh.2022": 25250803.0,
+     "building_electricity_kwh.2023": 44840336.0,
+     "building_electricity_kwh.2024": 76270005.0,
+     "building_electricity_kwh.2025": 78222360.0,
+     "building_parcels.2020": 61,
+     "building_parcels.2021": 81,
+     "building_parcels.2022": 88,
+     "building_parcels.2023": 106,
+     "building_parcels.2024": 113,
+     "building_parcels.2025": 121,
+     "event_year": 2018,
+     "estimated_change_kwh": 32620346.9,
+     "event_added_kwh": 15100890.4,
+     "facts": 23,
+     "effort.available": true,
+     "effort.basis": "apartments",
+     "effort.baseline_year": 2025,
+     "effort.baseline_kwh": 49208945.0,
+     "effort.baseline_kgco2eq": 21307473.2,
+     "effort.bau_kgco2eq": 21775826.9,
+     "effort.target_kgco2eq": 14915231.2,
+     "effort.required_reduction_kgco2eq": 6860595.6,
+     "effort.new_only_efficiency_pct": 1464.8,
+     "effort.all_buildings_efficiency_pct": 31.5,
+     "effort.pv_capacity_kw": 13203.6,
+     "effort.pv_yield_kwh_per_kw": 1200.0,
+     "effort.pv_basis": "USER"
+    },
+    "facts": [
+     "분석 대상은 반경 1,000m (35.88012, 127.13219)이고 기간은 2015~2025년입니다. 격자 12개와 공동주택 단지 15개가 포함됩니다.",
+     "12개월 전력 관측이 있는 연도는 7개(2019, 2020, 2021, 2022, 2023, 2024, 2025)입니다.",
+     "분석 기간에 사용승인된 단지는 15개, 10,777세대입니다.",
+     "건축물대장 기준으로 분석 기간에 사용승인된 건물은 393동, 연면적 1,974,930m²입니다(모든 용도).",
+     "건축HUB가 계측하는 구역 안 건물 전체(상가·업무·학교·대형 공동주택 등, 12개월 계측 지번 121곳)의 2025년 전력은 78,222,360 kWh, 전력 탄소 33,870,282 kgCO2eq입니다. 단독주택과 200세대 미만 공동주택은 제공 범위 밖입니다.",
+     "2021년과 2025년 모두 12개월 계측된 같은 지번 75곳의 전력은 11,687,880 kWh에서 55,101,474 kWh로 +371.4% 변했습니다. 한 해에만 계측된 지번은 2025년 46곳(23,120,886 kWh), 2021년 6곳(12,870 kWh)입니다(신축·계량 변경·다른 지번으로의 기록 이동이 섞일 수 있음).",
+     "2020년 건축HUB 값은 쓰되 비교하지 않습니다: 2020년 9·10월 제공기관 응답에서 대단지 등 일부 지번이 빠져(전주 전력 9월 112.9, 10월 86.9 GWh로 2021년 같은 달의 72%·63%) 다른 해와 비교하지 않습니다.",
+     "SGIS 2024년 1km 격자 기준으로 이 구역이 걸친 1km 격자 4개(통계 있는 격자 4개)의 합계는 인구 29,246명, 가구 10,182, 주택 9,654호, 사업체 종사자 3,722명입니다. 구역은 이 격자 면적의 75.0%라 합계는 구역보다 넓은 범위이며, 공식 통계의 비밀보호 잡음이 들어 있습니다.",
+     "같은 1km 격자들에서 65세 이상 인구 비율은 5.5%, 1인가구 비율은 16.1%, 2000년 이전 준공 주택 비율은 1.6%, 아파트 비율은 92.7%입니다.",
+     "2025년 관측 전력은 49,208,945 kWh(12개월 관측 지번 15곳)입니다.",
+     "같은 해 전력 운영탄소는 21,307,473 kgCO2eq입니다.",
+     "연면적이 확인된 단지 기준 전력 원단위는 27.04 kWh/m²·년입니다.",
+     "2018년에 단지 5개(3,298세대)가 사용승인되었습니다.",
+     "새로 준공된 단지의 연평균 전력은 15,049,975 kWh로 개발 후 지역 전력의 58.4%입니다.",
+     "관측이 부족해 연면적으로 추정하면, 이 개발로 단지 연면적이 517,775m²(+541.5%) 늘어 연간 전력 부하가 약 15,100,890 kWh 늘어난 것으로 추정됩니다(추정값).",
+     "전후 기간에 12개월이 모두 관측된 전력 자료가 부족합니다 (과거 수집 필요)",
+     "감축 노력은 공동주택 단지(K-apt 관리비 전력) 기준입니다: 2025년 전력 49,208,945 kWh, 원단위 27.04 kWh/m²·년(연면적 확인 1,698,816m²).",
+     "2025년 대비 30% 감축을 목표로 하면 계획 반영 후 연간 6,860,596 kgCO2eq를 줄여야 합니다.",
+     "신축만으로 달성하려면 신축 전력 소비를 1,464.8% 줄여야 합니다. 100%를 넘어 신축만으로는 달성할 수 없습니다.",
+     "기존 건물까지 함께 줄이면 지역 전체 전력 소비를 31.5% 줄여야 합니다.",
+     "같은 목표를 재생에너지로 상쇄하려면 연간 15,844,332 kWh가 필요합니다.",
+     "태양광으로 상쇄하면 사용자가 입력한 발전량 1,200 kWh/kW·년 기준 약 13,203.6 kW가 필요합니다.",
+     "관측이 없는 연도는 0이 아니라 자료 없음으로 두었고, 행정동 통계는 격자에 배분하지 않았습니다."
+    ],
+    "facts_sha256": "082a9d9566b40bfff6bc5aa3d183822548120b60b102482f58d1d0166b5d260c"
    }
   },
   {
@@ -172,6 +806,40 @@
     "site_lat": 35.880124,
     "efficiency_factor": 1.0,
     "pv_ratio": 0.0
+   },
+   "expected": {
+    "values": {
+     "grid_id": "cell_966500_1764500",
+     "data_class": "SCENARIO",
+     "baseline_basis": "GRID_OBSERVED",
+     "gross_floor_area": 90000.0,
+     "far": 225.0,
+     "bcr": 15.0,
+     "households": 1000,
+     "population": 2500,
+     "carbon_now_kg": 10321305.0864,
+     "carbon_plan_kg": 2230040.921348,
+     "electricity_plan_kwh": 3320137.856143,
+     "gas_plan_kwh": 4339656.241175,
+     "carbon_change_pct": -78.393809,
+     "carbon_per_person": 892.016369,
+     "peak_month": "08",
+     "legal_status": "조례 기본 상한 이내 (1차 확인) · 지구단위계획 우선",
+     "zoning.status": "OK",
+     "zoning.dominant_zone": "제3종일반주거지역",
+     "zoning.dominant_share": 99.85,
+     "zoning.far_limit": 300.31,
+     "zoning.bcr_limit": 50.02,
+     "zoning.basis": "ORDINANCE"
+    },
+    "facts": [
+     "FAR 산정 연면적은 입력 지상층 연면적으로 가정합니다. 지하층·법정 제외면적 미반영.",
+     "기준 월별 실측 원단위의 계절성을 그대로 적용합니다. 별도 기상 회귀·AI 학습 없음.",
+     "PV 비율은 전기 수요 상쇄율 가정이며 설비 발전량 예측이 아닙니다.",
+     "기준 면적과 에너지의 지번 매칭이 확보된 경우에만 추정합니다.",
+     "녹지비율은 공간 제약에 적용하며 검증되지 않은 냉방 저감 효과를 에너지에 곱하지 않습니다."
+    ],
+    "facts_sha256": "d1dbccd70c337792d9432929d77c5f4cae083aea1ae0e1c57081dc5d6e4dd673"
    }
   },
   {
@@ -197,6 +865,40 @@
     "site_lat": 35.880124,
     "efficiency_factor": 0.8,
     "pv_ratio": 0.15
+   },
+   "expected": {
+    "values": {
+     "grid_id": "cell_966500_1764500",
+     "data_class": "SCENARIO",
+     "baseline_basis": "GRID_OBSERVED",
+     "gross_floor_area": 90000.0,
+     "far": 225.0,
+     "bcr": 15.0,
+     "households": 1000,
+     "population": 2500,
+     "carbon_now_kg": 10321305.0864,
+     "carbon_plan_kg": 1611518.374074,
+     "electricity_plan_kwh": 2257693.742177,
+     "gas_plan_kwh": 3471724.99294,
+     "carbon_change_pct": -84.386486,
+     "carbon_per_person": 644.60735,
+     "peak_month": "08",
+     "legal_status": "조례 기본 상한 이내 (1차 확인) · 지구단위계획 우선",
+     "zoning.status": "OK",
+     "zoning.dominant_zone": "제3종일반주거지역",
+     "zoning.dominant_share": 99.85,
+     "zoning.far_limit": 300.31,
+     "zoning.bcr_limit": 50.02,
+     "zoning.basis": "ORDINANCE"
+    },
+    "facts": [
+     "FAR 산정 연면적은 입력 지상층 연면적으로 가정합니다. 지하층·법정 제외면적 미반영.",
+     "기준 월별 실측 원단위의 계절성을 그대로 적용합니다. 별도 기상 회귀·AI 학습 없음.",
+     "PV 비율은 전기 수요 상쇄율 가정이며 설비 발전량 예측이 아닙니다.",
+     "기준 면적과 에너지의 지번 매칭이 확보된 경우에만 추정합니다.",
+     "녹지비율은 공간 제약에 적용하며 검증되지 않은 냉방 저감 효과를 에너지에 곱하지 않습니다."
+    ],
+    "facts_sha256": "d1dbccd70c337792d9432929d77c5f4cae083aea1ae0e1c57081dc5d6e4dd673"
    }
   },
   {
@@ -220,6 +922,40 @@
     "region": "52110",
     "efficiency_factor": 1.0,
     "pv_ratio": 0.0
+   },
+   "expected": {
+    "values": {
+     "grid_id": "cell_966500_1764500",
+     "data_class": "SCENARIO",
+     "baseline_basis": "GRID_OBSERVED",
+     "gross_floor_area": 90000.0,
+     "far": 225.0,
+     "bcr": 15.0,
+     "households": 1000,
+     "population": 2500,
+     "carbon_now_kg": 10321305.0864,
+     "carbon_plan_kg": 2230040.921348,
+     "electricity_plan_kwh": 3320137.856143,
+     "gas_plan_kwh": 4339656.241175,
+     "carbon_change_pct": -78.393809,
+     "carbon_per_person": 892.016369,
+     "peak_month": "08",
+     "legal_status": "조례 기본 상한 초과 · 지구단위계획 우선",
+     "zoning.status": "OK",
+     "zoning.dominant_zone": "자연녹지지역",
+     "zoning.dominant_share": 65.81,
+     "zoning.far_limit": 168.38,
+     "zoning.bcr_limit": 30.26,
+     "zoning.basis": "ORDINANCE"
+    },
+    "facts": [
+     "FAR 산정 연면적은 입력 지상층 연면적으로 가정합니다. 지하층·법정 제외면적 미반영.",
+     "기준 월별 실측 원단위의 계절성을 그대로 적용합니다. 별도 기상 회귀·AI 학습 없음.",
+     "PV 비율은 전기 수요 상쇄율 가정이며 설비 발전량 예측이 아닙니다.",
+     "기준 면적과 에너지의 지번 매칭이 확보된 경우에만 추정합니다.",
+     "녹지비율은 공간 제약에 적용하며 검증되지 않은 냉방 저감 효과를 에너지에 곱하지 않습니다."
+    ],
+    "facts_sha256": "d1dbccd70c337792d9432929d77c5f4cae083aea1ae0e1c57081dc5d6e4dd673"
    }
   },
   {
@@ -247,6 +983,49 @@
     "pv_ratio": 0.0,
     "min_households": 900,
     "min_population": 2200
+   },
+   "expected": {
+    "values": {
+     "status": "ENERGY_OPTIMAL",
+     "evaluated": 1748,
+     "feasible": 165,
+     "legal_status": "전주시 도시계획 조례 기본 상한(건폐율 50.02%·용적률 300.31%) 안의 후보만 탐색 / 인허가 판단 아님",
+     "max_households_under_limit": null,
+     "zoning.far_limit": 300.31,
+     "zoning.bcr_limit": 50.02,
+     "alternatives": [
+      {
+       "label": "탄소 최소",
+       "floors": 21,
+       "buildings": 6,
+       "households": 900,
+       "far": 189.0,
+       "carbon_kg": 1873234.373933
+      },
+      {
+       "label": "세대당 탄소 최소",
+       "floors": 21,
+       "buildings": 6,
+       "households": 900,
+       "far": 189.0,
+       "carbon_kg": 1873234.373933
+      },
+      {
+       "label": "20% 목적값 범위 내 수용량 최대",
+       "floors": 30,
+       "buildings": 5,
+       "households": 1071,
+       "far": 225.0,
+       "carbon_kg": 2230040.921348
+      }
+     ]
+    },
+    "facts": [
+     "탄소 최소",
+     "세대당 탄소 최소",
+     "20% 목적값 범위 내 수용량 최대"
+    ],
+    "facts_sha256": "0b0acd39760a4bd3cea8b4e2326af29b40d9e6cfeb48637ae51c25cfebb73e84"
    }
   },
   {
@@ -272,6 +1051,40 @@
     "site_lat": 35.815588,
     "efficiency_factor": 1.0,
     "pv_ratio": 0.0
+   },
+   "expected": {
+    "values": {
+     "grid_id": "cell_964500_1757500",
+     "data_class": "SCENARIO",
+     "baseline_basis": "GRID_OBSERVED",
+     "gross_floor_area": 75000.0,
+     "far": 750.0,
+     "bcr": 30.0,
+     "households": 600,
+     "population": 1500,
+     "carbon_now_kg": 5471010.8834,
+     "carbon_plan_kg": 2147161.559608,
+     "electricity_plan_kwh": 3391785.601275,
+     "gas_plan_kwh": 3715872.914871,
+     "carbon_change_pct": -60.753842,
+     "carbon_per_person": 1431.44104,
+     "peak_month": "08",
+     "legal_status": "조례 기본 상한 초과 · 지구단위계획 우선",
+     "zoning.status": "OK",
+     "zoning.dominant_zone": "중심상업지역",
+     "zoning.dominant_share": 100.0,
+     "zoning.far_limit": 700.0,
+     "zoning.bcr_limit": 80.0,
+     "zoning.basis": "ORDINANCE"
+    },
+    "facts": [
+     "FAR 산정 연면적은 입력 지상층 연면적으로 가정합니다. 지하층·법정 제외면적 미반영.",
+     "기준 월별 실측 원단위의 계절성을 그대로 적용합니다. 별도 기상 회귀·AI 학습 없음.",
+     "PV 비율은 전기 수요 상쇄율 가정이며 설비 발전량 예측이 아닙니다.",
+     "기준 면적과 에너지의 지번 매칭이 확보된 경우에만 추정합니다.",
+     "녹지비율은 공간 제약에 적용하며 검증되지 않은 냉방 저감 효과를 에너지에 곱하지 않습니다."
+    ],
+    "facts_sha256": "d1dbccd70c337792d9432929d77c5f4cae083aea1ae0e1c57081dc5d6e4dd673"
    }
   },
   {
@@ -299,6 +1112,49 @@
     "pv_ratio": 0.0,
     "min_households": 500,
     "min_population": 1200
+   },
+   "expected": {
+    "values": {
+     "status": "ENERGY_OPTIMAL",
+     "evaluated": 190,
+     "feasible": 38,
+     "legal_status": "전주시 도시계획 조례 기본 상한(건폐율 80%·용적률 700%) 안의 후보만 탐색 / 인허가 판단 아님",
+     "max_households_under_limit": null,
+     "zoning.far_limit": 700.0,
+     "zoning.bcr_limit": 80.0,
+     "alternatives": [
+      {
+       "label": "탄소 최소",
+       "floors": 28,
+       "buildings": 1,
+       "households": 500,
+       "far": 420.0,
+       "carbon_kg": 1202410.47338
+      },
+      {
+       "label": "세대당 탄소 최소",
+       "floors": 28,
+       "buildings": 1,
+       "households": 500,
+       "far": 420.0,
+       "carbon_kg": 1202410.47338
+      },
+      {
+       "label": "20% 목적값 범위 내 수용량 최대",
+       "floors": 33,
+       "buildings": 1,
+       "households": 589,
+       "far": 495.0,
+       "carbon_kg": 1417126.629341
+      }
+     ]
+    },
+    "facts": [
+     "탄소 최소",
+     "세대당 탄소 최소",
+     "20% 목적값 범위 내 수용량 최대"
+    ],
+    "facts_sha256": "0b0acd39760a4bd3cea8b4e2326af29b40d9e6cfeb48637ae51c25cfebb73e84"
    }
   },
   {
@@ -317,6 +1173,34 @@
     "far": 225,
     "households": 1000,
     "region": "52110"
+   },
+   "expected": {
+    "values": {
+     "status": "OK",
+     "zones": [
+      [
+       "제3종일반주거지역",
+       99.85
+      ],
+      [
+       "준주거지역",
+       0.15
+      ]
+     ],
+     "far_limit": 300.31,
+     "bcr_limit": 50.02,
+     "basis": "ORDINANCE",
+     "greenbelt_share": null,
+     "district_plans": 1,
+     "check.label": "조례 기본 상한 이내 (1차 확인) · 지구단위계획 우선",
+     "check.far": "WITHIN",
+     "check.bcr": "WITHIN"
+    },
+    "facts": [
+     "대지의 100%가 지구단위계획구역입니다. 지구단위계획이 정한 건폐율·용적률·높이가 우선하므로 이 확인은 참고용입니다.",
+     "대지가 여러 용도지역에 걸쳐 있어 면적 가중 상한을 썼습니다."
+    ],
+    "facts_sha256": "ac6dfdd1fff499b1723b9c220c36253475cfafe9613b7a2e0054b2228266d7fa"
    }
   },
   {
@@ -366,6 +1250,45 @@
       "pv_ratio": 0.15
      }
     ]
+   },
+   "expected": {
+    "values": {
+     "grid_id": "cell_966500_1764500",
+     "electricity_kwh": 15366604.0,
+     "gas_kwh": 20085244.0,
+     "carbon_kg": 10321305.0864,
+     "facts": 12,
+     "context_facts": 10,
+     "scenarios": 2,
+     "cautions": 7,
+     "report.sections": 7,
+     "report.mode": "TEMPLATE"
+    },
+    "facts": [
+     "2025년 선택 격자 cell_966500_1764500의 500m 분석 격자를 기준으로 작성했습니다.",
+     "격자에 매칭된 공동주택 관측 지번 기준 2025년 연간 운영탄소(전력+가스)는 10,321,305 kgCO2eq입니다.",
+     "연면적이 매칭된 관측 단지(연면적 416,547m²) 기준 2025년 전력 원단위는 36.9 kWh/m²이고, 전력 운영탄소는 6,653,740 kgCO2eq입니다.",
+     "월별 전력 12/12개월, 가스 12/12개월이 확보되어 있습니다.",
+     "격자에 매칭된 관측 지번의 합계이며 전체 건물 소비량을 의미하지 않습니다.",
+     "시나리오는 운영 단계의 1차 추정이며 법적 인허가 적합성이나 사업 전체 넷제로 달성을 판정하지 않습니다.",
+     "비교안 1은 15층, 10동이며 계획 용적률 225.0%, 건폐율 15.0%입니다.",
+     "비교안 1의 대지는 제3종일반주거지역 100%, 준주거지역 0%이며 전주시 도시계획 조례 기본 상한 건폐율 50.02%·용적률 300.31% 기준 '조례 기본 상한 이내 (1차 확인) · 지구단위계획 우선'입니다(1차 확인, 인허가 판단 아님).",
+     "비교안 1의 연간 운영탄소는 2,230,040.9 kgCO2eq이며 기준 대비 변화는 -8,091,264.2 kgCO2eq입니다.",
+     "비교안 2은 15층, 10동이며 계획 용적률 225.0%, 건폐율 15.0%입니다.",
+     "비교안 2의 대지는 제3종일반주거지역 100%, 준주거지역 0%이며 전주시 도시계획 조례 기본 상한 건폐율 50.02%·용적률 300.31% 기준 '조례 기본 상한 이내 (1차 확인) · 지구단위계획 우선'입니다(1차 확인, 인허가 판단 아님).",
+     "비교안 2의 연간 운영탄소는 1,611,518.4 kgCO2eq이며 기준 대비 변화는 -8,709,786.7 kgCO2eq입니다.",
+     "대상 격자의 공식 용도지역 면적 구성은 주거 63.9%, 녹지 36.1%입니다(VWorld LT_C_UQ111, 법적 허용 상한 판정 아님).",
+     "대상 격자는 행정동 송천1동(격자의 100%, 인구 63,939명)에 걸쳐 있습니다. SGIS 2024 행정동 전체 통계이며 격자 인구가 아닙니다.",
+     "대상 격자가 속한 SGIS 2024년 1km 격자(다마6664)는 인구 18,317명, 가구 6,389, 주택 5,904호, 2000년 이전 준공 주택 0.1%입니다. 공식 격자 통계이며 비밀보호 잡음(±7)이 들어 있고, 500m 격자 값으로 나누지 않았습니다.",
+     "격자 안 공식 건물(도로명주소 건물)은 42동, 건축면적 합계 24,329m²로 격자 면적의 9.7%입니다, 지상층수 확인 98% 기준 평균 14.5층.",
+     "격자 안 K-apt 공동주택은 3개 단지, 2,528세대, 연면적 416,547m²(3/3개 단지 기준)입니다.",
+     "대상 격자는 SGIS 공식 500m 격자 다마66b64b와 같은 칸입니다(경계 API 기준, 통계값은 별도 신청).",
+     "건축HUB가 계량한 격자 안 모든 건물(지번 18곳, 12개월 완전 관측 17곳)의 2025년 연간 사용량은 전력 18,133,607kWh, 가스 20,875,877kWh, 전력 탄소 7,851.9tCO2eq, 가스 탄소 3,811.9tCO2eq(가정 계수)입니다. 단독주택·200세대 미만 공동주택은 제공기관이 제외합니다.",
+     "건축물대장 연면적이 있는 지번 17곳 기준 건물 전체 전력 원단위는 41.1 kWh/m²·년입니다.",
+     "건축물대장 표제부 기준 격자 안 건물은 75동, 연면적 합계 451,866m², 격자 면적 기준 용적률 133.3%, 용도가 확인된 연면적 중 주거 90.8%, 2000년 이전 사용승인 연면적 0.0%입니다 (면적 오기로 제외 4동).",
+     "공동주택 원단위 모델의 공간 블록 교차검증(2km, 2025년) 오차는 전력 nMAE 9.4% / 가스 nMAE 10.8%입니다. 시뮬레이션은 모델이 아니라 관측 원단위를 씁니다."
+    ],
+    "facts_sha256": "a5d5936fd0cec48f61888fb504e2ae56371a4beb4d28891fca806f00df6e81cc"
    }
   },
   {
@@ -389,6 +1312,93 @@
     },
     "target_pct": 20,
     "effort_basis": "apartments"
+   },
+   "expected": {
+    "values": {
+     "label": "덕진구 송천1동 (행정동)",
+     "grids": 19,
+     "complexes": 38,
+     "kapt_electricity_kwh.2015": null,
+     "kapt_electricity_kwh.2016": null,
+     "kapt_electricity_kwh.2017": null,
+     "kapt_electricity_kwh.2018": null,
+     "kapt_electricity_kwh.2019": 14374920.0,
+     "kapt_electricity_kwh.2020": 62485075.0,
+     "kapt_electricity_kwh.2021": 68886840.0,
+     "kapt_electricity_kwh.2022": 76053615.0,
+     "kapt_electricity_kwh.2023": 77741971.0,
+     "kapt_electricity_kwh.2024": 81711247.0,
+     "kapt_electricity_kwh.2025": 84145683.0,
+     "kapt_complete_parcels.2015": 0,
+     "kapt_complete_parcels.2016": 0,
+     "kapt_complete_parcels.2017": 0,
+     "kapt_complete_parcels.2018": 0,
+     "kapt_complete_parcels.2019": 5,
+     "kapt_complete_parcels.2020": 24,
+     "kapt_complete_parcels.2021": 27,
+     "kapt_complete_parcels.2022": 28,
+     "kapt_complete_parcels.2023": 30,
+     "kapt_complete_parcels.2024": 30,
+     "kapt_complete_parcels.2025": 32,
+     "building_electricity_kwh.2020": 40563691.0,
+     "building_electricity_kwh.2021": 84571110.0,
+     "building_electricity_kwh.2022": 107786590.0,
+     "building_electricity_kwh.2023": 130841798.0,
+     "building_electricity_kwh.2024": 167366100.0,
+     "building_electricity_kwh.2025": 171888267.0,
+     "building_parcels.2020": 366,
+     "building_parcels.2021": 420,
+     "building_parcels.2022": 429,
+     "building_parcels.2023": 460,
+     "building_parcels.2024": 469,
+     "building_parcels.2025": 489,
+     "event_year": 2019,
+     "estimated_change_kwh": 33059410.7,
+     "event_added_kwh": 15377254.6,
+     "facts": 23,
+     "effort.available": true,
+     "effort.basis": "apartments",
+     "effort.baseline_year": 2025,
+     "effort.baseline_kwh": 84145683.0,
+     "effort.baseline_kgco2eq": 36435080.7,
+     "effort.bau_kgco2eq": 37567597.6,
+     "effort.target_kgco2eq": 29148064.6,
+     "effort.required_reduction_kgco2eq": 8419533.0,
+     "effort.new_only_efficiency_pct": 743.4,
+     "effort.all_buildings_efficiency_pct": 22.4,
+     "effort.pv_capacity_kw": 16205.2,
+     "effort.pv_yield_kwh_per_kw": 1199.9,
+     "effort.pv_basis": "ESTIMATED",
+     "report.sections": 7,
+     "report.table_rows": 32,
+     "report.mode": "TEMPLATE"
+    },
+    "facts": [
+     "분석 대상은 덕진구 송천1동 (행정동)이고 기간은 2015~2025년입니다. 격자 19개와 공동주택 단지 38개가 포함됩니다.",
+     "12개월 전력 관측이 있는 연도는 7개(2019, 2020, 2021, 2022, 2023, 2024, 2025)입니다.",
+     "분석 기간에 사용승인된 단지는 16개, 10,911세대입니다.",
+     "건축물대장 기준으로 분석 기간에 사용승인된 건물은 627동, 연면적 2,358,976m²입니다(모든 용도).",
+     "건축HUB가 계측하는 구역 안 건물 전체(상가·업무·학교·대형 공동주택 등, 12개월 계측 지번 489곳)의 2025년 전력은 171,888,267 kWh, 전력 탄소 74,427,620 kgCO2eq입니다. 단독주택과 200세대 미만 공동주택은 제공 범위 밖입니다.",
+     "2021년과 2025년 모두 12개월 계측된 같은 지번 414곳의 전력은 84,437,430 kWh에서 139,498,797 kWh로 +65.2% 변했습니다. 한 해에만 계측된 지번은 2025년 75곳(32,389,470 kWh), 2021년 6곳(133,680 kWh)입니다(신축·계량 변경·다른 지번으로의 기록 이동이 섞일 수 있음).",
+     "2020년 건축HUB 값은 쓰되 비교하지 않습니다: 2020년 9·10월 제공기관 응답에서 대단지 등 일부 지번이 빠져(전주 전력 9월 112.9, 10월 86.9 GWh로 2021년 같은 달의 72%·63%) 다른 해와 비교하지 않습니다.",
+     "SGIS 2024년 1km 격자 기준으로 이 구역이 걸친 1km 격자 8개(통계 있는 격자 8개)의 합계는 인구 83,310명, 가구 31,866, 주택 28,772호, 사업체 종사자 14,935명입니다. 구역은 이 격자 면적의 59.4%라 합계는 구역보다 넓은 범위이며, 공식 통계의 비밀보호 잡음이 들어 있습니다.",
+     "같은 1km 격자들에서 65세 이상 인구 비율은 11.7%, 1인가구 비율은 24.3%, 2000년 이전 준공 주택 비율은 38.7%, 아파트 비율은 88.4%입니다.",
+     "2025년 관측 전력은 84,145,683 kWh(12개월 관측 지번 32곳)입니다.",
+     "같은 해 전력 운영탄소는 36,435,081 kgCO2eq입니다.",
+     "연면적이 확인된 단지 기준 전력 원단위는 29.06 kWh/m²·년입니다.",
+     "2019년에 단지 5개(3,345세대)가 사용승인되었습니다.",
+     "새로 준공된 단지의 연평균 전력은 13,104,183 kWh로 개발 후 지역 전력의 19.0%입니다.",
+     "관측이 부족해 연면적으로 추정하면, 이 개발로 단지 연면적이 527,251m²(+28.1%) 늘어 연간 전력 부하가 약 15,377,255 kWh 늘어난 것으로 추정됩니다(추정값).",
+     "전후 기간에 12개월이 모두 관측된 전력 자료가 부족합니다 (과거 수집 필요)",
+     "감축 노력은 공동주택 단지(K-apt 관리비 전력) 기준입니다: 2025년 전력 84,145,683 kWh, 원단위 29.06 kWh/m²·년(연면적 확인 2,782,908m²).",
+     "2025년 대비 20% 감축을 목표로 하면 계획 반영 후 연간 8,419,533 kgCO2eq를 줄여야 합니다.",
+     "신축만으로 달성하려면 신축 전력 소비를 743.4% 줄여야 합니다. 100%를 넘어 신축만으로는 달성할 수 없습니다.",
+     "기존 건물까지 함께 줄이면 지역 전체 전력 소비를 22.4% 줄여야 합니다.",
+     "같은 목표를 재생에너지로 상쇄하려면 연간 19,444,649 kWh가 필요합니다.",
+     "태양광으로 상쇄하면 2025년 지역 일사량 1,500 kWh/m²와 성능비 0.80로 추정한 발전량 1,200 kWh/kW·년 기준 약 16,205.2 kW가 필요합니다(추정값).",
+     "관측이 없는 연도는 0이 아니라 자료 없음으로 두었고, 행정동 통계는 격자에 배분하지 않았습니다."
+    ],
+    "facts_sha256": "ff19aa57e06b5768558e523c354e340bf314dea3a3acb992a5fa6acc04e174c3"
    }
   },
   {
@@ -412,6 +1422,77 @@
     },
     "target_pct": 20,
     "effort_basis": "apartments"
+   },
+   "expected": {
+    "values": {
+     "label": "영통구 광교1동 (행정동)",
+     "grids": 32,
+     "complexes": 24,
+     "kapt_electricity_kwh.2015": null,
+     "kapt_electricity_kwh.2016": null,
+     "kapt_electricity_kwh.2017": null,
+     "kapt_electricity_kwh.2018": null,
+     "kapt_electricity_kwh.2019": null,
+     "kapt_electricity_kwh.2020": null,
+     "kapt_electricity_kwh.2021": null,
+     "kapt_electricity_kwh.2022": null,
+     "kapt_electricity_kwh.2023": null,
+     "kapt_electricity_kwh.2024": null,
+     "kapt_electricity_kwh.2025": 55050348.0,
+     "kapt_complete_parcels.2015": 0,
+     "kapt_complete_parcels.2016": 0,
+     "kapt_complete_parcels.2017": 0,
+     "kapt_complete_parcels.2018": 0,
+     "kapt_complete_parcels.2019": 0,
+     "kapt_complete_parcels.2020": 0,
+     "kapt_complete_parcels.2021": 0,
+     "kapt_complete_parcels.2022": 0,
+     "kapt_complete_parcels.2023": 0,
+     "kapt_complete_parcels.2024": 0,
+     "kapt_complete_parcels.2025": 24,
+     "building_electricity_kwh.2025": 221921862.0,
+     "building_parcels.2025": 180,
+     "event_year": 2017,
+     "estimated_change_kwh": 7946545.9,
+     "event_added_kwh": 7395822.6,
+     "facts": 20,
+     "effort.available": true,
+     "effort.basis": "apartments",
+     "effort.baseline_year": 2025,
+     "effort.baseline_kwh": 55050348.0,
+     "effort.baseline_kgco2eq": 23836800.7,
+     "effort.bau_kgco2eq": 24454506.0,
+     "effort.target_kgco2eq": 19069440.5,
+     "effort.required_reduction_kgco2eq": 5385065.5,
+     "effort.new_only_efficiency_pct": 871.8,
+     "effort.all_buildings_efficiency_pct": 22.0,
+     "effort.pv_capacity_kw": 10571.8,
+     "effort.pv_yield_kwh_per_kw": 1176.4,
+     "effort.pv_basis": "ESTIMATED"
+    },
+    "facts": [
+     "분석 대상은 영통구 광교1동 (행정동)이고 기간은 2015~2025년입니다. 격자 32개와 공동주택 단지 24개가 포함됩니다.",
+     "12개월 전력 관측이 있는 연도는 1개(2025)입니다.",
+     "분석 기간에 사용승인된 단지는 9개, 2,919세대입니다.",
+     "건축물대장 기준으로 분석 기간에 사용승인된 건물은 431동, 연면적 1,868,334m²입니다(모든 용도).",
+     "건축HUB가 계측하는 구역 안 건물 전체(상가·업무·학교·대형 공동주택 등, 12개월 계측 지번 180곳)의 2025년 전력은 221,921,862 kWh, 전력 탄소 96,092,166 kgCO2eq입니다. 단독주택과 200세대 미만 공동주택은 제공 범위 밖입니다.",
+     "SGIS 2024년 1km 격자 기준으로 이 구역이 걸친 1km 격자 12개(통계 있는 격자 12개)의 합계는 인구 87,906명, 가구 36,172, 주택 22,920호, 사업체 종사자 53,757명입니다. 구역은 이 격자 면적의 66.7%라 합계는 구역보다 넓은 범위이며, 공식 통계의 비밀보호 잡음이 들어 있습니다.",
+     "같은 1km 격자들에서 65세 이상 인구 비율은 10.1%, 1인가구 비율은 39.4%, 2000년 이전 준공 주택 비율은 14.9%, 아파트 비율은 57.3%입니다.",
+     "2025년 관측 전력은 55,050,348 kWh(12개월 관측 지번 24곳)입니다.",
+     "같은 해 전력 운영탄소는 23,836,801 kgCO2eq입니다.",
+     "연면적이 확인된 단지 기준 전력 원단위는 23.78 kWh/m²·년입니다.",
+     "2017년에 단지 4개(1,290세대)가 사용승인되었습니다.",
+     "관측이 부족해 연면적으로 추정하면, 이 개발로 단지 연면적이 265,615m²(+13.3%) 늘어 연간 전력 부하가 약 7,395,823 kWh 늘어난 것으로 추정됩니다(추정값).",
+     "전후 기간에 12개월이 모두 관측된 전력 자료가 부족합니다 (과거 수집 필요)",
+     "감축 노력은 공동주택 단지(K-apt 관리비 전력) 기준입니다: 2025년 전력 55,050,348 kWh, 원단위 23.78 kWh/m²·년(연면적 확인 2,315,356m²).",
+     "2025년 대비 20% 감축을 목표로 하면 계획 반영 후 연간 5,385,066 kgCO2eq를 줄여야 합니다.",
+     "신축만으로 달성하려면 신축 전력 소비를 871.8% 줄여야 합니다. 100%를 넘어 신축만으로는 달성할 수 없습니다.",
+     "기존 건물까지 함께 줄이면 지역 전체 전력 소비를 22.0% 줄여야 합니다.",
+     "같은 목표를 재생에너지로 상쇄하려면 연간 12,436,641 kWh가 필요합니다.",
+     "태양광으로 상쇄하면 2025년 지역 일사량 1,470 kWh/m²와 성능비 0.80로 추정한 발전량 1,176 kWh/kW·년 기준 약 10,571.8 kW가 필요합니다(추정값).",
+     "관측이 없는 연도는 0이 아니라 자료 없음으로 두었고, 행정동 통계는 격자에 배분하지 않았습니다."
+    ],
+    "facts_sha256": "b84df36fd47e120cf5cb0af657a0af38c358a3ffb43670796e68766896f7ad63"
    }
   },
   {
@@ -435,6 +1516,78 @@
     },
     "target_pct": 20,
     "effort_basis": "buildings"
+   },
+   "expected": {
+    "values": {
+     "label": "팔달구 인계동 (행정동)",
+     "grids": 11,
+     "complexes": 20,
+     "kapt_electricity_kwh.2015": null,
+     "kapt_electricity_kwh.2016": null,
+     "kapt_electricity_kwh.2017": null,
+     "kapt_electricity_kwh.2018": null,
+     "kapt_electricity_kwh.2019": null,
+     "kapt_electricity_kwh.2020": null,
+     "kapt_electricity_kwh.2021": null,
+     "kapt_electricity_kwh.2022": null,
+     "kapt_electricity_kwh.2023": null,
+     "kapt_electricity_kwh.2024": null,
+     "kapt_electricity_kwh.2025": 32804736.0,
+     "kapt_complete_parcels.2015": 0,
+     "kapt_complete_parcels.2016": 0,
+     "kapt_complete_parcels.2017": 0,
+     "kapt_complete_parcels.2018": 0,
+     "kapt_complete_parcels.2019": 0,
+     "kapt_complete_parcels.2020": 0,
+     "kapt_complete_parcels.2021": 0,
+     "kapt_complete_parcels.2022": 0,
+     "kapt_complete_parcels.2023": 0,
+     "kapt_complete_parcels.2024": 0,
+     "kapt_complete_parcels.2025": 15,
+     "building_electricity_kwh.2025": 234250661.0,
+     "building_parcels.2025": 957,
+     "event_year": 2024,
+     "estimated_change_kwh": 8680957.0,
+     "event_added_kwh": 8680957.0,
+     "facts": 21,
+     "effort.available": true,
+     "effort.basis": "buildings",
+     "effort.baseline_year": 2025,
+     "effort.baseline_kwh": 234250661.0,
+     "effort.baseline_kgco2eq": 101430536.2,
+     "effort.bau_kgco2eq": 103420344.4,
+     "effort.target_kgco2eq": 81144429.0,
+     "effort.required_reduction_kgco2eq": 22275915.4,
+     "effort.new_only_efficiency_pct": 1119.5,
+     "effort.all_buildings_efficiency_pct": 21.5,
+     "effort.pv_capacity_kw": 43731.3,
+     "effort.pv_yield_kwh_per_kw": 1176.4,
+     "effort.pv_basis": "ESTIMATED"
+    },
+    "facts": [
+     "분석 대상은 팔달구 인계동 (행정동)이고 기간은 2015~2025년입니다. 격자 11개와 공동주택 단지 20개가 포함됩니다.",
+     "12개월 전력 관측이 있는 연도는 1개(2025)입니다.",
+     "분석 기간에 사용승인된 단지는 4개, 4,189세대입니다.",
+     "건축물대장 기준으로 분석 기간에 사용승인된 건물은 419동, 연면적 1,405,174m²입니다(모든 용도).",
+     "건축HUB가 계측하는 구역 안 건물 전체(상가·업무·학교·대형 공동주택 등, 12개월 계측 지번 957곳)의 2025년 전력은 234,250,661 kWh, 전력 탄소 101,430,536 kgCO2eq입니다. 단독주택과 200세대 미만 공동주택은 제공 범위 밖입니다.",
+     "SGIS 2024년 1km 격자 기준으로 이 구역이 걸친 1km 격자 6개(통계 있는 격자 6개)의 합계는 인구 116,846명, 가구 55,217, 주택 37,605호, 사업체 종사자 73,403명입니다. 구역은 이 격자 면적의 45.8%라 합계는 구역보다 넓은 범위이며, 공식 통계의 비밀보호 잡음이 들어 있습니다.",
+     "같은 1km 격자들에서 65세 이상 인구 비율은 13.9%, 1인가구 비율은 49.1%, 2000년 이전 준공 주택 비율은 33.7%, 아파트 비율은 59.5%입니다.",
+     "2025년 관측 전력은 32,804,736 kWh(12개월 관측 지번 15곳)입니다.",
+     "같은 해 전력 운영탄소는 14,204,451 kgCO2eq입니다.",
+     "연면적이 확인된 단지 기준 전력 원단위는 31.52 kWh/m²·년입니다.",
+     "2024년에 단지 1개(3,432세대)가 사용승인되었습니다.",
+     "새로 준공된 단지의 연평균 전력은 13,302,870 kWh로 개발 후 지역 전력의 40.6%입니다.",
+     "관측이 부족해 연면적으로 추정하면, 이 개발로 단지 연면적이 311,770m²(+36.4%) 늘어 연간 전력 부하가 약 8,680,957 kWh 늘어난 것으로 추정됩니다(추정값).",
+     "전후 기간에 12개월이 모두 관측된 전력 자료가 부족합니다 (과거 수집 필요)",
+     "감축 노력은 구역 건물 전체(건축HUB 계측 지번, 상가·업무 포함) 기준입니다: 2025년 전력 234,250,661 kWh, 원단위 76.59 kWh/m²·년.",
+     "2025년 대비 20% 감축을 목표로 하면 계획 반영 후 연간 22,275,915 kgCO2eq를 줄여야 합니다.",
+     "신축만으로 달성하려면 신축 전력 소비를 1,119.5% 줄여야 합니다. 100%를 넘어 신축만으로는 달성할 수 없습니다.",
+     "기존 건물까지 함께 줄이면 지역 전체 전력 소비를 21.5% 줄여야 합니다.",
+     "같은 목표를 재생에너지로 상쇄하려면 연간 51,445,532 kWh가 필요합니다.",
+     "태양광으로 상쇄하면 2025년 지역 일사량 1,470 kWh/m²와 성능비 0.80로 추정한 발전량 1,176 kWh/kW·년 기준 약 43,731.3 kW가 필요합니다(추정값).",
+     "관측이 없는 연도는 0이 아니라 자료 없음으로 두었고, 행정동 통계는 격자에 배분하지 않았습니다."
+    ],
+    "facts_sha256": "febf007ff8c0fc041373e6c37976bac3d566d2f27d5eb7bdf09bbb754b8c79e2"
    }
   },
   {
@@ -458,6 +1611,40 @@
     "region": "41110",
     "efficiency_factor": 1.0,
     "pv_ratio": 0.0
+   },
+   "expected": {
+    "values": {
+     "grid_id": "cell_950000_1919000",
+     "data_class": "SCENARIO",
+     "baseline_basis": "GRID_OBSERVED",
+     "gross_floor_area": 90000.0,
+     "far": 225.0,
+     "bcr": 15.0,
+     "households": 1000,
+     "population": 2500,
+     "carbon_now_kg": 1626816.733,
+     "carbon_plan_kg": 1818730.374616,
+     "electricity_plan_kwh": 4017974.329945,
+     "gas_plan_kwh": 432352.079683,
+     "carbon_change_pct": 11.796881,
+     "carbon_per_person": 727.49215,
+     "peak_month": "08",
+     "legal_status": "조례 기본 상한 초과 · 지구단위계획 우선",
+     "zoning.status": "OK",
+     "zoning.dominant_zone": "제3종일반주거지역",
+     "zoning.dominant_share": 79.77,
+     "zoning.far_limit": 205.11,
+     "zoning.bcr_limit": 36.39,
+     "zoning.basis": "ORDINANCE"
+    },
+    "facts": [
+     "FAR 산정 연면적은 입력 지상층 연면적으로 가정합니다. 지하층·법정 제외면적 미반영.",
+     "기준 월별 실측 원단위의 계절성을 그대로 적용합니다. 별도 기상 회귀·AI 학습 없음.",
+     "PV 비율은 전기 수요 상쇄율 가정이며 설비 발전량 예측이 아닙니다.",
+     "기준 면적과 에너지의 지번 매칭이 확보된 경우에만 추정합니다.",
+     "녹지비율은 공간 제약에 적용하며 검증되지 않은 냉방 저감 효과를 에너지에 곱하지 않습니다."
+    ],
+    "facts_sha256": "d1dbccd70c337792d9432929d77c5f4cae083aea1ae0e1c57081dc5d6e4dd673"
    }
   },
   {
@@ -481,6 +1668,77 @@
     },
     "target_pct": 20,
     "effort_basis": "apartments"
+   },
+   "expected": {
+    "values": {
+     "label": "강동구 고덕2동 (행정동)",
+     "grids": 10,
+     "complexes": 5,
+     "kapt_electricity_kwh.2015": null,
+     "kapt_electricity_kwh.2016": null,
+     "kapt_electricity_kwh.2017": null,
+     "kapt_electricity_kwh.2018": null,
+     "kapt_electricity_kwh.2019": null,
+     "kapt_electricity_kwh.2020": null,
+     "kapt_electricity_kwh.2021": null,
+     "kapt_electricity_kwh.2022": null,
+     "kapt_electricity_kwh.2023": null,
+     "kapt_electricity_kwh.2024": null,
+     "kapt_electricity_kwh.2025": 26760667.0,
+     "kapt_complete_parcels.2015": 0,
+     "kapt_complete_parcels.2016": 0,
+     "kapt_complete_parcels.2017": 0,
+     "kapt_complete_parcels.2018": 0,
+     "kapt_complete_parcels.2019": 0,
+     "kapt_complete_parcels.2020": 0,
+     "kapt_complete_parcels.2021": 0,
+     "kapt_complete_parcels.2022": 0,
+     "kapt_complete_parcels.2023": 0,
+     "kapt_complete_parcels.2024": 0,
+     "kapt_complete_parcels.2025": 3,
+     "building_electricity_kwh.2025": 59839965.0,
+     "building_parcels.2025": 118,
+     "event_year": 2019,
+     "estimated_change_kwh": 26203047.9,
+     "event_added_kwh": 22691634.8,
+     "facts": 20,
+     "effort.available": true,
+     "effort.basis": "apartments",
+     "effort.baseline_year": 2025,
+     "effort.baseline_kwh": 26760667.0,
+     "effort.baseline_kgco2eq": 11587368.8,
+     "effort.bau_kgco2eq": 12207559.2,
+     "effort.target_kgco2eq": 9269895.0,
+     "effort.required_reduction_kgco2eq": 2937664.1,
+     "effort.new_only_efficiency_pct": 473.7,
+     "effort.all_buildings_efficiency_pct": 24.1,
+     "effort.pv_capacity_kw": 5899.5,
+     "effort.pv_yield_kwh_per_kw": 1150.0,
+     "effort.pv_basis": "ESTIMATED"
+    },
+    "facts": [
+     "분석 대상은 강동구 고덕2동 (행정동)이고 기간은 2015~2025년입니다. 격자 10개와 공동주택 단지 5개가 포함됩니다.",
+     "12개월 전력 관측이 있는 연도는 1개(2025)입니다.",
+     "분석 기간에 사용승인된 단지는 4개, 7,065세대입니다.",
+     "건축물대장 기준으로 분석 기간에 사용승인된 건물은 232동, 연면적 1,010,075m²입니다(모든 용도).",
+     "건축HUB가 계측하는 구역 안 건물 전체(상가·업무·학교·대형 공동주택 등, 12개월 계측 지번 118곳)의 2025년 전력은 59,839,965 kWh, 전력 탄소 25,910,705 kgCO2eq입니다. 단독주택과 200세대 미만 공동주택은 제공 범위 밖입니다.",
+     "SGIS 2024년 1km 격자 기준으로 이 구역이 걸친 1km 격자 5개(통계 있는 격자 5개)의 합계는 인구 51,745명, 가구 19,359, 주택 15,652호, 사업체 종사자 17,931명입니다. 구역은 이 격자 면적의 50.0%라 합계는 구역보다 넓은 범위이며, 공식 통계의 비밀보호 잡음이 들어 있습니다.",
+     "같은 1km 격자들에서 65세 이상 인구 비율은 16.4%, 1인가구 비율은 22.9%, 2000년 이전 준공 주택 비율은 41.1%, 아파트 비율은 80.0%입니다.",
+     "2025년 관측 전력은 26,760,667 kWh(12개월 관측 지번 3곳)입니다.",
+     "같은 해 전력 운영탄소는 11,587,369 kgCO2eq입니다.",
+     "연면적이 확인된 단지 기준 전력 원단위는 23.87 kWh/m²·년입니다.",
+     "2019년에 단지 1개(4,932세대)가 사용승인되었습니다.",
+     "관측이 부족해 연면적으로 추정하면, 이 개발로 단지 연면적이 811,620m²(+4,431.0%) 늘어 연간 전력 부하가 약 22,691,635 kWh 늘어난 것으로 추정됩니다(추정값).",
+     "전후 기간에 12개월이 모두 관측된 전력 자료가 부족합니다 (과거 수집 필요)",
+     "감축 노력은 공동주택 단지(K-apt 관리비 전력) 기준입니다: 2025년 전력 26,760,667 kWh, 원단위 23.87 kWh/m²·년(연면적 확인 1,121,014m²).",
+     "2025년 대비 20% 감축을 목표로 하면 계획 반영 후 연간 2,937,664 kgCO2eq를 줄여야 합니다.",
+     "신축만으로 달성하려면 신축 전력 소비를 473.7% 줄여야 합니다. 100%를 넘어 신축만으로는 달성할 수 없습니다.",
+     "기존 건물까지 함께 줄이면 지역 전체 전력 소비를 24.1% 줄여야 합니다.",
+     "같은 목표를 재생에너지로 상쇄하려면 연간 6,784,444 kWh가 필요합니다.",
+     "태양광으로 상쇄하면 2025년 지역 일사량 1,438 kWh/m²와 성능비 0.80로 추정한 발전량 1,150 kWh/kW·년 기준 약 5,899.5 kW가 필요합니다(추정값).",
+     "관측이 없는 연도는 0이 아니라 자료 없음으로 두었고, 행정동 통계는 격자에 배분하지 않았습니다."
+    ],
+    "facts_sha256": "eaa4c589c65dc5e7779d79e3ffa897238806cebb5790ed58c91bb77ea99bf1f2"
    }
   },
   {
@@ -488,12 +1746,12 @@
    "kind": "area",
    "region": "11740",
    "screen": "지역 시뮬레이션",
-   "title": "서울 강동 상업지 · 천호2동 감축 20% (건물 전체 기준)",
-   "purpose": "역세권 상업지, 건물 전체 기준",
+   "title": "서울 강동 상업지 · 천호3동(상업지역 격자) 감축 20% (건물 전체 기준)",
+   "purpose": "상업지역이 가장 넓은 격자 2개가 있는 상업지(2025 건물 전체 전력 상위 격자 52.8 GWh), 건물 전체 기준",
    "input": {
     "area": {
      "type": "admin",
-     "code": "11250730"
+     "code": "11250630"
     },
     "region": "11740",
     "from_year": 2015,
