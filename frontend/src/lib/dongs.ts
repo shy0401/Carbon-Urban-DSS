@@ -12,7 +12,7 @@ import type { MetricDef } from './mapMetrics';
  * - 인구·가구는 SGIS 행정동 공식 값을 먼저 보여 준다. 500m 격자 통계(주택·종사자 등)는 합계 규칙으로 모은다.
  */
 export const SUM_KEYS = new Set([
-  'electricity_kwh_annual', 'gas_kwh_annual', 'electricity_carbon_t', 'gas_carbon_t', 'bldg_electricity_kwh', 'bldg_gas_kwh', 'bldg_carbon_t',
+  'electricity_kwh_annual', 'gas_kwh_annual', 'electricity_carbon_t', 'gas_carbon_t', 'bldg_electricity_kwh', 'bldg_gas_kwh', 'bldg_carbon_t', 'bldg_gas_carbon_t',
   'building_count', 'complex_households', 'complex_count', 'reg_buildings', 'reg_gfa_m2',
   'sgis500_population', 'sgis500_households', 'sgis500_housing', 'sgis500_workers',
 ]);

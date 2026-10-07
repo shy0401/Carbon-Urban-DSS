@@ -485,6 +485,7 @@ function GridDetail({ props: p, year, name, dongs, metric, classification, detai
         <Fact label="연간 가스" value={p.bldg_gas_kwh} unit="kWh/년" missingText="12개월 계측 지번 없음" />
         <Fact label="전력 원단위 (대장 연면적)" value={p.bldg_kwh_per_m2} unit="kWh/m²·년" digits={1} missingText="대장 연면적이 있는 계측 지번 없음" />
         <Fact label="전력 탄소" value={p.bldg_carbon_t} unit="tCO₂eq/년" digits={1} missingText="연간 전력 없음" />
+        <Fact label="가스 탄소 (가정 계수)" value={p.bldg_gas_carbon_t} unit="tCO₂eq/년" digits={1} missingText="연간 가스 없음" why="가스 kWh × 0.1826 (공식 계수 확인 전 가정)" />
       </dl> : <MissingValue reason="건축HUB 전 지번 에너지를 아직 받지 않았거나, 이 격자에 계측 지번이 없습니다(단독주택 위주 등)." />}
       <h3 className="sub">건축물대장 (공식 연면적·용도)</h3>
       {p.reg_buildings ? <dl className="fact-list">

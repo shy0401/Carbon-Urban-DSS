@@ -151,7 +151,7 @@ def grid_detail_facts(db,year,grid_id,data):
             props=map_properties(item,factor);complete=year_complete(year)
             out['building_energy']=dict(props,year=year,complete=complete)
             elec=props.get('bldg_electricity_kwh');gas=props.get('bldg_gas_kwh');carbon=props.get('bldg_carbon_t')
-            parts=[f"전력 {elec:,.0f}kWh" if elec is not None else None,f"가스 {gas:,.0f}kWh" if gas is not None else None,f"전력 탄소 {carbon:,.1f}tCO2eq" if carbon is not None else None]
+            parts=[f"전력 {elec:,.0f}kWh" if elec is not None else None,f"가스 {gas:,.0f}kWh" if gas is not None else None,f"전력 탄소 {carbon:,.1f}tCO2eq" if carbon is not None else None,f"가스 탄소 {props['bldg_gas_carbon_t']:,.1f}tCO2eq(가정 계수)" if props.get('bldg_gas_carbon_t') is not None else None]
             out['facts'].append({'id':'building_energy','text':f"건축HUB가 계량한 격자 안 모든 건물(지번 {props['bldg_parcels']}곳, 12개월 완전 관측 {props['bldg_electricity_complete']}곳)의 {year}년 연간 사용량은 "+", ".join(p for p in parts if p)+f"입니다{'' if complete else ' (그해 수집이 끝나지 않아 잠정값)'}. 단독주택·200세대 미만 공동주택은 제공기관이 제외합니다."})
             if props.get('bldg_kwh_per_m2') is not None:
                 out['facts'].append({'id':'building_intensity','text':f"건축물대장 연면적이 있는 지번 {props['bldg_area_parcels']}곳 기준 건물 전체 전력 원단위는 {props['bldg_kwh_per_m2']:,.1f} kWh/m²·년입니다."})

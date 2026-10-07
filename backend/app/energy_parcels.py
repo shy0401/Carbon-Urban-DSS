@@ -353,10 +353,13 @@ def map_properties(item: dict[str, Any] | None, factor: float | None) -> dict[st
     if not item:
         return {"bldg_parcels": None, "bldg_electricity_kwh": None, "bldg_gas_kwh": None, "bldg_electricity_complete": None,
                 "bldg_gas_complete": None, "bldg_area_m2": None, "bldg_area_parcels": None, "bldg_kwh_per_m2": None,
-                "bldg_carbon_t": None, "bldg_suspect": None, "bldg_gas_bimonthly": None}
+                "bldg_carbon_t": None, "bldg_gas_carbon_t": None, "bldg_suspect": None, "bldg_gas_bimonthly": None}
+    from .emissions import GAS_FACTOR  # 가정 계수(고정 규칙), docs/DATA_STANDARD.md 5.5
     kwh = item["electricity_kwh"]
+    gas = item["gas_kwh"]
     return {"bldg_parcels": item["parcels"], "bldg_electricity_kwh": kwh, "bldg_gas_kwh": item["gas_kwh"],
             "bldg_electricity_complete": item["electricity_complete"], "bldg_gas_complete": item["gas_complete"],
             "bldg_area_m2": item["area_m2"], "bldg_area_parcels": item["area_parcels"], "bldg_kwh_per_m2": item["kwh_per_m2"],
-            "bldg_carbon_t": round(kwh * factor / 1000, 1) if kwh is not None and factor else None, "bldg_suspect": item["suspect"],
+            "bldg_carbon_t": round(kwh * factor / 1000, 1) if kwh is not None and factor else None,
+            "bldg_gas_carbon_t": round(gas * GAS_FACTOR / 1000, 1) if gas is not None else None, "bldg_suspect": item["suspect"],
             "bldg_gas_bimonthly": item.get("gas_bimonthly", 0)}

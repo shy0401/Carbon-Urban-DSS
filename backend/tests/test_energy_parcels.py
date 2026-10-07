@@ -88,3 +88,15 @@ def test_jeonbuk_months_before_the_rename_use_the_old_sigungu_code():
     from app.energy_parcels import request_sigungu
     assert request_sigungu('52111', '202310') == '45111' and request_sigungu('52113', '202001') == '45113'
     assert request_sigungu('52111', '202311') == '52111' and request_sigungu('41111', '202101') == '41111'
+
+
+def test_map_properties_add_building_gas_carbon_with_the_assumed_factor_and_keep_missing_as_none():
+    from app.emissions import GAS_FACTOR
+    from app.energy_parcels import map_properties
+    item = {"parcels": 5, "electricity_kwh": 100_000.0, "gas_kwh": 50_000.0, "electricity_complete": 4, "gas_complete": 3,
+            "area_m2": 1000.0, "area_parcels": 2, "kwh_per_m2": 50.0, "suspect": 0}
+    props = map_properties(item, 0.4781)
+    assert props["bldg_carbon_t"] == round(100_000 * 0.4781 / 1000, 1)
+    assert props["bldg_gas_carbon_t"] == round(50_000 * GAS_FACTOR / 1000, 1)
+    assert map_properties(dict(item, gas_kwh=None), 0.4781)["bldg_gas_carbon_t"] is None   # no gas observed: missing, not 0
+    assert map_properties(None, 0.4781)["bldg_gas_carbon_t"] is None
