@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SimulationPage } from './SimulationPage';
@@ -48,5 +48,29 @@ describe('SimulationPage', () => {
     expect(screen.getByText(/^700\s?명$/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: '이 조건을 입력에 적용' }));
     expect(screen.getByRole('spinbutton', { name: /층수/ })).toHaveValue(9);
+  });
+
+  it('사례 링크로 열면 링크의 입력·대지 위치로 계산하고, 링크 복사는 같은 주소를 만든다', async () => {
+    const query = 'site=127.132190,35.880124,0&site_area=40000&building_count=10&footprint_per_building=600&floors=15&households=1000&population=2500&efficiency_factor=0.8&pv_ratio=0.15&green_ratio=0.3&average_household_area=84&min_households=900&min_population=2200';
+    window.history.pushState({}, '', `/simulation?${query}`);
+    const bodies: Array<Record<string, unknown>> = [];
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      if (String(input).includes('/scenarios')) bodies.push(JSON.parse(String(init?.body)));
+      return new Response(JSON.stringify(String(input).includes('/scenarios') ? { far: 225, bcr: 15, monthly: [], annual: { current: null, scenario: null, difference: null } } : {}), { status: 200 });
+    });
+    try {
+      render(<SimulationPage />);
+      expect(screen.getByRole('spinbutton', { name: /층수/ })).toHaveValue(15);
+      expect(screen.getByRole('spinbutton', { name: /효율 계수/ })).toHaveValue(0.8);
+      expect(screen.getByRole('spinbutton', { name: /최소 세대수/ })).toHaveValue(900);
+      await userEvent.click(screen.getByRole('button', { name: '시나리오 계산' }));
+      await waitFor(() => expect(bodies.length).toBe(1));
+      expect(bodies[0]).toMatchObject({ site_area: 40000, building_count: 10, floors: 15, efficiency_factor: 0.8, pv_ratio: 0.15, site_lon: 127.13219, site_lat: 35.880124, site_rotation: 0 });
+      await userEvent.click(screen.getByRole('button', { name: /링크 복사/ }));
+      const link = (screen.getByLabelText(/이 조건의 링크/) as HTMLInputElement).value;
+      expect(link.endsWith(`/simulation?year=2025&${query}`)).toBe(true);
+    } finally {
+      window.history.pushState({}, '', '/');
+    }
   });
 });

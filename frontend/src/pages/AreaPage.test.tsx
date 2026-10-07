@@ -96,4 +96,26 @@ describe('AreaPage', () => {
     expect(screen.getByText('12,182 명')).toBeInTheDocument();
     expect(screen.getByText('33.3%')).toBeInTheDocument();
   });
+
+  it('사례 링크로 열면 링크의 구역·계획·목표·기준 건물로 첫 계산을 하고 보고서 요청에도 기준 건물을 넣는다', async () => {
+    window.history.pushState({}, '', '/area?area=zone:COMMERCIAL&from=2016&to=2025&plan=75000&target=20&basis=buildings&pv=1200');
+    const bodies: Array<Record<string, unknown>> = [];
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.endsWith('/api/areas/options')) return new Response(JSON.stringify({ admin: [{ code: '35012650', name: '덕진구 송천1동' }], admin_geojson: { type: 'FeatureCollection', features: [] }, admin_year: 2024, zones: [{ category: 'COMMERCIAL', label: '상업지역', grids: 18 }], energy_years: [2025], default_grid: 'cell_1' }));
+      if (url.endsWith('/api/areas/collection')) return new Response(JSON.stringify({ items: {}, runs: [], summary: {} }));
+      if (url.endsWith('/api/areas/analyze')) { bodies.push(JSON.parse(String(init?.body))); return new Response(JSON.stringify(analysis)); }
+      if (url.endsWith('/api/area-reports')) return new Response(JSON.stringify([]));
+      return new Response('{}', { status: 404 });
+    });
+    try {
+      render(<AreaPage />);
+      await waitFor(() => expect(bodies.length).toBeGreaterThan(0));
+      expect(bodies[0]).toMatchObject({ area: { type: 'zone', category: 'COMMERCIAL' }, from_year: 2016, to_year: 2025, plan: { added_floor_area_m2: 75000 }, target_pct: 20, pv_yield_kwh_per_kw: 1200, effort_basis: 'buildings' });
+      (await screen.findByRole('button', { name: /링크 복사/ })).click();
+      expect(await screen.findByDisplayValue(/\/area\?area=zone:COMMERCIAL&from=2016&to=2025&window=3&plan=75000&target=20&pv=1200&basis=buildings$/)).toBeInTheDocument();
+    } finally {
+      window.history.pushState({}, '', '/');
+    }
+  });
 });

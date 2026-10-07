@@ -155,3 +155,8 @@
 .sgis-rule { margin-top: var(--sp-3); }
 .sgis-figures .is-estimated { background: var(--prov-estimated-bg); }
 .sgis-figures .is-estimated dt { color: var(--prov-estimated); }
+
+/* 사례 링크: 같은 입력을 다른 PC·사람에게 주소로 전달 */
+.case-link { display: grid; gap: var(--sp-1); margin-top: var(--sp-3); font-size: var(--fs-label); color: var(--ink-2); }
+.case-link input { width: 100%; min-width: 0; font: inherit; font-size: 12px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-sunk); color: var(--ink); }
+.area-link-button { align-self: end; margin-left: auto; }

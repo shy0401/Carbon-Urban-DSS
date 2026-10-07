@@ -1,4 +1,4 @@
-import { Download, FileText, Info, Pause, Play, RotateCcw, Undo2 } from 'lucide-react';
+import { Download, FileText, Info, Link2, Pause, Play, RotateCcw, Undo2 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { AreaMap } from '../components/area/AreaMap';
@@ -8,7 +8,8 @@ import { PageHeader } from '../components/PageHeader';
 import { ProvenanceBadge } from '../components/ProvenanceBadge';
 import { SgisGridSummaryView } from '../components/SgisGridPanel';
 import { EmptyState, ErrorState, LoadingState } from '../components/Status';
-import { useAnalysisScope } from '../hooks/useAnalysisScope';
+import { setAnalysisScope, useAnalysisScope } from '../hooks/useAnalysisScope';
+import { areaLink, parseAreaLink, type AreaLink } from '../lib/caseLink';
 import { useApi } from '../hooks/useApi';
 import { api } from '../lib/api';
 import { at, buildSpec, EFFORT_BASIS_LABEL, effortHeadline, eventYears, MODE_LABEL, planBody, plannedArea, pvNote, REPORT_MODE_LABEL, type AreaAnalysis, type AreaMode, type AreaOptions, type AreaReport, type AreaSpec, type BeforeAfter, type EffortBasis, type EffortResult, type PlanState } from '../lib/area';
@@ -25,22 +26,27 @@ interface CollectionStatus { items: Record<string, { status: string; at?: string
 
 export function AreaPage() {
   const { region, regionQuery } = useAnalysisScope();
+  // 사례 링크(/area?region=…&area=admin:35012650&plan=90000&target=20&basis=…): 같은 구역·입력으로 시작한다.
+  const linked = useRef<AreaLink | null | undefined>(undefined);
+  if (linked.current === undefined) linked.current = parseAreaLink(typeof window === 'undefined' ? '' : window.location.search);
+  const link = linked.current;
   const options = useApi<AreaOptions>(`/areas/options${regionQuery.replace('&', '?')}`);
   const collection = useApi<CollectionStatus>('/areas/collection');
-  const [mode, setMode] = useState<AreaMode>('admin');
-  const [adminCode, setAdminCode] = useState('');
-  const [category, setCategory] = useState('');
-  const [center, setCenter] = useState<[number, number] | null>(null);
-  const [radius, setRadius] = useState(1000);
+  const [mode, setMode] = useState<AreaMode>(link?.mode ?? 'admin');
+  const [adminCode, setAdminCode] = useState(link?.spec?.type === 'admin' ? link.spec.code ?? '' : '');
+  const [category, setCategory] = useState(link?.spec?.type === 'zone' ? link.spec.category ?? '' : '');
+  const [center, setCenter] = useState<[number, number] | null>(link?.spec?.type === 'circle' ? [link.spec.lon!, link.spec.lat!] : null);
+  const [radius, setRadius] = useState(link?.spec?.type === 'circle' ? link.spec.radius_m ?? 1000 : 1000);
   const [vertices, setVertices] = useState<Array<[number, number]>>([]);
-  const [fromYear, setFromYear] = useState(2015);
-  const [toYear, setToYear] = useState(2025);
-  const [eventYear, setEventYear] = useState<number | null>(null);
-  const [windowSize, setWindowSize] = useState(3);
-  const [plan, setPlan] = useState<PlanState>(DEFAULT_PLAN);
-  const [target, setTarget] = useState(DEFAULT_TARGET);
-  const [pvYield, setPvYield] = useState('');
-  const [effortBasis, setEffortBasis] = useState<EffortBasis>('apartments');
+  const [fromYear, setFromYear] = useState(link?.from ?? 2015);
+  const [toYear, setToYear] = useState(link?.to ?? 2025);
+  const [eventYear, setEventYear] = useState<number | null>(link?.event ?? null);
+  const [windowSize, setWindowSize] = useState(link?.window ?? 3);
+  const [plan, setPlan] = useState<PlanState>({ ...DEFAULT_PLAN, ...(link?.plan ?? {}) });
+  const [target, setTarget] = useState(link?.target ?? DEFAULT_TARGET);
+  const [pvYield, setPvYield] = useState(link?.pv ?? '');
+  const [effortBasis, setEffortBasis] = useState<EffortBasis>(link?.basis ?? 'apartments');
+  const [linkUrl, setLinkUrl] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<AreaAnalysis | null>(null);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -77,8 +83,10 @@ export function AreaPage() {
     }
   }, [fromYear, toYear, eventYear, windowSize, plan, target, pvYield, effortBasis, region]);
   const runRef = useRef(run); runRef.current = run;
+  // A link to another region switches the analysis scope first (once).
+  useEffect(() => { if (link && link.region !== undefined && link.region !== region) setAnalysisScope({ region: link.region }); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // Another region: its 행정동, zones and grids are different, so start over there.
-  const shownRegion = useRef(region);
+  const shownRegion = useRef(link && link.region !== undefined ? link.region : region);
   useEffect(() => {
     if (shownRegion.current === region) return;
     shownRegion.current = region;
@@ -91,7 +99,21 @@ export function AreaPage() {
 
   // First analysis once the defaults are known (declared before the region reset above uses it).
 
-  useEffect(() => { if (!started.current && adminCode && options.data) { started.current = true; void runRef.current({ type: 'admin', code: adminCode }); } }, [adminCode, options.data]);
+  useEffect(() => {
+    if (started.current || !options.data) return;
+    if (link && link.region !== undefined && link.region !== region) return;   // wait for the linked region
+    const first = link?.spec ?? (adminCode ? { type: 'admin' as const, code: adminCode } : null);
+    if (!first) return;
+    started.current = true; void runRef.current(first);
+  }, [adminCode, options.data, region]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setLinkUrl(null); }, [analysis]);
+  const copyLink = () => {
+    const path = areaLink(lastSpec.current, { region, from: fromYear, to: toYear, event: eventYear, window: windowSize, plan, target, pv: pvYield, basis: effortBasis });
+    if (!path) { setLinkUrl('직접 그린 구역은 링크로 옮길 수 없습니다. 행정동·반경·용도지역·기준 격자로 고르세요.'); return; }
+    const url = window.location.origin + path;
+    setLinkUrl(url);
+    void navigator.clipboard?.writeText(url).catch(() => undefined);
+  };
 
   // Parameter changes re-run the last area (debounced) — the engine recomputes every number.
   useEffect(() => {
@@ -147,7 +169,9 @@ export function AreaPage() {
         <label className="area-select narrow"><span>시작 연도</span><select value={fromYear} onChange={(e) => setFromYear(Number(e.target.value))}>{YEARS.map((y) => <option key={y} value={y}>{y}</option>)}</select></label>
         <label className="area-select narrow"><span>끝 연도</span><select value={toYear} onChange={(e) => setToYear(Number(e.target.value))}>{YEARS.map((y) => <option key={y} value={y}>{y}</option>)}</select></label>
         {running && <span className="area-running" role="status"><span className="spinner" aria-hidden="true" />계산 중</span>}
+        <button type="button" className="button ghost small area-link-button" onClick={copyLink} disabled={!analysis} title="이 구역·기간·계획·목표를 주소로 복사합니다"><Link2 size={14} />링크 복사</button>
       </div>
+      {linkUrl && <label className="case-link"><span>이 조건의 링크 (다른 PC에서 열면 같은 구역·입력으로 시작)</span><input readOnly value={linkUrl} onFocus={(event) => event.currentTarget.select()} /></label>}
       {error && <p className="form-error" role="alert">{error}</p>}
       <CoverageStrip analysis={analysis} collection={collection.data} regionName={region ? (options.data?.region?.short_name ?? null) : null} />
     </section>
@@ -178,7 +202,7 @@ export function AreaPage() {
       <EffortPanel effort={analysis.effort} plan={plan} setPlan={setPlan} target={target} setTarget={setTarget} pvYield={pvYield} setPvYield={setPvYield} basis={effortBasis} setBasis={setEffortBasis} />
 
       <div className="section-label"><h2>보고서</h2><span>계산 엔진의 근거 문장으로 작성하고, 로컬 AI 문장은 숫자 검증을 통과할 때만 씁니다</span></div>
-      <ReportPanel request={() => ({ area: lastSpec.current, region, from_year: fromYear, to_year: toYear, event_year: eventYear, window: windowSize, plan: planBody(plan), target_pct: target, pv_yield_kwh_per_kw: pvYield && Number(pvYield) > 0 ? Number(pvYield) : null })} label={analysis.history.area.label} />
+      <ReportPanel request={() => ({ area: lastSpec.current, region, from_year: fromYear, to_year: toYear, event_year: eventYear, window: windowSize, plan: planBody(plan), target_pct: target, pv_yield_kwh_per_kw: pvYield && Number(pvYield) > 0 ? Number(pvYield) : null, effort_basis: effortBasis })} label={analysis.history.area.label} />
     </>}
   </div>;
 }

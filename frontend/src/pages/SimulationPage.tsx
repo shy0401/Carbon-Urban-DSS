@@ -1,10 +1,11 @@
-import { Info, Play, RotateCcw, Scale } from 'lucide-react';
+import { Info, Link2, Play, RotateCcw, Scale } from 'lucide-react';
 import { FormEvent, useMemo, useState, useEffect, useRef } from 'react';
 import type { EChartsOption } from 'echarts';
 import { baseChart, compactAxis, lineSeries, missingBands } from '../lib/chartTheme';
 import { TOKENS } from '../theme/palette';
 import { Link } from 'react-router-dom';
-import { useAnalysisScope } from '../hooks/useAnalysisScope';
+import { setAnalysisScope, useAnalysisScope } from '../hooks/useAnalysisScope';
+import { parseScenarioLink, scenarioLink, type ScenarioLink } from '../lib/caseLink';
 import { Chart } from '../components/Chart';
 import { PageHeader } from '../components/PageHeader';
 import { ProvenanceBadge } from '../components/ProvenanceBadge';
@@ -39,13 +40,16 @@ interface OptimizationResult { status?: string; objective?: string; legal_status
 export function SimulationPage() {
   const {year,gridId,region}=useAnalysisScope();
   const revision=useRef(0);
-  const [input, setInput] = useState(initial);
+  // 사례 링크(/simulation?region=…&grid=…&site=lon,lat,회전&site_area=…): 같은 입력으로 시작한다.
+  const linked = useRef<ScenarioLink | null | undefined>(undefined);
+  if (linked.current === undefined) linked.current = parseScenarioLink(typeof window === 'undefined' ? '' : window.location.search);
+  const [input, setInput] = useState<ScenarioInput>(() => ({ ...initial, ...(linked.current?.input ?? {}) }));
   const [errors, setErrors] = useState<ScenarioErrors>({});
   const [result, setResult] = useState<ScenarioResult | null>(null);
   const [active, setActive] = useState<'current' | 'scenario' | 'difference'>('scenario');
   const [submitting, setSubmitting] = useState(false);
   const [requestError, setRequestError] = useState<string | null>(null);
-  const [constraints, setConstraints] = useState({ min_households: 500, min_population: 1200 });
+  const [constraints, setConstraints] = useState(() => ({ min_households: linked.current?.constraints?.min_households ?? 500, min_population: linked.current?.constraints?.min_population ?? 1200 }));
   const [optimization, setOptimization] = useState<OptimizationResult | null>(null);
   const [optimizing, setOptimizing] = useState(false);
   const [site, setSite] = useState<SitePlacement | null>(null);
@@ -53,6 +57,28 @@ export function SimulationPage() {
   const system = useSystemInfo();
   useEffect(()=>{revision.current++;setResult(null);setOptimization(null);setRequestError(null);},[input,year,gridId,site,region]);
   useEffect(()=>{setSite(null);},[gridId]);
+  useEffect(() => {
+    const l = linked.current; if (!l) return;
+    const next: { region?: string | null; gridId?: string | null; year?: number } = {};
+    if (l.region !== undefined && l.region !== region) next.region = l.region;
+    if (l.grid && l.grid !== gridId) next.gridId = l.grid;
+    if (l.year && l.year !== year) next.year = l.year;
+    if (Object.keys(next).length) setAnalysisScope(next);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // The linked site is placed once the linked grid is the selected one (choosing a grid clears the site above).
+  const pendingSite = useRef(linked.current?.site ?? null);
+  useEffect(() => {
+    const placed = pendingSite.current; const l = linked.current;
+    if (!placed || (l?.grid && l.grid !== gridId) || (l?.region !== undefined && (l.region ?? null) !== region)) return;
+    pendingSite.current = null; setSite(placed);
+  }, [gridId, region]);
+  const [linkUrl, setLinkUrl] = useState<string | null>(null);
+  useEffect(() => { setLinkUrl(null); }, [input, site, gridId, region, year, constraints]);
+  const copyLink = () => {
+    const url = window.location.origin + scenarioLink(input, site, { region, grid: gridId, year }, constraints);
+    setLinkUrl(url);
+    void navigator.clipboard?.writeText(url).catch(() => undefined);
+  };
   const sitePayload = site ? { site_lon: site.lon, site_lat: site.lat, site_rotation: Math.min(89.9, Math.max(0, site.rotation)) } : {};
   const massingGrid = gridId || result?.grid_id || system?.default_grid_id || null;
   useEffect(()=>{revision.current++;setOptimization(null);},[constraints]);
@@ -114,7 +140,8 @@ export function SimulationPage() {
         <div className="floor-presets"><span>층수·수용량 빠른 설정</span><div>{[5, 10, 20, 30, 40].map((floors) => <button type="button" className={input.floors === floors ? 'active' : ''} key={floors} onClick={() => preset(floors)}>{floors}층</button>)}</div><small>연면적과 평균 세대면적으로 세대수를 다시 계산하고 현재 가구당 인구비를 적용합니다.</small></div>
         {fieldGroups.map((group) => <fieldset className="field-group" key={group.title}><legend>{group.title}</legend><div className="field-grid">{group.keys.map((key) => { const field = fields.find((f) => f.key === key)!; return <label className={errors[field.key] ? 'field error' : 'field'} key={field.key}><span>{field.label}</span><div><input type="number" value={input[field.key]} step={field.step ?? 1} min={field.min} max={field.max} onChange={(event) => setInput((old) => ({ ...old, [field.key]: Number(event.target.value) }))} /><em>{field.unit}</em></div>{errors[field.key] && <small>{errors[field.key]}</small>}</label>; })}</div></fieldset>)}
         <div className="derived-strip"><div><span>예상 연면적</span><strong>{formatMetric(input.building_count * input.footprint_per_building * input.floors, 'm²')}</strong></div><div><span>계획 용적률</span><strong>{formatMetric((input.building_count * input.footprint_per_building * input.floors / input.site_area) * 100, '%', 1)}</strong></div><div><span>계획 건폐율</span><strong>{formatMetric((input.building_count * input.footprint_per_building / input.site_area) * 100, '%', 1)}</strong></div></div>
-        <div className="form-actions"><button type="button" className="button ghost" onClick={() => { setInput(initial); setErrors({}); setResult(null); setSite(null); }}><RotateCcw size={15} />초기화</button><button className="button primary" disabled={submitting}><Play size={15} />{submitting ? '계산 중…' : '시나리오 계산'}</button></div>
+        <div className="form-actions"><button type="button" className="button ghost" onClick={() => { setInput(initial); setErrors({}); setResult(null); setSite(null); }}><RotateCcw size={15} />초기화</button><button type="button" className="button ghost" onClick={copyLink} title="이 지역·격자·대지 위치·입력값을 주소로 복사합니다"><Link2 size={15} />링크 복사</button><button className="button primary" disabled={submitting}><Play size={15} />{submitting ? '계산 중…' : '시나리오 계산'}</button></div>
+        {linkUrl && <label className="case-link"><span>이 조건의 링크 (다른 PC에서 열면 같은 입력으로 시작)</span><input readOnly value={linkUrl} onFocus={(event) => event.currentTarget.select()} /></label>}
       </form>
       <div className="simulation-main">
         <section className="panel massing-panel"><div className="panel-title"><h3>3D 배치·일조</h3><span className="status-tag neutral">규모 비교용 개념 배치</span></div><Massing3D gridId={massingGrid} region={region} input={input} site={site} onSiteChange={setSite} onZoning={setLiveZoning} onCapture={result?.id ? saveScene : undefined} captureLabel="보고서용 장면 저장" /></section>
