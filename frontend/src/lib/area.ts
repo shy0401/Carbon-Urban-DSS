@@ -180,6 +180,24 @@ export interface BeforeAfter {
 export type EffortBasis = 'apartments' | 'buildings';
 export const EFFORT_BASIS_LABEL: Record<EffortBasis, string> = { apartments: '공동주택 (K-apt)', buildings: '건물 전체 (건축HUB)' };
 
+export interface PvYield {
+  kwh_per_kw: number;
+  basis: 'USER' | 'ESTIMATED';
+  label: string;
+  year?: number;
+  source?: string;
+  source_type?: string;
+  irradiation_kwh_m2?: number;
+  performance_ratio?: number;
+}
+
+/** What the PV capacity figure is based on, in one line. */
+export function pvNote(pv: PvYield | null | undefined, capacity: number | null | undefined): string {
+  if (capacity == null || !pv) return '지역 일사량 자료가 없어 발전량을 넣으면 계산';
+  if (pv.basis === 'USER') return `입력한 발전량 ${pv.kwh_per_kw.toLocaleString('ko-KR')} kWh/kW 기준`;
+  return `추정: ${pv.label} = ${pv.kwh_per_kw.toLocaleString('ko-KR')} kWh/kW·년`;
+}
+
 export interface EffortResult {
   available: boolean;
   reason?: string;
@@ -210,6 +228,8 @@ export interface EffortResult {
     new_building_intensity_target: number | null;
   };
   curve?: Array<{ target_pct: number; all_buildings_efficiency_pct: number | null; new_only_efficiency_pct: number | null }>;
+  /** kWh one kW of panels makes per year: the user's number, or the region's irradiation estimate (DATA_STANDARD 5.13). */
+  pv_yield?: PvYield | null;
   factor_kgco2eq_per_kwh?: number;
   scope?: string;
   assumptions?: string[];

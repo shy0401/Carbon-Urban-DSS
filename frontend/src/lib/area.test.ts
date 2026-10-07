@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { at, buildSpec, cohortOf, cohortSeries, complexFeatures, complexState, draftFeature, effortHeadline, eventYears, planBody, plannedArea, type AreaHistory, type CarrierYear } from './area';
+import { at, buildSpec, cohortOf, cohortSeries, complexFeatures, complexState, draftFeature, effortHeadline, eventYears, planBody, plannedArea, pvNote, type AreaHistory, type CarrierYear } from './area';
 
 const empty: CarrierYear = { kwh: null, observed_parcels: 0, complete_parcels: 0, partial_parcels: 0, months_max: 0, by_cohort: {}, intensity_kwh_per_m2: null, intensity_area_m2: null, kwh_per_household: null, households: null };
 
@@ -87,5 +87,14 @@ describe('area helpers', () => {
     expect(draftFeature([[0, 0], [1, 0]]).features[0].geometry.type).toBe('LineString');
     const poly = draftFeature([[0, 0], [1, 0], [1, 1]]).features[0].geometry as unknown as { coordinates: number[][][] };
     expect(poly.coordinates[0]).toHaveLength(4);
+  });
+});
+
+describe('pvNote', () => {
+  it('says whether the PV capacity uses the user number or the regional irradiation estimate', () => {
+    expect(pvNote(null, null)).toContain('발전량을 넣으면');
+    expect(pvNote({ kwh_per_kw: 1200, basis: 'USER', label: '사용자 입력' }, 10)).toBe('입력한 발전량 1,200 kWh/kW 기준');
+    const est = { kwh_per_kw: 1047.2, basis: 'ESTIMATED' as const, label: '2025년 ERA5-Land 일사량 수평면 일사량 1,309 kWh/m² × 성능비 0.80', year: 2025, irradiation_kwh_m2: 1309, performance_ratio: 0.8 };
+    expect(pvNote(est, 25.4)).toBe('추정: 2025년 ERA5-Land 일사량 수평면 일사량 1,309 kWh/m² × 성능비 0.80 = 1,047.2 kWh/kW·년');
   });
 });

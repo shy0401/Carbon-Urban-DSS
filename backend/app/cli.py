@@ -8,7 +8,7 @@ from .catalog import seed_sources
 from .settings import DATA_DIR,DEFAULT_YEAR
 
 def init_tables():
-    from . import official,kapt,kapt_energy,kma_asos,sgis,sgis_grid,vworld,energy_parcels,sgis_grid_official,regions,national,ordinances,sgis_grid500,regional_stats,team_grid
+    from . import official,kapt,kapt_energy,kma_asos,sgis,sgis_grid,vworld,energy_parcels,sgis_grid_official,regions,national,ordinances,sgis_grid500,regional_stats,team_grid,solar
     try:from . import imports
     except ImportError:pass
     with engine.begin() as c:c.execute(text('CREATE EXTENSION IF NOT EXISTS postgis'))
@@ -24,7 +24,7 @@ def init_tables():
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('command',choices=['demo','online','status','enrich','collect','collect-history','collect-missing','validate-models','snapshot','llm-dataset','llm-eval','import-sgis-grid','import-sgis-grid500','import-regional-stats','import-team-grid',
         'national-admin','national-sgis','national-complexes','national-grid500','national-ordinances','national-all','prepare-region','regions',
-        'check-standard','apply-standard']);parser.add_argument('--year',type=int,default=DEFAULT_YEAR)
+        'check-standard','apply-standard','backfill-solar']);parser.add_argument('--year',type=int,default=DEFAULT_YEAR)
     parser.add_argument('--from',dest='from_year',type=int,default=2015);parser.add_argument('--to',dest='to_year',type=int,default=DEFAULT_YEAR)
     parser.add_argument('--datasets',default='',help='comma-separated: sgis,kma_asos,kapt_energy,energy,vworld_zoning,vworld_buildings,vworld_cadastral,building_register');parser.add_argument('--force',action='store_true')
     parser.add_argument('--source',choices=['energy','weather','kapt-energy','kma','sgis','vworld-zoning','vworld-cadastral'])
@@ -131,6 +131,11 @@ def main():
             steps=[s.strip() for s in args.steps.split(',') if s.strip()] or None
             result=prepare_region(db,args.region,steps,log=lambda m:print(m,flush=True),force=args.force)
             print(json.dumps({'code':result['code'],'status':result['status'],'datasets':{k:{'status':v.get('status'),'message':v.get('message')} for k,v in (result['datasets'] or {}).items()}},ensure_ascii=False,indent=1))
+        elif args.command=='backfill-solar':
+            # ERA5-Land 일사량을 지역마다 받아 태양광 연 발전량 추정에 씀 (docs/DATA_STANDARD.md 5.13)
+            from .solar import backfill
+            regions=[r.strip() for r in (args.region or '').split(',') if r.strip()] or None
+            print(json.dumps(backfill(db,regions=regions,log=lambda m:print(m,flush=True)),ensure_ascii=False,indent=1,default=str))
         elif args.command in ('check-standard','apply-standard'):
             # docs/DATA_STANDARD.md: apply brings stored values to the current rule, check counts what does not follow it.
             from .standard import apply_standard,check_standard

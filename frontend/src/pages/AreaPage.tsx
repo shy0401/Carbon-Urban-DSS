@@ -11,7 +11,7 @@ import { EmptyState, ErrorState, LoadingState } from '../components/Status';
 import { useAnalysisScope } from '../hooks/useAnalysisScope';
 import { useApi } from '../hooks/useApi';
 import { api } from '../lib/api';
-import { at, buildSpec, EFFORT_BASIS_LABEL, effortHeadline, eventYears, MODE_LABEL, planBody, plannedArea, REPORT_MODE_LABEL, type AreaAnalysis, type AreaMode, type AreaOptions, type AreaReport, type AreaSpec, type BeforeAfter, type EffortBasis, type EffortResult, type PlanState } from '../lib/area';
+import { at, buildSpec, EFFORT_BASIS_LABEL, effortHeadline, eventYears, MODE_LABEL, planBody, plannedArea, pvNote, REPORT_MODE_LABEL, type AreaAnalysis, type AreaMode, type AreaOptions, type AreaReport, type AreaSpec, type BeforeAfter, type EffortBasis, type EffortResult, type PlanState } from '../lib/area';
 import { formatDate, formatMetric } from '../lib/format';
 
 const YEARS = Array.from({ length: 17 }, (_, i) => 2010 + i);
@@ -349,7 +349,7 @@ function EffortPanel({ effort, plan, setPlan, target, setTarget, pvYield, setPvY
         <div className="area-effort-basis"><span>기준 건물</span><div className="area-modes small" role="tablist" aria-label="감축 노력 기준 건물">
           {(['apartments', 'buildings'] as const).map((b) => <button key={b} role="tab" aria-selected={basis === b} onClick={() => setBasis(b)}>{EFFORT_BASIS_LABEL[b]}</button>)}
         </div><small className="muted">{basis === 'buildings' ? '상가·업무·학교 등 구역의 계측 건물 전체(건축HUB, 최근 12개월 완비 연도). 상업지역은 이 기준이 맞습니다.' : '공동주택 관리비 전력(같은 출처로 연도 비교). 주거지역 기본값.'}</small></div>
-        <label className="field"><span>태양광 kW당 연 발전량 (선택)</span><div><input type="number" min={0} step={10} value={pvYield} placeholder="근거가 있을 때만 입력" onChange={(e) => setPvYield(e.target.value)} /><em>kWh/kW</em></div></label>
+        <label className="field"><span>태양광 kW당 연 발전량 (선택)</span><div><input type="number" min={0} step={10} value={pvYield} placeholder={effort?.pv_yield?.basis === 'ESTIMATED' ? `비우면 지역 추정 ${effort.pv_yield.kwh_per_kw.toLocaleString('ko-KR')}` : '근거가 있을 때만 입력'} onChange={(e) => setPvYield(e.target.value)} /><em>kWh/kW</em></div></label>
       </div>
       <div className="area-effort-result">
         {!effort ? <EmptyState title="목표를 넣으면 계산합니다" /> : !effort.available ? <EmptyState title="계산할 근거가 없습니다" description={effort.reason} /> : <>
@@ -362,7 +362,7 @@ function EffortPanel({ effort, plan, setPlan, target, setTarget, pvYield, setPvY
             <div className={o?.new_only_efficiency_pct == null ? 'is-missing' : undefined}><dt>신축 건물만 개선할 때</dt><dd>{o?.new_only_efficiency_pct == null ? '신축 없음' : o.new_only_efficiency_pct > 100 ? `${formatMetric(o.new_only_efficiency_pct, '%', 1)} 필요 → 불가` : `${formatMetric(Math.max(0, o.new_only_efficiency_pct), '%', 1)} 절감`}<small>{o?.new_building_intensity_target != null ? `신축 원단위 ${o.new_building_intensity_target} kWh/m²·년 이하 (현재 ${formatMetric(effort.intensity_kwh_per_m2, '', 2)})` : '신축 원단위를 0 아래로 낮출 수 없음'}</small></dd></div>
             <Figure label="지역 전체 건물 효율 개선" value={o?.all_buildings_efficiency_pct != null ? Math.max(0, o.all_buildings_efficiency_pct) : null} unit="%" digits={1} note="기존 + 신축 전력 사용 절감률" />
             <Figure label="재생에너지로 상쇄할 전력" value={o?.offset_kwh_per_year} unit="kWh/년" />
-            <Figure label="태양광 설비 용량" value={o?.pv_capacity_kw} unit="kW" digits={1} note={o?.pv_capacity_kw == null ? '발전량 가정 입력 시 계산' : '입력한 발전량 가정 기준'} />
+            <Figure label="태양광 설비 용량" value={o?.pv_capacity_kw} unit="kW" digits={1} note={pvNote(effort.pv_yield, o?.pv_capacity_kw)} />
           </dl>
           <EffortCurve effort={effort} />
           <div className="assumption-note"><strong>계산 가정 · {effort.scope}</strong><ul>{(effort.assumptions ?? []).map((a) => <li key={a}>{a}</li>)}</ul></div>

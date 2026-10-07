@@ -131,6 +131,7 @@ app.include_router(dongs_router)
 from .sgis_grid500 import router as sgis_grid500_router  # also registers sgis_grid500_values before create_all
 from . import regional_stats  # noqa: F401 - registers gir_regional_ghg, citygas_sido_monthly before create_all
 from . import team_grid  # noqa: F401 - registers team_grid500/100, team_developments before create_all
+from . import solar  # noqa: F401 - registers solar_monthly before create_all
 app.include_router(sgis_grid500_router)
 from .national_map import router as national_map_router
 app.include_router(national_map_router)

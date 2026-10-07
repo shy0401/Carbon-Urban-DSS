@@ -517,6 +517,8 @@ def effort(history: dict[str, Any], plan: dict[str, Any], target_pct: float, pv_
     """
     if not (0 <= target_pct <= 100):
         raise ValueError("목표 감축률은 0~100% 입니다")
+    pv = pv_basis(history, pv_yield_kwh_per_kw)
+    pv_yield_kwh_per_kw = pv["kwh_per_kw"] if pv else None
     if basis not in EFFORT_BASIS:
         raise ValueError("기준 건물은 apartments 또는 buildings 입니다")
     factor = history.get("factor", {}).get("electricity")
@@ -530,10 +532,10 @@ def effort(history: dict[str, Any], plan: dict[str, Any], target_pct: float, pv_
             return {"available": False, "basis": basis, "basis_label": EFFORT_BASIS[basis],
                     "reason": "구역 안에 12개월 계측된 건축HUB 지번(연면적 확인)이 없어 건물 전체 기준으로 계산할 수 없습니다"}
         item = years[base_year]
-        return _effort_result(history, plan, target_pct, pv_yield_kwh_per_kw, factor, base_year, "OBSERVED",
+        return _with_pv(pv, _effort_result(history, plan, target_pct, pv_yield_kwh_per_kw, factor, base_year, "OBSERVED",
                               float(item["kwh_per_m2"]), float(item["electricity_kwh"]), float(item["area_m2"]), basis,
                               f"신축 부하 = 계획 연면적 × 구역 건물 전체 관측 전력 원단위 {float(item['kwh_per_m2']):,.2f} kWh/m²·년 "
-                              f"({base_year}년 건축HUB, 12개월 계측 지번 {item.get('electricity_complete') or 0:,}곳, 연면적 확인 {float(item['area_m2']):,.0f}m²)")
+                              f"({base_year}년 건축HUB, 12개월 계측 지번 {item.get('electricity_complete') or 0:,}곳, 연면적 확인 {float(item['area_m2']):,.0f}m²)"))
     base_year = next((y for y in sorted(history["energy"], reverse=True)
                       if history["energy"][y]["electricity"]["kwh"] is not None and history["energy"][y]["electricity"]["intensity_kwh_per_m2"]), None)
     baseline_mode = "OBSERVED"
@@ -555,7 +557,29 @@ def effort(history: dict[str, Any], plan: dict[str, Any], target_pct: float, pv_
         basis_area = stock["gfa_m2"]
     load_text = (f"신축 부하 = 계획 연면적 × 지역 관측 전력 원단위 {intensity:,.2f} kWh/m²·년 ({base_year}년, 연면적 {basis_area:,.0f}m² 기준)" if baseline_mode == "OBSERVED"
                  else f"지역 관측이 없어 기준 부하를 추정했습니다: 단지 연면적 {basis_area:,.0f}m² × {history.get('region_label') or '전주'} 관측 원단위 {intensity:,.2f} kWh/m²·년")
-    return _effort_result(history, plan, target_pct, pv_yield_kwh_per_kw, factor, base_year, baseline_mode, intensity, base_kwh, basis_area, basis, load_text)
+    return _with_pv(pv, _effort_result(history, plan, target_pct, pv_yield_kwh_per_kw, factor, base_year, baseline_mode, intensity, base_kwh, basis_area, basis, load_text))
+
+
+def pv_basis(history: dict[str, Any], user_kwh_per_kw: float | None) -> dict[str, Any] | None:
+    """kWh a 1 kW array makes per year: the user's number when given, otherwise the region's irradiation estimate."""
+    if user_kwh_per_kw and user_kwh_per_kw > 0:
+        return {"kwh_per_kw": float(user_kwh_per_kw), "basis": "USER", "label": "사용자 입력"}
+    solar = history.get("solar")
+    if solar and solar.get("yield_kwh_per_kw"):
+        return {"kwh_per_kw": solar["yield_kwh_per_kw"], "basis": "ESTIMATED", "year": solar["year"], "source": solar["source"],
+                "source_type": solar["source_type"], "irradiation_kwh_m2": solar["irradiation_kwh_m2"],
+                "performance_ratio": solar["performance_ratio"],
+                "label": f"{solar['year']}년 {solar['source']} 수평면 일사량 {solar['irradiation_kwh_m2']:,.0f} kWh/m² × 성능비 {solar['performance_ratio']:.2f}"}
+    return None
+
+
+def _with_pv(pv: dict[str, Any] | None, result: dict[str, Any]) -> dict[str, Any]:
+    result["pv_yield"] = pv
+    if pv and result.get("assumptions"):
+        result["assumptions"] = [a for a in result["assumptions"] if not a.startswith("태양광")] + [
+            "태양광 설비 용량은 사용자가 입력한 kW당 연 발전량으로 환산합니다" if pv["basis"] == "USER"
+            else f"태양광 설비 용량은 지역 일사량 추정 발전량 {pv['kwh_per_kw']:,.0f} kWh/kW·년({pv['label']}, 경사 보정 없음)으로 환산한 추정값입니다"]
+    return result
 
 
 def _effort_result(history: dict[str, Any], plan: dict[str, Any], target_pct: float, pv_yield_kwh_per_kw: float | None, factor: float,
@@ -783,6 +807,7 @@ def build_history(area: dict[str, Any], years: list[int], inputs: dict[str, Any]
     history["building_energy"] = building_energy_block(area["grid_ids"], inputs.get("building_energy") or {}, factor)
     city = inputs.get("city_intensity")
     history["city_intensity"] = city
+    history["solar"] = inputs.get("solar")  # 태양광 연 발전량 추정 (solar.py, DATA_STANDARD 5.13), None when no complete year
     for year in years:
         gfa = history["stock"][year]["gfa_m2"]
         kwh = round(gfa * city["kwh_per_m2"], 1) if city and gfa else None
@@ -916,6 +941,13 @@ def area_facts(history: dict[str, Any], comparison: dict[str, Any] | None = None
             if o["all_buildings_efficiency_pct"] is not None:
                 add("effort_all", f"기존 건물까지 함께 줄이면 지역 전체 전력 소비를 {o['all_buildings_efficiency_pct']:,.1f}% 줄여야 합니다.", o["all_buildings_efficiency_pct"])
             add("effort_offset", f"같은 목표를 재생에너지로 상쇄하려면 연간 {o['offset_kwh_per_year']:,.0f} kWh가 필요합니다.", o["offset_kwh_per_year"])
+            pv = effort_result.get("pv_yield")
+            if pv and o.get("pv_capacity_kw"):
+                how = ("사용자가 입력한 발전량" if pv["basis"] == "USER"
+                       else f"{pv['year']}년 지역 일사량 {pv['irradiation_kwh_m2']:,.0f} kWh/m²와 성능비 {pv['performance_ratio']:.2f}로 추정한 발전량")
+                add("effort_pv", f"태양광으로 상쇄하면 {how} {pv['kwh_per_kw']:,.0f} kWh/kW·년 기준 약 {o['pv_capacity_kw']:,.1f} kW가 필요합니다"
+                    + ("(추정값)." if pv["basis"] == "ESTIMATED" else "."),
+                    pv["kwh_per_kw"], o["pv_capacity_kw"], *([pv["year"], pv["irradiation_kwh_m2"], pv["performance_ratio"]] if pv["basis"] == "ESTIMATED" else []))
     add("rules", "관측이 없는 연도는 0이 아니라 자료 없음으로 두었고, 행정동 통계는 격자에 배분하지 않았습니다.", 0)
     return facts
 
@@ -1090,6 +1122,8 @@ def prepare_inputs(db: Any, years: list[int], region: str | None = None) -> dict
     """DB rows for ``years`` plus the region-wide observed intensity (reusable across many areas)."""
     inputs = load_inputs(db, years, region)
     inputs["city_intensity"] = city_intensity(inputs["energy"], inputs["complexes"], years)
+    from .solar import regional_pv_yield
+    inputs["solar"] = regional_pv_yield(db, (inputs.get("region") or {}).get("code"), up_to=years[-1])
     inputs["years"] = list(years)
     return inputs
 

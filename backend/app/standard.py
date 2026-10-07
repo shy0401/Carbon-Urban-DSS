@@ -388,5 +388,11 @@ def summary() -> dict[str, Any]:
         "gas_factor": GAS_FACTOR, "gas_factor_ncv": GAS_NCV_FACTOR,
         "degree_days": {"rule": RULE, "hdd_base_c": HDD_BASE_C, "cdd_base_c": CDD_BASE_C},
         "annual_rule": "12개월 모두 관측된 지번(단지)만 연간 합계",
+        "pv_rule": _pv_rule(),
         "missing_rule": "없는 값은 NULL, 0과 구분",
     }
+
+
+def _pv_rule() -> dict[str, Any]:
+    from .solar import PERFORMANCE_RATIO, RULE as PV_RULE
+    return {"rule": PV_RULE, "performance_ratio": PERFORMANCE_RATIO}
