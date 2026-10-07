@@ -569,7 +569,7 @@ docker compose -p carbon-urban-dss -f compose.yaml -f compose.demo.yaml exec -T 
 
 - 계산은 **읽기만** 합니다. 계획안·보고서를 DB에 저장하지 않습니다(격자 보고서의 계획안은 계산 중에만 쓰고 되돌림).
 - 숫자는 상대 오차 100만분의 1(최소 0.01) 안이면 같다고 봅니다. 근거 문장은 글자 하나까지 같아야 합니다.
-- **자료 지문(D01~D03)이 다르면** 계산이 아니라 DB 자료가 다른 것입니다. 같은 날짜의 자료 묶음을 가져왔는지 확인합니다.
+- **자료 지문(D01~D04)이 다르면** 계산이 아니라 DB 자료가 다른 것입니다. 같은 날짜의 자료 묶음을 가져왔는지 확인합니다.
 - 결과 전체는 `--out` 파일(JSON)에 남습니다(`scripts\dss.cmd VerifyCases`는 `data\ops\<시각>-verifycases\cases-check.json`).
 
 ### 9.3 사례 링크

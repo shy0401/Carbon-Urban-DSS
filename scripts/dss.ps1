@@ -218,14 +218,15 @@ function Read-CountFile([string]$Path) {
 
 function Get-RawManifest {
     $raw = Join-Path $Root 'data\raw'
-    $rows = @()
+    # A list, not $rows += (that copies the whole array per file; data/raw has tens of thousands of files).
+    $rows = [System.Collections.Generic.List[object]]::new()
     if (Test-Path -LiteralPath $raw) {
         foreach ($file in Get-ChildItem -LiteralPath $raw -Recurse -File) {
             $relative = $file.FullName.Substring($raw.Length).TrimStart('\', '/').Replace('\', '/')
-            $rows += [pscustomobject]@{ path = $relative; bytes = $file.Length; sha256 = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLower() }
+            $rows.Add([pscustomobject]@{ path = $relative; bytes = $file.Length; sha256 = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLower() })
         }
     }
-    return $rows
+    return ,$rows.ToArray()
 }
 
 function Invoke-Backup([string]$Label) {

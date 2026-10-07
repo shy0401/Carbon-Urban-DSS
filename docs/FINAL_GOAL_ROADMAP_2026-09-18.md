@@ -98,7 +98,7 @@ Ollama는 Docker 내부 네트워크에서만 작동한다. 계산 엔진이 만
 ```text
 Carbon Urban DSS의 실데이터 완성을 이어서 진행해줘.
 
-저장소: C:\Users\ggg\Documents\4학년\캡스톤\선도소프트
+저장소: F:\전북대\선도소프트 (2026-10-08 이동, 이전 C:\Users\ggg\Documents\4학년\캡스톤\선도소프트)
 먼저 docs/FINAL_GOAL_ROADMAP_2026-09-18.md, docs/PROJECT_IMPLEMENTATION_STATUS.md, docs/DATA_SETUP_GUIDE.md를 읽어줘.
 이번에 제공한 키 또는 파일: {{서비스명과 키/파일 설명}}
 

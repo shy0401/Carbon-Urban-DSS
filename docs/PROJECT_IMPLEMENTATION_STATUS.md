@@ -128,7 +128,7 @@ SMOKE 결과의 속성명, 좌표계, 페이지 수와 이용조건을 먼저 �
 ```text
 Carbon Urban DSS의 외부 실데이터 연동을 이어서 진행해줘.
 
-저장소: C:\Users\ggg\Documents\4학년\캡스톤\선도소프트
+저장소: F:\전북대\선도소프트 (2026-10-08 이동, 이전 C:\Users\ggg\Documents\4학년\캡스톤\선도소프트)
 우선 확인 문서:
 - docs/PROJECT_IMPLEMENTATION_STATUS.md
 - docs/DATA_SETUP_GUIDE.md
