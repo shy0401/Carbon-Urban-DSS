@@ -228,7 +228,7 @@
    "region": "52110",
    "screen": "시뮬레이션 → 최적안 탐색",
    "title": "전주 개발지 최적안 · 900세대·2,200명 이상, 조례 상한 안",
-   "purpose": "법적 상한 안에서 탄소가 가장 적은 층수·동수 조합",
+   "purpose": "법적 상한 안에서 탄소가 가장 적은 층수·동수 조합 (계획안 A 입력 그대로: 효율 1.0, 태양광 0)",
    "input": {
     "site_area": 40000,
     "building_count": 10,
@@ -243,8 +243,8 @@
     "region": "52110",
     "site_lon": 127.13219,
     "site_lat": 35.880124,
-    "efficiency_factor": 0.85,
-    "pv_ratio": 0.1,
+    "efficiency_factor": 1.0,
+    "pv_ratio": 0.0,
     "min_households": 900,
     "min_population": 2200
    }
@@ -280,7 +280,7 @@
    "region": "52110",
    "screen": "시뮬레이션 → 최적안 탐색",
    "title": "전주 상업지 최적안 · 500세대·1,200명 이상",
-   "purpose": "상업지 상한 700% 안의 후보",
+   "purpose": "상업지 상한 700% 안의 후보 (계획안 A 입력 그대로: 효율 1.0, 태양광 0)",
    "input": {
     "site_area": 10000,
     "building_count": 2,
@@ -295,8 +295,8 @@
     "region": "52110",
     "site_lon": 127.109795,
     "site_lat": 35.815588,
-    "efficiency_factor": 0.85,
-    "pv_ratio": 0.1,
+    "efficiency_factor": 1.0,
+    "pv_ratio": 0.0,
     "min_households": 500,
     "min_population": 1200
    }

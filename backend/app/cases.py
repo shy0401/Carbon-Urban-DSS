@@ -16,13 +16,14 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 
 CASES_FILE = Path(__file__).resolve().parent.parent / "cases" / "simulation_cases.json"
 ABS_TOL = 0.01      # numbers: |actual − expected| ≤ max(ABS_TOL, REL_TOL × |expected|) unless a case gives its own
 REL_TOL = 1e-6
+KST = timezone(timedelta(hours=9), "KST")   # 기록 시각 (일광절약시간 없음, 컨테이너 시간대와 무관)
 LAST_YEAR = 2025    # dataset fingerprints stop here so months collected later do not change them
 
 LABELS = {
@@ -347,7 +348,7 @@ def record(db: Any, cases: dict[str, Any], note: str | None = None, log: Callabl
             continue
         spec["expected"] = got
         log(f"[기록] {spec['id']} {spec.get('title', '')} — 값 {len(got['values'])}개, 근거 문장 {len(got['facts'])}개")
-    out["recorded_on"] = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+    out["recorded_on"] = datetime.now(KST).isoformat(timespec="seconds")   # 한국 시각으로 적는다
     if note:
         out["data_note"] = note
     return out
