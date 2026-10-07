@@ -1,8 +1,8 @@
 {
  "version": 1,
  "about": "고정 시뮬레이션 사례. 입력은 화면이 보내는 값과 같고, expected는 기준 PC가 자료 묶음과 함께 기록한 값입니다. 실행: docker compose -p carbon-urban-dss -f compose.yaml -f compose.demo.yaml exec -T api python -m app.cli verify-cases (docs/USER_MANUAL.md 9절)",
- "recorded_on": "2026-10-08T03:26:24+09:00",
- "data_note": "PC DB 2026-10-08 03시 (전주·수원·강동·부산 강서 준비 완료, ERA5 일사량 반영, 세종 준비 중)",
+ "recorded_on": "2026-10-08T05:20:08+09:00",
+ "data_note": "자료 묶음 carbon-dss-bundle-20261008-050941 (PC DB 2026-10-08 03:26 기록값과 같고 건축HUB 수집 완료 표시 추가; 전주·수원·강동·부산 강서 준비 완료, 세종 준비 중)",
  "cases": [
   {
    "id": "D01",
@@ -124,7 +124,13 @@
        0.1826
       ]
      ],
-     "solar_months": 132
+     "solar_months": 132,
+     "hub_year_complete.2020": true,
+     "hub_year_complete.2021": true,
+     "hub_year_complete.2022": true,
+     "hub_year_complete.2023": true,
+     "hub_year_complete.2024": true,
+     "hub_year_complete.2025": true
     },
     "facts": [],
     "facts_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
@@ -182,7 +188,13 @@
        0.1826
       ]
      ],
-     "solar_months": 132
+     "solar_months": 132,
+     "hub_year_complete.2020": true,
+     "hub_year_complete.2021": true,
+     "hub_year_complete.2022": true,
+     "hub_year_complete.2023": true,
+     "hub_year_complete.2024": true,
+     "hub_year_complete.2025": true
     },
     "facts": [],
     "facts_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
@@ -240,7 +252,13 @@
        0.1826
       ]
      ],
-     "solar_months": 132
+     "solar_months": 132,
+     "hub_year_complete.2020": true,
+     "hub_year_complete.2021": true,
+     "hub_year_complete.2022": true,
+     "hub_year_complete.2023": true,
+     "hub_year_complete.2024": true,
+     "hub_year_complete.2025": true
     },
     "facts": [],
     "facts_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
@@ -298,7 +316,13 @@
        0.1826
       ]
      ],
-     "solar_months": 132
+     "solar_months": 132,
+     "hub_year_complete.2020": true,
+     "hub_year_complete.2021": true,
+     "hub_year_complete.2022": true,
+     "hub_year_complete.2023": true,
+     "hub_year_complete.2024": true,
+     "hub_year_complete.2025": true
     },
     "facts": [],
     "facts_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"

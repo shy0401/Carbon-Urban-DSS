@@ -6,7 +6,7 @@
 | 판 | 1.0 (2026-10-08) |
 | 대상 | 도시계획·개발사업 검토자, 에너지·탄소 담당자, 프로젝트 팀원 |
 | 적용 버전 | Carbon Urban DSS 0.1.0 (GitHub `shy0401/Carbon-Urban-DSS` main) |
-| 기준 자료 | PC DB 2026-10-08 03:26 기록 (5절의 값은 이 자료에서 계산), 사례 파일 `backend/cases/simulation_cases.json` |
+| 기준 자료 | PC DB 2026-10-08 03:26 기록 (5절의 값은 이 자료에서 계산). 05:20 자료 묶음(`carbon-dss-bundle-20261008-050941`)에서 같은 값으로 다시 기록하고 수집 완료 표시를 더함. 사례 파일 `backend/cases/simulation_cases.json` |
 | 관련 문서 | [공통 데이터 기준](DATA_STANDARD.md) · [팀원 PC 재현](TEAM_SETUP.md) · [사용 방법 요약](USAGE.md) · [한계](LIMITATIONS.md) |
 
 > 이 매뉴얼의 숫자는 모두 이 도구가 실제 DB 위에서 계산한 값입니다. 계획 면적·목표 감축률 같은 **입력은 예시(가상)** 이고, 결과는 그 입력에 대한 1차 추정입니다. 인허가·설계 수치로 쓰지 않습니다.
@@ -114,7 +114,7 @@ scripts\dss.cmd Doctor                                       # Docker·포트·�
 scripts\dss.cmd ImportBundle -BundlePath D:\share\carbon-dss-bundle-20261008-xxxxxx.zip
 ```
 
-실행기는 ① SHA-256 확인 → ② DB 복원 → ③ 전 테이블 행 수 비교 → ④ 서비스 기동·화면 확인 → ⑤ **묶음에 들어 있는 사례 25개를 이 PC에서 다시 계산해 기준 PC 값과 비교**합니다(9절). 마지막 줄에 `simulation cases: 25/25 match`가 나오면 이 PC의 계산 결과가 기준 PC와 같습니다.
+실행기는 ① SHA-256 확인 → ② DB 복원 → ③ 전 테이블 행 수 비교 → ④ 수집 완료 표시(`collection-progress.json` → `data/ops/history-progress.json`) 복원 → ⑤ 서비스 기동·화면 확인 → ⑥ **묶음에 들어 있는 사례 25개를 이 PC에서 다시 계산해 기준 PC 값과 비교**합니다(9절). 마지막 줄에 `simulation cases: 25/25 match`가 나오면 이 PC의 계산 결과가 기준 PC와 같습니다.
 
 이미 자료가 있는 PC에 팀원 자료를 **더할 때**는 `MergeBundle`을 씁니다([팀원 PC 재현](TEAM_SETUP.md) 2.1-1).
 
@@ -544,7 +544,7 @@ J01 화면 맨 아래 **보고서** → 제목(선택) → **현재 조건으로
 | 같아야 하는 것 | 맞추는 방법 |
 |---|---|
 | 코드 | GitHub `main`의 같은 커밋 (`git log -1`) |
-| 자료 | 같은 자료 묶음(`ExportBundle` → `ImportBundle`/`MergeBundle`) |
+| 자료 | 같은 자료 묶음(`ExportBundle` → `ImportBundle`/`MergeBundle`): DB 덤프 + `data/raw` + 수집 완료 표시 |
 | 입력 | 사례 파일(`backend/cases/simulation_cases.json`)·사례 링크 |
 
 ### 9.2 사례 검증 명령 (`verify-cases`)
@@ -570,6 +570,7 @@ docker compose -p carbon-urban-dss -f compose.yaml -f compose.demo.yaml exec -T 
 - 계산은 **읽기만** 합니다. 계획안·보고서를 DB에 저장하지 않습니다(격자 보고서의 계획안은 계산 중에만 쓰고 되돌림).
 - 숫자는 상대 오차 100만분의 1(최소 0.01) 안이면 같다고 봅니다. 근거 문장은 글자 하나까지 같아야 합니다.
 - **자료 지문(D01~D04)이 다르면** 계산이 아니라 DB 자료가 다른 것입니다. 같은 날짜의 자료 묶음을 가져왔는지 확인합니다.
+- 자료 지문에는 **건축HUB 연도별 "수집 완료" 표시**(`hub_year_complete.2020~2025`)도 들어 있습니다. 이 표시는 DB가 아니라 `data/ops/history-progress.json`에 있고, 완료가 아닌 해는 "잠정값"으로 쓰이며 감축 역산의 기준 연도가 되지 못합니다. 그래서 자료 묶음에 `collection-progress.json`으로 함께 담기고 `ImportBundle`이 되살립니다. `MergeBundle`(자기 DB에 더하기)은 이 표시를 바꾸지 않으므로, 기준 PC와 비교할 때는 작업 지시서의 "따로 확인"(별도 프로젝트에 `ImportBundle`)으로 합니다.
 - 결과 전체는 `--out` 파일(JSON)에 남습니다(`scripts\dss.cmd VerifyCases`는 `data\ops\<시각>-verifycases\cases-check.json`).
 
 ### 9.3 사례 링크
@@ -606,6 +607,7 @@ scripts\dss.cmd VerifyBundle -OutDir F:\carbon-dss-bundles
 | 지역 시뮬레이션 첫 계산이 느림 | 그 지역·기간 자료를 처음 읽는 중(10~20초). 이후 몇 분 동안은 바로 계산 |
 | 3D가 회색이거나 안 보임 | 브라우저 하드웨어 가속(WebGL) 켜기. 원격 데스크톱에서는 느릴 수 있음 |
 | `verify-cases`에서 자료 지문이 다름 | 다른 날짜의 자료 묶음. 기준 PC의 최신 묶음을 다시 받거나, 묶음 안의 `simulation_cases.json`으로 비교 |
+| `verify-cases`에서 자료 지문 중 "건축HUB ○○년 수집 완료 표시"만 다름 | 행은 같고 수집 완료 표시 파일만 다름. 같은 묶음으로 `ImportBundle`(자동 복원)하거나 묶음 안 `collection-progress.json`을 `data\ops\history-progress.json`으로 복사 |
 | `verify-cases`에서 값만 다름(자료 지문은 같음) | 코드 판이 다를 수 있음: `git pull` → `scripts\dss.cmd Rebuild` 후 다시 실행. 그래도 다르면 `cases-check.json`을 팀에 공유 |
 | `ImportBundle`이 "already has N tables"로 중단 | 대상 DB가 비어 있지 않음. 팀원 자료를 더하려면 `MergeBundle` |
 | `환경변수 형식 오류` | `.env` 값이 예시 문구·한글·따옴표 포함. 실제 키로 바꾸고 api·worker 재생성 |

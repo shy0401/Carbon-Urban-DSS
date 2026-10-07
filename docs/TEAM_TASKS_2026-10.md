@@ -64,11 +64,11 @@ scripts\dss.cmd ImportBundle -BundlePath D:\share\carbon-dss-bundle-<시각>.zip
 docker compose -p carbon-urban-dss-importtest -f compose.yaml -f compose.validation.yaml down   # 확인 뒤 정리(볼륨 이름이 importtest인지 꼭 확인)
 ```
 
-`MergeBundle`로 내 DB에 더한 뒤에는 내 자료가 섞여 사례 값이 달라질 수 있습니다. 그때 `VerifyCases`의 "자료 지문 다름"은 정상이며, 어떤 표·연도가 다른지 비교표에 적습니다.
+`MergeBundle`로 내 DB에 더한 뒤에는 내 자료가 섞여 사례 값이 달라질 수 있습니다. 그때 `VerifyCases`의 "자료 지문 다름"은 정상이며, 어떤 표·연도가 다른지 비교표에 적습니다. `MergeBundle`은 건축HUB 연도의 "수집 완료" 표시(`data/ops/history-progress.json`)를 바꾸지 않습니다. 이 표시가 다르면 같은 행이어도 2025년이 "잠정값"이 되고 감축 역산이 "자료 없음"이 되므로, 기준 PC와의 비교는 위 "따로 확인"(묶음의 표시를 자동 복원)으로 합니다.
 
 ## 3. 지역 과제
 
-기준 PC 값은 2026-10-08 03:26 기록(`backend/cases/simulation_cases.json`)입니다. 같은 API·같은 도구로 받으면 2025년 값은 같아야 합니다.
+기준 PC 값은 2026-10-08 03:26 기록값이고, 05:20 자료 묶음(`carbon-dss-bundle-20261008-050941`)에서 같은 값으로 다시 기록했습니다(`backend/cases/simulation_cases.json`). 같은 API·같은 도구로 받으면 2025년 값은 같아야 합니다.
 
 ### T1 · 전주시 (52110) — 기준 지역: 과거 관측으로 개발 전후 확인
 
