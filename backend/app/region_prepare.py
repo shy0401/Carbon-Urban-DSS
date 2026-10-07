@@ -343,7 +343,7 @@ def step_complexes(db: Any, region: StudyRegion, log: Log, *, delay_s: float = 0
 
 
 def step_weather(db: Any, region: StudyRegion, log: Log) -> dict[str, Any]:
-    """ERA5-Land monthly weather (HDD/CDD base 18°C) at the region centre, 2015-01 to the analysis year."""
+    """ERA5-Land monthly weather (HDD 18°C · CDD 24°C, degree_days.py) at the region centre, 2015-01 to the analysis year."""
     from .collectors import client
     from .domain import monthly_weather
     if region.code == DEFAULT_REGION:

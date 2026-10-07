@@ -87,7 +87,7 @@ def test_smoke_collection_upserts_once_and_resumes_without_duplicate_call(tmp_pa
     assert {k: second[k] for k in ('requested', 'normalized', 'skipped', 'empty', 'failed')} == {'requested': 0, 'normalized': 0, 'skipped': 1, 'empty': 0, 'failed': 0}
     assert len(client.calls) == 1
     assert row.electricity_quantity == 10.0
-    assert row.electricity_carbon_kg == pytest.approx(4.541)
+    assert row.electricity_carbon_kg == pytest.approx(4.33)  # 2025: GIR 2025 승인 '21~'23 평균 (DATA_STANDARD 5.4)
     assert row.gas_quantity is None
     assert analysis_row.source == 'K-apt'
     assert analysis_row.energy_type == 'ELECTRICITY'

@@ -96,7 +96,7 @@ def test_map_rows_get_gir_values_by_name_inside_the_province():
     assert empty[0]["metrics"]["ghg_total"] is None and "가져오지 않음" in empty[0]["notes"]["ghg_building"]
 
 
-def test_manual_list_drops_collected_files_and_keeps_the_factor_decision(tmp_path):
+def test_manual_list_drops_collected_files_and_the_settled_factor_item(tmp_path):
     from app.history import MANUAL_SOURCES, manual_sources
     raw = tmp_path / "raw"
     (raw / "research" / "gir" / "regional_2025").mkdir(parents=True)
@@ -109,9 +109,9 @@ def test_manual_list_drops_collected_files_and_keeps_the_factor_decision(tmp_pat
         (raw / "research" / "gir" / f"b{board}_1_승인.pdf").write_bytes(b"")
     items = manual_sources(tmp_path)
     ids = [i["id"] for i in items]
-    assert "gir_regional" not in ids and "gas_sido" not in ids and "kepco_sigungu" not in ids and len(items) == len(MANUAL_SOURCES) - 3
-    factor = next(i for i in items if i["id"] == "factors_yearly")
-    assert "2025 승인" in factor["label"] and "0.4781" in factor["why"]
+    assert "gir_regional" not in ids and "gas_sido" not in ids and "kepco_sigungu" not in ids
+    # With the 2018·2021·2025 approval texts there the yearly factors are settled (DATA_STANDARD 5.4: 2025 uses the 2025 approval).
+    assert "factors_yearly" not in ids and len(items) == len(MANUAL_SOURCES) - 4
 
 
 def test_historic_electricity_factors_need_matching_evidence(tmp_path, monkeypatch):

@@ -62,6 +62,8 @@ def month_range(start,end):
         a=(y+1)*100+1 if m==12 else a+1
     return result
 
+from .degree_days import degree_days
+
 def monthly_weather(payload):
     daily=payload['daily'];groups=defaultdict(list)
     for i,date in enumerate(daily['time']): groups[date[:7]].append(i)
@@ -69,7 +71,8 @@ def monthly_weather(payload):
     for ym,indexes in sorted(groups.items()):
         def vals(key): return [daily[key][i] for i in indexes if daily[key][i] is not None]
         means=vals('temperature_2m_mean');mins=vals('temperature_2m_min');maxs=vals('temperature_2m_max');rain=vals('precipitation_sum')
-        result.append(dict(use_ym=ym.replace('-',''),mean_temperature=sum(means)/len(means) if means else None,min_temperature=min(mins) if mins else None,max_temperature=max(maxs) if maxs else None,precipitation=sum(rain) if len(rain)==len(indexes) else None,hdd=sum(max(18-t,0) for t in means) if len(means)==len(indexes) else None,cdd=sum(max(t-18,0) for t in means) if len(means)==len(indexes) else None,days_observed=len(means),expected_days=calendar.monthrange(int(ym[:4]),int(ym[5:]))[1]))
+        expected=calendar.monthrange(int(ym[:4]),int(ym[5:]))[1];dd=degree_days(means,expected)  # HDD 18°C · CDD 24°C, whole month only
+        result.append(dict(use_ym=ym.replace('-',''),mean_temperature=sum(means)/len(means) if means else None,min_temperature=min(mins) if mins else None,max_temperature=max(maxs) if maxs else None,precipitation=sum(rain) if len(rain)==len(indexes) else None,hdd=dd[0],cdd=dd[1],days_observed=len(means),expected_days=expected))
     return result
 
 def carbon_kg(kwh,factor):

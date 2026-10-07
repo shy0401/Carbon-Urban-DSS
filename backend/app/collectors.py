@@ -98,7 +98,7 @@ def collect_weather(db,start='2025-01',end='2025-12'):
     record_asset(db,'weather',result,len(payload['daily']['time']),start+' ~ '+end)
     db.flush();count=db.scalar(select(func.count()).select_from(WeatherMonthly))
     allrows=db.scalars(select(WeatherMonthly)).all();missing=sum(max(r.expected_days-r.days_observed,0) for r in allrows)
-    update_source(db,'weather',count,sum(r.days_observed for r in allrows),status='COLLECTED' if missing==0 else 'PARTIAL',quality=f'{count}개월 / HDD·CDD 기준 18°C',missing=missing)
+    update_source(db,'weather',count,sum(r.days_observed for r in allrows),status='COLLECTED' if missing==0 else 'PARTIAL',quality=f'{count}개월 / 난방도일 18°C · 냉방도일 24°C',missing=missing)
 
 def energy_candidates(db):
     """Prioritize legal dongs actually represented by residential OSM buildings."""

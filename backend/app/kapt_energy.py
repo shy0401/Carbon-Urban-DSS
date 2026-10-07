@@ -19,7 +19,6 @@ from .models import DataSource, EnergyMonthly, RawDataAsset
 KAPT_ENERGY_CATALOG_URL = "https://www.data.go.kr/data/15012964/openapi.do"
 KAPT_ENERGY_BASE_URL = "https://apis.data.go.kr/1613000/ApHusEnergyUseInfoOfferServiceV2"
 KAPT_ENERGY_OPERATION = "getHsmpApHusUsgQtyInfoSearchV2"
-ELECTRICITY_FACTOR = 0.4541
 # data.go.kr gateway/provider codes that mean the key or its approval is not valid.
 AUTH_CODES = {"20", "21", "30", "31", "32"}
 # Gateway codes for a temporary provider failure (01 APPLICATION, 02 DB, 04 HTTP, 05 TIMEOUT, 99 UNKNOWN).
@@ -258,7 +257,9 @@ def _apply_month(db: Any, complex_row: Any, row: "ApartmentEnergyMonthly", row_d
         row.raw_record = dict(row_data.get("raw_record") or {}, **({"quality_reason": reason} if reason else {}))
         row.quality_status = status
     row.grid_id = complex_row.grid_id
-    row.electricity_carbon_kg = row.electricity_quantity * ELECTRICITY_FACTOR if row.quality_status == "SUCCESS" and row.electricity_quantity is not None else None
+    from .emissions import electricity_factor_for_year  # local: emissions imports the collectors
+    factor = electricity_factor_for_year(int(row.year_month[:4]))  # the year's GIR factor (DATA_STANDARD 5.4); none before 2019
+    row.electricity_carbon_kg = row.electricity_quantity * factor if row.quality_status == "SUCCESS" and row.electricity_quantity is not None and factor else None
     db.add(row)
     db.flush()
     if row.quality_status == "SUCCESS" and row.electricity_quantity is not None:

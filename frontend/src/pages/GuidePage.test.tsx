@@ -15,6 +15,15 @@ describe('GuidePage', () => {
     }
   });
 
+  it('수집 전에 볼 공통 데이터 기준 절이 처음 시작하기 바로 다음에 있다', () => {
+    render(<MemoryRouter><GuidePage /></MemoryRouter>);
+    expect(GUIDE_SECTIONS[1]).toEqual(['standard', '데이터 기준 (수집 전 필독)']);
+    const section = document.getElementById('standard') as HTMLElement;
+    expect(within(section).getByText(/docs\/DATA_STANDARD.md/)).toBeInTheDocument();
+    expect(within(section).getByText(/없는 값은 0이 아닙니다/)).toBeInTheDocument();
+    expect(within(section).getByTestId('standard-panel')).toBeInTheDocument();
+  });
+
   it('핵심 사용 흐름과 값 표시 규칙, 수집 명령을 설명한다', () => {
     render(<MemoryRouter><GuidePage /></MemoryRouter>);
     expect(screen.getAllByText(/빠진 자료 전부 수집/).length).toBeGreaterThan(0);

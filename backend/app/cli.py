@@ -23,7 +23,8 @@ def init_tables():
 
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('command',choices=['demo','online','status','enrich','collect','collect-history','collect-missing','validate-models','snapshot','llm-dataset','llm-eval','import-sgis-grid','import-sgis-grid500','import-regional-stats','import-team-grid',
-        'national-admin','national-sgis','national-complexes','national-grid500','national-ordinances','national-all','prepare-region','regions']);parser.add_argument('--year',type=int,default=DEFAULT_YEAR)
+        'national-admin','national-sgis','national-complexes','national-grid500','national-ordinances','national-all','prepare-region','regions',
+        'check-standard','apply-standard']);parser.add_argument('--year',type=int,default=DEFAULT_YEAR)
     parser.add_argument('--from',dest='from_year',type=int,default=2015);parser.add_argument('--to',dest='to_year',type=int,default=DEFAULT_YEAR)
     parser.add_argument('--datasets',default='',help='comma-separated: sgis,kma_asos,kapt_energy,energy,vworld_zoning,vworld_buildings,vworld_cadastral,building_register');parser.add_argument('--force',action='store_true')
     parser.add_argument('--source',choices=['energy','weather','kapt-energy','kma','sgis','vworld-zoning','vworld-cadastral'])
@@ -32,6 +33,7 @@ def main():
     parser.add_argument('--steps',default='',help='prepare-region: comma-separated steps (default: all)')
     parser.add_argument('--no-emd',action='store_true',help='national-sgis: 시군구만 (행정동 생략)')
     parser.add_argument('--model',default=None,help='llm-eval: Ollama model name (default OLLAMA_NARRATIVE_MODEL, then OLLAMA_MODEL)');parser.add_argument('--limit',type=int,default=None);parser.add_argument('--file',default=None)
+    parser.add_argument('--csv',action='append',default=[],help='check-standard: a CSV table to check before importing (repeatable)')
     args=parser.parse_args();init_tables()
     with Session() as db:
         seed_sources(db)
@@ -129,6 +131,16 @@ def main():
             steps=[s.strip() for s in args.steps.split(',') if s.strip()] or None
             result=prepare_region(db,args.region,steps,log=lambda m:print(m,flush=True),force=args.force)
             print(json.dumps({'code':result['code'],'status':result['status'],'datasets':{k:{'status':v.get('status'),'message':v.get('message')} for k,v in (result['datasets'] or {}).items()}},ensure_ascii=False,indent=1))
+        elif args.command in ('check-standard','apply-standard'):
+            # docs/DATA_STANDARD.md: apply brings stored values to the current rule, check counts what does not follow it.
+            from .standard import apply_standard,check_standard
+            if args.command=='apply-standard':
+                print(json.dumps(apply_standard(db,log=lambda m:print(m,flush=True)),ensure_ascii=False,indent=1,default=str))
+            report=check_standard(db,csv_paths=args.csv)
+            for item in report['items']:
+                print(f"[{item['status']:4}] {item['label']}: {item['detail']}",flush=True)
+            print(json.dumps({'version':report['version'],'summary':report['summary'],'ok':report['ok']},ensure_ascii=False))
+            if args.command=='check-standard' and not report['ok']:raise SystemExit(1)
         elif args.command=='regions':
             from .regions import StudyRegion,region_summary
             print(json.dumps([region_summary(r) for r in db.scalars(select(StudyRegion))],ensure_ascii=False,indent=1,default=str))

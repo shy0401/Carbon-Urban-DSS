@@ -22,12 +22,16 @@ def test_missing_sum_not_zero():
     assert nullable_sum([0,None])==0
 
 def test_weather_uses_daily_degree_days_and_no_filled_precipitation():
-    rows=monthly_weather({'daily':{'time':['2025-01-01','2025-01-02'],'temperature_2m_mean':[10,20],'temperature_2m_min':[2,12],'temperature_2m_max':[15,25],'precipitation_sum':[1,2]}})
-    assert rows[0]['mean_temperature']==15
-    assert rows[0]['hdd']==8
-    assert rows[0]['cdd']==2
-    assert rows[0]['precipitation']==3
-    assert rows[0]['days_observed']==2
+    # DATA_STANDARD 5.10: HDD base 18 °C, CDD base 24 °C, whole months only (a partial month has no degree days).
+    days=[f'2025-01-{d:02d}' for d in range(1,32)]
+    temps=[10.0]*30+[30.0]
+    rows=monthly_weather({'daily':{'time':days,'temperature_2m_mean':temps,'temperature_2m_min':[t-5 for t in temps],'temperature_2m_max':[t+5 for t in temps],'precipitation_sum':[1.0]*31}})
+    assert rows[0]['hdd']==30*8
+    assert rows[0]['cdd']==6
+    assert rows[0]['precipitation']==31
+    assert rows[0]['days_observed']==31
+    partial=monthly_weather({'daily':{'time':['2025-02-01','2025-02-02'],'temperature_2m_mean':[10,20],'temperature_2m_min':[2,12],'temperature_2m_max':[15,25],'precipitation_sum':[1,2]}})
+    assert partial[0]['mean_temperature']==15 and partial[0]['hdd'] is None and partial[0]['cdd'] is None and partial[0]['days_observed']==2
 
 def test_carbon_verified_factor_and_null():
     assert carbon_kg(1000,{'factor':0.4,'factor_unit':'kgCO2eq/kWh'})==400

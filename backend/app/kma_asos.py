@@ -15,6 +15,7 @@ from typing import Any
 from sqlalchemy import Boolean, DateTime, Float, Integer, JSON, String, func, select
 from sqlalchemy.orm import Mapped, mapped_column
 
+from .degree_days import degree_days
 from .cache import CachedClient, ExternalError, parse_cached_response
 from .db import Base
 from .models import DataSource, RawDataAsset, WeatherMonthly
@@ -145,9 +146,8 @@ def aggregate_asos_months(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         unique_dates = {row["observed_date"] for row in month_rows if row.get("avg_temperature_c") is not None}
         valid = len(unique_dates)
         temperatures = [row.get("avg_temperature_c") for row in month_rows]
-        daily_for_degree = [value for value in temperatures if value is not None]
-        hdd = sum(max(18 - value, 0) for value in daily_for_degree) if daily_for_degree else None
-        cdd = sum(max(value - 18, 0) for value in daily_for_degree) if daily_for_degree else None
+        by_date = {row["observed_date"]: row.get("avg_temperature_c") for row in month_rows if row.get("avg_temperature_c") is not None}
+        hdd, cdd = degree_days(by_date.values(), expected)  # HDD 18°C · CDD 24°C; a month with a missing day has none
         result.append({
             "use_ym": use_ym, "station_id": month_rows[0].get("station_id") or "146",
             "mean_temperature_c": _average(temperatures),

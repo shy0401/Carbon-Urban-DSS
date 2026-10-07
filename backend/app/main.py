@@ -93,6 +93,12 @@ def _warm_caches_in_background():
             from .sgis_grid500 import data_root,import_sgis_grid500,scan
             if scan(data_root())[0]:
                 with Session() as db:import_sgis_grid500(db)
+            # 공통 데이터 기준(docs/DATA_STANDARD.md): 판이 바뀌었으면 저장된 값(냉난방도일·K-apt 탄소)을 새 규칙으로 맞추고 점검
+            from .standard import VERSION as STANDARD_VERSION,applied_version,apply_standard,check_standard
+            if applied_version()!=STANDARD_VERSION:
+                with Session() as db:
+                    apply_standard(db)
+                    check_standard(db,raw_sample=5000)
             # GIR 지역 온실가스 인벤토리·가스공사 시·도 판매량 (data/raw/research/gir, data/raw/gas): 새 파일만 읽음
             from .regional_stats import import_all
             with Session() as db:
@@ -267,6 +273,18 @@ class MissingInput(BaseModel):
         if self.to_year>=now().year:raise ValueError('끝나지 않은 올해는 아직 수집할 수 없습니다')
         if self.to_year-self.from_year>20:raise ValueError('한 번에 최대 21년까지 수집합니다')
         return self
+
+@app.get('/api/standard')
+def standard_status():
+    """The shared data standard (docs/DATA_STANDARD.md): the rules the calculations use and the last check."""
+    from .standard import last_check,summary
+    return {**summary(),'last_check':last_check()}
+
+@app.post('/api/standard/check')
+def standard_check():
+    from .standard import check_standard
+    with Session() as db:
+        return check_standard(db,raw_sample=5000)
 
 @app.get('/api/collection/missing')
 def missing_plan(from_year:int=2015,to_year:int=DEFAULT_YEAR):

@@ -77,3 +77,20 @@
 .guide-metrics td code { display: block; font-size: var(--fs-caption); overflow-wrap: anywhere; }
 .guide-metrics td:nth-child(2), .guide-metrics td:nth-child(3) { min-width: 220px; }
 .guide-group-row th { padding-top: var(--sp-3); background: var(--surface-sunk); color: var(--ink); font-size: var(--fs-label); text-align: left; }
+
+/* 데이터 기준 (docs/DATA_STANDARD.md): 기준값 표와 점검 결과 */
+.standard-panel { display: grid; gap: var(--sp-3); margin-top: var(--sp-3); }
+.standard-check-head { display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-3); align-items: center; font-size: var(--fs-label); }
+.standard-check-head strong { display: inline-flex; gap: 6px; align-items: center; }
+.standard-check-head span { color: var(--ink-2); }
+.standard-check-head .button { margin-left: auto; }
+.standard-items { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; font-size: var(--fs-label); line-height: 1.55; }
+.standard-items li { display: grid; grid-template-columns: 72px minmax(160px, 0.9fr) minmax(0, 1.6fr); gap: var(--sp-2); align-items: baseline; padding: 6px var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-map); }
+.standard-items li span:last-child { color: var(--ink-2); overflow-wrap: anywhere; }
+.standard-status { font-weight: 600; font-size: var(--fs-caption); }
+.standard-ok .standard-status { color: var(--success); }
+.standard-warn { background: var(--warning-bg); } .standard-warn .standard-status { color: var(--warning); }
+.standard-fail { background: var(--danger-bg); } .standard-fail .standard-status { color: var(--danger); }
+.standard-info .standard-status { color: var(--info); }
+.standard-error { color: var(--danger); font-size: var(--fs-label); }
+@media (max-width: 720px) { .standard-items li { grid-template-columns: 64px minmax(0, 1fr); } .standard-items li span:last-child { grid-column: 1 / -1; } .standard-check-head .button { margin-left: 0; } }

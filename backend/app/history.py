@@ -526,14 +526,6 @@ def history_status(data_dir: str | Path | None = None) -> dict[str, Any]:
     return {"items": state["items"], "runs": state["runs"][-5:], "summary": summary}
 
 
-FACTORS_YEARLY_DONE = {
-    "id": "factors_yearly", "label": "전력 배출계수: 2025 승인 계수 적용 여부 결정",
-    "why": "공식 전력 배출계수는 해마다가 아니라 공표 회차마다 나옵니다. 받은 원문(2018·2021·2024·2025 승인)으로 2019~2021년은 0.4594(2018 승인), "
-           "2022~2024년은 0.4781(2021 승인), 2025년은 0.4541(2024 승인)을 씁니다. 2025-12-18 공표된 2025 승인 계수(2023년 단년 0.4173, 2021~23 평균 0.4330)를 "
-           "2025년 계산에 쓰면 2025년 전력 탄소가 약 5~8% 줄어 결과가 바뀌므로 자동으로 바꾸지 않았습니다. 2019년 전에 공표된 전력 계수 원문은 이 게시판에 없어 2015~2018년 전력 탄소는 비웁니다.",
-    "how": "2025년 계산에 2025 승인 계수(단년 또는 3년 평균)를 쓸지 정한 뒤 등록 (원문: data/raw/research/gir/b86_2_*.pdf)",
-    "link": "https://www.gir.go.kr/home/board/read.do?boardId=86&boardMasterId=2&menuId=36",
-}
 
 
 def manual_sources(data_dir: str | Path | None = None) -> list[dict[str, Any]]:
@@ -541,7 +533,7 @@ def manual_sources(data_dir: str | Path | None = None) -> list[dict[str, Any]]:
 
     * SGIS 500m: gone when every theme × block is there, otherwise a re-request of exactly the missing files.
     * GIR 지역 인벤토리(raw/research/gir/regional_*), 가스공사 판매량(raw/gas), 한전 시군구 전력(raw/kepco): gone once the files are there.
-    * 연도별 전력 배출계수: once the GIR 원문(raw/research/gir/b44·b56·b86) is there, only the 2025 decision is left."""
+    * 연도별 전력 배출계수: gone once the GIR 원문(raw/research/gir/b44·b56·b86) is there (2025 uses the 2025 approval, DATA_STANDARD 5.4)."""
     from .regional_stats import gas_files, gir_files, kepco_files
     from .sgis_grid500 import missing_files, missing_text, scan
     raw = Path(data_dir or os.getenv("DATA_DIR", "data")) / "raw"
@@ -564,7 +556,7 @@ def manual_sources(data_dir: str | Path | None = None) -> list[dict[str, Any]]:
         out = [item for item in out if item["id"] != "kepco_sigungu"]
     gir = raw / "research" / "gir"
     if all(any(gir.glob(f"b{board}_*.pdf")) for board in (44, 56, 86)):
-        out = [FACTORS_YEARLY_DONE if item["id"] == "factors_yearly" else item for item in out]
+        out = [item for item in out if item["id"] != "factors_yearly"]
     return out
 
 

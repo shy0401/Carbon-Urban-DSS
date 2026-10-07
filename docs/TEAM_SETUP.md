@@ -1,5 +1,7 @@
 # 팀원 PC 재현·백업·복원 안내
 
+> **자료를 모으거나 계산·보고서를 만들기 전에 [공통 데이터 기준](DATA_STANDARD.md)을 먼저 읽는다.** 팀원 모두 같은 기준(결측·단위·격자·계수·공식)으로 모아야 묶음을 합칠 수 있다. 받은 묶음·표는 `check-standard`로 점검한 뒤 `MergeBundle`로 더한다.
+
 Git 저장소에는 **코드와 문서만** 있다. PostgreSQL/PostGIS DB, 원본 `data/raw`, API 키(`.env`), 로컬 AI 모델은 Git clone으로 전달되지 않는다. 이 문서는 새 PC에서 같은 화면·데이터를 재현하는 절차와, 그 과정을 자동으로 검사하는 `scripts/dss.ps1`(`scripts\dss.cmd`) 사용법이다.
 
 ## 1. 새 PC 준비

@@ -104,7 +104,7 @@ export function DataPage() {
   const readinessByDataset = new globalThis.Map(readiness?.sources.filter((source) => source.collection_dataset).map((source) => [source.collection_dataset as string, source]));
   return <div className="page">
     <PageHeader title="수집 데이터" description="공식·대체 출처의 수집 범위와 원본에서 정규화까지의 이력을 확인합니다." action={<button className="button secondary" onClick={() => void load()}><RefreshCw size={15} />새로고침</button>} />
-    <p className="panel-description"><a href="/guide#collect">이 화면 사용 방법</a> · <a href="https://github.com/shy0401/Carbon-Urban-DSS/blob/main/docs/DATA_SETUP_GUIDE.md" target="_blank" rel="noopener noreferrer">자료별 인증키 신청 · 다운로드 · 필드 매핑 안내</a></p>
+    <p className="panel-description"><b>수집 전에 <a href="/guide#standard">공통 데이터 기준</a>을 확인하세요</b> (결측·단위·격자·계수·공식) · <a href="/guide#collect">이 화면 사용 방법</a> · <a href="https://github.com/shy0401/Carbon-Urban-DSS/blob/main/docs/DATA_SETUP_GUIDE.md" target="_blank" rel="noopener noreferrer">자료별 인증키 신청 · 다운로드 · 필드 매핑 안내</a></p>
     <p className="data-scope-note"><Globe2 size={15} aria-hidden="true" /><span>이 화면의 '빠진 자료 전부 수집'과 수동 수집은 최초 연구 지역(전주시) 범위입니다. 다른 시·군·구는 <Link to="/regions">전국 지역</Link>에서 지역을 골라 준비하면 그 지역 자료를 받습니다.</span></p>
     <MissingCollection onChanged={() => void load(true)} />
     <section className="data-summary">{sourceSummary.map(([label, value, tone]) => <article className={tone} key={label}><span>{label}</span><strong>{value}</strong></article>)}<article><span>마지막 수집</span><strong>{latestCollection(sources)}</strong></article></section>

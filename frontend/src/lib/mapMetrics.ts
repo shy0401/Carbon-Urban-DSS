@@ -32,7 +32,7 @@ export interface MetricDef {
 const n = (value: unknown): number | null => (typeof value === 'number' && Number.isFinite(value) ? value : null);
 const fmt = (value: number | null | undefined, unit = '', digits = 0) => formatMetric(value, unit, digits);
 const GRID = '250,000 m²';
-const FACTOR_YEARS = ' 계수는 그해 말까지 공표된 국가 승인 전력 배출계수입니다(소비단: 2019~2021년 0.4594, 2022~2024년 0.4781, 2025년 0.4541). 2015~2018년은 이 도구에 원문이 없어 비어 있습니다(0 아님). 여러 해를 같은 계수로 비교하려면 지역 시뮬레이션을 씁니다.';
+const FACTOR_YEARS = ' 계수는 그해 말까지 공표된 국가 승인 전력 배출계수입니다(소비단: 2019~2021년 0.4594, 2022~2024년 0.4781, 2025년 0.4330). 2015~2018년은 이 도구에 원문이 없어 비어 있습니다(0 아님). 여러 해를 같은 계수로 비교하려면 지역 시뮬레이션을 씁니다.';
 /** kgCO₂eq/kWh actually applied to a grid (carbon ÷ kWh), shown next to the formula. */
 const appliedFactor = (kg: unknown, kwh: unknown): string | null => {
   const c = n(kg); const e = n(kwh);

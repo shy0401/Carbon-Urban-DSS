@@ -3,12 +3,14 @@ import { useEffect, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { PageHeader } from '../components/PageHeader';
 import { ProvenanceBadge } from '../components/ProvenanceBadge';
+import { StandardPanel } from '../components/StandardPanel';
 import { MAP_LAYERS } from '../lib/mapLayers';
 import { METRIC_GROUPS, METRICS } from '../lib/mapMetrics';
 
 /** 목차: 해시(#id)로 바로 열 수 있다. 다른 화면의 "사용 방법" 링크가 이 id를 쓴다. */
 export const GUIDE_SECTIONS = [
   ['start', '처음 시작하기'],
+  ['standard', '데이터 기준 (수집 전 필독)'],
   ['screens', '화면 구성'],
   ['nation', '전국 지역·지역 준비'],
   ['map-info', '지도 정보와 활용'],
@@ -70,7 +72,7 @@ export function GuidePage() {
   }, [hash]);
 
   return <div className="page guide-page" data-testid="guide-page">
-    <PageHeader title="사용 방법" description="이 사이트로 무엇을 할 수 있는지, 화면마다 어떻게 쓰는지, 자료를 어떻게 채우는지 순서대로 설명합니다." action={<span className="badge"><BookOpen size={13} />2026-09-25 기준</span>} />
+    <PageHeader title="사용 방법" description="이 사이트로 무엇을 할 수 있는지, 화면마다 어떻게 쓰는지, 자료를 어떻게 채우는지 순서대로 설명합니다." action={<span className="badge"><BookOpen size={13} />2026-10-08 기준</span>} />
     <div className="guide-layout">
       <nav className="guide-toc" aria-label="사용 방법 목차">
         <strong>목차</strong>
@@ -92,6 +94,27 @@ export function GuidePage() {
             <article><span>2</span><strong>구역 비교</strong><p>지역 시뮬레이션에서 동이나 개발 예정지를 고르고 과거와 현재를 봅니다.</p><Go to="/area">지역 시뮬레이션</Go></article>
             <article><span>3</span><strong>감축 노력·보고서</strong><p>목표 감축률을 넣고 필요한 노력을 확인한 뒤 보고서로 남깁니다.</p><Go to="/area">보고서 작성</Go></article>
           </div>
+        </Section>
+
+        <Section id="standard" title="데이터 기준 (수집 전 필독)" lead="팀원 누구나, 어느 지역이든, 사람이 하든 AI 도구로 하든 같은 기준으로 모으고 같은 공식으로 계산해야 결과를 합치고 비교할 수 있습니다. 자료를 모으기 전에 이 기준부터 확인하세요. 원본 문서는 저장소의 docs/DATA_STANDARD.md입니다.">
+          <h3>작업 전 확인 (매번)</h3>
+          <Steps items={[
+            <>범위를 한 줄로 적습니다: 지역(시·군·구 5자리 코드) · 기간(YYYY-MM~YYYY-MM) · 격자(500m) · 자료 묶음.</>,
+            <>이미 있는지 봅니다: <Link to="/data#collect-missing">수집 데이터 → 빠진 자료 전부 수집</Link>의 표. 있는 자료를 다시 받지 않습니다(일일 한도).</>,
+            <>출처는 기준 문서 2절의 표에서 고릅니다. 표에 없는 출처는 공식 안내 주소·단위·기준 시점을 확인해 먼저 표에 더합니다. 확인 못 한 것은 &quot;확인 필요&quot;로 적고 짐작으로 채우지 않습니다.</>,
+            <>키는 PC의 <code>.env</code>에만 둡니다. 화면·문서·커밋·메신저에 붙이지 않습니다.</>,
+            <>받는 길은 이 도구의 수집기(빠진 자료 전부 수집 · 지역 준비 · <code>scripts\dss.cmd</code>)를 씁니다. 직접 받은 파일은 <code>data/raw/&lt;출처&gt;/</code>에 그대로 둡니다.</>,
+            <>끝나면 아래 <b>지금 점검</b>을 누르고, 팀원에게 줄 때는 <code>ExportBundle</code>, 받을 때는 <code>MergeBundle</code>을 씁니다.</>,
+          ]} />
+          <h3>원칙</h3>
+          <ul className="guide-list">
+            <li><b>없는 값은 0이 아닙니다.</b> 빈칸(NULL)으로 두고 &quot;자료 없음&quot;으로 씁니다. 제공기관이 0을 준 경우만 0입니다.</li>
+            <li><b>원자료는 고치지 않습니다.</b> 이상한 값은 상태로 표시만 합니다(K-apt 미보고·이상값, 2020년 9·10월 결측 등).</li>
+            <li><b>관측 · 계산 · 추정 · 대체 · 시나리오</b>를 섞지 않고, 단위는 열 이름에 붙입니다(<code>_kwh</code>, <code>_m2</code>, <code>_kgco2eq</code>, <code>_tco2e</code>).</li>
+            <li>연간 값은 <b>12개월이 모두 관측된 지번(단지)만</b> 합칩니다. 칸 ID는 <code>cell_&lt;왼쪽아래 x&gt;_&lt;y&gt;</code>(EPSG:5179), SGIS 코드(예: 다마71b61b)와 같은 칸입니다.</li>
+            <li>보고서 숫자는 계산 엔진의 근거 문장에서만 가져오고, 감축량을 쓸 때는 기준(공동주택/건물 전체/추정)과 기준 연도를 함께 씁니다.</li>
+          </ul>
+          <StandardPanel />
         </Section>
 
         <Section id="screens" title="화면 구성" lead="왼쪽 메뉴에서 화면을 고릅니다. 위쪽 표제란은 지금 보고 있는 범위를 알려 줍니다.">
@@ -164,7 +187,7 @@ export function GuidePage() {
           <ul className="guide-list">
             <li><b>12개월 완전 관측만</b> 연간 값에 씁니다. 일부 달만 있는 지번은 연간 합계에서 뺍니다.</li>
             <li><b>행정동 통계(인구·가구)</b>는 격자나 반경으로 나누어 배분하지 않고, 겹치는 행정동 값을 참고로만 보여 줍니다.</li>
-            <li><b>전력 탄소</b>는 대시보드·지도·보고서에서 그해 말까지 공표된 국가 승인 계수(2019~2021년 0.4594, 2022~2024년 0.4781, 2025년 0.4541 kgCO₂eq/kWh)를 쓰고, 지역 시뮬레이션의 여러 해 비교는 사용량 변화만 보려고 최신 계수(0.4541)를 모든 연도에 같게 적용합니다. 가스는 공식 계수 확인 전까지 가정 계수(0.1826)로 따로 표시합니다.</li>
+            <li><b>전력 탄소</b>는 대시보드·지도·보고서에서 그해 말까지 공표된 국가 승인 계수(2019~2021년 0.4594, 2022~2024년 0.4781, 2025년 0.4330 kgCO₂eq/kWh — 2025 승인 &apos;21~&apos;23 평균)를 쓰고, 지역 시뮬레이션의 여러 해 비교는 사용량 변화만 보려고 최신 계수(0.4330)를 모든 연도에 같게 적용합니다. 가스는 공식 계수 확인 전까지 가정 계수(0.1826)로 따로 표시합니다.</li>
             <li>차트의 <b>빗금 띠</b>는 그 기간에 관측이 없다는 뜻입니다.</li>
             <li>모든 결과는 운영 단계 1차 추정입니다. 법적 적합성이나 넷제로 달성을 판정하지 않습니다.</li>
           </ul>
@@ -274,7 +297,7 @@ export function GuidePage() {
           <h3>하나씩 수집 (고급)</h3>
           <p className="guide-p">수집 데이터의 <b>데이터 수집 요청</b>에서 데이터셋·기간·범위를 골라 실행합니다. 범위는 <b>SMOKE</b>(최소 1건 확인) → <b>LIMITED</b>(제한 범위) → <b>FULL</b>(전체) 순서로 올립니다. FULL은 같은 출처의 SMOKE가 성공한 뒤에만 시작됩니다.</p>
           <h3>API로 받을 수 없는 자료</h3>
-          <p className="guide-p">SGIS 500m 격자, 가스 배출계수·열량 기준, 연도별 전력 배출계수, 선도소프트 100m 탄소격자는 제공기관에 신청해 파일로 받습니다(SGIS 1km 격자 통계는 공공데이터포털 파일로 이미 적용되어 있습니다. 아래 <a href="#sgis">SGIS 격자 통계</a>). 받은 파일(CSV·XLSX·GeoJSON·SHP ZIP)은 수집 데이터 아래쪽 <b>수동 파일 업로드</b>에서 미리보기 → 열 매핑 → 가져오기 순서로 넣습니다.</p>
+          <p className="guide-p">SGIS 500m 격자(빠진 블록·주제), 가스 배출계수·열량 기준, 선도소프트 100m 탄소격자는 제공기관에 신청해 파일로 받습니다(SGIS 1km 격자 통계는 공공데이터포털 파일로 이미 적용되어 있습니다. 아래 <a href="#sgis">SGIS 격자 통계</a>). 받은 파일(CSV·XLSX·GeoJSON·SHP ZIP)은 수집 데이터 아래쪽 <b>수동 파일 업로드</b>에서 미리보기 → 열 매핑 → 가져오기 순서로 넣습니다.</p>
           <Go to="/data#collect-missing">빠진 자료 전부 수집으로 가기</Go>
         </Section>
 
