@@ -131,7 +131,7 @@ class Progress:
         self.state: dict[str, Any] = {"runs": [], "items": {}}
         if path.exists():
             try:
-                self.state = json.loads(path.read_text(encoding="utf-8"))
+                self.state = json.loads(path.read_text(encoding="utf-8-sig"))
             except (OSError, json.JSONDecodeError):
                 pass
         self.state.setdefault("items", {})

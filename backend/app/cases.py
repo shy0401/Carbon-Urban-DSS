@@ -38,6 +38,7 @@ LABELS = {
     "carbon_now_kg": "현재(기준) 탄소 kgCO2eq/년", "carbon_plan_kg": "계획 탄소 kgCO2eq/년", "carbon_change_pct": "탄소 변화 %",
     "legal_status": "법적 상한 1차 확인", "zoning.dominant_zone": "주된 용도지역", "zoning.far_limit": "용적률 상한 %",
     "zoning.bcr_limit": "건폐율 상한 %", "status": "결과 상태", "evaluated": "검토한 후보 수", "feasible": "조건을 만족한 후보 수",
+    **{f"hub_year_complete.{y}": f"건축HUB {y}년 수집 완료 표시" for y in range(2020, 2031)},
 }
 
 
@@ -259,8 +260,12 @@ def run_dataset(db: Any, spec: dict[str, Any]) -> tuple[dict[str, Any], list[str
     except Exception:  # noqa: BLE001 - table not created yet
         db.rollback()
         solar = None
+    # Whether a 건축HUB year counts as finished is collection state kept beside the DB (data/ops/history-progress.json).
+    # It decides 잠정값 wording and the reduction baseline year, so it belongs to the data fingerprint.
+    from .energy_parcels import HUB_FIRST_YEAR, year_complete
+    complete = {str(y): year_complete(y) for y in range(HUB_FIRST_YEAR, LAST_YEAR + 1)}
     summary = {"region": sc.code, "name": sc.name, "grids": len(sc.grid_ids), "building_energy": dict(sorted(building.items())),
-               "kapt": dict(sorted(kapt.items())), "factors": factors, "solar_months": solar}
+               "kapt": dict(sorted(kapt.items())), "factors": factors, "solar_months": solar, "hub_year_complete": complete}
     return summary, []
 
 
@@ -333,6 +338,10 @@ def verify(db: Any, cases: dict[str, Any], only: set[str] | None = None, log: Ca
         log(f"결과: 일치 {counts['MATCH']} · 다름 {counts['DIFF']} · 오류 {counts['ERROR']} · 기준값 없음 {counts['NOT_RECORDED']} (사례 {len(results)}개)")
         if data_diff:
             log("자료 지문(dataset)이 다릅니다: 계산이 아니라 DB 자료가 기준 PC와 다릅니다. 같은 날짜의 자료 묶음을 가져왔는지 확인하세요.")
+            progress = any(r["kind"] == "dataset" and any(d["key"].startswith("hub_year_complete.") for d in r.get("diffs", [])) for r in results)
+            if progress:
+                log("건축HUB 연도의 '수집 완료' 표시가 다릅니다: data/ops/history-progress.json이 기준 PC와 다릅니다. "
+                    "자료 묶음의 collection-progress.json으로 맞춥니다(ImportBundle은 자동, docs/USER_MANUAL.md 9절).")
     return {"checked_at": datetime.now(timezone.utc).isoformat(), "cases_recorded_on": cases.get("recorded_on"), "counts": counts,
             "all_match": bool(ok), "results": results}
 

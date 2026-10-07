@@ -112,3 +112,30 @@ def test_scenario_case_uses_the_engine_without_saving(monkeypatch):
     assert seen["rolled_back"] and seen["request"].floors == 15
     assert got["values"]["far"] == 225.0 and got["values"]["zoning.dominant_zone"] == "제3종일반주거지역" and got["values"]["carbon_change_pct"] == -20.0
     assert got["facts"] == ["가정 1"]
+
+
+def test_collection_progress_is_part_of_the_data_fingerprint(tmp_path, monkeypatch):
+    """A 건축HUB year counts as finished only when data/ops/history-progress.json says so (not in the DB): a PC that
+    imported the same rows without that file reads the year as 잠정값. The fingerprint shows it and verify says why."""
+    from app.energy_parcels import year_complete
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    assert year_complete(2025) is False                                       # no progress file
+    (tmp_path / "ops").mkdir()
+    # a bundle's collection-progress.json written by Windows PowerShell may carry a BOM
+    (tmp_path / "ops" / "history-progress.json").write_bytes(
+        b"\xef\xbb\xbf" + json.dumps({"runs": [], "items": {"energy:2025": {"status": "DONE", "scope": "all_parcels"}}}).encode())
+    assert year_complete(2025) is True and year_complete(2024) is False
+
+    expected = {"region": "52110", "hub_year_complete.2025": True}
+    spec = {"id": "D01", "kind": "dataset", "title": "d", "input": {"region": "52110"},
+            "expected": {"values": expected, "facts": [], "facts_sha256": cases.facts_hash([])}}
+    monkeypatch.setattr(cases, "RUNNERS", {"dataset": lambda db, s: ({"region": "52110", "hub_year_complete": {"2025": False}}, [])})
+
+    class FakeDb:
+        def rollback(self):
+            pass
+
+    lines = []
+    report = cases.verify(FakeDb(), {"cases": [spec]}, log=lines.append)
+    assert report["results"][0]["diffs"][0]["label"] == "건축HUB 2025년 수집 완료 표시"
+    assert any("history-progress.json" in line for line in lines)

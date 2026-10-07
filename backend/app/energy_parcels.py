@@ -225,11 +225,14 @@ def collect_energy_all(db: Any, year: int, progress: Callable[[float, str], None
 
 
 def year_complete(year: int) -> bool:
-    """Whether the city-wide collection of ``year`` has finished (history progress says DONE)."""
+    """Whether the city-wide collection of ``year`` has finished (history progress says DONE).
+
+    The progress file is not in the database: a data bundle carries it as ``collection-progress.json`` and
+    ImportBundle writes it back, otherwise the same rows would read as 잠정값 on another PC."""
     import json
     path = Path(os.getenv("DATA_DIR", "data")) / "ops" / "history-progress.json"
     try:
-        item = json.loads(path.read_text(encoding="utf-8"))["items"].get(f"energy:{year}") or {}
+        item = json.loads(path.read_text(encoding="utf-8-sig"))["items"].get(f"energy:{year}") or {}
     except (OSError, ValueError, KeyError):
         return False
     return item.get("status") == "DONE" and item.get("scope") == "all_parcels"

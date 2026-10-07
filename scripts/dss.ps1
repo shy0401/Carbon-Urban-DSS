@@ -602,6 +602,7 @@ function Invoke-ExportBundle {
     $stage = if ($OutDir) { Join-Path $OutDir "stage-$Stamp" } else { Join-Path $RunDir 'bundle' }
     New-Item -ItemType Directory -Force -Path $stage | Out-Null
     foreach ($name in @('db.dump', 'table-counts.tsv', 'raw-manifest.csv', 'manifest.json')) { Copy-Item -LiteralPath (Join-Path $source $name) -Destination $stage }
+    if (Export-CollectionProgress (Join-Path $stage 'collection-progress.json')) { Write-Log '    collection progress recorded into the bundle' }
     $casesFile = Join-Path $RunDir 'simulation_cases.json'
     if (Test-Path -LiteralPath $casesFile) { Copy-Item -LiteralPath $casesFile -Destination $stage; Write-Log '    simulation cases recorded into the bundle' }
     else { Write-Log "    note: simulation cases not recorded (exit $($recorded.Code); rebuild api to include them)" }
@@ -613,7 +614,8 @@ function Invoke-ExportBundle {
         'Import on a new PC (after git clone and Docker Desktop start):',
         '  scripts\dss.cmd ImportBundle -BundlePath <this zip>',
         'Contains: PostgreSQL dump (schema public), table row counts, data/raw archive, SHA-256 checksums,',
-        '          simulation_cases.json (fixed simulation cases computed on this data; ImportBundle re-checks them).',
+        '          simulation_cases.json (fixed simulation cases computed on this data; ImportBundle re-checks them),',
+        '          collection-progress.json (which collection years are finished; ImportBundle restores it).',
         'Does NOT contain: .env / API keys, .secrets, data/cache, data/deployment, Ollama models.',
         'Share only with approved team members and follow each provider''s terms of use.'
     ) | Set-Content -LiteralPath (Join-Path $stage 'README-IMPORT.txt') -Encoding UTF8
@@ -637,6 +639,40 @@ function Test-BundleChecksums([string]$Stage) {
         }
     }
     Write-Log '    checksums OK'
+}
+
+# Collection progress (data/ops/history-progress.json) is not in the database, but the calculations read it: a 건축HUB
+# year counts as finished (not 잠정값, usable as the reduction baseline) only when it says DONE. It travels with the
+# bundle as collection-progress.json, reduced to status/scope fields (no free-text reasons, no times).
+function Export-CollectionProgress([string]$Destination) {
+    $source = Join-Path $Root 'data\ops\history-progress.json'
+    if (-not (Test-Path -LiteralPath $source)) { return $false }
+    $state = [System.IO.File]::ReadAllText($source) | ConvertFrom-Json
+    $items = [ordered]@{}
+    foreach ($p in $state.items.PSObject.Properties) {
+        $item = [ordered]@{}
+        foreach ($field in @('status', 'scope', 'probe_version', 'passes')) {
+            if ($null -ne $p.Value.$field) { $item[$field] = $p.Value.$field }
+        }
+        $items[$p.Name] = $item
+    }
+    $json = [ordered]@{ runs = @(); items = $items } | ConvertTo-Json -Depth 5
+    # No BOM: the API reads it as JSON text.
+    [System.IO.File]::WriteAllText($Destination, $json, (New-Object System.Text.UTF8Encoding $false))
+    return $true
+}
+
+function Import-CollectionProgress([string]$Stage) {
+    $source = Join-Path $Stage 'collection-progress.json'
+    if (-not (Test-Path -LiteralPath $source)) { Write-Log '    note: no collection-progress.json in this bundle (older bundle: 건축HUB years may read as 잠정값)'; return }
+    $target = Join-Path $Root 'data\ops\history-progress.json'
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $target) | Out-Null
+    if (Test-Path -LiteralPath $target) {
+        Copy-Item -LiteralPath $target -Destination (Join-Path $RunDir 'history-progress.before-import.json')
+        Write-Log '    kept the previous history-progress.json in the run folder'
+    }
+    Copy-Item -LiteralPath $source -Destination $target -Force
+    Write-Log '    collection progress restored (data/ops/history-progress.json)'
 }
 
 function Invoke-ImportBundle {
@@ -681,6 +717,7 @@ function Invoke-ImportBundle {
     $script:Summary.results.import = [ordered]@{ bundle = $BundlePath; raw_conflicts_kept_local = $conflicts; mismatches = $problems }
     Save-Summary
     if ($problems.Count) { throw "Row count mismatch after import: $($problems -join '; ')" }
+    Import-CollectionProgress $stage
     Assert-Native (Compose-Main @('up', '-d', '--build', '--wait', 'api', 'worker', 'frontend')) 'service start'
     $health = Invoke-RestMethod -Uri "http://127.0.0.1:$ApiPort/api/health" -TimeoutSec 60
     $map = Invoke-RestMethod -Uri "http://127.0.0.1:$ApiPort/api/map" -TimeoutSec 120
