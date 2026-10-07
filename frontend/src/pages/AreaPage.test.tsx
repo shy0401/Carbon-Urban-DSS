@@ -113,7 +113,7 @@ describe('AreaPage', () => {
       await waitFor(() => expect(bodies.length).toBeGreaterThan(0));
       expect(bodies[0]).toMatchObject({ area: { type: 'zone', category: 'COMMERCIAL' }, from_year: 2016, to_year: 2025, plan: { added_floor_area_m2: 75000 }, target_pct: 20, pv_yield_kwh_per_kw: 1200, effort_basis: 'buildings' });
       (await screen.findByRole('button', { name: /링크 복사/ })).click();
-      expect(await screen.findByDisplayValue(/\/area\?area=zone:COMMERCIAL&from=2016&to=2025&window=3&plan=75000&target=20&pv=1200&basis=buildings$/)).toBeInTheDocument();
+      expect(await screen.findByDisplayValue(/\/area\?region=52110&area=zone:COMMERCIAL&from=2016&to=2025&window=3&plan=75000&target=20&pv=1200&basis=buildings$/)).toBeInTheDocument();
     } finally {
       window.history.pushState({}, '', '/');
     }

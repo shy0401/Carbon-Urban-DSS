@@ -8,6 +8,9 @@
 import type { ScenarioInput } from '../types';
 import type { AreaMode, AreaSpec, EffortBasis, PlanState } from './area';
 
+/** The original study region. The analysis scope keeps it as null; a link always names a region so it opens the same place. */
+export const DEFAULT_REGION = '52110';
+
 export const SCENARIO_KEYS: Array<keyof ScenarioInput> = ['site_area', 'building_count', 'footprint_per_building', 'floors', 'households', 'population',
   'efficiency_factor', 'pv_ratio', 'green_ratio', 'average_household_area'];
 
@@ -34,7 +37,7 @@ const num = (value: string | null): number | undefined => {
 function scope(params: URLSearchParams): ScopeLink {
   const out: ScopeLink = {};
   const region = params.get('region');
-  if (region !== null) out.region = /^\d{5}$/.test(region) ? region : null;
+  if (region !== null) out.region = /^\d{5}$/.test(region) && region !== DEFAULT_REGION ? region : null;
   const grid = params.get('grid');
   if (grid !== null && /^cell_\d+_\d+$/.test(grid)) out.grid = grid;
   const year = num(params.get('year'));
@@ -65,7 +68,7 @@ export function parseScenarioLink(search: string): ScenarioLink | null {
 export function scenarioLink(input: ScenarioInput, site: { lon: number; lat: number; rotation: number } | null, at: ScopeLink,
   constraints?: { min_households: number; min_population: number }): string {
   const params = new URLSearchParams();
-  if (at.region) params.set('region', at.region);
+  params.set('region', at.region ?? DEFAULT_REGION);
   if (at.grid) params.set('grid', at.grid);
   if (at.year) params.set('year', String(at.year));
   if (site) params.set('site', `${site.lon.toFixed(6)},${site.lat.toFixed(6)},${Math.round(site.rotation * 10) / 10}`);
@@ -118,7 +121,7 @@ export function parseAreaLink(search: string): AreaLink | null {
 export function areaLink(spec: AreaSpec | null, a: { region: string | null; from: number; to: number; event: number | null; window: number; plan: PlanState; target: number; pv: string; basis: EffortBasis }): string | null {
   if (!spec || spec.type === 'polygon') return null;   // a drawn polygon does not fit in an address
   const params = new URLSearchParams();
-  if (a.region) params.set('region', a.region);
+  params.set('region', a.region ?? DEFAULT_REGION);
   const value = spec.type === 'admin' ? spec.code : spec.type === 'zone' ? spec.category : spec.type === 'grid' ? spec.grid_id
     : `${spec.lon},${spec.lat},${spec.radius_m}`;
   params.set('area', `${spec.type}:${value}`);

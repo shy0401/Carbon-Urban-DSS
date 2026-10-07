@@ -68,7 +68,7 @@ describe('SimulationPage', () => {
       expect(bodies[0]).toMatchObject({ site_area: 40000, building_count: 10, floors: 15, efficiency_factor: 0.8, pv_ratio: 0.15, site_lon: 127.13219, site_lat: 35.880124, site_rotation: 0 });
       await userEvent.click(screen.getByRole('button', { name: /링크 복사/ }));
       const link = (screen.getByLabelText(/이 조건의 링크/) as HTMLInputElement).value;
-      expect(link.endsWith(`/simulation?year=2025&${query}`)).toBe(true);
+      expect(link.endsWith(`/simulation?region=52110&year=2025&${query}`)).toBe(true);
     } finally {
       window.history.pushState({}, '', '/');
     }

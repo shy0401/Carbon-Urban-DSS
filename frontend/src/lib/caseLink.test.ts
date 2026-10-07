@@ -6,11 +6,14 @@ const plan: ScenarioInput = { site_area: 40000, building_count: 10, footprint_pe
 
 describe('사례 링크', () => {
   it('시뮬레이션 입력·지역·격자·대지 위치가 주소를 오가도 같다', () => {
-    const path = scenarioLink(plan, { lon: 127.13219, lat: 35.880124, rotation: 0 }, { region: '52110', grid: 'cell_966500_1764500', year: 2025 }, { min_households: 900, min_population: 2200 });
+    const path = scenarioLink(plan, { lon: 127.13219, lat: 35.880124, rotation: 0 }, { region: '41110', grid: 'cell_950000_1919000', year: 2025 }, { min_households: 900, min_population: 2200 });
     const back = parseScenarioLink(path.split('?')[1]);
     expect(back?.input).toEqual(plan);
     expect(back?.site).toEqual({ lon: 127.13219, lat: 35.880124, rotation: 0 });
-    expect([back?.region, back?.grid, back?.year]).toEqual(['52110', 'cell_966500_1764500', 2025]);
+    expect([back?.region, back?.grid, back?.year]).toEqual(['41110', 'cell_950000_1919000', 2025]);
+    // 전주(최초 연구 지역)는 범위에서 null이지만 링크에는 늘 코드를 적어, 다른 지역을 보던 사람도 전주로 연다
+    expect(scenarioLink(plan, null, { region: null })).toMatch(/^\/simulation\?region=52110&site_area=40000/);
+    expect(parseScenarioLink('region=52110')?.region).toBeNull();
     expect(back?.constraints).toEqual({ min_households: 900, min_population: 2200 });
   });
 
@@ -29,7 +32,7 @@ describe('사례 링크', () => {
     const path = areaLink({ type: 'admin', code: '35011790' }, base)!;
     expect(path).toBe('/area?region=52110&area=admin:35011790&from=2015&to=2025&window=3&plan=75000&target=20&basis=buildings');
     const back = parseAreaLink(path.split('?')[1]);
-    expect(back).toMatchObject({ region: '52110', mode: 'admin', spec: { type: 'admin', code: '35011790' }, from: 2015, to: 2025, window: 3, target: 20, basis: 'buildings',
+    expect(back).toMatchObject({ region: null, mode: 'admin', spec: { type: 'admin', code: '35011790' }, from: 2015, to: 2025, window: 3, target: 20, basis: 'buildings',
       plan: { method: 'area', added_floor_area_m2: 75000 } });
     const circle = parseAreaLink('area=circle:127.13219,35.880124,1000&pv=1200');
     expect(circle?.spec).toEqual({ type: 'circle', lon: 127.13219, lat: 35.880124, radius_m: 1000 });
