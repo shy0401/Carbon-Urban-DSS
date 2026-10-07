@@ -1,8 +1,8 @@
 {
  "version": 1,
  "about": "고정 시뮬레이션 사례. 입력은 화면이 보내는 값과 같고, expected는 기준 PC가 자료 묶음과 함께 기록한 값입니다. 실행: docker compose -p carbon-urban-dss -f compose.yaml -f compose.demo.yaml exec -T api python -m app.cli verify-cases (docs/USER_MANUAL.md 9절)",
- "recorded_on": "2026-10-08T03:10:17+09:00",
- "data_note": "PC DB 2026-10-08 03시 (전주·수원·강동 준비 완료, ERA5 일사량 반영, 부산 강서·세종 준비 중)",
+ "recorded_on": "2026-10-08T03:26:24+09:00",
+ "data_note": "PC DB 2026-10-08 03시 (전주·수원·강동·부산 강서 준비 완료, ERA5 일사량 반영, 세종 준비 중)",
  "cases": [
   {
    "id": "D01",
@@ -253,6 +253,55 @@
    "title": "부산 강서구 자료 지문",
    "input": {
     "region": "26440"
+   },
+   "expected": {
+    "values": {
+     "region": "26440",
+     "name": "부산광역시 강서구",
+     "grids": 930,
+     "building_energy.2025_ELECTRICITY": [
+      72345,
+      948361168.0
+     ],
+     "building_energy.2025_GAS": [
+      7249,
+      249644214.0
+     ],
+     "kapt.2025": [
+      612,
+      168018868.0
+     ],
+     "factors": [
+      [
+       "ELECTRICITY",
+       2018,
+       0.4594
+      ],
+      [
+       "ELECTRICITY",
+       2021,
+       0.4781
+      ],
+      [
+       "ELECTRICITY",
+       2024,
+       0.4541
+      ],
+      [
+       "ELECTRICITY",
+       2025,
+       0.433
+      ],
+      [
+       "GAS",
+       2006,
+       0.1826
+      ]
+     ],
+     "solar_months": 132
+    },
+    "facts": [],
+    "facts_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
    }
   },
   {
@@ -1771,6 +1820,77 @@
     },
     "target_pct": 20,
     "effort_basis": "buildings"
+   },
+   "expected": {
+    "values": {
+     "label": "강동구 천호3동 (행정동)",
+     "grids": 4,
+     "complexes": 13,
+     "kapt_electricity_kwh.2015": null,
+     "kapt_electricity_kwh.2016": null,
+     "kapt_electricity_kwh.2017": null,
+     "kapt_electricity_kwh.2018": null,
+     "kapt_electricity_kwh.2019": null,
+     "kapt_electricity_kwh.2020": null,
+     "kapt_electricity_kwh.2021": null,
+     "kapt_electricity_kwh.2022": null,
+     "kapt_electricity_kwh.2023": null,
+     "kapt_electricity_kwh.2024": null,
+     "kapt_electricity_kwh.2025": 11120663.0,
+     "kapt_complete_parcels.2015": 0,
+     "kapt_complete_parcels.2016": 0,
+     "kapt_complete_parcels.2017": 0,
+     "kapt_complete_parcels.2018": 0,
+     "kapt_complete_parcels.2019": 0,
+     "kapt_complete_parcels.2020": 0,
+     "kapt_complete_parcels.2021": 0,
+     "kapt_complete_parcels.2022": 0,
+     "kapt_complete_parcels.2023": 0,
+     "kapt_complete_parcels.2024": 0,
+     "kapt_complete_parcels.2025": 10,
+     "building_electricity_kwh.2025": 107072181.0,
+     "building_parcels.2025": 470,
+     "event_year": 2017,
+     "estimated_change_kwh": 4910048.5,
+     "event_added_kwh": 4793461.8,
+     "facts": 20,
+     "effort.available": true,
+     "effort.basis": "buildings",
+     "effort.baseline_year": 2025,
+     "effort.baseline_kwh": 107072181.0,
+     "effort.baseline_kgco2eq": 46362254.4,
+     "effort.bau_kgco2eq": 47720142.4,
+     "effort.target_kgco2eq": 37089803.5,
+     "effort.required_reduction_kgco2eq": 10630338.9,
+     "effort.new_only_efficiency_pct": 782.9,
+     "effort.all_buildings_efficiency_pct": 22.3,
+     "effort.pv_capacity_kw": 21348.2,
+     "effort.pv_yield_kwh_per_kw": 1150.0,
+     "effort.pv_basis": "ESTIMATED"
+    },
+    "facts": [
+     "분석 대상은 강동구 천호3동 (행정동)이고 기간은 2015~2025년입니다. 격자 4개와 공동주택 단지 13개가 포함됩니다.",
+     "12개월 전력 관측이 있는 연도는 1개(2025)입니다.",
+     "분석 기간에 사용승인된 단지는 4개, 2,081세대입니다.",
+     "건축물대장 기준으로 분석 기간에 사용승인된 건물은 326동, 연면적 771,631m²입니다(모든 용도).",
+     "건축HUB가 계측하는 구역 안 건물 전체(상가·업무·학교·대형 공동주택 등, 12개월 계측 지번 470곳)의 2025년 전력은 107,072,181 kWh, 전력 탄소 46,362,254 kgCO2eq입니다. 단독주택과 200세대 미만 공동주택은 제공 범위 밖입니다.",
+     "SGIS 2024년 1km 격자 기준으로 이 구역이 걸친 1km 격자 3개(통계 있는 격자 3개)의 합계는 인구 117,791명, 가구 57,472, 주택 38,625호, 사업체 종사자 36,018명입니다. 구역은 이 격자 면적의 33.3%라 합계는 구역보다 넓은 범위이며, 공식 통계의 비밀보호 잡음이 들어 있습니다.",
+     "같은 1km 격자들에서 65세 이상 인구 비율은 21.3%, 1인가구 비율은 44.3%, 2000년 이전 준공 주택 비율은 33.4%, 아파트 비율은 41.1%입니다.",
+     "2025년 관측 전력은 11,120,663 kWh(12개월 관측 지번 10곳)입니다.",
+     "같은 해 전력 운영탄소는 4,815,247 kgCO2eq입니다.",
+     "연면적이 확인된 단지 기준 전력 원단위는 24.22 kWh/m²·년입니다.",
+     "2017년에 단지 1개(999세대)가 사용승인되었습니다.",
+     "관측이 부족해 연면적으로 추정하면, 이 개발로 단지 연면적이 171,450m²(+59.5%) 늘어 연간 전력 부하가 약 4,793,462 kWh 늘어난 것으로 추정됩니다(추정값).",
+     "전후 기간에 12개월이 모두 관측된 전력 자료가 부족합니다 (과거 수집 필요)",
+     "감축 노력은 구역 건물 전체(건축HUB 계측 지번, 상가·업무 포함) 기준입니다: 2025년 전력 107,072,181 kWh, 원단위 78.40 kWh/m²·년.",
+     "2025년 대비 20% 감축을 목표로 하면 계획 반영 후 연간 10,630,339 kgCO2eq를 줄여야 합니다.",
+     "신축만으로 달성하려면 신축 전력 소비를 782.9% 줄여야 합니다. 100%를 넘어 신축만으로는 달성할 수 없습니다.",
+     "기존 건물까지 함께 줄이면 지역 전체 전력 소비를 22.3% 줄여야 합니다.",
+     "같은 목표를 재생에너지로 상쇄하려면 연간 24,550,436 kWh가 필요합니다.",
+     "태양광으로 상쇄하면 2025년 지역 일사량 1,438 kWh/m²와 성능비 0.80로 추정한 발전량 1,150 kWh/kW·년 기준 약 21,348.2 kW가 필요합니다(추정값).",
+     "관측이 없는 연도는 0이 아니라 자료 없음으로 두었고, 행정동 통계는 격자에 배분하지 않았습니다."
+    ],
+    "facts_sha256": "e51be455adcb4cc6791cbf375cf01e7ba5ec3cba5a2b2b068890f6f3846cc200"
    }
   },
   {
@@ -1794,6 +1914,77 @@
     },
     "target_pct": 20,
     "effort_basis": "apartments"
+   },
+   "expected": {
+    "values": {
+     "label": "강서구 명지1동 (행정동)",
+     "grids": 49,
+     "complexes": 20,
+     "kapt_electricity_kwh.2015": null,
+     "kapt_electricity_kwh.2016": null,
+     "kapt_electricity_kwh.2017": null,
+     "kapt_electricity_kwh.2018": null,
+     "kapt_electricity_kwh.2019": null,
+     "kapt_electricity_kwh.2020": null,
+     "kapt_electricity_kwh.2021": null,
+     "kapt_electricity_kwh.2022": null,
+     "kapt_electricity_kwh.2023": null,
+     "kapt_electricity_kwh.2024": null,
+     "kapt_electricity_kwh.2025": 62822983.0,
+     "kapt_complete_parcels.2015": 0,
+     "kapt_complete_parcels.2016": 0,
+     "kapt_complete_parcels.2017": 0,
+     "kapt_complete_parcels.2018": 0,
+     "kapt_complete_parcels.2019": 0,
+     "kapt_complete_parcels.2020": 0,
+     "kapt_complete_parcels.2021": 0,
+     "kapt_complete_parcels.2022": 0,
+     "kapt_complete_parcels.2023": 0,
+     "kapt_complete_parcels.2024": 0,
+     "kapt_complete_parcels.2025": 19,
+     "building_electricity_kwh.2025": 205789547.0,
+     "building_parcels.2025": 493,
+     "event_year": 2016,
+     "estimated_change_kwh": 33859893.9,
+     "event_added_kwh": 17236621.8,
+     "facts": 20,
+     "effort.available": true,
+     "effort.basis": "apartments",
+     "effort.baseline_year": 2025,
+     "effort.baseline_kwh": 62822983.0,
+     "effort.baseline_kgco2eq": 27202351.6,
+     "effort.bau_kgco2eq": 27917754.1,
+     "effort.target_kgco2eq": 21761881.3,
+     "effort.required_reduction_kgco2eq": 6155872.8,
+     "effort.new_only_efficiency_pct": 860.5,
+     "effort.all_buildings_efficiency_pct": 22.1,
+     "effort.pv_capacity_kw": 10986.7,
+     "effort.pv_yield_kwh_per_kw": 1294.0,
+     "effort.pv_basis": "ESTIMATED"
+    },
+    "facts": [
+     "분석 대상은 강서구 명지1동 (행정동)이고 기간은 2015~2025년입니다. 격자 49개와 공동주택 단지 20개가 포함됩니다.",
+     "12개월 전력 관측이 있는 연도는 1개(2025)입니다.",
+     "분석 기간에 사용승인된 단지는 20개, 17,059세대입니다.",
+     "건축물대장 기준으로 분석 기간에 사용승인된 건물은 1,138동, 연면적 4,460,145m²입니다(모든 용도).",
+     "건축HUB가 계측하는 구역 안 건물 전체(상가·업무·학교·대형 공동주택 등, 12개월 계측 지번 493곳)의 2025년 전력은 205,789,547 kWh, 전력 탄소 89,106,874 kgCO2eq입니다. 단독주택과 200세대 미만 공동주택은 제공 범위 밖입니다.",
+     "SGIS 2024년 1km 격자 기준으로 이 구역이 걸친 1km 격자 18개(통계 있는 격자 16개)의 합계는 인구 53,809명, 가구 20,708, 주택 17,431호, 사업체 종사자 16,359명입니다. 구역은 이 격자 면적의 68.1%라 합계는 구역보다 넓은 범위이며, 공식 통계의 비밀보호 잡음이 들어 있습니다.",
+     "같은 1km 격자들에서 65세 이상 인구 비율은 8.7%, 1인가구 비율은 25.5%, 2000년 이전 준공 주택 비율은 3.1%, 아파트 비율은 81.4%입니다.",
+     "2025년 관측 전력은 62,822,983 kWh(12개월 관측 지번 19곳)입니다.",
+     "같은 해 전력 운영탄소는 27,202,352 kgCO2eq입니다.",
+     "연면적이 확인된 단지 기준 전력 원단위는 27.54 kWh/m²·년입니다.",
+     "2016년에 단지 5개(4,609세대)가 사용승인되었습니다.",
+     "관측이 부족해 연면적으로 추정하면, 이 개발로 단지 연면적이 599,768m²(+160.2%) 늘어 연간 전력 부하가 약 17,236,622 kWh 늘어난 것으로 추정됩니다(추정값).",
+     "전후 기간에 12개월이 모두 관측된 전력 자료가 부족합니다 (과거 수집 필요)",
+     "감축 노력은 공동주택 단지(K-apt 관리비 전력) 기준입니다: 2025년 전력 62,822,983 kWh, 원단위 27.54 kWh/m²·년(연면적 확인 2,281,430m²).",
+     "2025년 대비 20% 감축을 목표로 하면 계획 반영 후 연간 6,155,873 kgCO2eq를 줄여야 합니다.",
+     "신축만으로 달성하려면 신축 전력 소비를 860.5% 줄여야 합니다. 100%를 넘어 신축만으로는 달성할 수 없습니다.",
+     "기존 건물까지 함께 줄이면 지역 전체 전력 소비를 22.1% 줄여야 합니다.",
+     "같은 목표를 재생에너지로 상쇄하려면 연간 14,216,796 kWh가 필요합니다.",
+     "태양광으로 상쇄하면 2025년 지역 일사량 1,618 kWh/m²와 성능비 0.80로 추정한 발전량 1,294 kWh/kW·년 기준 약 10,986.7 kW가 필요합니다(추정값).",
+     "관측이 없는 연도는 0이 아니라 자료 없음으로 두었고, 행정동 통계는 격자에 배분하지 않았습니다."
+    ],
+    "facts_sha256": "f82cd91acf14d38f185f74f3f2986e56d1ec1310709220b36ff5c8565b8e6418"
    }
   },
   {
@@ -1817,6 +2008,76 @@
     },
     "target_pct": 20,
     "effort_basis": "buildings"
+   },
+   "expected": {
+    "values": {
+     "label": "500m 격자 cell_1128000_1678500",
+     "grids": 1,
+     "complexes": 1,
+     "kapt_electricity_kwh.2015": null,
+     "kapt_electricity_kwh.2016": null,
+     "kapt_electricity_kwh.2017": null,
+     "kapt_electricity_kwh.2018": null,
+     "kapt_electricity_kwh.2019": null,
+     "kapt_electricity_kwh.2020": null,
+     "kapt_electricity_kwh.2021": null,
+     "kapt_electricity_kwh.2022": null,
+     "kapt_electricity_kwh.2023": null,
+     "kapt_electricity_kwh.2024": null,
+     "kapt_electricity_kwh.2025": 6579257.0,
+     "kapt_complete_parcels.2015": 0,
+     "kapt_complete_parcels.2016": 0,
+     "kapt_complete_parcels.2017": 0,
+     "kapt_complete_parcels.2018": 0,
+     "kapt_complete_parcels.2019": 0,
+     "kapt_complete_parcels.2020": 0,
+     "kapt_complete_parcels.2021": 0,
+     "kapt_complete_parcels.2022": 0,
+     "kapt_complete_parcels.2023": 0,
+     "kapt_complete_parcels.2024": 0,
+     "kapt_complete_parcels.2025": 1,
+     "building_electricity_kwh.2025": 24162764.0,
+     "building_parcels.2025": 14,
+     "event_year": 2020,
+     "estimated_change_kwh": null,
+     "event_added_kwh": null,
+     "facts": 19,
+     "effort.available": true,
+     "effort.basis": "buildings",
+     "effort.baseline_year": 2025,
+     "effort.baseline_kwh": 24162764.0,
+     "effort.baseline_kgco2eq": 10462476.8,
+     "effort.bau_kgco2eq": 11099896.1,
+     "effort.target_kgco2eq": 8369981.4,
+     "effort.required_reduction_kgco2eq": 2729914.7,
+     "effort.new_only_efficiency_pct": 428.3,
+     "effort.all_buildings_efficiency_pct": 24.6,
+     "effort.pv_capacity_kw": 4872.2,
+     "effort.pv_yield_kwh_per_kw": 1294.0,
+     "effort.pv_basis": "ESTIMATED"
+    },
+    "facts": [
+     "분석 대상은 500m 격자 cell_1128000_1678500이고 기간은 2015~2025년입니다. 격자 1개와 공동주택 단지 1개가 포함됩니다.",
+     "12개월 전력 관측이 있는 연도는 1개(2025)입니다.",
+     "분석 기간에 사용승인된 단지는 1개, 1,530세대입니다.",
+     "건축물대장 기준으로 분석 기간에 사용승인된 건물은 33동, 연면적 526,042m²입니다(모든 용도).",
+     "건축HUB가 계측하는 구역 안 건물 전체(상가·업무·학교·대형 공동주택 등, 12개월 계측 지번 14곳)의 2025년 전력은 24,162,764 kWh, 전력 탄소 10,462,477 kgCO2eq입니다. 단독주택과 200세대 미만 공동주택은 제공 범위 밖입니다.",
+     "SGIS 2024년 1km 격자 기준으로 이 구역이 걸친 1km 격자 1개(통계 있는 격자 1개)의 합계는 인구 14,056명, 가구 5,561, 주택 3,896호, 사업체 종사자 4,029명입니다. 구역은 이 격자 면적의 25.0%라 합계는 구역보다 넓은 범위이며, 공식 통계의 비밀보호 잡음이 들어 있습니다.",
+     "같은 1km 격자들에서 65세 이상 인구 비율은 5.0%, 1인가구 비율은 32.5%, 아파트 비율은 69.0%입니다.",
+     "2025년 관측 전력은 6,579,257 kWh(12개월 관측 지번 1곳)입니다.",
+     "같은 해 전력 운영탄소는 2,848,818 kgCO2eq입니다.",
+     "연면적이 확인된 단지 기준 전력 원단위는 26.31 kWh/m²·년입니다.",
+     "2020년에 단지 1개(1,530세대)가 사용승인되었습니다.",
+     "전후 기간에 12개월이 모두 관측된 전력 자료가 부족합니다 (과거 수집 필요)",
+     "감축 노력은 구역 건물 전체(건축HUB 계측 지번, 상가·업무 포함) 기준입니다: 2025년 전력 24,162,764 kWh, 원단위 49.07 kWh/m²·년.",
+     "2025년 대비 20% 감축을 목표로 하면 계획 반영 후 연간 2,729,915 kgCO2eq를 줄여야 합니다.",
+     "신축만으로 달성하려면 신축 전력 소비를 428.3% 줄여야 합니다. 100%를 넘어 신축만으로는 달성할 수 없습니다.",
+     "기존 건물까지 함께 줄이면 지역 전체 전력 소비를 24.6% 줄여야 합니다.",
+     "같은 목표를 재생에너지로 상쇄하려면 연간 6,304,653 kWh가 필요합니다.",
+     "태양광으로 상쇄하면 2025년 지역 일사량 1,618 kWh/m²와 성능비 0.80로 추정한 발전량 1,294 kWh/kW·년 기준 약 4,872.2 kW가 필요합니다(추정값).",
+     "관측이 없는 연도는 0이 아니라 자료 없음으로 두었고, 행정동 통계는 격자에 배분하지 않았습니다."
+    ],
+    "facts_sha256": "321ad26905491ed7ee17815877f71c90d72fb51e4211f65530b4408ad1b00b1d"
    }
   }
  ]

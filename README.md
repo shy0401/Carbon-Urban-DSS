@@ -1,5 +1,8 @@
 # Carbon Urban DSS
 
+> **사용자 매뉴얼: [docs/USER_MANUAL.md](docs/USER_MANUAL.md)** ([PDF](docs/manual/Carbon-Urban-DSS-사용자-매뉴얼.pdf)) — 지역을 골라 입력값을 넣으면 어떤 결과가 나오는지 사례 25개(전주·수원·서울 강동·부산 강서), 3D·보고서, 다른 PC에서 같은 결과 확인(`scripts\dss.cmd VerifyCases`).
+> **팀원 과제: [docs/TEAM_TASKS_2026-10.md](docs/TEAM_TASKS_2026-10.md)** ([PPT](docs/presentation/Carbon-Urban-DSS-팀원-작업지시서.pptx)) · 발표: [기능과 시뮬레이션 사례](docs/presentation/Carbon-Urban-DSS-기능과-시뮬레이션-사례.pptx)
+>
 > **팀원 공통: 자료를 모으거나 계산·보고서를 만들기 전에 [공통 데이터 기준](docs/DATA_STANDARD.md)을 먼저 읽습니다.** (앱 메뉴 사용 방법 → 데이터 기준에서도 볼 수 있고, `python -m app.cli check-standard`로 점검합니다. 팀 자료 비교: [TEAM_DATA_COMPARISON](docs/TEAM_DATA_COMPARISON.md))
 
 500m 격자 단위 공공데이터 기반 에너지·운영탄소 의사결정 프로토타입입니다. 전주시에서 시작했고, 이제 **전국 시·군·구 어디든 골라 그 지역 자료를 직접 수집해 같은 분석**을 할 수 있습니다([전국 적용](docs/NATIONWIDE.md)). **실측, 공공데이터 계산, 추정, 시나리오를 분리**하며, 결측값을 0으로 만들지 않습니다.
