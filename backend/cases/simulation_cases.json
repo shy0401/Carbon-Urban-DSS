@@ -1,0 +1,510 @@
+{
+ "version": 1,
+ "about": "고정 시뮬레이션 사례. 입력은 화면이 보내는 값과 같고, expected는 기준 PC가 자료 묶음과 함께 기록한 값입니다. 실행: docker compose -p carbon-urban-dss -f compose.yaml -f compose.demo.yaml exec -T api python -m app.cli verify-cases (docs/USER_MANUAL.md 9절)",
+ "recorded_on": null,
+ "data_note": null,
+ "cases": [
+  {
+   "id": "D01",
+   "kind": "dataset",
+   "region": "52110",
+   "title": "전주시 자료 지문 (계산이 읽는 행 수·합계)",
+   "input": {
+    "region": "52110"
+   }
+  },
+  {
+   "id": "D02",
+   "kind": "dataset",
+   "region": "41110",
+   "title": "수원시 자료 지문",
+   "input": {
+    "region": "41110"
+   }
+  },
+  {
+   "id": "D03",
+   "kind": "dataset",
+   "region": "11740",
+   "title": "서울 강동구 자료 지문",
+   "input": {
+    "region": "11740"
+   }
+  },
+  {
+   "id": "J01",
+   "kind": "area",
+   "region": "52110",
+   "screen": "지역 시뮬레이션",
+   "title": "전주 개발지 · 송천1동(에코시티) 개발 전후와 감축 20% (공동주택 기준)",
+   "purpose": "신도시형 개발지에서 개발 전후 전력 변화와, 9만 m² 추가 개발 뒤 2025년보다 20% 줄이려면 무엇이 필요한지",
+   "input": {
+    "area": {
+     "type": "admin",
+     "code": "35012650"
+    },
+    "region": "52110",
+    "from_year": 2015,
+    "to_year": 2025,
+    "window": 3,
+    "plan": {
+     "added_floor_area_m2": 90000
+    },
+    "target_pct": 20,
+    "effort_basis": "apartments"
+   }
+  },
+  {
+   "id": "J02",
+   "kind": "area",
+   "region": "52110",
+   "screen": "지역 시뮬레이션",
+   "title": "전주 개발지 · 송천1동 같은 조건, 건물 전체 기준",
+   "purpose": "감축 기준 건물을 공동주택(K-apt)에서 건물 전체(건축HUB)로 바꾸면 결과가 어떻게 달라지는지",
+   "input": {
+    "area": {
+     "type": "admin",
+     "code": "35012650"
+    },
+    "region": "52110",
+    "from_year": 2015,
+    "to_year": 2025,
+    "window": 3,
+    "plan": {
+     "added_floor_area_m2": 90000
+    },
+    "target_pct": 20,
+    "effort_basis": "buildings"
+   }
+  },
+  {
+   "id": "J03",
+   "kind": "area",
+   "region": "52110",
+   "screen": "지역 시뮬레이션",
+   "title": "전주 상업지 · 효자5동(서부신시가지) 감축 20% (건물 전체 기준)",
+   "purpose": "상가·업무 건물이 많은 상업지에서 7.5만 m² 추가 개발 뒤 20% 감축 조건",
+   "input": {
+    "area": {
+     "type": "admin",
+     "code": "35011790"
+    },
+    "region": "52110",
+    "from_year": 2015,
+    "to_year": 2025,
+    "window": 3,
+    "plan": {
+     "added_floor_area_m2": 75000
+    },
+    "target_pct": 20,
+    "effort_basis": "buildings"
+   }
+  },
+  {
+   "id": "J04",
+   "kind": "area",
+   "region": "52110",
+   "screen": "지역 시뮬레이션",
+   "title": "전주 상업지역 격자 전체 · 감축 20% (건물 전체 기준)",
+   "purpose": "용도지역으로 구역을 고르는 방법: 상업지역이 가장 넓은 격자 전체",
+   "input": {
+    "area": {
+     "type": "zone",
+     "category": "COMMERCIAL"
+    },
+    "region": "52110",
+    "from_year": 2015,
+    "to_year": 2025,
+    "window": 3,
+    "plan": {
+     "added_floor_area_m2": 50000
+    },
+    "target_pct": 20,
+    "effort_basis": "buildings"
+   }
+  },
+  {
+   "id": "J05",
+   "kind": "area",
+   "region": "52110",
+   "screen": "지역 시뮬레이션",
+   "title": "전주 에코시티 반경 1km · 감축 30%, 태양광 발전량 직접 입력",
+   "purpose": "지도에서 원으로 구역을 고르고 태양광 kW당 연 발전량을 사용자가 넣는 경우",
+   "input": {
+    "area": {
+     "type": "circle",
+     "lon": 127.13219,
+     "lat": 35.880124,
+     "radius_m": 1000
+    },
+    "region": "52110",
+    "from_year": 2015,
+    "to_year": 2025,
+    "window": 3,
+    "plan": {
+     "added_floor_area_m2": 40000
+    },
+    "target_pct": 30,
+    "pv_yield_kwh_per_kw": 1200,
+    "effort_basis": "apartments"
+   }
+  },
+  {
+   "id": "J06",
+   "kind": "scenario",
+   "region": "52110",
+   "screen": "시뮬레이션 (3D)",
+   "title": "전주 개발지 계획안 A · 일반 설계 (10동 15층 1,000세대)",
+   "purpose": "3종일반주거 대지에 놓은 계획안의 연간 탄소와 조례 상한 확인",
+   "input": {
+    "site_area": 40000,
+    "building_count": 10,
+    "footprint_per_building": 600,
+    "floors": 15,
+    "households": 1000,
+    "population": 2500,
+    "average_household_area": 84,
+    "green_ratio": 0.3,
+    "year": 2025,
+    "grid_id": "cell_966500_1764500",
+    "region": "52110",
+    "site_lon": 127.13219,
+    "site_lat": 35.880124,
+    "efficiency_factor": 1.0,
+    "pv_ratio": 0.0
+   }
+  },
+  {
+   "id": "J07",
+   "kind": "scenario",
+   "region": "52110",
+   "screen": "시뮬레이션 (3D)",
+   "title": "전주 개발지 계획안 C · 고효율(0.8) + 태양광 15%",
+   "purpose": "같은 배치에서 효율·태양광만 바꾼 결과",
+   "input": {
+    "site_area": 40000,
+    "building_count": 10,
+    "footprint_per_building": 600,
+    "floors": 15,
+    "households": 1000,
+    "population": 2500,
+    "average_household_area": 84,
+    "green_ratio": 0.3,
+    "year": 2025,
+    "grid_id": "cell_966500_1764500",
+    "region": "52110",
+    "site_lon": 127.13219,
+    "site_lat": 35.880124,
+    "efficiency_factor": 0.8,
+    "pv_ratio": 0.15
+   }
+  },
+  {
+   "id": "J08",
+   "kind": "scenario",
+   "region": "52110",
+   "screen": "시뮬레이션 (3D)",
+   "title": "전주 개발지 계획안 A · 대지를 격자 중심에 둔 경우",
+   "purpose": "대지 위치를 옮기지 않으면 자연녹지가 섞여 상한이 낮아지는 것을 확인",
+   "input": {
+    "site_area": 40000,
+    "building_count": 10,
+    "footprint_per_building": 600,
+    "floors": 15,
+    "households": 1000,
+    "population": 2500,
+    "average_household_area": 84,
+    "green_ratio": 0.3,
+    "year": 2025,
+    "grid_id": "cell_966500_1764500",
+    "region": "52110",
+    "efficiency_factor": 1.0,
+    "pv_ratio": 0.0
+   }
+  },
+  {
+   "id": "J09",
+   "kind": "optimize",
+   "region": "52110",
+   "screen": "시뮬레이션 → 최적안 탐색",
+   "title": "전주 개발지 최적안 · 900세대·2,200명 이상, 조례 상한 안",
+   "purpose": "법적 상한 안에서 탄소가 가장 적은 층수·동수 조합",
+   "input": {
+    "site_area": 40000,
+    "building_count": 10,
+    "footprint_per_building": 600,
+    "floors": 15,
+    "households": 1000,
+    "population": 2500,
+    "average_household_area": 84,
+    "green_ratio": 0.3,
+    "year": 2025,
+    "grid_id": "cell_966500_1764500",
+    "region": "52110",
+    "site_lon": 127.13219,
+    "site_lat": 35.880124,
+    "efficiency_factor": 0.85,
+    "pv_ratio": 0.1,
+    "min_households": 900,
+    "min_population": 2200
+   }
+  },
+  {
+   "id": "J10",
+   "kind": "scenario",
+   "region": "52110",
+   "screen": "시뮬레이션 (3D)",
+   "title": "전주 상업지 주상복합 · 2동 25층 600세대 (중심상업지역)",
+   "purpose": "상업지 대지에서 용적률 750% 계획이 조례 상한(700%)을 넘는지",
+   "input": {
+    "site_area": 10000,
+    "building_count": 2,
+    "footprint_per_building": 1500,
+    "floors": 25,
+    "households": 600,
+    "population": 1500,
+    "average_household_area": 84,
+    "green_ratio": 0.2,
+    "year": 2025,
+    "grid_id": "cell_964500_1757500",
+    "region": "52110",
+    "site_lon": 127.109795,
+    "site_lat": 35.815588,
+    "efficiency_factor": 1.0,
+    "pv_ratio": 0.0
+   }
+  },
+  {
+   "id": "J11",
+   "kind": "optimize",
+   "region": "52110",
+   "screen": "시뮬레이션 → 최적안 탐색",
+   "title": "전주 상업지 최적안 · 500세대·1,200명 이상",
+   "purpose": "상업지 상한 700% 안의 후보",
+   "input": {
+    "site_area": 10000,
+    "building_count": 2,
+    "footprint_per_building": 1500,
+    "floors": 25,
+    "households": 600,
+    "population": 1500,
+    "average_household_area": 84,
+    "green_ratio": 0.2,
+    "year": 2025,
+    "grid_id": "cell_964500_1757500",
+    "region": "52110",
+    "site_lon": 127.109795,
+    "site_lat": 35.815588,
+    "efficiency_factor": 0.85,
+    "pv_ratio": 0.1,
+    "min_households": 500,
+    "min_population": 1200
+   }
+  },
+  {
+   "id": "J12",
+   "kind": "zoning",
+   "region": "52110",
+   "screen": "시뮬레이션 → 법적 상한",
+   "title": "전주 개발지 대지 용도지역·상한 1차 확인",
+   "purpose": "대지(4만 m², 회전 0°)의 용도지역 면적 비율과 조례 상한, 계획 용적률 225%·건폐율 15% 판정",
+   "input": {
+    "lon": 127.13219,
+    "lat": 35.880124,
+    "site_area": 40000,
+    "rotation": 0,
+    "bcr": 15,
+    "far": 225,
+    "households": 1000,
+    "region": "52110"
+   }
+  },
+  {
+   "id": "J13",
+   "kind": "grid_report",
+   "region": "52110",
+   "screen": "보고서 (격자)",
+   "title": "전주 개발지 격자 보고서 · 계획안 A와 C 비교",
+   "purpose": "격자 현황과 두 계획안을 한 보고서로: 근거 문장이 모두 계산 엔진 값인지",
+   "input": {
+    "year": 2025,
+    "grid_id": "cell_966500_1764500",
+    "region": "52110",
+    "scenarios": [
+     {
+      "site_area": 40000,
+      "building_count": 10,
+      "footprint_per_building": 600,
+      "floors": 15,
+      "households": 1000,
+      "population": 2500,
+      "average_household_area": 84,
+      "green_ratio": 0.3,
+      "year": 2025,
+      "grid_id": "cell_966500_1764500",
+      "region": "52110",
+      "site_lon": 127.13219,
+      "site_lat": 35.880124,
+      "efficiency_factor": 1.0,
+      "pv_ratio": 0.0
+     },
+     {
+      "site_area": 40000,
+      "building_count": 10,
+      "footprint_per_building": 600,
+      "floors": 15,
+      "households": 1000,
+      "population": 2500,
+      "average_household_area": 84,
+      "green_ratio": 0.3,
+      "year": 2025,
+      "grid_id": "cell_966500_1764500",
+      "region": "52110",
+      "site_lon": 127.13219,
+      "site_lat": 35.880124,
+      "efficiency_factor": 0.8,
+      "pv_ratio": 0.15
+     }
+    ]
+   }
+  },
+  {
+   "id": "J14",
+   "kind": "area_report",
+   "region": "52110",
+   "screen": "지역 시뮬레이션 → 보고서",
+   "title": "전주 송천1동 지역 보고서 (검증된 서식)",
+   "purpose": "J01 결과로 지역 보고서를 만들고 표·근거가 모두 들어가는지",
+   "input": {
+    "area": {
+     "type": "admin",
+     "code": "35012650"
+    },
+    "region": "52110",
+    "from_year": 2015,
+    "to_year": 2025,
+    "window": 3,
+    "plan": {
+     "added_floor_area_m2": 90000
+    },
+    "target_pct": 20,
+    "effort_basis": "apartments"
+   }
+  },
+  {
+   "id": "S01",
+   "kind": "area",
+   "region": "41110",
+   "screen": "지역 시뮬레이션",
+   "title": "수원 개발지 · 광교1동 감축 20% (공동주택 기준)",
+   "purpose": "다른 지역(수원)에서 같은 절차: 광교신도시 공동주택 기준",
+   "input": {
+    "area": {
+     "type": "admin",
+     "code": "31014620"
+    },
+    "region": "41110",
+    "from_year": 2015,
+    "to_year": 2025,
+    "window": 3,
+    "plan": {
+     "added_floor_area_m2": 60000
+    },
+    "target_pct": 20,
+    "effort_basis": "apartments"
+   }
+  },
+  {
+   "id": "S02",
+   "kind": "area",
+   "region": "41110",
+   "screen": "지역 시뮬레이션",
+   "title": "수원 상업지 · 인계동 감축 20% (건물 전체 기준)",
+   "purpose": "수원 상업 중심지, 건물 전체 기준",
+   "input": {
+    "area": {
+     "type": "admin",
+     "code": "31013560"
+    },
+    "region": "41110",
+    "from_year": 2015,
+    "to_year": 2025,
+    "window": 3,
+    "plan": {
+     "added_floor_area_m2": 60000
+    },
+    "target_pct": 20,
+    "effort_basis": "buildings"
+   }
+  },
+  {
+   "id": "S03",
+   "kind": "scenario",
+   "region": "41110",
+   "screen": "시뮬레이션 (3D)",
+   "title": "수원 기본 대상지에 전주와 같은 계획안 A",
+   "purpose": "같은 계획이 지역(조례)에 따라 상한 판정이 달라지는지",
+   "input": {
+    "site_area": 40000,
+    "building_count": 10,
+    "footprint_per_building": 600,
+    "floors": 15,
+    "households": 1000,
+    "population": 2500,
+    "average_household_area": 84,
+    "green_ratio": 0.3,
+    "year": 2025,
+    "grid_id": "cell_950000_1919000",
+    "region": "41110",
+    "efficiency_factor": 1.0,
+    "pv_ratio": 0.0
+   }
+  },
+  {
+   "id": "G01",
+   "kind": "area",
+   "region": "11740",
+   "screen": "지역 시뮬레이션",
+   "title": "서울 강동 개발지 · 고덕2동 감축 20% (공동주택 기준)",
+   "purpose": "재건축 대단지 개발지. 과거 연도 자료가 들어오면 개발 전후 비교가 가능해짐",
+   "input": {
+    "area": {
+     "type": "admin",
+     "code": "11250560"
+    },
+    "region": "11740",
+    "from_year": 2015,
+    "to_year": 2025,
+    "window": 3,
+    "plan": {
+     "added_floor_area_m2": 60000
+    },
+    "target_pct": 20,
+    "effort_basis": "apartments"
+   }
+  },
+  {
+   "id": "G02",
+   "kind": "area",
+   "region": "11740",
+   "screen": "지역 시뮬레이션",
+   "title": "서울 강동 상업지 · 천호2동 감축 20% (건물 전체 기준)",
+   "purpose": "역세권 상업지, 건물 전체 기준",
+   "input": {
+    "area": {
+     "type": "admin",
+     "code": "11250730"
+    },
+    "region": "11740",
+    "from_year": 2015,
+    "to_year": 2025,
+    "window": 3,
+    "plan": {
+     "added_floor_area_m2": 40000
+    },
+    "target_pct": 20,
+    "effort_basis": "buildings"
+   }
+  }
+ ]
+}

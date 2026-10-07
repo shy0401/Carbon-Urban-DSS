@@ -24,7 +24,7 @@ def init_tables():
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('command',choices=['demo','online','status','enrich','collect','collect-history','collect-missing','validate-models','snapshot','llm-dataset','llm-eval','import-sgis-grid','import-sgis-grid500','import-regional-stats','import-team-grid',
         'national-admin','national-sgis','national-complexes','national-grid500','national-ordinances','national-all','prepare-region','regions',
-        'check-standard','apply-standard','backfill-solar','region-energy-history']);parser.add_argument('--year',type=int,default=DEFAULT_YEAR)
+        'check-standard','apply-standard','backfill-solar','region-energy-history','verify-cases']);parser.add_argument('--year',type=int,default=DEFAULT_YEAR)
     parser.add_argument('--from',dest='from_year',type=int,default=2015);parser.add_argument('--to',dest='to_year',type=int,default=DEFAULT_YEAR)
     parser.add_argument('--datasets',default='',help='comma-separated: sgis,kma_asos,kapt_energy,energy,vworld_zoning,vworld_buildings,vworld_cadastral,building_register');parser.add_argument('--force',action='store_true')
     parser.add_argument('--source',choices=['energy','weather','kapt-energy','kma','sgis','vworld-zoning','vworld-cadastral'])
@@ -35,6 +35,11 @@ def main():
     parser.add_argument('--model',default=None,help='llm-eval: Ollama model name (default OLLAMA_NARRATIVE_MODEL, then OLLAMA_MODEL)');parser.add_argument('--limit',type=int,default=None);parser.add_argument('--file',default=None)
     parser.add_argument('--years',default=None,help='region-energy-history: comma-separated years (default 2020..analysis year-1)')
     parser.add_argument('--csv',action='append',default=[],help='check-standard: a CSV table to check before importing (repeatable)')
+    parser.add_argument('--cases',default=None,help='verify-cases: cases file (default backend/cases/simulation_cases.json)')
+    parser.add_argument('--only',default='',help='verify-cases: comma-separated case ids')
+    parser.add_argument('--record',default=None,help='verify-cases: write this PC\'s results as the expected values to this file (reference PC only)')
+    parser.add_argument('--out',default=None,help='verify-cases: write the full comparison (JSON) to this file')
+    parser.add_argument('--note',default=None,help='verify-cases --record: data version note stored in the file')
     args=parser.parse_args();init_tables()
     with Session() as db:
         seed_sources(db)
@@ -153,6 +158,18 @@ def main():
                 print(f"[{item['status']:4}] {item['label']}: {item['detail']}",flush=True)
             print(json.dumps({'version':report['version'],'summary':report['summary'],'ok':report['ok']},ensure_ascii=False))
             if args.command=='check-standard' and not report['ok']:raise SystemExit(1)
+        elif args.command=='verify-cases':
+            # 고정 사례(지역·입력값)를 계산해 기준 PC 값과 비교 (읽기만 함: 시나리오·보고서를 저장하지 않음). docs/USER_MANUAL.md 9절
+            from .cases import load,record,verify
+            cases=load(args.cases)
+            if args.record:
+                Path(args.record).write_text(json.dumps(record(db,cases,args.note),ensure_ascii=False,indent=1)+'\n',encoding='utf-8')
+                print('기록:',args.record)
+            else:
+                only={c.strip() for c in args.only.split(',') if c.strip()} or None
+                report=verify(db,cases,only)
+                if args.out:Path(args.out).write_text(json.dumps(report,ensure_ascii=False,indent=1,default=str),encoding='utf-8')
+                if not report['all_match']:raise SystemExit(1)
         elif args.command=='regions':
             from .regions import StudyRegion,region_summary
             print(json.dumps([region_summary(r) for r in db.scalars(select(StudyRegion))],ensure_ascii=False,indent=1,default=str))

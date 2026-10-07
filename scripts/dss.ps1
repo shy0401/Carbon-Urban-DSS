@@ -27,14 +27,20 @@ Actions
   VerifyRestore restore the latest backup into a separate throwaway project,
                 compare every table count, run pytest and (optionally) browser E2E
   FrontendTest  Vitest + production build inside Linux (docker build --target test)
-  ExportBundle  team share bundle: DB dump + data/raw (+uploads) + checksums
-  ImportBundle  import a bundle into an EMPTY database on a new PC (-BundlePath)
+  ExportBundle  team share bundle: DB dump + data/raw (+uploads) + checksums + the simulation
+                cases recorded on this DB (simulation_cases.json). -OutDir puts the bundle
+                (and its staging files) on another drive when C: is short of space
+  ImportBundle  import a bundle into an EMPTY database on a new PC (-BundlePath); then the
+                bundle's simulation cases are re-computed here and must match
+  VerifyCases   re-compute the fixed simulation cases and compare with the recorded values
+                (-CasesPath <simulation_cases.json>; default: the file in backend/cases)
   MergeBundle   add a teammate's bundle to THIS database without duplicates (-BundlePath,
                 -DryRun to only count): backup first, rows matched on natural keys, existing
                 rows never changed, new raw files copied, report in merge.json
   VerifyBundle  new-PC simulation: export a bundle, 'git clone' HEAD into a clean
                 folder, import there into a separate project, compare counts,
-                check API/web, then remove that project
+                check API/web and the simulation cases, then remove that project
+                (-OutDir: bundle and clean clone on another drive, clone removed afterwards)
   All           Doctor, Backup, Rebuild, Status, Probe, Collect, Status, Backup,
                 VerifyRestore(+pytest,+E2E), FrontendTest, VerifyBundle
 
@@ -46,9 +52,11 @@ Safety
   * Results are written to data/ops/<timestamp>-<action>/ (summary.json, *.log).
 #>
 param(
-    [ValidateSet('All', 'Doctor', 'Status', 'Backup', 'Rebuild', 'Probe', 'Collect', 'CollectHistory', 'CollectAll', 'Snapshot', 'VerifyRestore', 'FrontendTest', 'E2E', 'ExportBundle', 'ImportBundle', 'MergeBundle', 'VerifyBundle')]
+    [ValidateSet('All', 'Doctor', 'Status', 'Backup', 'Rebuild', 'Probe', 'Collect', 'CollectHistory', 'CollectAll', 'Snapshot', 'VerifyRestore', 'FrontendTest', 'E2E', 'ExportBundle', 'ImportBundle', 'MergeBundle', 'VerifyBundle', 'VerifyCases')]
     [string]$Action = 'All',
     [string]$BundlePath,
+    [string]$OutDir,
+    [string]$CasesPath,
     [string]$BackupDir,
     [switch]$IncludeUploads,
     [switch]$DryRun,
@@ -557,12 +565,45 @@ function Expand-ZipToFolder([string]$ZipPath, [string]$Folder) {
     [System.IO.Compression.ZipFile]::ExtractToDirectory($ZipPath, $Folder)
 }
 
+function Invoke-CaseCheck([string]$File) {
+    # Fixed simulation cases (backend/cases/simulation_cases.json or the copy inside a bundle) computed on this DB and
+    # compared with the recorded values. Reads only: no scenario or report is saved.
+    $cliArgs = @('exec', '-T', '-e', 'PYTHONIOENCODING=utf-8', 'api', 'python', '-m', 'app.cli', 'verify-cases', '--out', "$ContainerRunDir/cases-check.json")
+    if ($File) {
+        if (-not (Test-Path -LiteralPath $File)) { throw "cases file not found: $File" }
+        $copy = Join-Path $RunDir 'simulation_cases.json'
+        if ((Resolve-Path -LiteralPath $File).Path -ne $copy) { Copy-Item -LiteralPath $File -Destination $copy -Force }
+        $cliArgs += @('--cases', "$ContainerRunDir/simulation_cases.json")
+    }
+    $result = Compose-Main $cliArgs
+    $report = Join-Path $RunDir 'cases-check.json'
+    if (-not (Test-Path -LiteralPath $report)) { Assert-Native $result 'verify-cases'; throw 'cases-check.json missing (rebuild api)' }
+    $json = Get-Content -LiteralPath $report -Raw -Encoding UTF8 | ConvertFrom-Json
+    $c = $json.counts
+    $total = $c.MATCH + $c.DIFF + $c.ERROR + $c.NOT_RECORDED
+    $script:Summary.results.cases = [ordered]@{ recorded_on = $json.cases_recorded_on; match = $c.MATCH; diff = $c.DIFF; error = $c.ERROR; not_recorded = $c.NOT_RECORDED; report = $report }
+    Save-Summary
+    $text = "simulation cases: $($c.MATCH)/$total match (recorded $($json.cases_recorded_on))"
+    if (-not $json.all_match) {
+        $bad = @($json.results | Where-Object { $_.status -ne 'MATCH' } | ForEach-Object { "$($_.id) $($_.status)" })
+        throw "$text; not matching: $($bad -join ', ') (details: $report)"
+    }
+    return $text
+}
+
 function Invoke-ExportBundle {
     Invoke-Backup 'bundle' | Out-Null
     $source = $script:LatestBackup
-    $stage = Join-Path $RunDir 'bundle'
+    # Same DB state as the dump: the cases computed now travel with the bundle and are re-checked on import.
+    $recorded = Compose-Main @('exec', '-T', '-e', 'PYTHONIOENCODING=utf-8', 'api', 'python', '-m', 'app.cli', 'verify-cases', '--record', "$ContainerRunDir/simulation_cases.json", '--note', "carbon-dss-bundle-$Stamp")
+    $bundleDir = if ($OutDir) { $OutDir } else { Join-Path $Root 'data\backups\bundles' }
+    New-Item -ItemType Directory -Force -Path $bundleDir | Out-Null
+    $stage = if ($OutDir) { Join-Path $OutDir "stage-$Stamp" } else { Join-Path $RunDir 'bundle' }
     New-Item -ItemType Directory -Force -Path $stage | Out-Null
     foreach ($name in @('db.dump', 'table-counts.tsv', 'raw-manifest.csv', 'manifest.json')) { Copy-Item -LiteralPath (Join-Path $source $name) -Destination $stage }
+    $casesFile = Join-Path $RunDir 'simulation_cases.json'
+    if (Test-Path -LiteralPath $casesFile) { Copy-Item -LiteralPath $casesFile -Destination $stage; Write-Log '    simulation cases recorded into the bundle' }
+    else { Write-Log "    note: simulation cases not recorded (exit $($recorded.Code); rebuild api to include them)" }
     $raw = Join-Path $Root 'data\raw'
     if (Test-Path -LiteralPath $raw) { New-ZipFromFolder $raw (Join-Path $stage 'raw.zip') }
     if ($IncludeUploads -and (Test-Path -LiteralPath (Join-Path $Root 'data\uploads'))) { New-ZipFromFolder (Join-Path $Root 'data\uploads') (Join-Path $stage 'uploads.zip') }
@@ -570,14 +611,13 @@ function Invoke-ExportBundle {
         'Carbon Urban DSS data bundle',
         'Import on a new PC (after git clone and Docker Desktop start):',
         '  scripts\dss.cmd ImportBundle -BundlePath <this zip>',
-        'Contains: PostgreSQL dump (schema public), table row counts, data/raw archive, SHA-256 checksums.',
+        'Contains: PostgreSQL dump (schema public), table row counts, data/raw archive, SHA-256 checksums,',
+        '          simulation_cases.json (fixed simulation cases computed on this data; ImportBundle re-checks them).',
         'Does NOT contain: .env / API keys, .secrets, data/cache, data/deployment, Ollama models.',
         'Share only with approved team members and follow each provider''s terms of use.'
     ) | Set-Content -LiteralPath (Join-Path $stage 'README-IMPORT.txt') -Encoding UTF8
     $sums = Get-ChildItem -LiteralPath $stage -File | Where-Object { $_.Name -ne 'SHA256SUMS.txt' } | ForEach-Object { "$((Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)" }
     Set-Content -LiteralPath (Join-Path $stage 'SHA256SUMS.txt') -Value $sums -Encoding ASCII
-    $bundleDir = Join-Path $Root 'data\backups\bundles'
-    New-Item -ItemType Directory -Force -Path $bundleDir | Out-Null
     $zip = Join-Path $bundleDir "carbon-dss-bundle-$Stamp.zip"
     # db.dump (pg_dump -Fc) and raw.zip are already compressed: store them as they are.
     New-ZipFromFolder $stage $zip 'NoCompression'
@@ -648,8 +688,16 @@ function Invoke-ImportBundle {
     $script:Summary.results.import_services = [ordered]@{ health = $health.status; grids = $grids; web_status = $web.StatusCode }
     Save-Summary
     if ($health.status -ne 'ok' -or $grids -lt 1 -or $web.StatusCode -ne 200) { throw 'imported services did not pass health/map/web checks' }
+    # The bundle's simulation cases must give the same values on this PC (docs/USER_MANUAL.md 9절).
+    $casesText = 'no simulation cases in this bundle'
+    $casesError = $null
+    $bundleCases = Join-Path $stage 'simulation_cases.json'
+    if (Test-Path -LiteralPath $bundleCases) {
+        try { $casesText = Invoke-CaseCheck $bundleCases } catch { $casesError = $_.Exception.Message }
+    }
     Remove-Item -LiteralPath $stage -Recurse -Force
-    return "imported $($imported.Count) tables with identical row counts; health=$($health.status); grids=$grids; web=$($web.StatusCode); raw conflicts kept local: $($conflicts.Count)"
+    if ($casesError) { throw "imported $($imported.Count) tables with identical row counts, but $casesError" }
+    return "imported $($imported.Count) tables with identical row counts; health=$($health.status); grids=$grids; web=$($web.StatusCode); raw conflicts kept local: $($conflicts.Count); $casesText"
 }
 
 function Invoke-MergeBundle {
@@ -724,7 +772,8 @@ function Invoke-VerifyBundle {
     # New-PC simulation on this machine: export -> clean git clone of HEAD -> import into a separate project.
     $exported = Invoke-ExportBundle
     $zip = $script:Summary.results.bundle.zip
-    $clone = Join-Path $RunDir 'clean-clone'
+    # -OutDir: the clean clone (and the raw files it imports) go to that drive and are removed afterwards.
+    $clone = if ($OutDir) { Join-Path $OutDir "verify-$Stamp" } else { Join-Path $RunDir 'clean-clone' }
     $dirty = Invoke-Native -File 'git' -Arguments @('status', '--porcelain', '--untracked-files=no')
     $uncommitted = @($dirty.Lines | Where-Object { $_ -and $_ -notmatch '\.idea/' })
     if ($uncommitted.Count) { Write-Log "    note: $($uncommitted.Count) uncommitted tracked change(s) are not part of the clean clone" }
@@ -747,6 +796,16 @@ function Invoke-VerifyBundle {
     foreach ($volume in @("$($project)_postgres_data", "$($project)_redis_data")) { Invoke-Native -File 'docker' -Arguments @('volume', 'rm', '-f', $volume) -StepLog $stepLog | Out-Null }
     $script:Summary.results.verify_bundle = [ordered]@{ bundle = $zip; clone_head = $head; exit = $child.Code; child_steps = $childSummary.steps; child_results = $childSummary.results }
     Save-Summary
+    if ($childRun) {
+        foreach ($name in @('summary.json', 'cases-check.json')) {
+            $file = Join-Path $clone "data\ops\$childRun\$name"
+            if (Test-Path -LiteralPath $file) { Copy-Item -LiteralPath $file -Destination (Join-Path $RunDir "import-test-$name") }
+        }
+    }
+    if ($OutDir -and $clone.StartsWith($OutDir) -and (Test-Path -LiteralPath (Join-Path $clone 'scripts\dss.ps1'))) {
+        Remove-Item -LiteralPath $clone -Recurse -Force -ErrorAction SilentlyContinue
+        Write-Log "    removed the clean clone $clone (results copied to $RunDir)"
+    }
     if ($child.Code -ne 0) { throw "import in clean clone failed: $(($child.Lines | Where-Object { $_ -match 'FAIL' } | Select-Object -Last 2) -join ' | ')" }
     $importStep = $childSummary.steps | Where-Object { $_.name -eq 'Import team bundle' } | Select-Object -Last 1
     return "clean clone @ ${head}: $($importStep.detail) ($exported)"
@@ -758,7 +817,7 @@ $selected = $Action
 if ($Action -notin @('Doctor', 'All')) {
     if (-not (Invoke-Step 'Docker engine' { Start-DockerEngine })) { $selected = 'Skip'; $ok = $false }
 }
-if ($selected -in @('Status', 'Probe', 'Collect', 'CollectHistory', 'CollectAll', 'Snapshot', 'MergeBundle')) {
+if ($selected -in @('Status', 'Probe', 'Collect', 'CollectHistory', 'CollectAll', 'Snapshot', 'MergeBundle', 'VerifyCases')) {
     # app.ops runs inside the api image; make sure it contains the current code first.
     # --force-recreate: containers must pick up .env changes (new API keys) as well as new code.
     if (-not (Invoke-Step 'Services up to date' { Assert-Native (Compose-Main @('up', '-d', '--build', '--force-recreate', '--wait', 'api', 'worker')) 'compose up --build'; 'api/worker rebuilt with current code and .env' })) { $selected = 'Skip'; $ok = $false }
@@ -796,6 +855,7 @@ switch ($selected) {
     'ImportBundle' { $ok = Invoke-Step 'Import team bundle' { Invoke-ImportBundle } }
     'MergeBundle' { $ok = Invoke-Step 'Merge team bundle' { Invoke-MergeBundle } }
     'VerifyBundle' { $ok = Invoke-Step 'New-PC bundle import (clean clone)' { Invoke-VerifyBundle } }
+    'VerifyCases' { $ok = Invoke-Step 'Simulation cases (verify-cases)' { Invoke-CaseCheck $CasesPath } }
     'All' {
         $ok = Invoke-Step 'Doctor' { Invoke-Doctor }
         if ($ok) {
