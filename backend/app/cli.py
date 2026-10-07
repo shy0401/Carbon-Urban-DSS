@@ -24,7 +24,7 @@ def init_tables():
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('command',choices=['demo','online','status','enrich','collect','collect-history','collect-missing','validate-models','snapshot','llm-dataset','llm-eval','import-sgis-grid','import-sgis-grid500','import-regional-stats','import-team-grid',
         'national-admin','national-sgis','national-complexes','national-grid500','national-ordinances','national-all','prepare-region','regions',
-        'check-standard','apply-standard','backfill-solar']);parser.add_argument('--year',type=int,default=DEFAULT_YEAR)
+        'check-standard','apply-standard','backfill-solar','region-energy-history']);parser.add_argument('--year',type=int,default=DEFAULT_YEAR)
     parser.add_argument('--from',dest='from_year',type=int,default=2015);parser.add_argument('--to',dest='to_year',type=int,default=DEFAULT_YEAR)
     parser.add_argument('--datasets',default='',help='comma-separated: sgis,kma_asos,kapt_energy,energy,vworld_zoning,vworld_buildings,vworld_cadastral,building_register');parser.add_argument('--force',action='store_true')
     parser.add_argument('--source',choices=['energy','weather','kapt-energy','kma','sgis','vworld-zoning','vworld-cadastral'])
@@ -33,6 +33,7 @@ def main():
     parser.add_argument('--steps',default='',help='prepare-region: comma-separated steps (default: all)')
     parser.add_argument('--no-emd',action='store_true',help='national-sgis: 시군구만 (행정동 생략)')
     parser.add_argument('--model',default=None,help='llm-eval: Ollama model name (default OLLAMA_NARRATIVE_MODEL, then OLLAMA_MODEL)');parser.add_argument('--limit',type=int,default=None);parser.add_argument('--file',default=None)
+    parser.add_argument('--years',default=None,help='region-energy-history: comma-separated years (default 2020..analysis year-1)')
     parser.add_argument('--csv',action='append',default=[],help='check-standard: a CSV table to check before importing (repeatable)')
     args=parser.parse_args();init_tables()
     with Session() as db:
@@ -131,6 +132,12 @@ def main():
             steps=[s.strip() for s in args.steps.split(',') if s.strip()] or None
             result=prepare_region(db,args.region,steps,log=lambda m:print(m,flush=True),force=args.force)
             print(json.dumps({'code':result['code'],'status':result['status'],'datasets':{k:{'status':v.get('status'),'message':v.get('message')} for k,v in (result['datasets'] or {}).items()}},ensure_ascii=False,indent=1))
+        elif args.command=='region-energy-history':
+            # 준비한 지역의 건축HUB 전 지번 과거 연도 (지역 준비는 분석 연도만 받음). --region 11740,26440 --years 2024,2022
+            from .region_prepare import collect_energy_years
+            years=[int(y) for y in (args.years or '').split(',') if y.strip()] or list(range(2020,DEFAULT_YEAR))
+            for code in [r.strip() for r in (args.region or '').split(',') if r.strip()]:
+                print(json.dumps(collect_energy_years(db,code,years,log=lambda m:print(m,flush=True)),ensure_ascii=False,default=str),flush=True)
         elif args.command=='backfill-solar':
             # ERA5-Land 일사량을 지역마다 받아 태양광 연 발전량 추정에 씀 (docs/DATA_STANDARD.md 5.13)
             from .solar import backfill

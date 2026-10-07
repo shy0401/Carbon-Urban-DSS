@@ -444,6 +444,40 @@ def step_building_energy(db: Any, region: StudyRegion, log: Log) -> dict[str, An
     return {"rows": stats["inserted"] + stats["updated"], "message": f"{year}년 법정동·리 {len(leaves)}곳, 요청 {stats['requests']:,}회, 새 행 {stats['inserted']:,}", "year": year}
 
 
+def collect_energy_years(db: Any, code: str, years: list[int], *, log: Log = print) -> dict[str, Any]:
+    """건축HUB all-parcel energy of a prepared region for past years (the region step takes only the analysis year).
+
+    Years run newest first; the provider's daily quota stops the run and leaves the remaining years for the next run
+    (answers already received are cached on disk, so a re-run does not spend the quota again)."""
+    from .energy_parcels import HUB_FIRST_YEAR, build_parcel_grid, collect_energy_all
+    region = db.get(StudyRegion, code)
+    if region is None:
+        raise ValueError(f"준비한 지역이 아닙니다: {code}")
+    leaves = legal_leaves(db, region.legal_codes or [])
+    if not leaves:
+        raise ValueError("이 지역의 법정동·리 코드가 없습니다")
+    done: dict[int, Any] = {}
+    left: list[int] = []
+    quota = False
+    for year in sorted({y for y in years if y >= HUB_FIRST_YEAR}, reverse=True):
+        if quota:
+            left.append(year)
+            continue
+        try:
+            stats = collect_energy_all(db, year, lambda f, m: log(m) if int(f * 100) % 10 == 0 else None, regions=leaves)
+            done[year] = {"requests": stats["requests"], "inserted": stats["inserted"], "updated": stats["updated"]}
+            log(f"{code} {year}: 요청 {stats['requests']:,}회, 새 행 {stats['inserted']:,}")
+        except ExternalError as exc:
+            db.rollback()
+            status, message = _classify(exc)
+            log(f"{code} {year}: {status} {message}")
+            left.append(year)
+            quota = status == "WAITING"  # daily quota: stop here; other errors: try the next year
+    if done:
+        build_parcel_grid(db)
+    return {"region": code, "done": done, "left": sorted(left), "years_before_hub": sorted(y for y in years if y < HUB_FIRST_YEAR)}
+
+
 def step_kapt_energy(db: Any, region: StudyRegion, log: Log) -> dict[str, Any]:
     from .kapt_energy import collect_kapt_energy
     year = analysis_year()
