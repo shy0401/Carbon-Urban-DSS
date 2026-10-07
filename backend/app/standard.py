@@ -26,6 +26,7 @@ from sqlalchemy import func, select, text
 from .degree_days import CDD_BASE_C, HDD_BASE_C, RULE, RULE_ID, degree_days
 
 VERSION = "1.0"
+ELECTRICITY_UNDERREPORT_KWH_PER_HOUSEHOLD = 2000.0  # urban-carbon config/rules.yaml electricity_underreport (ADR 0012)
 DOC = "docs/DATA_STANDARD.md"
 Log = Callable[[str], None]
 
@@ -208,6 +209,14 @@ def check_database(db: Any, data_dir: str | Path | None = None, *, raw_sample: i
         bad_carbon += bad
     items.append(_item("kapt_carbon", "K-apt 전력 탄소 = 사용량 × 그해 계수 (5.4절)", "OK" if not bad_carbon else "WARN",
                        "모두 그해 계수" if not bad_carbon else f"{bad_carbon:,}행이 다른 계수 → apply-standard", bad_carbon))
+
+    low = db.execute(text(
+        "SELECT count(*), count(DISTINCT e.complex_code) FROM (SELECT complex_code, left(year_month,4) y, sum(electricity_quantity) kwh, count(*) n "
+        "FROM apartment_energy_monthly WHERE quality_status = 'SUCCESS' AND electricity_quantity IS NOT NULL GROUP BY complex_code, left(year_month,4), source) e "
+        "JOIN apartment_complexes c ON c.kapt_code = e.complex_code WHERE e.n = 12 AND c.households > 0 AND e.kwh / c.households < :limit"),
+        {"limit": ELECTRICITY_UNDERREPORT_KWH_PER_HOUSEHOLD}).one()
+    items.append(_item("kapt_underreport", f"단지 세대당 전기 {ELECTRICITY_UNDERREPORT_KWH_PER_HOUSEHOLD:,.0f} kWh/년 미만은 누락 의심으로 표시 (4절, 팀 기준)", "INFO",
+                       f"12개월 단지-연도 중 {low[0]:,}건({low[1]:,}개 단지): 값은 그대로 두고 해석 때 주의", low[0]))
 
     mismatched = []
     for year in range(2015, datetime.now().year + 1):
