@@ -29,9 +29,9 @@ const VIEWS: Record<View, { label: string; pitch: number; bearing: number; zoomD
 /** 3D concept massing on the selected grid: official buildings extruded by floor count, the planned
  *  blocks on a movable square site, sun shadows for a chosen day and hour, and the 조례 상한 check.
  *  Read-only for analysis values; `onCapture` gets a PNG of the canvas. */
-export function Massing3D({ gridId, input, site = null, onSiteChange, onCapture, captureLabel = '3D 장면 저장', onZoning, region = null }: {
+export function Massing3D({ gridId, input, site = null, onSiteChange, onCapture, captureLabel = '3D 장면 저장', captureKey = null, onZoning, region = null }: {
   gridId: string | null; input: ScenarioInput; site?: SitePlacement | null; onSiteChange?: (site: SitePlacement | null) => void;
-  onCapture?: (dataUrl: string) => void; captureLabel?: string; onZoning?: (zoning: ZoningCheck | null) => void;
+  onCapture?: (dataUrl: string) => void; captureLabel?: string; captureKey?: string | null; onZoning?: (zoning: ZoningCheck | null) => void;
   /** Study region code: decides the legal-limit basis (전주시 조례 or 국토계획법 시행령). */
   region?: string | null;
 }) {
@@ -48,6 +48,8 @@ export function Massing3D({ gridId, input, site = null, onSiteChange, onCapture,
   const [buildings, setBuildings] = useState<Buildings>(EMPTY as Buildings);
   const [note, setNote] = useState<string>('격자 정보를 불러오는 중…');
   const [captured, setCaptured] = useState(false);
+  // A new saved result (captureKey) needs its own scene: the button reads '저장' again.
+  useEffect(() => { setCaptured(false); }, [captureKey]);
   const [view, setView] = useState<View>('bird');
   const [spinning, setSpinning] = useState(false);
   const [shape, setShape] = useState<BlockShape>('tower');

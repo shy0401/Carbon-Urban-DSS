@@ -144,7 +144,7 @@ export function SimulationPage() {
         {linkUrl && <label className="case-link"><span>이 조건의 링크 (다른 PC에서 열면 같은 입력으로 시작)</span><input readOnly value={linkUrl} onFocus={(event) => event.currentTarget.select()} /></label>}
       </form>
       <div className="simulation-main">
-        <section className="panel massing-panel"><div className="panel-title"><h3>3D 배치·일조</h3><span className="status-tag neutral">규모 비교용 개념 배치</span></div><Massing3D gridId={massingGrid} region={region} input={input} site={site} onSiteChange={setSite} onZoning={setLiveZoning} onCapture={result?.id ? saveScene : undefined} captureLabel="보고서용 장면 저장" /></section>
+        <section className="panel massing-panel"><div className="panel-title"><h3>3D 배치·일조</h3><span className="status-tag neutral">규모 비교용 개념 배치</span></div><Massing3D gridId={massingGrid} region={region} input={input} site={site} onSiteChange={setSite} onZoning={setLiveZoning} onCapture={result?.id ? saveScene : undefined} captureKey={result?.id ?? null} captureLabel="보고서용 장면 저장" /></section>
         <section className="panel scenario-result">
           <div className="panel-title"><h3>에너지·탄소 비교</h3>{result && <div className="badge-row">{provenanceFromCode(result.data_class) && <ProvenanceBadge kind={provenanceFromCode(result.data_class)!} />}{result.quality && <QualityBadge value={result.quality} />}</div>}</div>
           {requestError && <ErrorState message={requestError} onRetry={() => void submit()} />}
