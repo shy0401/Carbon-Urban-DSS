@@ -352,8 +352,7 @@ def step_weather(db: Any, region: StudyRegion, log: Log) -> dict[str, Any]:
         raise ValueError("지역 중심을 모릅니다: 격자 단계를 먼저 끝내야 합니다")
     last = analysis_year()
     params = dict(latitude=round(region.center_lat, 4), longitude=round(region.center_lon, 4), start_date="2015-01-01", end_date=f"{last}-12-31",
-                  daily="temperature_2m_mean,temperature_2m_min,temperature_2m_max,precipitation_sum,shortwave_radiation_sum",
-                  timezone="Asia/Seoul", models="era5_land")
+                  daily="temperature_2m_mean,temperature_2m_min,temperature_2m_max,precipitation_sum", timezone="Asia/Seoul", models="era5_land")
     result = client.get("weather", f"region-{region.code}", "https://archive-api.open-meteo.com/v1/archive", params)
     raw = _root() / "raw" / "weather-regions"
     raw.mkdir(parents=True, exist_ok=True)
@@ -368,9 +367,15 @@ def step_weather(db: Any, region: StudyRegion, log: Log) -> dict[str, Any]:
             setattr(item, key, row[key])
         item.collected_at = now()
         db.add(item)
-    from .solar import store_months  # 일사량 → 태양광 연 발전량 추정 (docs/DATA_STANDARD.md 5.13)
-    solar_months = store_months(db, region.code, payload, params["latitude"], params["longitude"])
     db.commit()
+    solar_months = 0
+    try:  # 일사량 → 태양광 연 발전량 추정 (docs/DATA_STANDARD.md 5.13); ERA5 (era5_land has no radiation at Open-Meteo)
+        from .solar import fetch_region
+        solar_months = fetch_region(db, region.code, params["latitude"], params["longitude"], 2015, last, raw.parent / "weather-solar")
+        db.commit()
+    except Exception as exc:  # noqa: BLE001 - irradiation is optional; the weather step still succeeds
+        db.rollback()
+        log(f"일사량 받기 실패: {type(exc).__name__}")
     complete = sum(1 for r in rows if r["days_observed"] >= r["expected_days"])
     return {"rows": len(rows), "message": f"ERA5-Land {len(rows)}개월 (완전월 {complete}개월, 일사량 {solar_months}개월, 지점 {params['latitude']}, {params['longitude']})"}
 

@@ -80,7 +80,7 @@ def collect_spatial(db):
 
 def collect_weather(db,start='2025-01',end='2025-12'):
     last=calendar.monthrange(int(end[:4]),int(end[5:]))[1]
-    params=dict(latitude=35.8242,longitude=127.1480,start_date=start+'-01',end_date=end+f'-{last}',daily='temperature_2m_mean,temperature_2m_min,temperature_2m_max,precipitation_sum,shortwave_radiation_sum',timezone='Asia/Seoul',models='era5_land')
+    params=dict(latitude=35.8242,longitude=127.1480,start_date=start+'-01',end_date=end+f'-{last}',daily='temperature_2m_mean,temperature_2m_min,temperature_2m_max,precipitation_sum',timezone='Asia/Seoul',models='era5_land')
     result=downloaded(db,'weather',f'weather-{start[:4]}.json','https://archive-api.open-meteo.com/v1/archive',params) if start=='2025-01' and end=='2025-12' else client.get('weather','archive','https://archive-api.open-meteo.com/v1/archive',params)
     payload=json.loads(result['body']);rows=monthly_weather(payload)
     from .kma_asos import WeatherMonthlyObservation,refresh_effective_weather
@@ -95,8 +95,6 @@ def collect_weather(db,start='2025-01',end='2025-12'):
             official_asos_complete=False,
         ))
     db.flush();refresh_effective_weather(db,[row['use_ym'] for row in rows])
-    from .solar import store_months;from .regions import DEFAULT_REGION
-    store_months(db,DEFAULT_REGION,payload,params['latitude'],params['longitude'])  # 일사량 (DATA_STANDARD 5.13)
     record_asset(db,'weather',result,len(payload['daily']['time']),start+' ~ '+end)
     db.flush();count=db.scalar(select(func.count()).select_from(WeatherMonthly))
     allrows=db.scalars(select(WeatherMonthly)).all();missing=sum(max(r.expected_days-r.days_observed,0) for r in allrows)

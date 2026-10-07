@@ -36,7 +36,7 @@
 | SGIS 500m 격자 통계 | [SGIS 자료제공](https://sgis.mods.go.kr/view/pss/dataProvdIntrcn) (신청) | 칸별 인구·가구·주택·사업체·종사자 | 2000~2024 | 받은 CSV → `data/raw/sgis_grid_500m/` → 자동 가져오기 | 비밀보호 잡음 포함. 받은 묶음에 없는 블록·주제는 "통계 없음" |
 | SGIS 1km 격자 통계 | 공공데이터포털 15141768 | 칸별 인구·가구·주택 노후 등 | 2024 | `import-sgis-grid` | 500m에 나눠 넣지 않는다 |
 | 기상청 ASOS | [공공데이터포털 15059093](https://www.data.go.kr/data/15059093/openapi.do) | 일평균기온 → 월 난방·냉방도일, 합계 일사량(MJ/m²) | 일 | `Collect` (전주 146) | 그달 일평균이 하루라도 없으면 그달 도일은 NULL. 일사량은 한 해 모든 날이 있을 때만 연간 값 |
-| ERA5-Land (대체) | [Open-Meteo 과거 기상](https://open-meteo.com/en/docs/historical-weather-api) | 일평균기온, 일 일사량 `shortwave_radiation_sum`(MJ/m²) | 일 | 지역 준비 `weather`, `backfill-solar` | ASOS가 없을 때만, `FALLBACK`으로 표시. 일사량은 빠진 날이 있는 달을 NULL로 저장 |
+| ERA5-Land · ERA5 (대체) | [Open-Meteo 과거 기상](https://open-meteo.com/en/docs/historical-weather-api) | 일평균기온(ERA5-Land), 일 일사량 `shortwave_radiation_sum`(MJ/m², **ERA5** — Open-Meteo의 ERA5-Land는 일사량이 비어 옴) | 일 | 지역 준비 `weather`, `backfill-solar` | ASOS가 없을 때만, `FALLBACK`으로 표시. 일사량은 빠진 날이 있는 달을 NULL로 저장 |
 | 전력 배출계수 | [온실가스종합정보센터 승인 배출계수](https://www.gir.go.kr/home/index.do?menuId=36) | 소비단 CO2eq tCO2eq/MWh | 공표일 | 원문 PDF를 `data/raw/research/gir/`에 두면 증빙 확인 후 등록 | 5.4절 표 |
 | 한전 시군구 전력판매량 | [한전 전력판매량 게시판](https://www.kepco.co.kr/home/customer/library/electricity-statistics/sales-volume/boardList.do) | 시·군·구 × 월, 계약종별 kWh | 월 | 파일 → `data/raw/kepco/` | 총량 대조용. 격자에 나누지 않음 |
 | 지역 온실가스 인벤토리 | [GIR 지역 온실가스 통계](https://www.gir.go.kr/home/index.do?menuId=36) | 시·군·구 배출량, Gg CO2eq | 2010~2023 | 파일 → `data/raw/research/gir/` | 총량 대조용 |
@@ -136,7 +136,7 @@
 
 ### 5.13 태양광 연 발전량 (추정)
 - 1 kW 설비의 연 발전량(kWh/kW·년) = 그 지역 **수평면 일사량**(kWh/m²·년) × **성능비 0.80**. 1 kWh = 3.6 MJ, 설비 1 kW = 1 kW/m²(표준 조건) 기준이다.
-- 일사량: 전주는 기상청 ASOS 146 일 합계 일사량(한 해 모든 날이 있을 때), 그 밖과 ASOS가 빈 해는 ERA5-Land 일 일사량(재분석, `FALLBACK`). 같은 해면 관측을 쓰고, 분석 마지막 연도 이하에서 가장 최근의 완비 연도를 쓴다.
+- 일사량: 전주는 기상청 ASOS 146 일 합계 일사량(한 해 모든 날이 있을 때), 그 밖과 ASOS가 빈 해는 ERA5 일 일사량(0.25° 재분석, `FALLBACK`). 같은 해면 관측을 쓰고, 분석 마지막 연도 이하에서 가장 최근의 완비 연도를 쓴다.
 - 경사 보정을 하지 않는다(경사면은 더 받으므로 필요한 설비 용량이 크게 나오는 쪽). 그늘·방위·설치 면적은 넣지 않는다.
 - 사용자가 발전량을 넣으면 그 값을 쓰고 "사용자 입력"으로 적는다. 추정값은 보고서에 **"(추정값)"** 과 연도·일사량·성능비를 함께 적는다. 완비 연도가 없으면 설비 용량은 비운다(0 아님).
 - 코드: `backend/app/solar.py` (`PERFORMANCE_RATIO`), 일사량 받기: `python -m app.cli backfill-solar [--region 코드,코드]`.

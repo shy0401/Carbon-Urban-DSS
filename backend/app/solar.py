@@ -6,8 +6,10 @@ irradiation the tool already collects, with one fixed rule for every region:
 
     yield (kWh/kW·yr) = global horizontal irradiation (kWh/m²·yr) × performance ratio 0.80
 
-- Irradiation: KMA ASOS 146 daily 합계 일사량 (MJ/m², Jeonju) when every day of the year is there; otherwise ERA5-Land
+- Irradiation: KMA ASOS 146 daily 합계 일사량 (MJ/m², Jeonju) when every day of the year is there; otherwise ERA5 (0.25°)
   daily ``shortwave_radiation_sum`` (Open-Meteo, MJ/m²) at the region centre, a reanalysis (FALLBACK) value.
+  Open-Meteo answers ``models=era5_land`` with null radiation (checked 2026-10-08 on every region), so radiation is asked
+  from ``models=era5``; temperatures stay ERA5-Land (weather step).
 - 1 kWh = 3.6 MJ. 1 kW of panels is rated at 1 kW/m² (STC), so kWh/m² of irradiation × PR = kWh per kW.
 - Horizontal irradiation, no tilt gain: a tilted array gets more, so the capacity is on the safe (larger) side.
 - A year counts only when every day is present; a missing day leaves the year out (never a partial sum).
@@ -32,6 +34,8 @@ RULE = "연 발전량 = 수평면 일사량(kWh/m²·년) × 성능비 0.80, 경
 
 
 OPEN_METEO = "https://archive-api.open-meteo.com/v1/archive"
+SOLAR_MODEL = "era5"  # era5_land comes back with null radiation from Open-Meteo
+PROVIDER = "Open-Meteo / ERA5"
 
 
 class SolarMonthly(Base):
@@ -121,7 +125,7 @@ def candidates(db: Any, region_code: str | None) -> list[dict[str, Any]]:
             db.rollback()
     try:
         rows = db.execute(select(SolarMonthly.use_ym, SolarMonthly.irradiation_mj_m2).where(SolarMonthly.region_code == code))
-        out += [{"year": y, "irradiation_kwh_m2": v, "source": "ERA5-Land 일사량 (Open-Meteo, 재분석)", "source_type": "FALLBACK"}
+        out += [{"year": y, "irradiation_kwh_m2": v, "source": "ERA5 일사량 (Open-Meteo, 재분석)", "source_type": "FALLBACK"}
                 for y, v in monthly_years(rows).items()]
     except Exception:  # noqa: BLE001 - table not created yet
         db.rollback()
@@ -136,7 +140,7 @@ def store_months(db: Any, region_code: str, payload: dict[str, Any], latitude: f
     groups: dict[str, list[int]] = defaultdict(list)
     for i, date in enumerate(daily.get("time") or []):
         groups[date[:7]].append(i)
-    provider = "Open-Meteo / ERA5-Land"
+    provider = PROVIDER
     count = 0
     for ym, indexes in sorted(groups.items()):
         key = (region_code, ym.replace("-", ""), provider)
@@ -151,14 +155,35 @@ def store_months(db: Any, region_code: str, payload: dict[str, Any], latitude: f
     return count
 
 
+def fetch_region(db: Any, region_code: str, lat: float, lon: float, first_year: int, last_year: int, raw_dir: Path | None = None) -> int:
+    """One Open-Meteo request for the whole period; returns the number of months that got a (complete) value."""
+    from .collectors import client
+    params = dict(latitude=lat, longitude=lon, start_date=f"{first_year}-01-01", end_date=f"{last_year}-12-31",
+                  daily="shortwave_radiation_sum", timezone="Asia/Seoul", models=SOLAR_MODEL)
+    answer = client.get("weather", f"solar-{region_code}", OPEN_METEO, params)
+    if raw_dir is not None:
+        raw_dir.mkdir(parents=True, exist_ok=True)
+        (raw_dir / f"{region_code}.json").write_bytes(answer["body"])
+    payload = json.loads(answer["body"])
+    store_months(db, region_code, payload, lat, lon)
+    return sum(1 for v in _month_values(payload) if v is not None)
+
+
+def _month_values(payload: dict[str, Any]) -> list[float | None]:
+    daily = payload.get("daily") or {}
+    groups: dict[str, list[int]] = defaultdict(list)
+    for i, date in enumerate(daily.get("time") or []):
+        groups[date[:7]].append(i)
+    return [monthly_solar(daily, idx) for _, idx in sorted(groups.items())]
+
+
 def backfill(db: Any, *, first_year: int = 2015, last_year: int | None = None, regions: list[str] | None = None,
              data_dir: str | Path | None = None, log: Callable[[str], None] = print) -> dict[str, Any]:
-    """Fetch ERA5-Land daily irradiation (Open-Meteo, no key) at each study region's centre and store the months.
+    """Fetch ERA5 daily irradiation (Open-Meteo, no key) at each study region's centre and store the months.
 
     One request per region for the whole period; the raw answer is kept in data/raw/weather-solar/<code>.json."""
     import os
     from sqlalchemy import select
-    from .collectors import client
     from .region_prepare import analysis_year
     from .regions import DEFAULT_REGION, StudyRegion
     last = last_year or analysis_year()
@@ -176,12 +201,8 @@ def backfill(db: Any, *, first_year: int = 2015, last_year: int | None = None, r
             continue
         else:
             lat, lon = round(region.center_lat, 4), round(region.center_lon, 4)
-        params = dict(latitude=lat, longitude=lon, start_date=f"{first_year}-01-01", end_date=f"{last}-12-31",
-                      daily="shortwave_radiation_sum", timezone="Asia/Seoul", models="era5_land")
         try:
-            answer = client.get("weather", f"solar-{region.code}", OPEN_METEO, params)
-            (root / f"{region.code}.json").write_bytes(answer["body"])
-            months = store_months(db, region.code, json.loads(answer["body"]), lat, lon)
+            months = fetch_region(db, region.code, lat, lon, first_year, last, root)
             db.commit()
         except Exception as exc:  # noqa: BLE001 - one region failing does not stop the others
             db.rollback()

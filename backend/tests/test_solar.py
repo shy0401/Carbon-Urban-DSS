@@ -94,7 +94,7 @@ def test_store_months_writes_complete_months_and_null_for_gaps():
     values = [10.0] * 31 + [12.0] * 27 + [None]
     db = FakeDb()
     assert solar.store_months(db, "36110", {"daily": {"time": days, "shortwave_radiation_sum": values}}, 36.5, 127.3) == 2
-    jan, feb = db.rows[("36110", "202501", "Open-Meteo / ERA5-Land")], db.rows[("36110", "202502", "Open-Meteo / ERA5-Land")]
+    jan, feb = db.rows[("36110", "202501", "Open-Meteo / ERA5")], db.rows[("36110", "202502", "Open-Meteo / ERA5")]
     assert (jan.irradiation_mj_m2, jan.days_observed, jan.expected_days) == (310.0, 31, 31)
     assert feb.irradiation_mj_m2 is None and feb.days_observed == 27   # a missing day: no month value, not a partial sum
     assert solar.store_months(db, "36110", {"daily": {"time": days}}, 36.5, 127.3) == 0
