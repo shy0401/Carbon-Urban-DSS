@@ -3,7 +3,7 @@
 전국 시·도에서 500m 격자까지, 공공데이터로 도시 에너지·탄소를 보고 계획안을 비교하는 도구의 사용법입니다. 화면 사진은 2026-09-29 PC에서 실제 DB로 찍었습니다.
 
 - **사용자 매뉴얼 (2026-10-08)**: [USER_MANUAL.md](USER_MANUAL.md) · [PDF](manual/Carbon-Urban-DSS-사용자-매뉴얼.pdf) — 지역·입력값별 결과 사례 25개, 3D·보고서, 사례 링크, 다른 PC 재현 점검(`scripts\dss.cmd VerifyCases`)
-- 발표 자료(2026-10-08): [기능과 시뮬레이션 사례](presentation/Carbon-Urban-DSS-기능과-시뮬레이션-사례.pptx) · 팀원 과제: [작업 지시서](presentation/Carbon-Urban-DSS-팀원-작업지시서.pptx) ([원문](TEAM_TASKS_2026-10.md))
+- 발표 자료(2026-10-08): [기능과 시뮬레이션 사례 18장](presentation/Carbon-Urban-DSS-기능과-시뮬레이션-사례.pptx) ([PDF](presentation/Carbon-Urban-DSS-기능과-시뮬레이션-사례.pdf)) · 팀원 과제: [작업 지시서](presentation/Carbon-Urban-DSS-팀원-작업지시서.pptx) ([PDF](presentation/Carbon-Urban-DSS-팀원-작업지시서.pdf), [원문](TEAM_TASKS_2026-10.md))
 - 발표 자료(22장, 발표자 메모 포함): [Carbon-Urban-DSS-guide.pptx](usage/Carbon-Urban-DSS-guide.pptx)
 - 소개와 활용 자료(31장, 발표자 메모 포함: 작업 내역·데이터 범위·사용법·업종별 활용 예시 11가지): [Carbon-Urban-DSS-소개와-활용.pptx](presentation/Carbon-Urban-DSS-소개와-활용.pptx) · [PDF](presentation/Carbon-Urban-DSS-소개와-활용.pdf)
 - 소개 · 전주 사례 자료(28장, 발표자 메모 포함: 기능, 데이터→결과와 범위, 사용 흐름, 개발지·상업지 시뮬레이션): [Carbon-Urban-DSS-소개-전주사례.pptx](presentation/Carbon-Urban-DSS-소개-전주사례.pptx) · [PDF](presentation/Carbon-Urban-DSS-소개-전주사례.pdf)

@@ -1,7 +1,7 @@
 # Carbon Urban DSS
 
 > **사용자 매뉴얼: [docs/USER_MANUAL.md](docs/USER_MANUAL.md)** ([PDF](docs/manual/Carbon-Urban-DSS-사용자-매뉴얼.pdf)) — 지역을 골라 입력값을 넣으면 어떤 결과가 나오는지 사례 25개(전주·수원·서울 강동·부산 강서), 3D·보고서, 다른 PC에서 같은 결과 확인(`scripts\dss.cmd VerifyCases`).
-> **팀원 과제: [docs/TEAM_TASKS_2026-10.md](docs/TEAM_TASKS_2026-10.md)** ([PPT](docs/presentation/Carbon-Urban-DSS-팀원-작업지시서.pptx)) · 발표: [기능과 시뮬레이션 사례](docs/presentation/Carbon-Urban-DSS-기능과-시뮬레이션-사례.pptx)
+> **팀원 과제: [docs/TEAM_TASKS_2026-10.md](docs/TEAM_TASKS_2026-10.md)** ([PPT](docs/presentation/Carbon-Urban-DSS-팀원-작업지시서.pptx) · [PDF](docs/presentation/Carbon-Urban-DSS-팀원-작업지시서.pdf)) · 발표: [기능과 시뮬레이션 사례 18장](docs/presentation/Carbon-Urban-DSS-기능과-시뮬레이션-사례.pptx) ([PDF](docs/presentation/Carbon-Urban-DSS-기능과-시뮬레이션-사례.pdf))
 >
 > **팀원 공통: 자료를 모으거나 계산·보고서를 만들기 전에 [공통 데이터 기준](docs/DATA_STANDARD.md)을 먼저 읽습니다.** (앱 메뉴 사용 방법 → 데이터 기준에서도 볼 수 있고, `python -m app.cli check-standard`로 점검합니다. 팀 자료 비교: [TEAM_DATA_COMPARISON](docs/TEAM_DATA_COMPARISON.md))
 
