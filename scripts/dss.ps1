@@ -40,7 +40,8 @@ Actions
   VerifyBundle  new-PC simulation: export a bundle, 'git clone' HEAD into a clean
                 folder, import there into a separate project, compare counts,
                 check API/web and the simulation cases, then remove that project
-                (-OutDir: bundle and clean clone on another drive, clone removed afterwards)
+                (-OutDir: bundle and clean clone on another drive, clone removed afterwards;
+                -BundlePath <zip>: check a bundle made earlier with the current code, no export)
   All           Doctor, Backup, Rebuild, Status, Probe, Collect, Status, Backup,
                 VerifyRestore(+pytest,+E2E), FrontendTest, VerifyBundle
 
@@ -807,9 +808,17 @@ function Invoke-MergeBundle {
 }
 
 function Invoke-VerifyBundle {
-    # New-PC simulation on this machine: export -> clean git clone of HEAD -> import into a separate project.
-    $exported = Invoke-ExportBundle
-    $zip = $script:Summary.results.bundle.zip
+    # New-PC simulation on this machine: export (or -BundlePath: a bundle made earlier, e.g. the one handed to the team)
+    # -> clean git clone of HEAD -> import into a separate project. The current code must still reproduce the bundle's cases.
+    if ($BundlePath) {
+        if (-not (Test-Path -LiteralPath $BundlePath)) { throw "Bundle not found: $BundlePath" }
+        $zip = (Resolve-Path -LiteralPath $BundlePath).Path
+        $exported = "existing bundle $(Split-Path -Leaf $zip)"
+        $script:Summary.results.bundle = [ordered]@{ zip = $zip; existing = $true }
+    } else {
+        $exported = Invoke-ExportBundle
+        $zip = $script:Summary.results.bundle.zip
+    }
     # -OutDir: the clean clone (and the raw files it imports) go to that drive and are removed afterwards.
     $clone = if ($OutDir) { Join-Path $OutDir "verify-$Stamp" } else { Join-Path $RunDir 'clean-clone' }
     $dirty = Invoke-Native -File 'git' -Arguments @('status', '--porcelain', '--untracked-files=no')

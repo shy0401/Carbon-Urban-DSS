@@ -594,6 +594,12 @@ scripts\dss.cmd VerifyBundle -OutDir F:\carbon-dss-bundles
 
 묶음 내보내기 → 현재 커밋을 깨끗한 폴더에 `git clone` → 그 폴더의 실행기로 **별도 프로젝트**(`carbon-urban-dss-importtest`, 포트 8010/5190)에 `ImportBundle` → 행 수·화면 확인 → **사례 25개 재계산·비교** → 별도 프로젝트 정리. `-OutDir`을 주면 묶음과 복제 폴더를 그 드라이브에 만들고 끝나면 복제 폴더를 지웁니다(C 드라이브 공간이 부족할 때).
 
+이미 만든 묶음(예: 팀원에게 준 묶음)이 **지금 코드**에서도 같은 값을 내는지는 내보내기 없이 확인합니다.
+
+```powershell
+scripts\dss.cmd VerifyBundle -BundlePath F:\전북대\선도소프트\팀원전달_20261008\carbon-dss-bundle-20261008-050941.zip -OutDir F:\carbon-dss-bundles
+```
+
 
 ### 9.6 점검 기록 (2026-10-08)
 
@@ -680,7 +686,7 @@ scripts\dss.cmd VerifyBundle -OutDir F:\carbon-dss-bundles
 | `scripts\dss.cmd MergeBundle -BundlePath <zip> -DryRun` | 팀원 묶음 더하기 전 세기 |
 | `scripts\dss.cmd ExportBundle [-OutDir <폴더>]` | 자료 묶음 만들기(+사례 기록) |
 | `scripts\dss.cmd VerifyCases [-CasesPath <json>]` | 사례 재계산·비교 |
-| `scripts\dss.cmd VerifyBundle [-OutDir <폴더>]` | 새 PC 모의 점검 |
+| `scripts\dss.cmd VerifyBundle [-OutDir <폴더>] [-BundlePath <zip>]` | 새 PC 모의 점검 (묶음을 주면 내보내기 없이 그 묶음으로) |
 | `scripts\dss.cmd CollectHistory` | 빠진 과거 자료 수집 |
 | `… python -m app.cli check-standard` | 데이터 기준 점검 |
 | `… python -m app.cli verify-cases [--only J01,J06] [--out <json>]` | 사례 재계산·비교 |
