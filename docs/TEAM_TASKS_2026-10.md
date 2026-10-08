@@ -43,6 +43,7 @@
 
 | 단계 | 할 일 | 명령·화면 |
 |---|---|---|
+| 0 키 | 수집에 쓸 API 키를 **각자** 발급 (하루 한도가 키마다 따로라 팀원마다 나눠 받으면 빨라짐). 키는 `.env`에만, 메신저·Git·문서에 붙이지 않음 | [데이터 재설정·수집 안내](DATA_SETUP_GUIDE.md) 1~6절: 공공데이터포털(건축HUB 건물에너지·K-apt·건축물대장 활용신청), VWorld(2D데이터 API 체크), SGIS |
 | 1 준비 | 최신 코드, 사전 점검 | `git pull` → `scripts\dss.cmd Doctor` |
 | 2 재현 (G3) | 기준 PC 묶음을 **빈 DB**에 가져오면 사례를 자동으로 다시 계산해 비교 | 빈 PC: `scripts\dss.cmd ImportBundle -BundlePath <zip>` (마지막 줄 `simulation cases: 25/25 match`). 자기 DB를 지키려면 아래 "따로 확인" |
 | 3 범위 한 줄 | 기준 0절 1번 | 예: `11740 서울 강동구 · 2020-01~2025-12 · 500m · 건축HUB 전 지번 + K-apt` |
