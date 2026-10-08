@@ -18,6 +18,7 @@ industrial/transport/power uses. Data exist from 2020-01; 전북 months up to 20
 from __future__ import annotations
 
 import os
+import re
 import time
 from pathlib import Path
 from typing import Any, Callable
@@ -237,6 +238,36 @@ def year_complete(year: int) -> bool:
         return False
     return item.get("status") == "DONE" and item.get("scope") == "all_parcels"
 
+
+
+def region_year_complete(db: Any, region: str | None, year: int) -> bool:
+    """Whether ``year`` of 건축HUB is fully collected for one study region.
+
+    The city-wide progress file (``year_complete``) belongs to the original study area (전주, DEFAULT_REGION).
+    Another prepared region counts a year as finished only when its own collection said so: the analysis year of
+    its 지역 준비 step (``study_regions.datasets.building_energy``) or a year finished by ``region-energy-history``
+    (``datasets.energy_years``). A year the daily quota cut off half way stays 잠정값 instead of reading as a whole year.
+    Both live in the database, so a data bundle carries them."""
+    from .regions import DEFAULT_REGION, StudyRegion
+    if not region or region == DEFAULT_REGION:
+        return year_complete(year)
+    try:
+        study = db.get(StudyRegion, region)
+    except Exception:  # noqa: BLE001 - table not created yet
+        db.rollback()
+        study = None
+    if study is None:
+        return False
+    datasets = study.datasets or {}
+    step = datasets.get("building_energy") or {}
+    if step.get("status") == "DONE":
+        step_year = step.get("year")
+        if step_year is None:  # recorded before the step kept its year: "2025년 법정동·리 …"
+            match = re.match(r"(\d{4})년", str(step.get("message") or ""))
+            step_year = int(match.group(1)) if match else None
+        if step_year == year:
+            return True
+    return (datasets.get("energy_years") or {}).get(str(year)) == "DONE"
 
 # --------------------------------------------------------------------------- grid aggregates
 _GRID_CACHE: dict[int, tuple[int, dict[str, dict[str, Any]]]] = {}  # year -> (row count, per-grid values)

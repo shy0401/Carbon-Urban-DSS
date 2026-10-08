@@ -168,8 +168,8 @@ def get_dashboard(year:int=Query(DEFAULT_YEAR,ge=2000,le=2100),grid_id:str|None=
             from .energy_parcels import grid_building_energy,map_properties as building_energy_properties
             factor=(factors_for(db,year).get('ELECTRICITY') or {}).get('factor')
             item=grid_building_energy(db,year).get(selected) if selected else None
-            from .energy_parcels import year_complete
-            data['building_energy']=dict(building_energy_properties(item,factor),year=year,complete=year_complete(year)) if item else None
+            from .energy_parcels import region_year_complete
+            data['building_energy']=dict(building_energy_properties(item,factor),year=year,complete=region_year_complete(db,region,year)) if item else None
         except Exception:
             db.rollback();data['building_energy']=None
         return data
@@ -410,7 +410,7 @@ def map_data(request:Request,year:int=Query(DEFAULT_YEAR,ge=2000,le=2100),region
         grid500=grid500_properties(db,ids)
         from .register_grid import grid_register_summary,map_properties as register_properties
         register=grid_register_summary(db)
-        from .energy_parcels import grid_building_energy,map_properties as building_energy_properties,year_complete
+        from .energy_parcels import grid_building_energy,map_properties as building_energy_properties,region_year_complete
         building_energy=grid_building_energy(db,year)
         from .sgis_grid_official import official_codes,meta as official_grid_meta
         official=official_codes(db)
@@ -475,7 +475,7 @@ def map_data(request:Request,year:int=Query(DEFAULT_YEAR,ge=2000,le=2100),region
             'complexes':complexes,'complex_floor_area_issues':sum(1 for f in complexes['features'] if f['properties'].get('floor_area_status') not in ('OK',None)),
             'complexes_source':complexes.get('source'),
             'factors':{'electricity':{'value':electricity_factor['factor'],'unit':electricity_factor['factor_unit'],'source':electricity_factor.get('source'),'reference_year':electricity_factor.get('reference_year')} if electricity_factor else None,'gas':None if not factors.get('GAS') else {'value':factors['GAS']['factor'],'unit':factors['GAS']['factor_unit']}},
-            'building_energy':{'grids':len(building_energy),'parcels':sum(v['parcels'] for v in building_energy.values()),'complete':year_complete(year),'source':'건축HUB 건물에너지 (법정동 단위 전 지번, 연속지적으로 격자 배치)'} if building_energy else None,
+            'building_energy':{'grids':len(building_energy),'parcels':sum(v['parcels'] for v in building_energy.values()),'complete':region_year_complete(db,sc.code,year),'source':'건축HUB 건물에너지 (법정동 단위 전 지번, 연속지적으로 격자 배치)'} if building_energy else None,
             'register':{'grids':len(register),'buildings':sum(r['buildings'] for r in register.values()),'source':'건축HUB 건축물대장 표제부 (격자 연결분)'} if register else None,
             'sgis_grid':{'year':next((v.get('sgis1k_year') for v in sgis_props.values()),None),'source':'SGIS 격자 통계 1km (공공데이터포털 15141768)','note':'소속 1km 공식 격자의 밀도·비율이며 500m로 나눈 값이 아닙니다. 비밀보호 잡음(±7) 포함.'} if sgis_props else None,
             'sgis_grid500':dict({k:v for k,v in grid500_coverage(db).items() if k in ('first_year','last_year','base_year','source')},cells=sum(1 for v in grid500.values() if v.get('sgis500_status')=='OBSERVED'),note='격자 자체의 500m 공식 통계(총괄 항목). 인구 5 미만은 0 또는 5, 사업체 3 미만은 0 또는 3으로 대체, 그 이상 최대 ±7(사업체 ±4) 잡음. 통계 없음은 0이 아닙니다.') if grid500 else None,

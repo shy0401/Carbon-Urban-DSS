@@ -570,7 +570,7 @@ docker compose -p carbon-urban-dss -f compose.yaml -f compose.demo.yaml exec -T 
 - 계산은 **읽기만** 합니다. 계획안·보고서를 DB에 저장하지 않습니다(격자 보고서의 계획안은 계산 중에만 쓰고 되돌림).
 - 숫자는 상대 오차 100만분의 1(최소 0.01) 안이면 같다고 봅니다. 근거 문장은 글자 하나까지 같아야 합니다.
 - **자료 지문(D01~D04)이 다르면** 계산이 아니라 DB 자료가 다른 것입니다. 같은 날짜의 자료 묶음을 가져왔는지 확인합니다.
-- 자료 지문에는 **건축HUB 연도별 "수집 완료" 표시**(`hub_year_complete.2020~2025`)도 들어 있습니다. 이 표시는 DB가 아니라 `data/ops/history-progress.json`에 있고, 완료가 아닌 해는 "잠정값"으로 쓰이며 감축 역산의 기준 연도가 되지 못합니다. 그래서 자료 묶음에 `collection-progress.json`으로 함께 담기고 `ImportBundle`이 되살립니다. `MergeBundle`(자기 DB에 더하기)은 이 표시를 바꾸지 않으므로, 기준 PC와 비교할 때는 작업 지시서의 "따로 확인"(별도 프로젝트에 `ImportBundle`)으로 합니다.
+- 자료 지문에는 **건축HUB 연도별 "수집 완료" 표시**(`hub_year_complete.2020~2025`)도 들어 있습니다. 이 표시는 DB가 아니라 `data/ops/history-progress.json`에 있고, 완료가 아닌 해는 "잠정값"으로 쓰이며 감축 역산의 기준 연도가 되지 못합니다. 그래서 자료 묶음에 `collection-progress.json`으로 함께 담기고 `ImportBundle`이 되살립니다. 전주 밖의 준비 지역은 이 파일 대신 DB의 지역 기록(지역 준비 연도, `region-energy-history`가 끝낸 연도)으로 판단하므로 묶음의 DB와 함께 옮겨집니다. `MergeBundle`(자기 DB에 더하기)은 이 표시를 바꾸지 않으므로, 기준 PC와 비교할 때는 작업 지시서의 "따로 확인"(별도 프로젝트에 `ImportBundle`)으로 합니다.
 - 결과 전체는 `--out` 파일(JSON)에 남습니다(`scripts\dss.cmd VerifyCases`는 `data\ops\<시각>-verifycases\cases-check.json`).
 
 ### 9.3 사례 링크

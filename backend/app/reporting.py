@@ -143,12 +143,13 @@ def grid_detail_facts(db,year,grid_id,data):
             out['facts'].append({'id':'official_grid','text':f'대상 격자는 SGIS 공식 500m 격자 {code}와 같은 칸입니다(경계 API 기준, 통계값은 별도 신청).'})
     except Exception:db.rollback()
     try:
-        from .energy_parcels import grid_building_energy,map_properties,year_complete
+        from .energy_parcels import grid_building_energy,map_properties,region_year_complete
+        from .regions import region_for_grid
         from .service import factors_for
         factor=(factors_for(db,year).get('ELECTRICITY') or {}).get('factor')
         item=grid_building_energy(db,year).get(grid_id)
         if item:
-            props=map_properties(item,factor);complete=year_complete(year)
+            props=map_properties(item,factor);complete=region_year_complete(db,region_for_grid(db,grid_id),year)
             out['building_energy']=dict(props,year=year,complete=complete)
             elec=props.get('bldg_electricity_kwh');gas=props.get('bldg_gas_kwh');carbon=props.get('bldg_carbon_t')
             parts=[f"전력 {elec:,.0f}kWh" if elec is not None else None,f"가스 {gas:,.0f}kWh" if gas is not None else None,f"전력 탄소 {carbon:,.1f}tCO2eq" if carbon is not None else None,f"가스 탄소 {props['bldg_gas_carbon_t']:,.1f}tCO2eq(가정 계수)" if props.get('bldg_gas_carbon_t') is not None else None]

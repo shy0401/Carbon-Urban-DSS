@@ -467,15 +467,32 @@ def collect_energy_years(db: Any, code: str, years: list[int], *, log: Log = pri
             stats = collect_energy_all(db, year, lambda f, m: log(m) if int(f * 100) % 10 == 0 else None, regions=leaves)
             done[year] = {"requests": stats["requests"], "inserted": stats["inserted"], "updated": stats["updated"]}
             log(f"{code} {year}: 요청 {stats['requests']:,}회, 새 행 {stats['inserted']:,}")
+            _mark_energy_year(db, region, year, "DONE")
         except ExternalError as exc:
             db.rollback()
             status, message = _classify(exc)
             log(f"{code} {year}: {status} {message}")
             left.append(year)
+            _mark_energy_year(db, region, year, status)  # a year stopped half way stays 잠정값 (energy_parcels.region_year_complete)
             quota = status == "WAITING"  # daily quota: stop here; other errors: try the next year
     if done:
         build_parcel_grid(db)
     return {"region": code, "done": done, "left": sorted(left), "years_before_hub": sorted(y for y in years if y < HUB_FIRST_YEAR)}
+
+
+def _mark_energy_year(db: Any, region: StudyRegion, year: int, status: str) -> None:
+    """``study_regions.datasets.energy_years[year]``: DONE only when every 법정동 × month of the year was answered."""
+    try:
+        db.refresh(region, with_for_update=True)
+    except Exception:  # noqa: BLE001 - SQLite in tests
+        db.rollback()
+        db.refresh(region)
+    datasets = dict(region.datasets or {})
+    years = dict(datasets.get("energy_years") or {})
+    years[str(year)] = status
+    datasets["energy_years"] = years
+    region.datasets = datasets
+    db.commit()
 
 
 def step_kapt_energy(db: Any, region: StudyRegion, log: Log) -> dict[str, Any]:

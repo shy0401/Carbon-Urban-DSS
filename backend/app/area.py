@@ -699,7 +699,8 @@ def register_events(area: dict[str, Any], rows: list[dict[str, Any]], years: lis
             "basis": "건축물대장 표제부 사용승인일 · 격자(500m) 기준 포함, 연면적은 대장 연면적"}
 
 
-def building_energy_block(grid_ids: list[str], by_year: dict[int, dict[str, dict[str, Any]]], factor: float | None) -> dict[str, Any]:
+def building_energy_block(grid_ids: list[str], by_year: dict[int, dict[str, dict[str, Any]]], factor: float | None,
+                          complete: dict[int, bool] | None = None) -> dict[str, Any]:
     """Every metered building of the area's grids (건축HUB by 법정동), per year with data (2020-; 전주 2020~, 수원·완주 2024~).
 
     Complements the apartment series: offices, shops, schools and large apartment blocks together.
@@ -723,7 +724,8 @@ def building_energy_block(grid_ids: list[str], by_year: dict[int, dict[str, dict
             "gas_complete": sum(g["gas_complete"] for g in inside), "gas_kwh": round(sum(gas), 1) if gas else None,
             "area_m2": round(area_m2, 1) if area_m2 else None, "kwh_per_m2": round(area_kwh / area_m2, 2) if area_m2 else None,
             "electricity_carbon_kgco2eq": round(electricity * factor, 1) if electricity is not None and factor else None,
-            "complete": year_complete(year),
+            # the region's own collection state when given (energy_parcels.region_year_complete), else the city-wide file
+            "complete": bool(complete.get(year)) if complete is not None else year_complete(year),
             "provider_gap": HUB_PROVIDER_GAPS.get(year),
         }
     return {"years": years, "available": bool(years), "trend": same_parcel_trend(members, by_year, years),
@@ -804,7 +806,8 @@ def build_history(area: dict[str, Any], years: list[int], inputs: dict[str, Any]
     from .sgis_grid import area_block
     sgis_year, sgis_values = inputs.get("sgis_grid") or (None, {})
     history["sgis_grid"] = area_block(area["grid_ids"], sgis_year, sgis_values)
-    history["building_energy"] = building_energy_block(area["grid_ids"], inputs.get("building_energy") or {}, factor)
+    history["building_energy"] = building_energy_block(area["grid_ids"], inputs.get("building_energy") or {}, factor,
+                                                       inputs.get("building_energy_complete"))
     city = inputs.get("city_intensity")
     history["city_intensity"] = city
     history["solar"] = inputs.get("solar")  # 태양광 연 발전량 추정 (solar.py, DATA_STANDARD 5.13), None when no complete year
@@ -1027,7 +1030,7 @@ def load_inputs(db: Any, years: list[int], region: str | None = None) -> dict[st
         db.rollback()
     from .overlays import admin_features, grid_zoning_summary
     from .sgis_grid import grid_values
-    from .energy_parcels import HUB_FIRST_YEAR, grid_building_energy
+    from .energy_parcels import HUB_FIRST_YEAR, grid_building_energy, region_year_complete
     admin, admin_year = admin_features(db, sc=sc)
     building_energy = {}
     for year in years:
@@ -1042,7 +1045,8 @@ def load_inputs(db: Any, years: list[int], region: str | None = None) -> dict[st
                 building_energy[year] = by_grid
     from .sgis_grid import parents
     zoning = {g: v for g, v in grid_zoning_summary(db).items() if g in region_ids}
-    return {"building_energy": building_energy, "sgis_grid": grid_values(db, codes=parents(ids)), "register": register, "complexes": complexes, "energy": energy, "weather": weather, "population": population, "households": households,
+    building_energy_complete = {year: region_year_complete(db, sc.code, year) for year in building_energy}
+    return {"building_energy": building_energy, "building_energy_complete": building_energy_complete, "sgis_grid": grid_values(db, codes=parents(ids)), "register": register, "complexes": complexes, "energy": energy, "weather": weather, "population": population, "households": households,
             "factor": factors, "grids": grids, "admin": admin.get("features", []), "admin_year": admin_year, "zoning": zoning,
             "region": {"code": sc.code, "name": sc.name, "short_name": sc.short, "is_default": sc.is_default}}
 

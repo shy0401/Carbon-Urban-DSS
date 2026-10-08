@@ -171,6 +171,9 @@ def test_building_energy_block_sums_the_area_grids_per_year(tmp_path, monkeypatc
     (tmp_path / 'ops').mkdir()
     (tmp_path / 'ops' / 'history-progress.json').write_text('{"items": {"energy:2025": {"status": "DONE", "scope": "all_parcels"}}}', encoding='utf-8')
     assert building_energy_block(['g1'], {2025: grids}, 0.5)['years'][2025]['complete'] is True
+    # another region passes its own state: the city-wide file does not decide for it
+    assert building_energy_block(['g1'], {2025: grids}, 0.5, {2025: False})['years'][2025]['complete'] is False
+    assert building_energy_block(['g1'], {2025: grids}, 0.5, {})['years'][2025]['complete'] is False
     assert y['parcels'] == 12 and y['electricity_complete'] == 8 and y['electricity_kwh'] == 1000000.0
     assert y['kwh_per_m2'] == 40.0 and y['electricity_carbon_kgco2eq'] == 500000.0
     assert building_energy_block(['g3'], {2025: grids}, 0.5) == {'years': {}, 'available': False, 'trend': None, 'basis': block['basis']}
