@@ -333,10 +333,20 @@ def area_html(s: dict[str, Any]) -> str:
     def num(v: float | None, digits: int = 0) -> str:
         return "자료 없음" if v is None else f"{v:,.{digits}f}"
 
+    def kst(value: Any) -> str:
+        from datetime import datetime, timedelta, timezone
+        try:
+            stamp = datetime.fromisoformat(str(value))
+            if stamp.tzinfo is None:
+                return str(value)[:16]
+            return stamp.astimezone(timezone(timedelta(hours=9))).strftime("%Y-%m-%d %H:%M (KST)")
+        except ValueError:
+            return str(value)[:19]
+
     parts = [f"<!doctype html><html lang=\"ko\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
              f"<title>{escape(s['title'])}</title><style>{HTML_STYLE}</style></head><body><main>",
              "<div class=\"bar\"><button type=\"button\" onclick=\"window.print()\">인쇄 · PDF로 저장</button></div>",
-             f"<h1>{escape(s['title'])}</h1><p class=\"meta\">지역 {escape(s['area']['label'])} · 기간 {h['years'][0]}~{h['years'][-1]} · 작성 {escape(str(s['created_at'])[:19])}"
+             f"<h1>{escape(s['title'])}</h1><p class=\"meta\">지역 {escape(s['area']['label'])} · 기간 {h['years'][0]}~{h['years'][-1]} · 작성 {escape(kst(s['created_at']))}"
              f"<span class=\"badge\">운영 단계 1차 추정</span><span class=\"badge\">{escape(s['summary']['validation'])}</span></p>"]
     key = key_results(s)
     if key:
