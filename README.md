@@ -129,6 +129,7 @@ npm run build
 - [사용 안내](docs/USAGE.md) · [사용 안내 발표 자료 (.pptx)](docs/usage/Carbon-Urban-DSS-guide.pptx) — 화면 사진으로 본 기능과 사용 순서
 - 웹 메뉴 **사용 방법**(/guide): 처음 시작, 화면별 사용법, **지도 정보와 활용**, 값 읽는 법, 빠진 자료 전부 수집, 인증키 설정, 로컬 AI, 문제 해결
 - [정확도·신뢰도 평가](docs/ACCURACY.md), [알려진 한계](docs/LIMITATIONS.md), [5분 시연](docs/DEMO_SCRIPT.md)
+- [업체·지자체 활용 방식과 이 도구의 대응](docs/INDUSTRY_USE_CASES.md) (2026-10-10 조사, 지역 시뮬레이션 사용성 개선 근거)
 
 ## 계획서 기반 최신 보완
 
