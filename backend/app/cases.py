@@ -293,7 +293,15 @@ def run_one(db: Any, spec: dict[str, Any]) -> dict[str, Any]:
     return {"values": _round(flatten(summary)), "facts": texts, "facts_sha256": facts_hash(texts)}
 
 
-def compare(spec: dict[str, Any], got: dict[str, Any]) -> dict[str, Any]:
+# Version of the engine's fact-sentence rules. A cases file recorded under other rules is compared on its values only
+# (the sentences changed on purpose), and the log says so.
+#   1: until 2026-10-09
+#   2: 2026-10-10 — before/after sentence names the observed years (no '3년 평균' of one observed year) and the change
+#      sentence adds the same-complex change and a coverage caution when the before-period observed fewer complexes
+FACT_RULES = 2
+
+
+def compare(spec: dict[str, Any], got: dict[str, Any], fact_rules: int = FACT_RULES) -> dict[str, Any]:
     if "error" in got:
         return {"status": "ERROR", "message": got["error"], "diffs": []}
     expected = spec.get("expected")
@@ -310,8 +318,9 @@ def compare(spec: dict[str, Any], got: dict[str, Any]) -> dict[str, Any]:
     if expected.get("facts_sha256") != got["facts_sha256"]:
         before, after = expected.get("facts") or [], got["facts"]
         text_diffs = [{"expected": e, "actual": a} for e, a in zip(before + [None] * (len(after) - len(before)), after + [None] * (len(before) - len(after))) if e != a]
-    status = "MATCH" if not diffs and not text_diffs else "DIFF"
-    return {"status": status, "diffs": diffs, "text_diffs": text_diffs, "checked": len(keys), "facts": len(got["facts"])}
+    rules_changed = bool(text_diffs) and fact_rules != FACT_RULES
+    status = "MATCH" if not diffs and (not text_diffs or rules_changed) else "DIFF"
+    return {"status": status, "diffs": diffs, "text_diffs": text_diffs, "rules_changed": rules_changed, "checked": len(keys), "facts": len(got["facts"])}
 
 
 def verify(db: Any, cases: dict[str, Any], only: set[str] | None = None, log: Callable[[str], None] = print) -> dict[str, Any]:
@@ -320,20 +329,25 @@ def verify(db: Any, cases: dict[str, Any], only: set[str] | None = None, log: Ca
         if only and spec["id"] not in only:
             continue
         got = run_one(db, spec)
-        verdict = compare(spec, got)
+        verdict = compare(spec, got, int(cases.get("fact_rules", 1)))
         results.append({"id": spec["id"], "title": spec.get("title"), "kind": spec["kind"], **verdict, "got": got})
         word = {"MATCH": "일치", "DIFF": "다름", "ERROR": "오류", "NOT_RECORDED": "기준값 없음"}[verdict["status"]]
         extra = f"값 {verdict.get('checked', 0)}개" + (f", 근거 문장 {verdict['facts']}개" if verdict.get("facts") else "")
         log(f"[{word}] {spec['id']} {spec.get('title', '')} — {verdict.get('message') or extra}")
         for d in verdict["diffs"][:12]:
             log(f"       {d['label']}: 기준 {d['expected']} / 이 PC {d['actual']}")
-        for d in verdict.get("text_diffs", [])[:5]:
-            log(f"       문장 기준: {d['expected']}\n       문장 이 PC: {d['actual']}")
+        if verdict.get("rules_changed"):
+            log(f"       근거 문장 규칙이 기준 파일(v{cases.get('fact_rules', 1)})과 이 코드(v{FACT_RULES})가 달라 문장 {len(verdict['text_diffs'])}개는 비교하지 않았습니다(값은 모두 비교).")
+        else:
+            for d in verdict.get("text_diffs", [])[:5]:
+                log(f"       문장 기준: {d['expected']}\n       문장 이 PC: {d['actual']}")
     counts = {s: sum(1 for r in results if r["status"] == s) for s in ("MATCH", "DIFF", "ERROR", "NOT_RECORDED")}
     ok = counts["MATCH"] == len(results) and results
     data_diff = any(r["kind"] == "dataset" and r["status"] == "DIFF" for r in results)
     if ok:
-        log(f"결과: {len(results)}개 사례 모두 일치 — 이 PC의 계산 결과는 기준 PC({cases.get('recorded_on', '-')})와 같습니다.")
+        changed = sum(1 for r in results if r.get("rules_changed"))
+        log(f"결과: {len(results)}개 사례 모두 일치 — 이 PC의 계산 결과는 기준 PC({cases.get('recorded_on', '-')})와 같습니다."
+            + (f" (근거 문장 규칙 v{cases.get('fact_rules', 1)}→v{FACT_RULES}로 바뀐 사례 {changed}개는 값만 비교)" if changed else ""))
     else:
         log(f"결과: 일치 {counts['MATCH']} · 다름 {counts['DIFF']} · 오류 {counts['ERROR']} · 기준값 없음 {counts['NOT_RECORDED']} (사례 {len(results)}개)")
         if data_diff:
@@ -358,6 +372,7 @@ def record(db: Any, cases: dict[str, Any], note: str | None = None, log: Callabl
         spec["expected"] = got
         log(f"[기록] {spec['id']} {spec.get('title', '')} — 값 {len(got['values'])}개, 근거 문장 {len(got['facts'])}개")
     out["recorded_on"] = datetime.now(KST).isoformat(timespec="seconds")   # 한국 시각으로 적는다
+    out["fact_rules"] = FACT_RULES
     if note:
         out["data_note"] = note
     return out

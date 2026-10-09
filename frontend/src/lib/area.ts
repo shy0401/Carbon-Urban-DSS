@@ -174,6 +174,8 @@ export interface BeforeAfter {
   weather?: { before_hdd: number | null; after_hdd: number | null; before_cdd: number | null; after_cdd: number | null };
   population?: { before: number | null; after: number | null; basis: string };
   gaps?: string[];
+  /** 전후 기간에 실제로 12개월 관측이 있는 연도와 관측 단지 수. 개발 전 관측 단지가 적으면 comparable=false. */
+  coverage?: { observed_before_years: number[]; observed_after_years: number[]; before_parcels_mean: number | null; after_existing_parcels_mean: number | null; comparable: boolean };
 }
 
 /** 감축 노력의 기준 건물: 공동주택(K-apt) 또는 구역 건물 전체(건축HUB, 상가·업무 포함). */

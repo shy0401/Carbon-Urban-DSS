@@ -59,6 +59,19 @@ def test_compare_reports_value_and_sentence_differences():
     assert cases.compare(spec, {"error": "ValueError: x"})["status"] == "ERROR"
 
 
+def test_a_file_recorded_under_older_sentence_rules_is_compared_on_values_only():
+    facts = ["개발 전 3년 평균 전력은 1,000 kWh입니다."]
+    spec = _spec({"label": "송천1동 (행정동)"}, facts)
+    newer = ["개발 전 관측 1개 연도(2018) 평균 전력은 1,000 kWh입니다."]
+    got = {"values": {"label": "송천1동 (행정동)"}, "facts": newer, "facts_sha256": cases.facts_hash(newer)}
+    old_rules = cases.compare(spec, got, fact_rules=cases.FACT_RULES - 1)
+    assert old_rules["status"] == "MATCH" and old_rules["rules_changed"] and old_rules["text_diffs"]
+    same_rules = cases.compare(spec, got)
+    assert same_rules["status"] == "DIFF" and not same_rules["rules_changed"]   # same rules: a sentence change is a difference
+    value_diff = cases.compare(spec, dict(got, values={"label": "다른 동"}), fact_rules=1)
+    assert value_diff["status"] == "DIFF"   # values are always compared
+
+
 def test_one_failing_case_does_not_stop_the_run_and_nothing_is_committed(monkeypatch):
     class FakeDb:
         commits = rollbacks = 0

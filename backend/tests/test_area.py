@@ -149,7 +149,8 @@ def test_facts_carry_their_numbers_for_verification():
     comparison = before_after(history, 2020, 3)
     facts = area_facts(history, comparison, effort(history, {'added_floor_area_m2': 40000}, 40))
     change = next(f for f in facts if f['id'] == 'change')
-    assert change['numbers'] == [50.0] and '+50.0%' in change['text']
+    assert change['numbers'][0] == 50.0 and change['signed_pct'] == 50.0 and '+50.0%' in change['text']
+    assert '같은 기존 단지 1곳끼리는 +0.0% 변했습니다' in change['text'] and change['numbers'][1:] == [1, 0.0]
     assert all(isinstance(n, (int, float)) for f in facts for n in f['numbers'])
     # the apartment (K-apt) baseline is stated too, so a summary that also quotes building-wide energy says which one the target uses
     basis = next(f for f in facts if f['id'] == 'effort_basis')
@@ -306,3 +307,27 @@ def test_observed_baseline_is_the_year_effort_uses():
         result = effort(history, {'added_floor_area_m2': 1000}, 20, basis=basis)
         assert base['year'] == result['baseline_year'] and base['kwh'] == result['baseline_kwh']
         assert base['kwh_per_m2'] == pytest.approx(result['intensity_kwh_per_m2'])
+
+
+def test_before_after_names_the_observed_years_and_flags_a_thinner_before_period():
+    """Only some complexes were collected for the years before the development: the total change mixes in coverage."""
+    data = inputs()
+    complexes = dict(COMPLEXES, OLD2={'kapt_code': 'OLD2', 'name': '기존단지2', 'approval_year': 2012, 'approval_date': '2012-01-01', 'households': 400,
+                                      'gfa': 40000.0, 'floor_area_ok': True, 'lon': 127.1030, 'lat': 35.8030, 'grid_id': 'g1'})
+    rows = data['energy'] + [{'use_ym': f'{y}{m:02d}', 'energy_type': 'ELECTRICITY', 'usage_kwh': 80000.0, 'grid_id': 'g1', 'kapt_code': 'OLD2', 'parcel': 'p-old2'}
+                             for y in (2021, 2022) for m in range(1, 13)]
+    data.update(complexes=complexes, energy=rows)
+    points = POINTS + [{'kapt_code': 'OLD2', 'lon': 127.1030, 'lat': 35.8030, 'grid_id': 'g1'}]
+    area = resolve_area({'type': 'admin', 'code': '35012650'}, GRIDS, points, ADMIN, ZONING)
+    history = build_history(area, YEARS, data)
+    comparison = before_after(history, 2020, 3)
+    cov = comparison['coverage']
+    assert cov['observed_before_years'] == [2018, 2019] and cov['observed_after_years'] == [2021, 2022]
+    assert cov['before_parcels_mean'] == 1 and cov['after_existing_parcels_mean'] == 2 and cov['comparable'] is False
+    facts = {f['id']: f for f in area_facts(history, comparison)}
+    assert '개발 전 관측 2개 연도(2018, 2019) 평균' in facts['before_after']['text'] and '개발 후 관측 2개 연도(2021, 2022)' in facts['before_after']['text']
+    assert '관측 범위 차이가 섞여' in facts['change']['text'] and facts['change']['signed_pct'] == comparison['metrics']['electricity']['total_change_pct']
+    assert '같은 기존 단지 1곳끼리는 +0.0% 변했습니다' in facts['change']['text']
+    # the original fixture (the same complex before and after) stays comparable
+    plain = before_after(build_history(resolve_area({'type': 'admin', 'code': '35012650'}, GRIDS, POINTS, ADMIN, ZONING), YEARS, inputs()), 2020, 3)
+    assert plain['coverage']['comparable'] is True

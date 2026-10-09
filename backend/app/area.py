@@ -428,6 +428,20 @@ def before_after(history: dict[str, Any], event_year: int | None = None, window:
     result: dict[str, Any] = {"available": True, "event_year": event_year, "window": window,
                               "before_years": before_years, "after_years": after_years,
                               "event": events.get(event_year), "metrics": {}}
+    # Which of those years actually have a 12-month total, and how many parcels stand behind each side:
+    # a before-period with only a few complexes collected (e.g. 2018 K-apt partly collected) is not the same
+    # population as the after-period, so the total change is then labelled as mixed with the coverage gap.
+    elec_years = lambda ys: [y for y in ys if history["energy"][y]["electricity"]["kwh"] is not None]  # noqa: E731
+    observed_before, observed_after = elec_years(before_years), elec_years(after_years)
+    before_parcels = _mean([history["energy"][y]["electricity"]["complete_parcels"] for y in observed_before])
+    after_existing = _mean([sum(1 for c in history["energy"][y]["electricity"].get("by_complex") or {} if approved.get(c) and approved[c] < event_year)
+                            for y in observed_after]) if any(history["energy"][y]["electricity"].get("by_complex") for y in observed_after) else None
+    result["coverage"] = {
+        "observed_before_years": observed_before, "observed_after_years": observed_after,
+        "before_parcels_mean": before_parcels, "after_existing_parcels_mean": after_existing,
+        # comparable unless the before side observed clearly fewer parcels than the existing ones observed after
+        "comparable": not (before_parcels is not None and after_existing and before_parcels < 0.8 * after_existing),
+    }
     for energy in ("electricity", "gas"):
         before_total = _mean([history["energy"][y][energy]["kwh"] for y in before_years])
         after_total = _mean([history["energy"][y][energy]["kwh"] for y in after_years])
@@ -1055,9 +1069,27 @@ def area_facts(history: dict[str, Any], comparison: dict[str, Any] | None = None
         ev = comparison["event"] or {}
         add("event", f"{comparison['event_year']}년에 단지 {ev.get('complexes', 0)}개({ev.get('households', 0):,}세대)가 사용승인되었습니다.", comparison["event_year"], ev.get("complexes", 0), ev.get("households", 0))
         if m["before_total_kwh"] is not None and m["after_total_kwh"] is not None:
-            add("before_after", f"개발 전 {len(comparison['before_years'])}년 평균 전력은 {m['before_total_kwh']:,.0f} kWh, 개발 후 {len(comparison['after_years'])}년 평균은 {m['after_total_kwh']:,.0f} kWh입니다.", len(comparison["before_years"]), m["before_total_kwh"], len(comparison["after_years"]), m["after_total_kwh"])
+            cov = comparison.get("coverage") or {}
+            ob = cov.get("observed_before_years") or [y for y in comparison["before_years"] if history["energy"][y]["electricity"]["kwh"] is not None]
+            oa = cov.get("observed_after_years") or [y for y in comparison["after_years"] if history["energy"][y]["electricity"]["kwh"] is not None]
+            # the mean is over the years with a 12-month total only: name them (a '3년 평균' of one observed year misleads)
+            add("before_after", f"개발 전 관측 {len(ob)}개 연도({', '.join(map(str, ob))}) 평균 전력은 {m['before_total_kwh']:,.0f} kWh, "
+                f"개발 후 관측 {len(oa)}개 연도({', '.join(map(str, oa))}) 평균은 {m['after_total_kwh']:,.0f} kWh입니다.",
+                len(ob), m["before_total_kwh"], len(oa), m["after_total_kwh"], *ob, *oa)
             if m["total_change_pct"] is not None:
-                add("change", f"지역 전력은 {m['total_change_pct']:+,.1f}% 변했습니다.", m["total_change_pct"], signed_pct=m["total_change_pct"])
+                same = (f" 전후 모든 관측 연도에 있는 같은 기존 단지 {m['existing_complexes']}곳끼리는 {m['existing_change_pct']:+,.1f}% 변했습니다."
+                        if m.get("existing_change_pct") is not None and m.get("existing_complexes") else "")
+                if cov.get("comparable", True):
+                    text = f"지역 전력은 {m['total_change_pct']:+,.1f}% 변했습니다." + same
+                else:
+                    text = (f"지역 전력 합계는 {m['total_change_pct']:+,.1f}% 변했지만, 개발 전 관측 단지가 평균 {cov['before_parcels_mean']:,.1f}곳으로 "
+                            f"개발 후 기존 단지 평균 {cov['after_existing_parcels_mean']:,.1f}곳보다 적어 이 차이에는 관측 범위 차이가 섞여 있습니다." + same)
+                numbers = [m["total_change_pct"]]
+                if not cov.get("comparable", True):
+                    numbers += [cov["before_parcels_mean"], cov["after_existing_parcels_mean"]]
+                if same:
+                    numbers += [m["existing_complexes"], m["existing_change_pct"]]
+                add("change", text, *numbers, signed_pct=m["total_change_pct"])
         if m["new_development_kwh"] is not None:
             add("new_share", f"새로 준공된 단지의 연평균 전력은 {m['new_development_kwh']:,.0f} kWh로 개발 후 지역 전력의 {m['new_share_pct']:,.1f}%입니다.", m["new_development_kwh"], m["new_share_pct"])
         est = comparison["metrics"].get("estimated") or {}

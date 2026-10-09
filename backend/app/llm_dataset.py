@@ -231,9 +231,12 @@ def evaluate(path: str | Path | None = None, *, model: str | None = None, limit:
     call = generate or (lambda facts, m: local_narrative(facts, m))
     name = model or narrative_model()
     results: list[dict[str, Any]] = []
-    for i, row in enumerate(_read_jsonl(source)):
-        if limit is not None and i >= limit:
-            break
+    rows = list(_read_jsonl(source))
+    if limit is not None and 0 < limit < len(rows):
+        # spread over the whole file: a multi-region eval file lists the regions one after another
+        step = len(rows) / limit
+        rows = [rows[int(i * step)] for i in range(limit)]
+    for i, row in enumerate(rows):
         facts = row["facts"]
         started = time.monotonic()
         try:

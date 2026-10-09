@@ -83,6 +83,15 @@ def test_evaluate_counts_pass_rejected_and_error_without_publishing_bad_numbers(
     assert saved["results"][1]["outcome"] == "rejected"
 
 
+def test_evaluate_limit_spreads_over_the_file(tmp_path):
+    """A multi-region eval file lists the regions one after another: a limited run samples all of them."""
+    path = tmp_path / "eval.jsonl"
+    path.write_text("\n".join(json.dumps({"id": str(i), "facts": FACTS}) for i in range(10)), encoding="utf-8")
+    report = evaluate(path, model="m", limit=4, generate=lambda facts, model: reference_summary(FACTS), log=lambda m: None)
+    saved = json.loads(open(report["saved"], encoding="utf-8").read())
+    assert [r["id"] for r in saved["results"]] == ["0", "2", "5", "7"]
+
+
 def test_reference_summary_states_the_building_basis_and_does_not_chain_an_estimate_as_a_result():
     facts = FACTS[:3] + [
         {"id": "building_energy", "text": "건축HUB가 계측하는 구역 안 건물 전체의 2025년 전력은 38,404,995 kWh입니다.", "numbers": [2025, 38404995]},
