@@ -501,7 +501,65 @@ EFFORT_BASIS = {"apartments": "공동주택(K-apt 관리비 전력)", "buildings
 
 
 def effort(history: dict[str, Any], plan: dict[str, Any], target_pct: float, pv_yield_kwh_per_kw: float | None = None,
-           basis: str = "apartments") -> dict[str, Any]:
+           basis: str = "apartments", measures: dict[str, Any] | None = None) -> dict[str, Any]:
+    """The reduction effort on the requested basis; when that basis has nothing to stand on, the other one.
+
+    A 면 without any K-apt complex (완주 7 of 13, 2026-10-10 audit) still has metered buildings, so the screen
+    answers on the building-wide basis instead of "no basis" and says so (``fallback_from``, fact ``effort_fallback``).
+    ``measures`` (new-building / existing-building efficiency %, PV kW) adds the combined reduction of those measures
+    against the requirement (``mix``): the way a 도시·군기본계획 checks a target by summing each measure's reduction.
+    """
+    if basis not in EFFORT_BASIS:
+        raise ValueError("기준 건물은 apartments 또는 buildings 입니다")
+    result = _effort_on(history, plan, target_pct, pv_yield_kwh_per_kw, basis)
+    if not result.get("available"):
+        other = "buildings" if basis == "apartments" else "apartments"
+        alternative = _effort_on(history, plan, target_pct, pv_yield_kwh_per_kw, other)
+        if alternative.get("available"):
+            alternative["fallback_from"] = basis
+            alternative["fallback_reason"] = result.get("reason")
+            result = alternative
+    if result.get("available") and measures:
+        result["mix"] = measure_mix(result, measures)
+    return result
+
+
+def measure_mix(result: dict[str, Any], measures: dict[str, Any]) -> dict[str, Any]:
+    """Reduction of a set of measures together, against the requirement (all in the result's own kWh and factor).
+
+    new buildings:      planned new load × new_efficiency_pct
+    existing buildings: (baseline − demolished load) × existing_efficiency_pct
+    solar:              pv_kw × kWh per kW (the user's yield or the regional estimate; none → not counted)
+    """
+    n = float(measures.get("new_efficiency_pct") or 0)
+    x = float(measures.get("existing_efficiency_pct") or 0)
+    k = float(measures.get("pv_kw") or 0)
+    if not (0 <= n <= 100 and 0 <= x <= 100):
+        raise ValueError("감축 수단의 효율 개선율은 0~100% 입니다")
+    if k < 0:
+        raise ValueError("태양광 용량은 0 이상입니다")
+    factor = float(result["factor_kgco2eq_per_kwh"])
+    removed_kwh = float(result["intensity_kwh_per_m2"]) * float(result.get("removed_floor_area_m2") or 0)
+    existing = max(float(result["baseline_kwh"]) - removed_kwh, 0.0)
+    pv_yield = (result.get("pv_yield") or {}).get("kwh_per_kw")
+    new_kwh = float(result["new_load_kwh"]) * n / 100
+    existing_kwh = existing * x / 100
+    pv_kwh = k * float(pv_yield) if k and pv_yield else (0.0 if not k else None)
+    total_kwh = new_kwh + existing_kwh + (pv_kwh or 0.0)
+    total_c = total_kwh * factor
+    need_c = float(result["required_reduction_kgco2eq"])
+    return {
+        "new_efficiency_pct": round(n, 1), "existing_efficiency_pct": round(x, 1), "pv_kw": round(k, 1),
+        "new_kwh": round(new_kwh, 1), "existing_kwh": round(existing_kwh, 1), "pv_kwh": round(pv_kwh, 1) if pv_kwh is not None else None,
+        "pv_counted": pv_kwh is not None, "total_kwh": round(total_kwh, 1), "total_kgco2eq": round(total_c, 1),
+        "required_kgco2eq": round(need_c, 1), "gap_kgco2eq": round(need_c - total_c, 1), "met": need_c - total_c <= 0,
+        "share_pct": round(total_c / need_c * 100, 1) if need_c > 0 else None,
+        "basis": "신축 부하 × 신축 절감률 + (기준 부하 − 철거 부하) × 기존 절감률 + 태양광 kW × kW당 연 발전량, 모두 전력 배출계수로 환산",
+    }
+
+
+def _effort_on(history: dict[str, Any], plan: dict[str, Any], target_pct: float, pv_yield_kwh_per_kw: float | None = None,
+               basis: str = "apartments") -> dict[str, Any]:
     """How much reduction a future development needs to meet a target.
 
     baseline = latest year with a complete observed electricity total in the area;
@@ -560,6 +618,82 @@ def effort(history: dict[str, Any], plan: dict[str, Any], target_pct: float, pv_
     return _with_pv(pv, _effort_result(history, plan, target_pct, pv_yield_kwh_per_kw, factor, base_year, baseline_mode, intensity, base_kwh, basis_area, basis, load_text))
 
 
+def observed_baseline(history: dict[str, Any], basis: str) -> dict[str, Any] | None:
+    """The observed baseline year and intensity ``effort`` would use on ``basis`` (None: no observed year)."""
+    if basis == "buildings":
+        years = (history.get("building_energy") or {}).get("years") or {}
+        year = next((y for y in sorted(years, reverse=True)
+                     if years[y].get("complete") and years[y].get("electricity_kwh") and years[y].get("kwh_per_m2") and years[y].get("area_m2")), None)
+        if year is None:
+            return None
+        item = years[year]
+        return {"year": year, "kwh_per_m2": float(item["kwh_per_m2"]), "kwh": float(item["electricity_kwh"]), "area_m2": float(item["area_m2"])}
+    year = next((y for y in sorted(history["energy"], reverse=True)
+                 if history["energy"][y]["electricity"]["kwh"] is not None and history["energy"][y]["electricity"]["intensity_kwh_per_m2"]), None)
+    if year is None:
+        return None
+    elec = history["energy"][year]["electricity"]
+    return {"year": year, "kwh_per_m2": elec["intensity_kwh_per_m2"], "kwh": elec["kwh"], "area_m2": elec["intensity_area_m2"]}
+
+
+def benchmark(db: Any, years: list[int], region: str | None, basis: str, *, inputs: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Observed electricity intensity of every 행정동 of the region on one basis: where an area stands among its peers.
+
+    Like a benchmarking score (ENERGY STAR 1~100, 서울 건물에너지 등급 by kWh/m²) but only among the 행정동 of the same
+    시·군·구, on the same source and year; 행정동 differ in building mix, so it is a position, not a grade.
+    Only 행정동 whose baseline falls in the most common year are compared (``reference_year``).
+    """
+    if basis not in EFFORT_BASIS:
+        raise ValueError("기준 건물은 apartments 또는 buildings 입니다")
+    import statistics
+    import time
+    inputs = inputs or cached_inputs(db, years, region)
+    key = (_key(years, region), basis, id(inputs))
+    hit = _BENCH.get(key)
+    if hit and time.monotonic() - hit[0] < INPUTS_TTL:
+        return hit[1]
+    complex_points = [{"kapt_code": c["kapt_code"], "lon": c["lon"], "lat": c["lat"], "grid_id": c["grid_id"]} for c in inputs["complexes"].values()]
+    items = []
+    for feature in inputs["admin"]:
+        code = feature["properties"].get("adm_code")
+        try:
+            area = resolve_area({"type": "admin", "code": code}, inputs["grids"], complex_points, inputs["admin"], inputs["zoning"])
+        except ValueError:
+            continue
+        base = observed_baseline(build_history(area, years, inputs), basis)
+        items.append({"code": code, "name": short_admin_name(feature["properties"].get("adm_name")),
+                      **({"year": base["year"], "kwh_per_m2": round(base["kwh_per_m2"], 2), "area_m2": round(base["area_m2"], 1)} if base else
+                         {"year": None, "kwh_per_m2": None, "area_m2": None})})
+    counted = [i["year"] for i in items if i["year"] is not None]
+    reference = max(set(counted), key=lambda y: (counted.count(y), y)) if counted else None
+    values = sorted(i["kwh_per_m2"] for i in items if i["year"] == reference and i["kwh_per_m2"] is not None)
+    quintiles = [round(v, 2) for v in statistics.quantiles(values, n=5)] if len(values) >= 5 else None
+    result = {"basis": basis, "basis_label": EFFORT_BASIS[basis], "years": [years[0], years[-1]], "region": inputs.get("region"),
+              "reference_year": reference, "count": len(values), "admin_total": len(items),
+              "median": round(statistics.median(values), 2) if values else None, "quintiles": quintiles,
+              "min": values[0] if values else None, "max": values[-1] if values else None,
+              "items": sorted(items, key=lambda i: (i["kwh_per_m2"] is None, i["kwh_per_m2"] or 0)),
+              "note": "같은 시·군·구 행정동끼리, 같은 출처·같은 연도의 관측 전력 원단위(kWh/m²·년)만 비교합니다. 건물 구성(용도·연식)이 달라 등급이 아니라 위치입니다."}
+    if len(_BENCH) >= 6:
+        _BENCH.pop(min(_BENCH, key=lambda k: _BENCH[k][0]), None)
+    _BENCH[key] = (time.monotonic(), result)
+    return result
+
+
+_BENCH: dict[tuple[Any, ...], tuple[float, dict[str, Any]]] = {}
+
+
+def benchmark_position(bench: dict[str, Any], year: int | None, value: float | None) -> dict[str, Any] | None:
+    """Rank of one intensity among the benchmark values (1 = lowest kWh/m²), its quintile (1~5) and percentile."""
+    if value is None or year is None or year != bench.get("reference_year") or not bench.get("count"):
+        return None
+    values = sorted(i["kwh_per_m2"] for i in bench["items"] if i["year"] == bench["reference_year"] and i["kwh_per_m2"] is not None)
+    lower = sum(1 for v in values if v < round(value, 2))
+    pct = round(lower / len(values) * 100, 1)
+    quintile = 1 + sum(1 for q in (bench.get("quintiles") or []) if round(value, 2) > q) if bench.get("quintiles") else None
+    return {"rank": lower + 1, "count": len(values), "lower_pct": pct, "quintile": quintile}
+
+
 def pv_basis(history: dict[str, Any], user_kwh_per_kw: float | None) -> dict[str, Any] | None:
     """kWh a 1 kW array makes per year: the user's number when given, otherwise the region's irradiation estimate."""
     if user_kwh_per_kw and user_kwh_per_kw > 0:
@@ -591,6 +725,10 @@ def _effort_result(history: dict[str, Any], plan: dict[str, Any], target_pct: fl
     removed = float(plan.get("removed_floor_area_m2") or 0)
     if added < 0 or removed < 0:
         raise ValueError("면적은 0 이상이어야 합니다")
+    if removed and intensity > 0 and intensity * removed > base_kwh:
+        # more demolished than there is: the BAU would go below zero and every option would turn negative
+        raise ValueError(f"철거 연면적 {removed:,.0f}m²가 기준 건물 규모(약 {base_kwh / intensity:,.0f}m², {base_year}년 기준 부하 ÷ 원단위)보다 큽니다. "
+                         "철거 면적을 줄이거나 구역을 넓히세요")
     base_c = base_kwh * factor
     new_kwh = intensity * added
     removed_kwh = intensity * removed
@@ -851,6 +989,9 @@ def area_facts(history: dict[str, Any], comparison: dict[str, Any] | None = None
     cov = history["coverage"]
     if cov["energy_years"]:
         add("coverage", f"12개월 전력 관측이 있는 연도는 {len(cov['energy_years'])}개({', '.join(map(str, cov['energy_years']))})입니다.", len(cov["energy_years"]), *cov["energy_years"])
+    elif any(v.get("electricity_kwh") is not None for v in ((history.get("building_energy") or {}).get("years") or {}).values()):
+        # no apartment series here (e.g. a 면 without K-apt complexes), but metered buildings: say which series is missing
+        add("coverage", "공동주택(K-apt) 12개월 전력 관측이 있는 연도가 없어 공동주택 기준 연간 에너지는 계산하지 않았습니다. 건물 전체(건축HUB) 계측값은 따로 씁니다.")
     else:
         add("coverage", "12개월이 모두 관측된 전력 자료가 있는 연도가 없어 연간 에너지와 탄소를 계산하지 않았습니다.")
     built = [(y, e) for y, e in history["events"].items() if e["complexes"]]
@@ -926,6 +1067,10 @@ def area_facts(history: dict[str, Any], comparison: dict[str, Any] | None = None
             add(f"gap_{len(facts)}", gap)
     if effort_result and effort_result.get("available"):
         o = effort_result["options"]
+        if effort_result.get("fallback_from"):
+            asked = "공동주택(K-apt)" if effort_result["fallback_from"] == "apartments" else "건물 전체(건축HUB)"
+            used = "건물 전체(건축HUB)" if effort_result["basis"] == "buildings" else "공동주택(K-apt)"
+            add("effort_fallback", f"이 구역은 {asked} 기준으로 계산할 근거가 없어 {used} 기준으로 바꿔 계산했습니다.")
         if effort_result.get("baseline_mode") == "ESTIMATED":
             city = history.get("city_intensity") or {}
             add("effort_basis", f"이 지역은 관측 전력이 없어 기준 부하를 단지 연면적 {effort_result['intensity_area_m2']:,.0f}m²와 {history.get('region_label') or '전주'} 관측 원단위 {effort_result['intensity_kwh_per_m2']:,.2f} kWh/m²·년({city.get('year')}년, 관측 지번 {city.get('parcels')}곳 기준)으로 추정했습니다. 관측 지번이 적을수록 추정 오차가 큽니다.", effort_result["intensity_area_m2"], effort_result["intensity_kwh_per_m2"], city.get("year"), city.get("parcels"))
@@ -951,6 +1096,20 @@ def area_facts(history: dict[str, Any], comparison: dict[str, Any] | None = None
                 add("effort_pv", f"태양광으로 상쇄하면 {how} {pv['kwh_per_kw']:,.0f} kWh/kW·년 기준 약 {o['pv_capacity_kw']:,.1f} kW가 필요합니다"
                     + ("(추정값)." if pv["basis"] == "ESTIMATED" else "."),
                     pv["kwh_per_kw"], o["pv_capacity_kw"], *([pv["year"], pv["irradiation_kwh_m2"], pv["performance_ratio"]] if pv["basis"] == "ESTIMATED" else []))
+        mix = effort_result.get("mix")
+        if mix and not effort_result["already_met"]:
+            parts = [f"신축 전력 {mix['new_efficiency_pct']:,.1f}% 절감", f"기존 건물 {mix['existing_efficiency_pct']:,.1f}% 절감"]
+            numbers: list[float] = [mix["new_efficiency_pct"], mix["existing_efficiency_pct"]]
+            if mix["pv_kw"]:
+                parts.append(f"태양광 {mix['pv_kw']:,.1f} kW" + ("" if mix["pv_counted"] else "(발전량 근거 없음, 합계에서 제외)"))
+                numbers.append(mix["pv_kw"])
+            add("effort_mix", f"감축 수단 조합({', '.join(parts)})으로 연간 {mix['total_kgco2eq']:,.0f} kgCO2eq를 줄입니다.", *numbers, mix["total_kgco2eq"])
+            if mix["met"]:
+                add("effort_mix_gap", f"필요 감축량 {mix['required_kgco2eq']:,.0f} kgCO2eq를 채웁니다(여유 {-mix['gap_kgco2eq']:,.0f} kgCO2eq).",
+                    mix["required_kgco2eq"], -mix["gap_kgco2eq"])
+            else:
+                add("effort_mix_gap", f"필요 감축량 {mix['required_kgco2eq']:,.0f} kgCO2eq의 {mix['share_pct']:,.1f}%로, 목표까지 연간 {mix['gap_kgco2eq']:,.0f} kgCO2eq가 남습니다.",
+                    mix["required_kgco2eq"], mix["share_pct"], mix["gap_kgco2eq"])
     add("rules", "관측이 없는 연도는 0이 아니라 자료 없음으로 두었고, 행정동 통계는 격자에 배분하지 않았습니다.", 0)
     return facts
 
@@ -1073,6 +1232,8 @@ def cached_inputs(db: Any, years: list[int], region: str | None = None) -> dict[
 
     After the TTL the stale inputs are still answered at once while a background thread reloads them
     (a cold load takes ~10 s on the PC), so only the very first request of a year range waits.
+    A narrower year range of a cached wider one (e.g. 2020~2025 inside 2015~2025) is cut from it instead of
+    reloaded (18~30 s in the 2026-10-10 audit): ``subset_inputs`` keeps every row of the narrower load.
     """
     import time
     key = _key(years, region)
@@ -1082,9 +1243,37 @@ def cached_inputs(db: Any, years: list[int], region: str | None = None) -> dict[
     if hit:
         _refresh_in_background(key)
         return hit[1]
+    wider = next((k for k, (at, _) in sorted(_INPUTS.items(), key=lambda kv: -kv[1][0])
+                  if k[0] == key[0] and time.monotonic() - at < INPUTS_TTL and k[1] <= years[0] and k[-1] >= years[-1]), None)
+    if wider is not None:
+        inputs = subset_inputs(db, _INPUTS[wider][1], years)
+        _store_inputs(key, inputs)
+        return inputs
     inputs = prepare_inputs(db, years, region)
     _store_inputs(key, inputs)
     return inputs
+
+
+def subset_inputs(db: Any, wide: dict[str, Any], years: list[int]) -> dict[str, Any]:
+    """The inputs ``load_inputs`` would give for ``years`` (a contiguous range inside ``wide['years']``).
+
+    Year-bound rows (energy, weather, 건축HUB by year) are filtered by month; the rest (complexes, grids, boundaries,
+    register, SGIS, factors) do not depend on the range. The region-wide intensity is recomputed for the range and
+    the solar yield read again when the last year differs (both depend on the range)."""
+    lo, hi = f"{years[0]}01", f"{years[-1]}12"
+    inside = lambda ym: lo <= str(ym or "") <= hi  # noqa: E731
+    out = dict(wide)
+    out["energy"] = [r for r in wide["energy"] if inside(r.get("use_ym"))]
+    out["weather"] = [w for w in wide["weather"] if inside(w.get("use_ym"))]
+    wanted = set(years)
+    out["building_energy"] = {y: v for y, v in (wide.get("building_energy") or {}).items() if y in wanted}
+    out["building_energy_complete"] = {y: v for y, v in (wide.get("building_energy_complete") or {}).items() if y in wanted}
+    out["city_intensity"] = city_intensity(out["energy"], out["complexes"], years)
+    if years[-1] != wide["years"][-1]:
+        from .solar import regional_pv_yield
+        out["solar"] = regional_pv_yield(db, (wide.get("region") or {}).get("code"), up_to=years[-1])
+    out["years"] = list(years)
+    return out
 
 
 def _store_inputs(key: tuple[Any, ...], inputs: dict[str, Any]) -> None:
@@ -1135,7 +1324,7 @@ def prepare_inputs(db: Any, years: list[int], region: str | None = None) -> dict
 def analyze(db: Any, spec: dict[str, Any], from_year: int, to_year: int, event_year: int | None = None,
             window: int = 3, plan: dict[str, Any] | None = None, target_pct: float | None = None,
             pv_yield: float | None = None, *, inputs: dict[str, Any] | None = None, region: str | None = None,
-            effort_basis: str = "apartments") -> dict[str, Any]:
+            effort_basis: str = "apartments", measures: dict[str, Any] | None = None) -> dict[str, Any]:
     if from_year > to_year or to_year - from_year > 30:
         raise ValueError("분석 기간을 확인하세요 (최대 31년)")
     years = list(range(from_year, to_year + 1))
@@ -1145,7 +1334,7 @@ def analyze(db: Any, spec: dict[str, Any], from_year: int, to_year: int, event_y
     area = resolve_area(spec, inputs["grids"], complex_points, inputs["admin"], inputs["zoning"])
     history = build_history(area, years, inputs)
     comparison = before_after(history, event_year, window)
-    effort_result = effort(history, plan or {}, target_pct, pv_yield, effort_basis) if target_pct is not None else None
+    effort_result = effort(history, plan or {}, target_pct, pv_yield, effort_basis, measures) if target_pct is not None else None
     members = set(area["grid_ids"])
     grid_features = {"type": "FeatureCollection", "features": [
         {"type": "Feature", "id": g["id"], "geometry": g["geometry"], "properties": {"id": g["id"]}}
@@ -1179,6 +1368,13 @@ class PlanInput(BaseModel):
     footprint_per_building: float | None = Field(default=None, ge=0)
 
 
+class MeasuresInput(BaseModel):
+    """감축 수단 조합: 신축·기존 건물 전력 절감률과 태양광 용량 (도시·군기본계획의 수단별 감축량 합산 방식)."""
+    new_efficiency_pct: float = Field(default=0, ge=0, le=100)
+    existing_efficiency_pct: float = Field(default=0, ge=0, le=100)
+    pv_kw: float = Field(default=0, ge=0, le=1_000_000)
+
+
 class AnalyzeInput(BaseModel):
     area: AreaSpec
     region: str | None = Field(default=None, max_length=10)
@@ -1191,6 +1387,7 @@ class AnalyzeInput(BaseModel):
     pv_yield_kwh_per_kw: float | None = Field(default=None, gt=0)
     # 감축 노력의 기준 건물: 공동주택(K-apt) 또는 건물 전체(건축HUB, 상가·업무 포함)
     effort_basis: Literal["apartments", "buildings"] = "apartments"
+    measures: MeasuresInput | None = None
 
 
 @router.get("/options")
@@ -1231,6 +1428,21 @@ def area_options(region: str | None = Query(None, max_length=10)) -> dict[str, A
         }
 
 
+@router.get("/benchmark")
+def area_benchmark(region: str | None = Query(None, max_length=10), from_year: int = Query(2015, ge=2000, le=2100),
+                   to_year: int = Query(2025, ge=2000, le=2100), basis: Literal["apartments", "buildings"] = "apartments") -> dict[str, Any]:
+    """같은 시·군·구 행정동의 관측 전력 원단위 분포 (구역이 그 가운데 어디쯤인지 보는 비교 기준)."""
+    from .db import Session
+    from .regions import RegionNotReady
+    if from_year > to_year or to_year - from_year > 30:
+        raise HTTPException(422, "분석 기간을 확인하세요 (최대 31년)")
+    with Session() as db:
+        try:
+            return benchmark(db, list(range(from_year, to_year + 1)), region, basis)
+        except RegionNotReady as exc:
+            raise HTTPException(404, str(exc)) from None
+
+
 @router.get("/collection")
 def area_collection_status() -> dict[str, Any]:
     """Past-year back-fill progress (``scripts\\dss.cmd CollectHistory``) for the area screen."""
@@ -1246,7 +1458,8 @@ def area_analyze(request: AnalyzeInput) -> dict[str, Any]:
         try:
             return analyze(db, request.area.model_dump(), request.from_year, request.to_year, request.event_year,
                            request.window, request.plan.model_dump() if request.plan else None, request.target_pct,
-                           request.pv_yield_kwh_per_kw, region=request.region, effort_basis=request.effort_basis)
+                           request.pv_yield_kwh_per_kw, region=request.region, effort_basis=request.effort_basis,
+                           measures=request.measures.model_dump() if request.measures else None)
         except RegionNotReady as exc:
             raise HTTPException(404, str(exc)) from None
         except (ValueError, KeyError) as exc:

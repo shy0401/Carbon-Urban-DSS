@@ -33,11 +33,11 @@ def _fake_engine(monkeypatch):
               "zoning": {"g": {"dominant_zone": "COMMERCIAL"}, "h": {"dominant_zone": "UNKNOWN"}},
               "complexes": {"A": {"kapt_code": "A", "lon": 127.1, "lat": 35.8}}, "energy": [], "years": [2024, 2025],
               "building_energy": {2025: {"cell_1_1": {}, "cell_2_2": {}}}}
-    monkeypatch.setattr(llm_dataset, "prepare_inputs", lambda db, years: inputs)
+    monkeypatch.setattr(llm_dataset, "prepare_inputs", lambda db, years, region=None: dict(inputs, region={"code": region or "52110"}))
     calls = []
 
-    def analyze(db, spec, f, t, event, window, plan, target, pv, *, inputs, effort_basis="apartments"):
-        calls.append(dict(spec, basis=effort_basis))
+    def analyze(db, spec, f, t, event, window, plan, target, pv, *, inputs, effort_basis="apartments", region=None):
+        calls.append(dict(spec, basis=effort_basis, region=region))
         facts = [dict(FACTS[0], text=FACTS[0]["text"].replace("덕진구 송천1동 (행정동)", json.dumps(spec, ensure_ascii=False))), FACTS[4] | {"text": FACTS[4]["text"].replace("40%", f"{target:.0f}%"), "numbers": [2025, target, 17401119]}, FACTS[5]]
         return {"facts": facts}
     monkeypatch.setattr(llm_dataset, "analyze", analyze)
@@ -95,3 +95,13 @@ def test_reference_summary_states_the_building_basis_and_does_not_chain_an_estim
         assert summary.index("건물 전체") < summary.index("2019년에") and "감축 노력은 구역 건물 전체" in summary
         assert summary.index("감축 노력은") < summary.index("40% 감축을")
         assert verify_narrative(summary, facts) == []
+
+
+def test_build_dataset_takes_areas_from_several_regions_with_fewer_samples_outside_the_first(tmp_path, monkeypatch):
+    calls = _fake_engine(monkeypatch)
+    manifest = build_dataset(None, 2024, 2025, out_dir=tmp_path, per_area=3, per_area_other=1, regions=["52110", "52710"], log=lambda m: None)
+    first = [c for c in calls if c["region"] == "52110"]
+    other = [c for c in calls if c["region"] == "52710"]
+    assert first and other and len(other) < len(first)
+    assert manifest["regions"] == ["52110", "52710"] and set(manifest["coverage"]) == {"52110", "52710"}
+    assert manifest["coverage"]["52710"]["areas"] == len(other)  # one analysis per area outside the first region

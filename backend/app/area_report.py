@@ -19,7 +19,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 from pydantic import Field
 
-from .area import AnalyzeInput, analyze, only_in
+from .area import AnalyzeInput, analyze, benchmark, benchmark_position, only_in
 from .db import Session
 from .models import now
 from .reporting import DecisionReport, local_config, narrative_model
@@ -142,7 +142,7 @@ NARRATIVE_KEEP_ALIVE = "10m"
 NARRATIVE_FACTS = frozenset({
     "scope", "coverage", "development", "register", "building_energy", "building_energy_trend",
     "latest_energy", "latest_carbon", "latest_intensity", "event", "before_after", "change", "new_share",
-    "estimated_change", "effort_basis", "effort_target", "effort_met", "effort_new", "effort_all", "effort_offset",
+    "estimated_change", "effort_fallback", "effort_basis", "effort_target", "effort_met", "effort_new", "effort_all", "effort_offset",
 })
 
 
@@ -190,15 +190,35 @@ def _snapshot(request: AreaReportInput) -> dict[str, Any]:
     with Session() as db:
         result = analyze(db, request.area.model_dump(), request.from_year, request.to_year, request.event_year, request.window,
                          request.plan.model_dump() if request.plan else None, request.target_pct, request.pv_yield_kwh_per_kw, region=request.region,
-                         effort_basis=request.effort_basis)
+                         effort_basis=request.effort_basis, measures=request.measures.model_dump() if request.measures else None)
     history = result["history"]
+    facts = list(result["facts"])
+    bench = None
+    e = result["effort"] or {}
+    if e.get("available") and e.get("baseline_mode") == "OBSERVED":
+        try:
+            with Session() as db:
+                table = benchmark(db, list(range(request.from_year, request.to_year + 1)), request.region, e["basis"])
+            position = benchmark_position(table, e.get("baseline_year"), e.get("intensity_kwh_per_m2"))
+            if position:
+                bench = {k: table[k] for k in ("basis", "basis_label", "reference_year", "count", "median", "quintiles", "min", "max", "note")} | {"position": position}
+                region_name = (result.get("region") or {}).get("short_name") or "같은 시·군·구"
+                facts.insert(next((i for i, f in enumerate(facts) if f["id"] == "rules"), len(facts)), {
+                    "id": "benchmark",
+                    "text": f"{region_name} 행정동 {position['count']}곳의 {table['reference_year']}년 {table['basis_label']} 관측 전력 원단위(중앙값 {table['median']:,.2f} kWh/m²·년)와 비교하면 "
+                            f"이 구역({e['intensity_kwh_per_m2']:,.2f})은 낮은 쪽부터 {position['rank']}번째입니다"
+                            + (f"(5분위 중 {position['quintile']}분위)" if position.get("quintile") else "") + ". 건물 구성이 달라 등급이 아니라 위치입니다.",
+                    "numbers": [position["count"], table["reference_year"], table["median"], round(e["intensity_kwh_per_m2"], 2), position["rank"],
+                                *([position["quintile"]] if position.get("quintile") else [])]})
+        except Exception as exc:  # noqa: BLE001 - the comparison is context; the report stands without it
+            print("행정동 비교 생략:", type(exc).__name__, exc)
     history_public = {k: v for k, v in history.items() if k != "area"}
     area = {k: v for k, v in history["area"].items() if k != "geometry"}
     snapshot = {
         "kind": "AREA", "version": 1, "title": request.title or f"{history['area']['label']} 개발 영향·감축 검토",
         "created_at": now().isoformat(), "request": request.model_dump(exclude={"use_local_model"}),
         "area": area, "geometry": history["area"].get("geometry"), "history": history_public,
-        "before_after": result["before_after"], "effort": result["effort"], "facts": result["facts"], "region": result.get("region"),
+        "before_after": result["before_after"], "effort": result["effort"], "facts": facts, "region": result.get("region"), "benchmark": bench,
         # kept for the shared report list
         "year": request.to_year, "grid_id": None,
     }
@@ -238,11 +258,139 @@ def get_area_report(report_id: str) -> dict[str, Any]:
         return {"id": r.id, **r.snapshot}
 
 
+def _t(kg: float | None) -> str:
+    return "자료 없음" if kg is None else f"{kg / 1000:,.1f} tCO2eq/년"
+
+
+def key_results(s: dict[str, Any]) -> list[tuple[str, str]]:
+    """The few lines a reviewer reads first (all values straight from the engine's effort result)."""
+    e = s.get("effort") or {}
+    if not e:
+        return []
+    if not e.get("available"):
+        return [("감축 노력", e.get("reason") or "계산할 근거가 없습니다")]
+    mode = "관측" if e.get("baseline_mode") == "OBSERVED" else "추정"
+    basis = f"{e.get('basis_label')} · {e['baseline_year']}년 {mode}"
+    if e.get("fallback_from"):
+        basis += " (요청한 기준에 근거가 없어 자동 전환)"
+    out = [("기준", basis), ("기준 배출", _t(e.get("baseline_kgco2eq"))),
+           ("계획 반영 배출(추가 대책 없음)", _t(e.get("bau_kgco2eq"))),
+           (f"목표({e['target_pct']:,.0f}% 감축)", _t(e.get("target_kgco2eq"))),
+           ("필요 감축량", "추가 감축 불필요" if e.get("already_met") else _t(e.get("required_reduction_kgco2eq")))]
+    mix = e.get("mix")
+    if mix and not e.get("already_met"):
+        out.append(("감축 수단 조합", f"{_t(mix['total_kgco2eq'])} — " + ("목표 달성" if mix["met"] else f"목표까지 {_t(mix['gap_kgco2eq'])} 부족")))
+    b = s.get("benchmark")
+    if b and b.get("position"):
+        out.append(("같은 시·군·구 행정동 비교", f"{b['reference_year']}년 원단위 낮은 쪽부터 {b['position']['rank']}/{b['position']['count']}번째"))
+    return out
+
+
+# 보고서 HTML(인쇄·PDF 저장용)의 장 구성: 기후변화영향평가서(온실가스) 항목 순서 — 대상·방법 → 배출 현황 → 영향 → 목표 → 감축 방안 → 한계.
+HTML_SECTIONS = (
+    ("1. 검토 대상과 방법", ("scope", "coverage", "rules")),
+    ("2. 온실가스 배출 현황 (관측)", ("latest_energy", "latest_carbon", "latest_intensity", "building_energy", "building_energy_trend", "building_energy_gap", "benchmark")),
+    ("3. 개발 이력과 전후 영향", ("development", "register", "event", "before_after", "change", "new_share", "estimated_change", "gap_")),
+    ("4. 감축 목표와 필요 감축량", ("effort_fallback", "effort_basis", "effort_target", "effort_met")),
+    ("5. 감축 방안", ("effort_new", "effort_all", "effort_offset", "effort_pv", "effort_mix", "effort_mix_gap")),
+    ("6. 지역 특성 (SGIS 1km 격자)", ("sgis_grid", "sgis_grid_shares")),
+)
+
+HTML_STYLE = """
+:root{--ink:#1d2430;--muted:#5b6575;--line:#d5dae2;--soft:#f3f5f8;--accent:#1f5f8b}
+*{box-sizing:border-box}body{margin:0;background:#fff;color:var(--ink);font:14px/1.6 'Pretendard','Malgun Gothic','Apple SD Gothic Neo',sans-serif}
+main{max-width:860px;margin:0 auto;padding:32px 24px 48px}h1{font-size:24px;margin:0 0 4px}h2{font-size:17px;margin:28px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--line)}
+.meta{color:var(--muted);font-size:12.5px}.bar{display:flex;gap:8px;justify-content:flex-end;margin-bottom:16px}
+.bar button{font:inherit;padding:6px 14px;border:1px solid var(--line);border-radius:6px;background:var(--soft);cursor:pointer}
+table{width:100%;border-collapse:collapse;margin:8px 0;font-size:12.5px}th,td{border:1px solid var(--line);padding:5px 8px;text-align:left;vertical-align:top}
+th{background:var(--soft);font-weight:600}td.num{text-align:right;font-variant-numeric:tabular-nums}
+.key th{width:38%}.key td{font-weight:600}.note{color:var(--muted);font-size:12.5px}ul{padding-left:20px;margin:6px 0}li{margin:3px 0}
+.badge{display:inline-block;font-size:11.5px;padding:1px 8px;border-radius:10px;background:var(--soft);border:1px solid var(--line);margin-left:6px}
+footer{margin-top:28px;font-size:11.5px;color:var(--muted);word-break:break-all}
+@media print{.bar{display:none}main{padding:0}h2{break-after:avoid}table,li{break-inside:avoid}@page{size:A4;margin:16mm 14mm}}
+"""
+
+
+def area_html(s: dict[str, Any]) -> str:
+    """Printable report (browser → PDF). Same snapshot as the Markdown: every sentence is an engine fact, every table an engine value."""
+    from html import escape
+
+    h = s["history"]
+    facts = s["facts"]
+    used: set[int] = set()
+
+    def section_facts(prefixes: tuple[str, ...]) -> list[str]:
+        out = []
+        for i, f in enumerate(facts):
+            if i not in used and any(f["id"] == p or (p.endswith("_") and f["id"].startswith(p)) for p in prefixes):
+                used.add(i)
+                out.append(f["text"])
+        return out
+
+    def at(table: dict[Any, Any], year: Any) -> dict[str, Any]:
+        return table.get(str(year)) or table.get(year) or {}
+
+    def num(v: float | None, digits: int = 0) -> str:
+        return "자료 없음" if v is None else f"{v:,.{digits}f}"
+
+    parts = [f"<!doctype html><html lang=\"ko\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+             f"<title>{escape(s['title'])}</title><style>{HTML_STYLE}</style></head><body><main>",
+             "<div class=\"bar\"><button type=\"button\" onclick=\"window.print()\">인쇄 · PDF로 저장</button></div>",
+             f"<h1>{escape(s['title'])}</h1><p class=\"meta\">지역 {escape(s['area']['label'])} · 기간 {h['years'][0]}~{h['years'][-1]} · 작성 {escape(str(s['created_at'])[:19])}"
+             f"<span class=\"badge\">운영 단계 1차 추정</span><span class=\"badge\">{escape(s['summary']['validation'])}</span></p>"]
+    key = key_results(s)
+    if key:
+        parts.append("<h2>핵심 결과</h2><table class=\"key\"><tbody>" + "".join(f"<tr><th>{escape(k)}</th><td>{escape(v)}</td></tr>" for k, v in key) + "</tbody></table>")
+    if s["summary"].get("mode") == "LOCAL_SLM_NARRATIVE":
+        parts.append("<h2>요약 (로컬 AI 문장, 숫자 검증 통과)</h2>" + "".join(f"<p>{escape(p)}</p>" for p in s["summary"]["paragraphs"]))
+    for title, prefixes in HTML_SECTIONS:
+        texts = section_facts(prefixes)
+        extra = ""
+        if title.startswith("2."):
+            rows = []
+            for y in h["years"]:
+                e = at(h["energy"], y)
+                elec = e.get("electricity", {})
+                if elec.get("kwh") is None and e.get("electricity_carbon_kgco2eq") is None:
+                    continue
+                rows.append(f"<tr><td>{y}</td><td class=num>{num(elec.get('kwh'))}</td><td class=num>{elec.get('complete_parcels', 0)}</td><td class=num>{num(e.get('electricity_carbon_kgco2eq'))}</td></tr>")
+            if rows:
+                extra += ("<table><thead><tr><th>연도</th><th>공동주택 전력 kWh (K-apt)</th><th>12개월 관측 단지</th><th>전력 탄소 kgCO2eq</th></tr></thead><tbody>"
+                          + "".join(rows) + "</tbody></table>")
+            be = (h.get("building_energy") or {}).get("years") or {}
+            if be:
+                extra += ("<table><thead><tr><th>연도</th><th>건물 전체 전력 kWh (건축HUB)</th><th>12개월 계측 지번</th><th>원단위 kWh/m²</th><th>전력 탄소 kgCO2eq</th></tr></thead><tbody>"
+                          + "".join(f"<tr><td>{y}{' (일부 결측·비교 제외)' if be[y].get('provider_gap') else ''}</td><td class=num>{num(be[y].get('electricity_kwh'))}</td>"
+                                    f"<td class=num>{be[y].get('electricity_complete', 0):,}</td><td class=num>{num(be[y].get('kwh_per_m2'), 1)}</td><td class=num>{num(be[y].get('electricity_carbon_kgco2eq'))}</td></tr>"
+                                    for y in sorted(be, key=lambda v: int(v)))
+                          + "</tbody></table>")
+        if title.startswith("5.") and (s.get("effort") or {}).get("mix"):
+            m = s["effort"]["mix"]
+            extra += ("<table><thead><tr><th>감축 수단</th><th>입력</th><th>연간 감축 kWh</th></tr></thead><tbody>"
+                      f"<tr><td>신축 건물 전력 절감</td><td class=num>{m['new_efficiency_pct']:,.1f}%</td><td class=num>{num(m['new_kwh'])}</td></tr>"
+                      f"<tr><td>기존 건물 전력 절감</td><td class=num>{m['existing_efficiency_pct']:,.1f}%</td><td class=num>{num(m['existing_kwh'])}</td></tr>"
+                      f"<tr><td>태양광</td><td class=num>{m['pv_kw']:,.1f} kW</td><td class=num>{num(m['pv_kwh']) if m['pv_counted'] else '발전량 근거 없음'}</td></tr>"
+                      f"<tr><th>합계 (kgCO2eq)</th><td></td><td class=num>{num(m['total_kgco2eq'])}</td></tr></tbody></table>"
+                      f"<p class=note>{escape(m['basis'])}</p>")
+        if texts or extra:
+            parts.append(f"<h2>{escape(title)}</h2>" + ("<ul>" + "".join(f"<li>{escape(t)}</li>" for t in texts) + "</ul>" if texts else "") + extra)
+    rest = [f["text"] for i, f in enumerate(facts) if i not in used]
+    limits = [h.get("factor_basis", ""), "관측이 없는 연도는 0이 아니라 자료 없음입니다. 행정동 통계는 격자·반경에 배분하지 않았습니다.",
+              "운영 단계 1차 추정이며 법적 적합성이나 넷제로 달성을 판정하지 않습니다."] + list((s.get("effort") or {}).get("assumptions") or [])
+    parts.append("<h2>7. 자료 범위와 한계</h2><ul>" + "".join(f"<li>{escape(t)}</li>" for t in rest + [x for x in limits if x]) + "</ul>")
+    parts.append(f"<footer>재현 정보 · 근거 SHA256 {escape(s['evidence_hash'])} · 작성 방식 {escape(s['summary']['mode'])} — {escape(s['summary']['validation'])}"
+                 f" · 구역 선정 {escape(s['area'].get('method') or '')}</footer></main></body></html>")
+    return "".join(parts)
+
+
 def area_markdown(s: dict[str, Any]) -> str:
-    lines = [f"# {s['title']}", f"지역: {s['area']['label']} | 기간: {s['history']['years'][0]}~{s['history']['years'][-1]} | 작성: {s['created_at']}",
-             "## 검토 요약"] + list(s["summary"]["paragraphs"])
+    lines = [f"# {s['title']}", f"지역: {s['area']['label']} | 기간: {s['history']['years'][0]}~{s['history']['years'][-1]} | 작성: {s['created_at']}"]
+    key = key_results(s)
+    if key:
+        lines.append("\n".join(f"- {label}: {value}" for label, value in key))
+    lines += ["## 검토 요약"] + list(s["summary"]["paragraphs"])
     lines += ["## 연도별 관측"]
-    table = ["| 연도 | 전력 kWh (12개월 관측 지번) | 전력 탄소 kgCO2eq | 난방도일 | 냉방도일 | 인구 | 사용승인 세대 |", "| --- | --- | --- | --- | --- | --- | --- |"]
+    table = ["| 연도 | 공동주택 전력 kWh (K-apt, 12개월 관측 단지 수) | 전력 탄소 kgCO2eq | 난방도일 | 냉방도일 | 인구 | 사용승인 세대 |", "| --- | --- | --- | --- | --- | --- | --- |"]
     h = s["history"]
     def at(table: dict[Any, Any], year: int) -> dict[str, Any]:
         # JSON storage turns integer year keys into strings; accept both.
@@ -290,6 +438,13 @@ def area_markdown(s: dict[str, Any]) -> str:
         lines += ["## 감축 노력 계산의 가정"] + [f"- {a}" for a in s["effort"]["assumptions"]]
     lines += ["## 재현 정보", f"근거 SHA256: {s['evidence_hash']}", f"작성 방식: {s['summary']['mode']} — {s['summary']['validation']}"]
     return "\n\n".join(lines) + "\n"
+
+
+@router.get("/{report_id}/html")
+def area_report_html(report_id: str) -> Response:
+    """인쇄·PDF 저장용 보고서 (브라우저 인쇄 → PDF). 숫자는 마크다운과 같은 스냅숏에서만 가져온다."""
+    report = get_area_report(report_id)
+    return Response(area_html(report), media_type="text/html; charset=utf-8")
 
 
 @router.get("/{report_id}/markdown")

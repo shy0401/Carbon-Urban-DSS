@@ -120,3 +120,64 @@
 .area-collect-item em.st-done { color: var(--success); }
 .area-collect-item em.st-failed, .area-collect-item em.st-blocked { color: var(--danger); }
 .area-collect-item em.st-not_published { color: var(--ink-3); }
+
+/* 결과 요약 막대 (2026-10): 단계 이동 + 핵심 지표. 긴 화면을 내려가도 위에 붙어 있다. */
+.area-summary { position: sticky; top: 0; z-index: 6; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--sp-2) var(--sp-4); align-items: center; margin-top: var(--sp-3); padding: var(--sp-2) var(--sp-4); background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-panel); box-shadow: var(--shadow-popover); }
+.area-steps { grid-column: 1 / -1; }
+.area-steps ol { display: flex; flex-wrap: wrap; gap: var(--sp-1) var(--sp-2); margin: 0; padding: 0; list-style: none; }
+.area-steps a { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px 2px 2px; border: 1px solid var(--line); border-radius: 999px; color: var(--ink-2); font-size: var(--fs-caption); font-weight: 600; text-decoration: none; }
+.area-steps a:hover { border-color: var(--primary); color: var(--primary); }
+.area-steps a:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.area-steps b { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--primary); color: var(--on-primary); font-size: 11px; }
+.area-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--sp-2) var(--sp-4); margin: 0; }
+.area-kpis > div { min-width: 0; padding-left: var(--sp-2); border-left: 3px solid var(--line); }
+.area-kpis > div.is-good { border-color: var(--success); }
+.area-kpis > div.is-warn { border-color: var(--warning); }
+.area-kpis dt { font-size: var(--fs-caption); color: var(--ink-3); }
+.area-kpis dd { margin: 0; font-size: var(--fs-panel); font-weight: 700; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.area-kpis dd small { display: block; font-size: var(--fs-caption); font-weight: 400; color: var(--ink-2); }
+.area-summary-actions { display: grid; justify-items: end; gap: 2px; }
+.area-summary-actions small { font-size: var(--fs-caption); color: var(--ink-2); max-width: 220px; text-align: right; }
+
+.area-fallback { margin: 0 0 var(--sp-3); padding: var(--sp-2) var(--sp-3); border: 1px solid var(--info); border-radius: var(--r-map); background: var(--info-bg); font-size: var(--fs-label); line-height: 1.55; }
+
+.area-measures .area-measures-form { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.area-measures .field small { display: block; margin-top: 2px; font-size: var(--fs-caption); line-height: 1.4; }
+.area-mix { margin-top: var(--sp-3); }
+.area-mix-bar { display: flex; height: 18px; overflow: hidden; border: 1px solid var(--line-strong); border-radius: var(--r-control); background: var(--hatch-image), var(--surface); }
+.area-mix-bar span { height: 100%; border-right: 2px solid var(--surface); }
+.area-mix .seg-new, .area-mix-legend .seg-new { background: var(--plan-a); }
+.area-mix .seg-existing, .area-mix-legend .seg-existing { background: var(--plan-c); }
+.area-mix .seg-pv, .area-mix-legend .seg-pv { background: var(--plan-b); }
+.area-mix-legend { display: flex; flex-wrap: wrap; gap: var(--sp-1) var(--sp-4); margin: var(--sp-2) 0; padding: 0; list-style: none; font-size: var(--fs-caption); color: var(--ink-2); }
+.area-mix-legend i { display: inline-block; width: 10px; height: 10px; margin-right: 6px; border-radius: 2px; vertical-align: -1px; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+.area-measures-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin: var(--sp-2) 0; }
+
+.area-benchmark { margin-top: var(--sp-4); }
+.area-benchmark-strip { display: block; width: 100%; max-width: 760px; height: auto; }
+.area-benchmark-strip .axis { stroke: var(--line-strong); stroke-width: 1; }
+.area-benchmark-strip .tick { stroke: var(--line-strong); stroke-width: 1; stroke-dasharray: 2 2; }
+.area-benchmark-strip .median { stroke: var(--ink-2); stroke-width: 1.5; }
+.area-benchmark-strip .peer { fill: var(--seq-3); stroke: var(--surface); stroke-width: 1.5; }
+.area-benchmark-strip .mine { fill: var(--plan-b); stroke: var(--select-line); stroke-width: 2; }
+.area-benchmark-strip text { font-size: 11px; fill: var(--ink-2); }
+.area-benchmark-strip .mine-label { font-weight: 700; fill: var(--ink); }
+.area-benchmark-text { margin: var(--sp-2) 0 var(--sp-1); font-size: var(--fs-label); }
+
+.area-compare-table th, .area-compare-table td { white-space: nowrap; }
+.area-compare-table thead th { vertical-align: bottom; }
+.area-compare-table thead th > span:first-child { display: block; }
+.area-compare-actions { display: inline-flex; gap: 4px; margin-top: 2px; }
+.area-compare-table .icon-link { display: inline-grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 1px solid var(--line); border-radius: var(--r-control); background: var(--surface); color: var(--ink-2); cursor: pointer; }
+.area-compare-table .icon-link:hover { color: var(--primary); border-color: var(--primary); }
+.area-compare-table tbody th { font-weight: 500; color: var(--ink-2); }
+
+@media (max-width: 1100px) {
+  .area-summary { position: static; grid-template-columns: 1fr; }
+  .area-summary-actions { justify-items: start; }
+  .area-measures .area-measures-form { grid-template-columns: 1fr; }
+}
+@media print {
+  .area-summary { position: static; box-shadow: none; }
+  .area-steps, .area-summary-actions, .area-measures-actions { display: none; }
+}

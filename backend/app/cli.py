@@ -34,6 +34,7 @@ def main():
     parser.add_argument('--no-emd',action='store_true',help='national-sgis: 시군구만 (행정동 생략)')
     parser.add_argument('--model',default=None,help='llm-eval: Ollama model name (default OLLAMA_NARRATIVE_MODEL, then OLLAMA_MODEL)');parser.add_argument('--limit',type=int,default=None);parser.add_argument('--file',default=None)
     parser.add_argument('--years',default=None,help='region-energy-history: comma-separated years (default 2020..analysis year-1)')
+    parser.add_argument('--regions',default=None,help='llm-dataset: comma-separated study regions, first one sampled most (e.g. 52110,52710,11740)')
     parser.add_argument('--csv',action='append',default=[],help='check-standard: a CSV table to check before importing (repeatable)')
     parser.add_argument('--cases',default=None,help='verify-cases: cases file (default backend/cases/simulation_cases.json)')
     parser.add_argument('--only',default='',help='verify-cases: comma-separated case ids')
@@ -87,7 +88,8 @@ def main():
             print(json.dumps({'statuses':statuses,'blocked':result['blocked'],'resume_at':result.get('resume_at')},ensure_ascii=False))
         elif args.command=='llm-dataset':
             from .llm_dataset import build_dataset
-            print(json.dumps(build_dataset(db,args.from_year,args.to_year,log=lambda m:print(m,flush=True)),ensure_ascii=False))
+            regions=[r.strip() or None for r in args.regions.split(',')] if args.regions else None
+            print(json.dumps(build_dataset(db,args.from_year,args.to_year,regions=regions,log=lambda m:print(m,flush=True)),ensure_ascii=False))
         elif args.command=='llm-eval':
             from .llm_dataset import evaluate
             print(json.dumps(evaluate(args.file,model=args.model,limit=args.limit,log=lambda m:print(m,flush=True)),ensure_ascii=False))

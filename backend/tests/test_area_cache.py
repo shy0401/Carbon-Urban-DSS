@@ -21,3 +21,23 @@ def test_stale_inputs_are_served_while_a_background_reload_runs(monkeypatch):
     assert len(area._INPUTS) == 3  # bounded
     assert ('41110', 2015, 2025) in area._INPUTS  # another region has its own entry
     area._INPUTS.clear()
+
+
+def test_a_narrower_year_range_is_cut_from_a_cached_wider_one(monkeypatch):
+    rows = [{'use_ym': f'{y}{m:02d}', 'energy_type': 'ELECTRICITY', 'usage_kwh': 1.0, 'grid_id': 'g', 'kapt_code': 'A', 'parcel': 'kapt:A', 'source': 'KAPT'}
+            for y in range(2015, 2026) for m in range(1, 13)]
+    wide = {'years': list(range(2015, 2026)), 'energy': rows, 'weather': [{'use_ym': f'{y}01', 'hdd': 1, 'cdd': 1} for y in range(2015, 2026)],
+            'complexes': {}, 'building_energy': {2020: {'g': {}}, 2024: {'g': {}}}, 'building_energy_complete': {2020: True, 2024: True},
+            'solar': {'year': 2025}, 'region': {'code': '52110'}}
+    loads = []
+    monkeypatch.setattr(area, 'prepare_inputs', lambda db, years, region=None: loads.append(years) or dict(wide, years=list(years)))
+    area._INPUTS.clear()
+    area.cached_inputs(None, list(range(2015, 2026)))
+    part = area.cached_inputs(None, list(range(2021, 2026)))
+    assert loads == [list(range(2015, 2026))]  # no second load
+    assert part['years'] == list(range(2021, 2026)) and {r['use_ym'][:4] for r in part['energy']} == {str(y) for y in range(2021, 2026)}
+    assert [w['use_ym'] for w in part['weather']] == [f'{y}01' for y in range(2021, 2026)]
+    assert set(part['building_energy']) == {2024} and set(part['building_energy_complete']) == {2024}
+    assert part['solar'] == {'year': 2025}  # same last year: the wide range's yield
+    assert ('52110', *range(2021, 2026)) in area._INPUTS
+    area._INPUTS.clear()

@@ -127,8 +127,9 @@ def test_effort_on_every_metered_building_uses_the_building_energy_block():
     assert result['options']['pv_capacity_kw'] == pytest.approx(need / 0.5 / 1300, abs=0.1)
     assert '건축HUB' in result['assumptions'][0]
     history['building_energy'] = {'available': False, 'years': {}}
+    # no metered buildings: the apartment series answers instead, and says it was a fallback
     missing = effort(history, {'added_floor_area_m2': 10000}, 20, basis='buildings')
-    assert missing['available'] is False and missing['basis'] == 'buildings'
+    assert missing['available'] and missing['basis'] == 'apartments' and missing['fallback_from'] == 'buildings'
     with pytest.raises(ValueError):
         effort(history, {}, 20, basis='shops')
     assert effort(history, {'added_floor_area_m2': 40000}, 40)['basis'] == 'apartments'  # unchanged default
@@ -211,3 +212,97 @@ def test_building_energy_history_flags_the_2020_provider_gap_and_trend_skips_it(
     trend = {f['id']: f for f in area_facts(history)}['building_energy_trend']
     assert '2021년 없음' in trend['text'] and '0곳' not in trend['text'] and '(0 kWh)' not in trend['text']
     assert 0 not in trend['numbers'][6:]
+
+
+def _hub_history(area_type='zone'):
+    """An area with metered buildings (건축HUB) but no K-apt complex observation: a 면 without apartments."""
+    spec = {'type': 'zone', 'category': 'COMMERCIAL'} if area_type == 'zone' else {'type': 'admin', 'code': '35012650'}
+    area = resolve_area(spec, GRIDS, POINTS, ADMIN, ZONING)
+    history = build_history(area, YEARS, inputs())
+    history['building_energy'] = {'available': True, 'years': {
+        2023: {'year': 2023, 'electricity_kwh': 2000000.0, 'electricity_complete': 12, 'kwh_per_m2': 50.0, 'area_m2': 40000.0, 'complete': True}}}
+    return history
+
+
+def test_effort_falls_back_to_the_buildings_that_are_metered_when_there_is_no_apartment_basis():
+    history = _hub_history()
+    result = effort(history, {'added_floor_area_m2': 1000}, 20)
+    assert result['available'] and result['basis'] == 'buildings' and result['fallback_from'] == 'apartments'
+    assert result['baseline_kwh'] == 2000000.0 and result['fallback_reason']
+    facts = area_facts(history, None, result)
+    ids = [f['id'] for f in facts]
+    assert 'effort_fallback' in ids and ids.index('effort_fallback') < ids.index('effort_basis')
+    assert '건물 전체(건축HUB) 기준으로 바꿔' in next(f['text'] for f in facts if f['id'] == 'effort_fallback')
+    # nothing on either basis: still unavailable, with the requested basis' reason
+    history['building_energy'] = {'available': False, 'years': {}}
+    assert effort(history, {'added_floor_area_m2': 1000}, 20)['available'] is False
+
+
+def test_coverage_says_which_series_is_missing_when_only_buildings_are_metered():
+    history = _hub_history()
+    cov = next(f for f in area_facts(history) if f['id'] == 'coverage')
+    assert '공동주택(K-apt)' in cov['text'] and '건물 전체(건축HUB)' in cov['text']
+    history['building_energy'] = {'available': False, 'years': {}}
+    assert '연간 에너지와 탄소를 계산하지 않았습니다' in next(f for f in area_facts(history) if f['id'] == 'coverage')['text']
+
+
+def test_demolishing_more_than_the_area_has_is_rejected():
+    area = resolve_area({'type': 'admin', 'code': '35012650'}, GRIDS, POINTS, ADMIN, ZONING)
+    history = build_history(area, YEARS, inputs())
+    # baseline 1,800,000 kWh at 22.5 kWh/m² ≈ 80,000 m²
+    assert effort(history, {'added_floor_area_m2': 1000, 'removed_floor_area_m2': 80000}, 20)['available']
+    with pytest.raises(ValueError, match='철거 연면적'):
+        effort(history, {'added_floor_area_m2': 1000, 'removed_floor_area_m2': 90000}, 20)
+
+
+def test_measure_mix_sums_each_measure_against_the_requirement():
+    area = resolve_area({'type': 'admin', 'code': '35012650'}, GRIDS, POINTS, ADMIN, ZONING)
+    history = build_history(area, YEARS, inputs())
+    result = effort(history, {'added_floor_area_m2': 40000, 'removed_floor_area_m2': 10000}, 40, 1200,
+                    measures={'new_efficiency_pct': 30, 'existing_efficiency_pct': 10, 'pv_kw': 100})
+    mix = result['mix']
+    intensity = 1800000 / 80000
+    new_kwh = intensity * 40000 * 0.30
+    existing_kwh = (1800000 - intensity * 10000) * 0.10
+    total_c = (new_kwh + existing_kwh + 100 * 1200) * 0.5
+    assert mix['new_kwh'] == pytest.approx(new_kwh, abs=0.1) and mix['existing_kwh'] == pytest.approx(existing_kwh, abs=0.1)
+    assert mix['pv_kwh'] == 120000.0 and mix['pv_counted']
+    assert mix['total_kgco2eq'] == pytest.approx(total_c, abs=0.1)
+    assert mix['gap_kgco2eq'] == pytest.approx(result['required_reduction_kgco2eq'] - total_c, abs=0.2)
+    assert mix['met'] is (mix['gap_kgco2eq'] <= 0)
+    facts = {f['id']: f for f in area_facts(history, None, result)}
+    assert '감축 수단 조합' in facts['effort_mix']['text'] and mix['total_kgco2eq'] in facts['effort_mix']['numbers']
+    assert facts['effort_mix_gap']['numbers'][0] == mix['required_kgco2eq']
+    # PV without any yield basis is shown but not counted
+    no_yield = effort(history, {'added_floor_area_m2': 40000}, 40, measures={'pv_kw': 100})['mix']
+    assert no_yield['pv_counted'] is False and no_yield['total_kwh'] == 0
+    with pytest.raises(ValueError):
+        effort(history, {'added_floor_area_m2': 40000}, 40, measures={'new_efficiency_pct': 120})
+    # without measures there is no mix and no mix fact (recorded cases stay as they were)
+    plain = effort(history, {'added_floor_area_m2': 40000}, 40)
+    assert 'mix' not in plain and not any(f['id'].startswith('effort_mix') for f in area_facts(history, None, plain))
+
+
+def test_benchmark_ranks_admin_areas_on_the_same_year_and_basis():
+    from app.area import benchmark, benchmark_position
+    data = dict(inputs(), grids=GRIDS, admin=ADMIN, zoning=ZONING, region={'code': '52110', 'short_name': '전주'}, register=[],
+                sgis_grid=(None, {}), building_energy={}, building_energy_complete={}, solar=None, years=YEARS)
+    table = benchmark(None, YEARS, None, 'apartments', inputs=data)
+    by_code = {i['code']: i for i in table['items']}
+    assert by_code['35012650']['year'] == 2022 and by_code['35012650']['kwh_per_m2'] == pytest.approx(22.5, abs=0.01)
+    assert by_code['35011999']['kwh_per_m2'] is None  # no observation: not ranked, not zero
+    assert table['reference_year'] == 2022 and table['count'] == 1 and table['median'] == pytest.approx(22.5, abs=0.01)
+    assert benchmark_position(table, 2022, 22.5) == {'rank': 1, 'count': 1, 'lower_pct': 0.0, 'quintile': None}
+    assert benchmark_position(table, 2021, 22.5) is None  # another year is not comparable
+    with pytest.raises(ValueError):
+        benchmark(None, YEARS, None, 'shops', inputs=data)
+
+
+def test_observed_baseline_is_the_year_effort_uses():
+    from app.area import observed_baseline
+    history = _hub_history('admin')
+    for basis in ('apartments', 'buildings'):
+        base = observed_baseline(history, basis)
+        result = effort(history, {'added_floor_area_m2': 1000}, 20, basis=basis)
+        assert base['year'] == result['baseline_year'] and base['kwh'] == result['baseline_kwh']
+        assert base['kwh_per_m2'] == pytest.approx(result['intensity_kwh_per_m2'])

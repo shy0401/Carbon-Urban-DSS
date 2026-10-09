@@ -233,7 +233,45 @@ export interface EffortResult {
   factor_kgco2eq_per_kwh?: number;
   scope?: string;
   assumptions?: string[];
+  /** 요청한 기준(공동주택/건물 전체)에 근거가 없어 다른 기준으로 계산했을 때 원래 요청한 기준. */
+  fallback_from?: EffortBasis;
+  fallback_reason?: string;
+  /** 감축 수단 조합(도시·군기본계획의 수단별 감축량 합산 방식): 요청에 measures가 있을 때만. */
+  mix?: MeasureMix;
 }
+
+export interface MeasuresState { new_efficiency_pct: number; existing_efficiency_pct: number; pv_kw: number }
+export const NO_MEASURES: MeasuresState = { new_efficiency_pct: 0, existing_efficiency_pct: 0, pv_kw: 0 };
+
+export interface MeasureMix extends MeasuresState {
+  new_kwh: number; existing_kwh: number; pv_kwh: number | null; pv_counted: boolean;
+  total_kwh: number; total_kgco2eq: number; required_kgco2eq: number; gap_kgco2eq: number; met: boolean; share_pct: number | null; basis: string;
+}
+
+/** The request field: null while every measure is 0 (the engine then answers exactly as before). */
+export function measuresBody(m: MeasuresState): MeasuresState | null {
+  return m.new_efficiency_pct > 0 || m.existing_efficiency_pct > 0 || m.pv_kw > 0 ? m : null;
+}
+
+/** 같은 시·군·구 행정동의 관측 전력 원단위 분포 (/api/areas/benchmark). */
+export interface Benchmark {
+  basis: EffortBasis; basis_label: string; years: [number, number]; reference_year: number | null; count: number; admin_total: number;
+  median: number | null; quintiles: number[] | null; min: number | null; max: number | null; note: string;
+  items: Array<{ code: string; name: string; year: number | null; kwh_per_m2: number | null; area_m2: number | null }>;
+}
+
+/** Rank (1 = lowest kWh/m²) of one intensity among the 행정동 of the same year — the server's benchmark_position. */
+export function benchmarkPosition(bench: Benchmark | null | undefined, year: number | null | undefined, value: number | null | undefined) {
+  if (!bench || value == null || year == null || year !== bench.reference_year || !bench.count) return null;
+  const mine = Math.round(value * 100) / 100;
+  const values = bench.items.filter((i) => i.year === bench.reference_year && i.kwh_per_m2 !== null).map((i) => i.kwh_per_m2 as number);
+  const lower = values.filter((v) => v < mine).length;
+  const quintile = bench.quintiles ? 1 + bench.quintiles.filter((q) => mine > q).length : null;
+  return { rank: lower + 1, count: values.length, lowerPct: Math.round((lower / values.length) * 1000) / 10, quintile };
+}
+
+/** kgCO2eq → tCO2eq, kept null when the engine gave nothing. */
+export const toTonnes = (kg: number | null | undefined) => (kg === null || kg === undefined ? null : kg / 1000);
 
 export interface AreaFact { id: string; text: string; numbers?: number[] }
 

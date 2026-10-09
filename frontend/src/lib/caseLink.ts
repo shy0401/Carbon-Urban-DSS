@@ -6,7 +6,7 @@
  * 지역 시뮬레이션: /area?region=52110&area=admin:35012650&from=2015&to=2025&plan=90000&target=20&basis=apartments
  */
 import type { ScenarioInput } from '../types';
-import type { AreaMode, AreaSpec, EffortBasis, PlanState } from './area';
+import type { AreaMode, AreaSpec, EffortBasis, MeasuresState, PlanState } from './area';
 
 /** The original study region. The analysis scope keeps it as null; a link always names a region so it opens the same place. */
 export const DEFAULT_REGION = '52110';
@@ -23,6 +23,8 @@ export interface ScenarioLink extends ScopeLink {
 export interface AreaLink extends ScopeLink {
   mode?: AreaMode; spec?: AreaSpec; from?: number; to?: number; event?: number | null; window?: number;
   plan?: Partial<PlanState>; target?: number; pv?: string; basis?: EffortBasis;
+  /** 감축 수단 조합 `mx=신축%,기존%,태양광kW`. */
+  measures?: MeasuresState;
 }
 
 /** Commas and colons are valid in a query value; keeping them makes the link readable (127.13,35.88 / admin:35012650). */
@@ -115,10 +117,14 @@ export function parseAreaLink(search: string): AreaLink | null {
   if (pv !== undefined && pv > 0) link.pv = String(pv);
   const basis = params.get('basis');
   if (basis === 'apartments' || basis === 'buildings') link.basis = basis;
+  const mx = (params.get('mx') ?? '').split(',').map(Number);
+  if (mx.length === 3 && mx.every((v) => Number.isFinite(v) && v >= 0) && mx[0] <= 100 && mx[1] <= 100) {
+    link.measures = { new_efficiency_pct: mx[0], existing_efficiency_pct: mx[1], pv_kw: mx[2] };
+  }
   return Object.keys(link).length ? link : null;
 }
 
-export function areaLink(spec: AreaSpec | null, a: { region: string | null; from: number; to: number; event: number | null; window: number; plan: PlanState; target: number; pv: string; basis: EffortBasis }): string | null {
+export function areaLink(spec: AreaSpec | null, a: { region: string | null; from: number; to: number; event: number | null; window: number; plan: PlanState; target: number; pv: string; basis: EffortBasis; measures?: MeasuresState | null }): string | null {
   if (!spec || spec.type === 'polygon') return null;   // a drawn polygon does not fit in an address
   const params = new URLSearchParams();
   params.set('region', a.region ?? DEFAULT_REGION);
@@ -134,5 +140,7 @@ export function areaLink(spec: AreaSpec | null, a: { region: string | null; from
   params.set('target', String(a.target));
   if (a.pv && Number(a.pv) > 0) params.set('pv', a.pv);
   params.set('basis', a.basis);
+  const m = a.measures;
+  if (m && (m.new_efficiency_pct > 0 || m.existing_efficiency_pct > 0 || m.pv_kw > 0)) params.set('mx', `${m.new_efficiency_pct},${m.existing_efficiency_pct},${m.pv_kw}`);
   return `/area?${readable(params)}`;
 }

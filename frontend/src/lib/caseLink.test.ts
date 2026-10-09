@@ -41,4 +41,15 @@ describe('사례 링크', () => {
     expect(areaLink({ type: 'polygon', geometry: { type: 'Polygon', coordinates: [] } }, base)).toBeNull();
     expect(parseAreaLink('area=admin:abc')?.spec).toBeUndefined();
   });
+
+  it('감축 수단 조합(mx)은 값이 있을 때만 링크에 넣고 다시 읽는다', () => {
+    const base = { region: '52710', from: 2015, to: 2025, event: null, window: 3, target: 40, pv: '', basis: 'apartments' as const,
+      plan: { method: 'area' as const, added_floor_area_m2: 50000, floors: 20, building_count: 5, footprint_per_building: 800, removed_floor_area_m2: 0 } };
+    expect(areaLink({ type: 'admin', code: '35510410' }, { ...base, measures: { new_efficiency_pct: 0, existing_efficiency_pct: 0, pv_kw: 0 } })).not.toContain('mx=');
+    const path = areaLink({ type: 'admin', code: '35510410' }, { ...base, measures: { new_efficiency_pct: 30, existing_efficiency_pct: 5, pv_kw: 120.5 } })!;
+    expect(path).toMatch(/&mx=30,5,120.5$/);
+    expect(parseAreaLink(path.split('?')[1])?.measures).toEqual({ new_efficiency_pct: 30, existing_efficiency_pct: 5, pv_kw: 120.5 });
+    expect(parseAreaLink('area=admin:35510410&mx=130,0,0')?.measures).toBeUndefined();   // over 100%: ignored
+    expect(parseAreaLink('area=admin:35510410&mx=1,2')?.measures).toBeUndefined();
+  });
 });

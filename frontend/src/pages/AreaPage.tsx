@@ -1,7 +1,9 @@
-import { Download, FileText, Info, Link2, Pause, Play, RotateCcw, Undo2 } from 'lucide-react';
+import { Download, FileText, Info, Link2, Pause, Play, Printer, RotateCcw, Undo2 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { AreaMap } from '../components/area/AreaMap';
+import { AreaSummaryBar, benchmarkText, BenchmarkPanel, FallbackNotice, MeasuresPanel, ScenarioComparePanel } from '../components/area/AreaWorkflow';
+import { loadScenarios, MAX_SCENARIOS, storeScenarios, toScenario, type SavedScenario } from '../lib/areaScenarios';
 import { BeforeAfterChart, DevelopmentChart, EffortBars, EffortCurve, ElectricityChart, RegisterChart, WeatherYearsChart } from '../components/area/AreaCharts';
 import { MetricCard } from '../components/MetricCard';
 import { PageHeader } from '../components/PageHeader';
@@ -12,7 +14,7 @@ import { setAnalysisScope, useAnalysisScope } from '../hooks/useAnalysisScope';
 import { areaLink, parseAreaLink, type AreaLink } from '../lib/caseLink';
 import { useApi } from '../hooks/useApi';
 import { api } from '../lib/api';
-import { at, buildSpec, EFFORT_BASIS_LABEL, effortHeadline, eventYears, MODE_LABEL, planBody, plannedArea, pvNote, REPORT_MODE_LABEL, type AreaAnalysis, type AreaMode, type AreaOptions, type AreaReport, type AreaSpec, type BeforeAfter, type EffortBasis, type EffortResult, type PlanState } from '../lib/area';
+import { at, buildSpec, EFFORT_BASIS_LABEL, effortHeadline, eventYears, measuresBody, MODE_LABEL, NO_MEASURES, planBody, plannedArea, pvNote, REPORT_MODE_LABEL, type AreaAnalysis, type AreaMode, type AreaOptions, type AreaReport, type AreaSpec, type BeforeAfter, type Benchmark, type EffortBasis, type EffortResult, type MeasuresState, type PlanState } from '../lib/area';
 import { formatDate, formatMetric } from '../lib/format';
 
 const YEARS = Array.from({ length: 17 }, (_, i) => 2010 + i);
@@ -46,6 +48,10 @@ export function AreaPage() {
   const [target, setTarget] = useState(link?.target ?? DEFAULT_TARGET);
   const [pvYield, setPvYield] = useState(link?.pv ?? '');
   const [effortBasis, setEffortBasis] = useState<EffortBasis>(link?.basis ?? 'apartments');
+  const [measures, setMeasures] = useState<MeasuresState>(link?.measures ?? NO_MEASURES);
+  const [bench, setBench] = useState<Benchmark | null>(null);
+  const [scenarios, setScenarios] = useState<SavedScenario[]>(() => (typeof window === 'undefined' ? [] : loadScenarios()));
+  const [saveNote, setSaveNote] = useState<string | null>(null);
   const [linkUrl, setLinkUrl] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<AreaAnalysis | null>(null);
   const [running, setRunning] = useState(false);
@@ -70,7 +76,7 @@ export function AreaPage() {
     const id = ++revision.current;
     setRunning(true); setError(null);
     const pv = Number(pvYield);
-    const body = { area: spec, region, from_year: fromYear, to_year: toYear, event_year: eventYear, window: windowSize, plan: planBody(plan), target_pct: target, pv_yield_kwh_per_kw: pvYield && pv > 0 ? pv : null, effort_basis: effortBasis };
+    const body = { area: spec, region, from_year: fromYear, to_year: toYear, event_year: eventYear, window: windowSize, plan: planBody(plan), target_pct: target, pv_yield_kwh_per_kw: pvYield && pv > 0 ? pv : null, effort_basis: effortBasis, measures: measuresBody(measures) };
     try {
       const result = await api<AreaAnalysis>('/areas/analyze', { method: 'POST', body: JSON.stringify(body) });
       if (id !== revision.current) return;
@@ -81,7 +87,7 @@ export function AreaPage() {
     } finally {
       if (id === revision.current) setRunning(false);
     }
-  }, [fromYear, toYear, eventYear, windowSize, plan, target, pvYield, effortBasis, region]);
+  }, [fromYear, toYear, eventYear, windowSize, plan, target, pvYield, effortBasis, measures, region]);
   const runRef = useRef(run); runRef.current = run;
   // A link to another region switches the analysis scope first (once).
   useEffect(() => { if (link && link.region !== undefined && link.region !== region) setAnalysisScope({ region: link.region }); }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -108,7 +114,7 @@ export function AreaPage() {
   }, [adminCode, options.data, region]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { setLinkUrl(null); }, [analysis]);
   const copyLink = () => {
-    const path = areaLink(lastSpec.current, { region, from: fromYear, to: toYear, event: eventYear, window: windowSize, plan, target, pv: pvYield, basis: effortBasis });
+    const path = areaLink(lastSpec.current, { region, from: fromYear, to: toYear, event: eventYear, window: windowSize, plan, target, pv: pvYield, basis: effortBasis, measures });
     if (!path) { setLinkUrl('직접 그린 구역은 링크로 옮길 수 없습니다. 행정동·반경·용도지역·기준 격자로 고르세요.'); return; }
     const url = window.location.origin + path;
     setLinkUrl(url);
@@ -120,7 +126,7 @@ export function AreaPage() {
     if (!lastSpec.current) return;
     const timer = window.setTimeout(() => { if (lastSpec.current) void runRef.current(lastSpec.current); }, 450);
     return () => window.clearTimeout(timer);
-  }, [fromYear, toYear, eventYear, windowSize, plan, target, pvYield, effortBasis]);
+  }, [fromYear, toYear, eventYear, windowSize, plan, target, pvYield, effortBasis, measures]);
   useEffect(() => {
     if (mode !== 'circle' || !center || lastSpec.current?.type !== 'circle') return;
     const timer = window.setTimeout(() => void runRef.current(specFor('circle')), 450);
@@ -147,6 +153,33 @@ export function AreaPage() {
     if (next === 'grid') void run(specFor('grid'));
   };
 
+  // 같은 시·군·구 행정동 원단위 분포: 감축 기준(자동 전환 포함)과 기간이 바뀔 때만 다시 받는다. 실패해도 화면은 그대로.
+  const benchBasis = analysis?.effort?.available ? analysis.effort.basis ?? null : null;
+  useEffect(() => {
+    if (!benchBasis) { setBench(null); return; }
+    let live = true;
+    const params = new URLSearchParams({ from_year: String(fromYear), to_year: String(toYear), basis: benchBasis });
+    if (region) params.set('region', region);
+    api<Benchmark>(`/areas/benchmark?${params.toString()}`).then((b) => { if (live) setBench(b); }).catch(() => { if (live) setBench(null); });
+    return () => { live = false; };
+  }, [benchBasis, fromYear, toYear, region]);
+
+  const saveScenario = () => {
+    if (!analysis) return;
+    if (scenarios.length >= MAX_SCENARIOS) { setSaveNote(`최대 ${MAX_SCENARIOS}개입니다. 비교표에서 하나를 지우세요.`); return; }
+    const name = `안 ${String.fromCharCode(65 + scenarios.length)} · ${analysis.history.area.label.replace(/ \(행정동\)$/, '')}`;
+    const rank = benchmarkText(bench, analysis.effort);
+    const next = [...scenarios, toScenario(analysis, {
+      name, region, rank: rank ? `${rank.text} (${rank.detail})` : null,
+      link: areaLink(lastSpec.current, { region, from: fromYear, to: toYear, event: eventYear, window: windowSize, plan, target, pv: pvYield, basis: effortBasis, measures }),
+      inputs: { from: fromYear, to: toYear, planned_m2: plannedArea(plan), removed_m2: plan.removed_floor_area_m2, target_pct: target, basis: effortBasis, pv_yield: pvYield, measures },
+    })];
+    setScenarios(next);
+    setSaveNote(storeScenarios(next) ? `${name} 저장 (${next.length}/${MAX_SCENARIOS})` : '이 브라우저에 저장하지 못했습니다(화면을 닫으면 사라짐).');
+  };
+  const removeScenario = (id: string) => { const next = scenarios.filter((s) => s.id !== id); setScenarios(next); storeScenarios(next); setSaveNote(null); };
+  const clearScenarios = () => { setScenarios([]); storeScenarios([]); setSaveNote(null); };
+
   const activeEvent = analysis?.before_after.available ? analysis.before_after.event_year ?? null : null;
 
   if (options.loading) return <div className="page"><LoadingState label="지역 목록을 불러오는 중입니다" /></div>;
@@ -156,7 +189,7 @@ export function AreaPage() {
   return <div className="page area-page" data-testid="area-page">
     <PageHeader title="지역 개발 시뮬레이션" description="행정동·반경·직접 그린 구역·용도지역 어디든 골라 과거와 현재를 비교하고, 개발 전후 영향과 앞으로 필요한 감축 노력을 계산합니다." action={<div className="badge-row"><span className="badge warn"><Info size={13} />운영 단계 1차 추정</span><a className="button ghost small" href="/guide#area">사용 방법</a></div>} />
 
-    <section className="panel area-controls" aria-label="분석 구역 선택">
+    <section className="panel area-controls" aria-label="분석 구역 선택" id="area-step-area">
       <div className="area-modes" role="tablist" aria-label="구역 선택 방식">
         {MODES.map((m) => <button key={m} role="tab" aria-selected={mode === m} onClick={() => changeMode(m)} disabled={m === 'grid' && !o.default_grid}>{MODE_LABEL[m]}</button>)}
       </div>
@@ -175,6 +208,8 @@ export function AreaPage() {
       {error && <p className="form-error" role="alert">{error}</p>}
       <CoverageStrip analysis={analysis} collection={collection.data} regionName={region ? (options.data?.region?.short_name ?? null) : null} />
     </section>
+
+    <AreaSummaryBar analysis={analysis} running={running} bench={bench} onSave={saveScenario} saveNote={saveNote} />
 
     <div className="area-workspace">
       <div className="area-map-stage">
@@ -198,11 +233,18 @@ export function AreaPage() {
       <div className="section-label"><h2>개발 전후 영향</h2><span>개발 연도는 전환기라 제외하고 앞뒤 {windowSize}년 평균을 비교합니다</span></div>
       <BeforeAfterPanel comparison={analysis.before_after} candidates={eventYears(analysis.history)} eventYear={eventYear} setEventYear={setEventYear} windowSize={windowSize} setWindowSize={setWindowSize} />
 
-      <div className="section-label"><h2>미래 개발과 감축 노력</h2><span>목표 감축률을 넣으면 필요한 노력을 계산합니다</span></div>
+      <div className="section-label" id="area-step-plan"><h2>미래 개발과 감축 노력</h2><span>목표 감축률을 넣으면 필요한 노력을 계산합니다</span></div>
       <EffortPanel effort={analysis.effort} plan={plan} setPlan={setPlan} target={target} setTarget={setTarget} pvYield={pvYield} setPvYield={setPvYield} basis={effortBasis} setBasis={setEffortBasis} />
+      <BenchmarkPanel bench={bench} effort={analysis.effort} regionName={options.data?.region?.short_name ?? '시·군·구'} />
 
-      <div className="section-label"><h2>보고서</h2><span>계산 엔진의 근거 문장으로 작성하고, 로컬 AI 문장은 숫자 검증을 통과할 때만 씁니다</span></div>
-      <ReportPanel request={() => ({ area: lastSpec.current, region, from_year: fromYear, to_year: toYear, event_year: eventYear, window: windowSize, plan: planBody(plan), target_pct: target, pv_yield_kwh_per_kw: pvYield && Number(pvYield) > 0 ? Number(pvYield) : null, effort_basis: effortBasis })} label={analysis.history.area.label} />
+      <div className="section-label" id="area-step-measures"><h2>감축 수단 조합</h2><span>수단별 감축량을 더해 필요 감축량을 채우는지 봅니다</span></div>
+      <MeasuresPanel effort={analysis.effort} measures={measures} setMeasures={setMeasures} />
+
+      <div className="section-label" id="area-step-compare"><h2>시나리오 비교</h2><span>저장한 안을 나란히 보고 CSV로 내보냅니다</span></div>
+      <ScenarioComparePanel scenarios={scenarios} onRemove={removeScenario} onClear={clearScenarios} />
+
+      <div className="section-label" id="area-step-report"><h2>보고서</h2><span>계산 엔진의 근거 문장으로 작성하고, 로컬 AI 문장은 숫자 검증을 통과할 때만 씁니다</span></div>
+      <ReportPanel request={() => ({ area: lastSpec.current, region, from_year: fromYear, to_year: toYear, event_year: eventYear, window: windowSize, plan: planBody(plan), target_pct: target, pv_yield_kwh_per_kw: pvYield && Number(pvYield) > 0 ? Number(pvYield) : null, effort_basis: effortBasis, measures: measuresBody(measures) })} label={analysis.history.area.label} />
     </>}
   </div>;
 }
@@ -212,15 +254,18 @@ function CoverageStrip({ analysis, collection, regionName }: { analysis: AreaAna
   const summary = collection?.summary ?? {};
   const datasets = Object.keys(summary);
   const list = (ys: number[] | undefined) => (ys && ys.length ? ys.join(', ') : '없음');
+  const hub = Object.values(analysis?.history.building_energy?.years ?? {}).filter((v) => v.electricity_kwh !== null).sort((a, b) => a.year - b.year);
+  const hubText = hub.length ? hub.map((v) => `${v.year}${v.complete === false ? '(수집 중)' : v.provider_gap ? '(일부 결측)' : ''}`).join(', ') : '없음';
   return <div className="area-coverage">
     {cov && <dl>
-      <div><dt>전력 관측 연도</dt><dd>{list(cov.energy_years)}</dd></div>
+      <div><dt>공동주택 전력 관측 연도 (K-apt)</dt><dd>{list(cov.energy_years)}</dd></div>
+      <div><dt>건물 전체 계측 연도 (건축HUB)</dt><dd>{hubText}</dd></div>
       <div><dt>기상 12개월 연도</dt><dd>{list(cov.weather_years)}</dd></div>
       <div><dt>인구 연도</dt><dd>{list(cov.population_years)}</dd></div>
       <div><dt>구역</dt><dd>격자 {cov.grid_count}개 · 단지 {cov.complex_count}곳</dd></div>
     </dl>}
     <p className="area-collect">{regionName
-      ? <>이 지역({regionName})은 지역 준비 때 분석연도 자료만 받았습니다(과거 연도 일괄 수집은 전주시 범위). 단계별 상태는 <Link to="/regions">전국 지역</Link>에서 봅니다.</>
+      ? <>이 지역({regionName})에서 이 구역에 실제로 있는 연도는 왼쪽과 같습니다. 없는 연도는 0이 아니라 아직 수집하지 않았거나 제공되지 않은 자료입니다. 지역별 수집 단계는 <Link to="/regions">전국 지역</Link>에서 봅니다.</>
       : datasets.length
       ? <><span className="area-collect-title">과거 수집 진행 (연도·항목 수)</span><span className="area-collect-list">{datasets.map((d) => <span key={d} className="area-collect-item"><b>{DATASET_LABEL[d] ?? d}</b>{Object.entries(summary[d]).map(([st, n]) => <em key={st} className={`st-${st.toLowerCase()}`}>{statusLabel(st)} {n}</em>)}</span>)}</span></>
       : <>과거 연도 자료는 아직 수집하지 않았습니다. <a href="/data#collect-missing">수집 데이터 → 빠진 자료 전부 수집</a> 버튼을 누르거나 PC에서 <code>scripts\dss.cmd CollectAll</code>을 실행하면 채워집니다 (일일 한도에 걸리면 다음 날 자동으로 이어서).</>}</p>
@@ -378,6 +423,7 @@ function EffortPanel({ effort, plan, setPlan, target, setTarget, pvYield, setPvY
       <div className="area-effort-result">
         {!effort ? <EmptyState title="목표를 넣으면 계산합니다" /> : !effort.available ? <EmptyState title="계산할 근거가 없습니다" description={effort.reason} /> : <>
           <div className="panel-title"><h3>필요한 노력</h3><div className="badge-row"><ProvenanceBadge kind="scenario" /><span className={`status-tag ${effort.baseline_mode === 'OBSERVED' ? 'good' : 'warn'}`}>기준 부하 {effort.baseline_mode === 'OBSERVED' ? '관측' : '추정'} · {effort.baseline_year}년{effort.basis ? ` · ${EFFORT_BASIS_LABEL[effort.basis]}` : ''}</span></div></div>
+          <FallbackNotice effort={effort} />
           {headline && <p className={`area-headline ${headline.tone}`} role="status">{headline.text}</p>}
           <EffortBars effort={effort} />
           <dl className="area-figures cols">
@@ -428,7 +474,7 @@ function ReportPanel({ request, label }: { request: () => Record<string, unknown
       {s.paragraphs.map((p, i) => <p key={i}>{p}</p>)}
       {s.violations.length > 0 && <details><summary>불채택 사유 {s.violations.length}건</summary><ul>{s.violations.map((v) => <li key={v}>{v}</li>)}</ul>{s.rejected && <blockquote>{s.rejected}</blockquote>}</details>}
       {s.mode === 'LOCAL_SLM_NARRATIVE' && <details><summary>근거 문장 {report.facts.length}개</summary><ul>{report.facts.map((f) => <li key={f.id}>{f.text}</li>)}</ul></details>}
-      <footer><small>검증: {s.validation} · 근거 SHA256 <code>{report.evidence_hash.slice(0, 16)}…</code></small><a className="button small" href={`/api/area-reports/${report.id}/markdown`}><Download size={14} />마크다운 내려받기</a></footer>
+      <footer><small>검증: {s.validation} · 근거 SHA256 <code>{report.evidence_hash.slice(0, 16)}…</code></small><span className="badge-row"><a className="button small primary" href={`/api/area-reports/${report.id}/html`} target="_blank" rel="noopener"><Printer size={14} />인쇄·PDF용 보기</a><a className="button small" href={`/api/area-reports/${report.id}/markdown`}><Download size={14} />마크다운 내려받기</a></span></footer>
     </article>}
     {recent.data && recent.data.length > 0 && <div className="area-report-recent"><h4>최근 지역 보고서</h4><ul>{recent.data.slice(0, 6).map((r) => <li key={r.id}><button className="button ghost small" onClick={() => void open(r.id)}>{r.title}</button><small>{formatDate(r.created_at)} · {REPORT_MODE_LABEL[r.mode as AreaReport['summary']['mode']] ?? r.mode}</small></li>)}</ul></div>}
   </section>;

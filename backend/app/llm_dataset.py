@@ -48,13 +48,14 @@ SLOTS: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
     (("event",), ("", "개발 이력을 보면 ")),
     (("change", "estimated_change"), ("", "개발 전후로 ")),  # a before/after difference, not a measured cause ('그 결과')
     (("new_share",), ("",)),
+    (("effort_fallback",), ("",)),
     (("effort_basis",), ("",)),
     (("effort_target",), ("", "앞으로의 개발에 대해서는 ")),
     (("effort_met", "effort_all"), ("", "이때 ")),
     (("effort_offset",), ("",)),
 )
 # Sentences that do not follow from the one before: no connective ('그 결과 관측이 부족해 …' read as a cause).
-NO_CONNECTIVE = frozenset({"estimated_change", "effort_basis", "building_energy_trend"})
+NO_CONNECTIVE = frozenset({"estimated_change", "effort_basis", "effort_fallback", "building_energy_trend"})
 EFFORT_BASES = ("apartments", "apartments", "buildings")
 
 
@@ -107,18 +108,43 @@ def _areas(inputs: dict[str, Any], limit_circles: int = 24, limit_grids: int = 4
 
 
 def build_dataset(db: Any, from_year: int, to_year: int, *, out_dir: str | Path | None = None,
-                  per_area: int = 6, log: Callable[[str], None] = print) -> dict[str, Any]:
-    """Run the engine over many areas × plans × targets and write verified chat examples."""
+                  per_area: int = 6, log: Callable[[str], None] = print, regions: list[str | None] | None = None,
+                  per_area_other: int = 3, other_limits: tuple[int, int] = (8, 12)) -> dict[str, Any]:
+    """Run the engine over many areas × plans × targets and write verified chat examples.
+
+    ``regions``: study regions to take areas from (default: the original region only). The first region gets
+    ``per_area`` analyses per area and the full circle/grid samples; the others ``per_area_other`` and fewer samples
+    (``other_limits`` circles, grids), so other regions' wording (region names, building-wide bases, 면 without
+    apartments) is learnt without the training set growing past what the 6 GB GPU trains overnight."""
     root = Path(out_dir or Path(os.getenv("DATA_DIR", "data")) / "llm" / "area-narrative")
     root.mkdir(parents=True, exist_ok=True)
     years = list(range(from_year, to_year + 1))
-    inputs = prepare_inputs(db, years)
-    specs = _areas(inputs)
     seen: set[str] = set()
     rows: dict[str, list[dict[str, Any]]] = {"train": [], "eval": []}
-    stats = {"areas": len(specs), "analyses": 0, "failed_analyses": 0, "dropped_unverified": 0, "duplicates": 0, "no_summary": 0}
+    stats = {"areas": 0, "analyses": 0, "failed_analyses": 0, "dropped_unverified": 0, "duplicates": 0, "no_summary": 0}
+    coverage: dict[str, Any] = {}
+    for r_index, region in enumerate(regions or [None]):
+        inputs = prepare_inputs(db, years, region)
+        code = (inputs.get("region") or {}).get("code") or "default"
+        specs = _areas(inputs) if r_index == 0 else _areas(inputs, *other_limits)
+        repeats = per_area if r_index == 0 else per_area_other
+        stats["areas"] += len(specs)
+        before = (len(rows["train"]), len(rows["eval"]))
+        _examples(db, specs, region, inputs, from_year, to_year, repeats, seen, rows, stats, log)
+        coverage[code] = {
+            "energy_years_observed": sorted({int(r["use_ym"][:4]) for r in inputs["energy"] if r.get("use_ym")}),
+            "complexes": len(inputs["complexes"]), "admin_features": len(inputs["admin"]), "areas": len(specs),
+            "train": len(rows["train"]) - before[0], "eval": len(rows["eval"]) - before[1],
+        }
+        log(f"region {code}: areas {len(specs)}, train +{coverage[code]['train']}, eval +{coverage[code]['eval']}")
+        del inputs
+    return _write(root, rows, stats, coverage, from_year, to_year, regions, log)
+
+
+def _examples(db: Any, specs: list[dict[str, Any]], region: str | None, inputs: dict[str, Any], from_year: int, to_year: int,
+              per_area: int, seen: set[str], rows: dict[str, list[dict[str, Any]]], stats: dict[str, int], log: Callable[[str], None]) -> None:
     for n, spec in enumerate(specs, 1):
-        key = json.dumps(spec, sort_keys=True, ensure_ascii=False)
+        key = json.dumps(spec if region is None else {"region": region, **spec}, sort_keys=True, ensure_ascii=False)
         # Split by area so evaluation areas are never seen in training.
         split = "eval" if (_stable(key) % 1000) / 1000 < EVAL_SHARE else "train"
         for k in range(per_area):
@@ -126,7 +152,7 @@ def build_dataset(db: Any, from_year: int, to_year: int, *, out_dir: str | Path 
             plan = PLANS[(_stable(key) // 7 + k) % len(PLANS)]
             try:
                 result = analyze(db, spec, from_year, to_year, None, 3 if k % 2 == 0 else 2, dict(plan), float(target), None, inputs=inputs,
-                                 effort_basis=EFFORT_BASES[(_stable(key) + k) % len(EFFORT_BASES)])
+                                 region=region, effort_basis=EFFORT_BASES[(_stable(key) + k) % len(EFFORT_BASES)])
             except (ValueError, KeyError) as exc:
                 stats["failed_analyses"] += 1
                 log(f"skip {key}: {str(exc)[:80]}")
@@ -158,18 +184,19 @@ def build_dataset(db: Any, from_year: int, to_year: int, *, out_dir: str | Path 
             rows[split].append(example)
         if n % 10 == 0:
             log(f"{n}/{len(specs)} areas, train {len(rows['train'])}, eval {len(rows['eval'])}")
+
+
+def _write(root: Path, rows: dict[str, list[dict[str, Any]]], stats: dict[str, int], coverage: dict[str, Any], from_year: int, to_year: int,
+           regions: list[str | None] | None, log: Callable[[str], None]) -> dict[str, Any]:
     for split, items in rows.items():
         with (root / f"{split}.jsonl").open("w", encoding="utf-8") as handle:
             for item in items:
                 handle.write(json.dumps(item, ensure_ascii=False) + "\n")
-    coverage = {
-        "energy_years_observed": sorted({int(r["use_ym"][:4]) for r in inputs["energy"] if r.get("use_ym")}),
-        "complexes": len(inputs["complexes"]),
-        "admin_features": len(inputs["admin"]),
-    }
+    if regions is None and len(coverage) == 1:  # single default region: the manifest keeps its earlier shape
+        coverage = next(iter(coverage.values()))
     manifest = {
         "task": "area-narrative", "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "years": [from_year, to_year], "train": len(rows["train"]), "eval": len(rows["eval"]), "stats": stats,
+        "years": [from_year, to_year], "regions": regions or ["default"], "train": len(rows["train"]), "eval": len(rows["eval"]), "stats": stats,
         "split": f"by area key hash, eval share {EVAL_SHARE}", "system_prompt_sha256": hashlib.sha256(AREA_SYSTEM.encode("utf-8")).hexdigest(),
         "format": "chat messages; assistant content is the JSON the app requests ({\"summary\": ...})",
         "coverage": coverage,

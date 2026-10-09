@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AreaPage } from './AreaPage';
 
@@ -95,6 +95,41 @@ describe('AreaPage', () => {
     expect(screen.getByText('구역 인구 (면적 비례 추정)')).toBeInTheDocument();
     expect(screen.getByText('12,182 명')).toBeInTheDocument();
     expect(screen.getByText('33.3%')).toBeInTheDocument();
+  });
+
+  it('자동 전환된 기준·감축 수단 조합·행정동 비교·시나리오 저장을 엔진 값 그대로 보여 준다', async () => {
+    window.localStorage.clear();
+    const bodies: Array<Record<string, unknown>> = [];
+    const effort = { ...analysis.effort, basis: 'buildings', baseline_mode: 'OBSERVED', baseline_year: 2025, intensity_kwh_per_m2: 44.25, fallback_from: 'apartments', fallback_reason: '지역 관측이 없고 연면적이 확인된 단지도 없어 기준 부하를 정할 수 없습니다',
+      factor_kgco2eq_per_kwh: 0.433, pv_yield: { kwh_per_kw: 1199.9, basis: 'ESTIMATED', label: '추정' } };
+    const mix = { new_efficiency_pct: 30, existing_efficiency_pct: 0, pv_kw: 0, new_kwh: 464550, existing_kwh: 0, pv_kwh: 0, pv_counted: true, total_kwh: 464550, total_kgco2eq: 201150.2, required_kgco2eq: 1153205.1, gap_kgco2eq: 952054.9, met: false, share_pct: 17.4, basis: '식' };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.endsWith('/api/areas/options')) return new Response(JSON.stringify({ admin: [{ code: '35510410', name: '완주군 경천면' }], admin_geojson: { type: 'FeatureCollection', features: [] }, admin_year: 2024, zones: [], energy_years: [2025], default_grid: 'cell_1', region: { code: '52710', name: '완주군', short_name: '완주', center: null, bbox: null } }));
+      if (url.endsWith('/api/areas/collection')) return new Response(JSON.stringify({ items: {}, runs: [], summary: {} }));
+      if (url.includes('/api/areas/benchmark')) return new Response(JSON.stringify({ basis: 'buildings', basis_label: '건물 전체(건축HUB)', years: [2015, 2025], reference_year: 2025, count: 5, admin_total: 13, median: 40, quintiles: [30, 38, 42, 50], min: 20, max: 70, note: '위치입니다.',
+        items: [20, 35, 40, 48, 70].map((v, i) => ({ code: String(i), name: `면${i}`, year: 2025, kwh_per_m2: v, area_m2: 1 })) }));
+      if (url.endsWith('/api/areas/analyze')) {
+        const body = JSON.parse(String(init?.body)); bodies.push(body);
+        return new Response(JSON.stringify({ ...analysis, effort: { ...effort, ...(body.measures ? { mix } : {}) } }));
+      }
+      if (url.endsWith('/api/area-reports')) return new Response(JSON.stringify([]));
+      return new Response('{}', { status: 404 });
+    });
+    render(<AreaPage />);
+    expect(await screen.findByText(/기준 자동 전환:/)).toBeInTheDocument();
+    const summary = screen.getByTestId('area-summary');
+    expect(within(summary).getByText('1,153.2 t')).toBeInTheDocument();   // 필요 감축량 kg → t
+    expect(await within(summary).findByText('4/5번째')).toBeInTheDocument();   // 44.25: three of 20·35·40·48·70 are lower
+    expect(bodies[0].measures).toBeNull();
+    fireEvent.change(screen.getByLabelText('신축 건물 전력 절감'), { target: { value: '30' } });
+    await waitFor(() => expect(bodies.some((b) => (b.measures as { new_efficiency_pct?: number } | null)?.new_efficiency_pct === 30)).toBe(true), { timeout: 3000 });
+    expect(await screen.findByTestId('area-mix')).toHaveTextContent(/필요 감축량 1,153\.2 t의 17\.4 %/);
+    fireEvent.click(within(summary).getByRole('button', { name: /시나리오 저장/ }));
+    const table = await screen.findByTestId('area-compare');
+    expect(within(table).getByText('안 A · 덕진구 송천1동')).toBeInTheDocument();
+    expect(within(table).getByText('건물 전체 (건축HUB) (자동 전환)')).toBeInTheDocument();
+    expect(JSON.parse(window.localStorage.getItem('carbon-dss.area-scenarios.v1') ?? '[]')).toHaveLength(1);
   });
 
   it('사례 링크로 열면 링크의 구역·계획·목표·기준 건물로 첫 계산을 하고 보고서 요청에도 기준 건물을 넣는다', async () => {

@@ -119,3 +119,49 @@ def test_output_budget_fits_the_longest_training_summary(monkeypatch):
         text = (root / conf).read_text(encoding="utf-8")
         wait = int(text.split("proxy_read_timeout ")[1].split("s")[0])
         assert wait >= sent["timeout"] + 30, conf
+
+
+def _snapshot_for_html(mix=True):
+    facts = [
+        {'id': 'scope', 'text': '분석 대상은 구역 A이고 기간은 2024~2025년입니다.', 'numbers': [2024, 2025]},
+        {'id': 'latest_energy', 'text': '2025년 관측 전력은 5,309,649 kWh(12개월 관측 지번 3곳)입니다.', 'numbers': [2025, 5309649.0, 3]},
+        {'id': 'effort_target', 'text': '2025년 대비 40% 감축을 목표로 하면 계획 반영 후 연간 1,000 kgCO2eq를 줄여야 합니다.', 'numbers': [2025, 40, 1000]},
+        {'id': 'odd_new_fact', 'text': '새 근거 문장 <b>태그</b>.', 'numbers': []},
+    ]
+    effort = {'available': True, 'basis': 'buildings', 'basis_label': '건물 전체', 'baseline_year': 2025, 'baseline_mode': 'OBSERVED', 'target_pct': 40,
+              'baseline_kgco2eq': 2000.0, 'bau_kgco2eq': 2200.0, 'target_kgco2eq': 1200.0, 'required_reduction_kgco2eq': 1000.0, 'already_met': False,
+              'fallback_from': 'apartments', 'assumptions': ['가정 하나']}
+    if mix:
+        effort['mix'] = {'new_efficiency_pct': 20.0, 'existing_efficiency_pct': 5.0, 'pv_kw': 10.0, 'new_kwh': 100.0, 'existing_kwh': 50.0, 'pv_kwh': 1200.0,
+                         'pv_counted': True, 'total_kwh': 1350.0, 'total_kgco2eq': 600.0, 'required_kgco2eq': 1000.0, 'gap_kgco2eq': 400.0, 'met': False,
+                         'share_pct': 60.0, 'basis': '식'}
+    return {'title': '구역 A 검토', 'created_at': '2026-10-10T01:00:00', 'area': {'label': '구역 A', 'method': '격자 중심점'},
+            'history': {'years': [2024, 2025], 'energy': {'2025': {'electricity': {'kwh': 5309649.0, 'complete_parcels': 3}, 'electricity_carbon_kgco2eq': 2299.0}},
+                        'weather': {}, 'population': {}, 'events': {}, 'factor_basis': '최신 계수', 'building_energy': {'years': {}}},
+            'effort': effort, 'facts': facts, 'summary': {'mode': 'TEMPLATE', 'paragraphs': [f['text'] for f in facts], 'validation': '계산 엔진 근거 문장 사용'},
+            'evidence_hash': 'abc', 'benchmark': {'reference_year': 2025, 'position': {'rank': 3, 'count': 20}}}
+
+
+def test_printable_report_keeps_every_fact_in_assessment_order_and_escapes_text():
+    from app.area_report import area_html, key_results
+    s = _snapshot_for_html()
+    html = area_html(s)
+    for f in s['facts']:
+        assert f['text'].replace('<', '&lt;').replace('>', '&gt;') in html  # nothing dropped, nothing unescaped
+    assert '<b>태그</b>' not in html
+    assert html.index('1. 검토 대상과 방법') < html.index('2. 온실가스 배출 현황') < html.index('4. 감축 목표와 필요 감축량') < html.index('5. 감축 방안') < html.index('7. 자료 범위와 한계')
+    assert 'window.print()' in html and '@media print' in html
+    assert '신축 건물 전력 절감' in html and '자동 전환' in html
+    key = dict(key_results(s))
+    assert key['필요 감축량'] == '1.0 tCO2eq/년' and '목표까지 0.4 tCO2eq/년 부족' in key['감축 수단 조합']
+    assert key['같은 시·군·구 행정동 비교'] == '2025년 원단위 낮은 쪽부터 3/20번째'
+
+
+def test_markdown_section_and_table_counts_stay_the_same_with_key_results(monkeypatch):
+    """The recorded case J14 counts '## ' sections and '| ' rows of the Markdown: the key results are bullets, not sections."""
+    from app import area_report
+    with_key = area_report.area_markdown(_snapshot_for_html())
+    monkeypatch.setattr(area_report, 'key_results', lambda s: [])
+    without = area_report.area_markdown(_snapshot_for_html())
+    assert with_key.count('\n## ') == without.count('\n## ') and with_key.count('\n| ') == without.count('\n| ')
+    assert '- 필요 감축량: 1.0 tCO2eq/년' in with_key and '공동주택 전력 kWh (K-apt' in with_key
