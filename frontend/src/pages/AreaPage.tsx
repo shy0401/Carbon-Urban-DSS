@@ -372,7 +372,7 @@ function BeforeAfterPanel({ comparison, candidates, eventYear, setEventYear, win
         <BeforeAfterChart comparison={comparison} />
         <div>
           <h4 className="area-subhead">관측 <ProvenanceBadge kind="observed" /></h4>
-          {comparison.coverage && comparison.coverage.comparable === false && <p className="area-fallback" role="note" data-testid="area-coverage-caution"><b>관측 범위 주의:</b> 개발 전 관측 단지가 평균 {formatMetric(comparison.coverage.before_parcels_mean, '곳', 1)}으로 개발 후 기존 단지 평균 {formatMetric(comparison.coverage.after_existing_parcels_mean, '곳', 1)}보다 적습니다. 지역 합계 변화에는 수집 범위 차이가 섞여 있으니 <b>기존 단지만의 변화</b>를 보세요.</p>}
+          {comparison.coverage && comparison.coverage.comparable === false && <p className="area-fallback" role="note" data-testid="area-coverage-caution"><b>관측 범위 주의:</b> 개발 전 관측 단지가 평균 {formatMetric(comparison.coverage.before_parcels_mean, '곳', 1)}으로 개발 후 기존 단지 평균 {formatMetric(comparison.coverage.after_existing_parcels_mean, '곳', 1)}보다 적습니다. 지역 합계 변화에는 수집 범위 차이가 섞여 있습니다. {m?.electricity.existing_change_pct != null ? <>같은 단지끼리 비교한 <b>기존 단지만의 변화</b>를 보세요.</> : <>전후 모든 해에 관측된 같은 기존 단지가 없어 같은 단지 비교도 아직 할 수 없습니다(과거 연도 수집 뒤 다시 확인).</>}</p>}
           <dl className="area-figures">
             <Figure label="전력 연평균 변화" value={m?.electricity.total_change_pct} unit="%" digits={1} signed note={comparison.coverage ? `관측 연도 ${comparison.coverage.observed_before_years.join('·') || '없음'} → ${comparison.coverage.observed_after_years.join('·') || '없음'}` : undefined} />
             <Figure label="기존 단지만의 변화" value={m?.electricity.existing_change_pct} unit="%" digits={1} note={m?.electricity.existing_complexes ? `전후 모든 해에 보고한 같은 단지 ${m.electricity.existing_complexes}곳끼리` : '같은 단지끼리 비교'} signed />

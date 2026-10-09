@@ -27,8 +27,8 @@ function go(id: string) {
   if (el && typeof el.scrollIntoView === 'function') el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-function Kpi({ label, value, sub, tone }: { label: string; value: ReactNode; sub?: ReactNode; tone?: 'good' | 'warn' | 'bad' }) {
-  return <div className={tone ? `is-${tone}` : undefined}><dt>{label}</dt><dd>{value}{sub && <small>{sub}</small>}</dd></div>;
+function Kpi({ label, value, sub, tone }: { label: string; value: ReactNode; sub?: string; tone?: 'good' | 'warn' | 'bad' }) {
+  return <div className={tone ? `is-${tone}` : undefined}><dt>{label}</dt><dd>{value}{sub && <small title={sub}>{sub}</small>}</dd></div>;
 }
 
 /** 한 줄 위치 문장: '전주 행정동 30곳 중 낮은 쪽부터 12번째'. 같은 기준·같은 연도일 때만. */
@@ -51,11 +51,11 @@ export function AreaSummaryBar({ analysis, running, bench, onSave, saveNote }: {
     <dl className="area-kpis" aria-live="polite">
       <Kpi label="구역" value={analysis?.history.area.label ?? '구역을 고르세요'} sub={running ? '계산 중…' : analysis ? `${analysis.history.years[0]}~${analysis.history.years[analysis.history.years.length - 1]}` : undefined} />
       {ok && e ? <>
-        <Kpi label="기준 배출" value={t1(e.baseline_kgco2eq)} sub={`${e.baseline_year}년 ${e.baseline_mode === 'OBSERVED' ? '관측' : '추정'} · ${e.basis ? EFFORT_BASIS_LABEL[e.basis] : ''}${e.fallback_from ? ' (자동 전환)' : ''}`} />
+        <Kpi label="기준 배출" value={t1(e.baseline_kgco2eq)} sub={`${e.baseline_year}년 ${e.baseline_mode === 'OBSERVED' ? '관측' : '추정'} · ${e.basis === 'buildings' ? '건물 전체' : '공동주택'}${e.fallback_from ? '(자동 전환)' : ''}`} />
         <Kpi label="계획 반영 (대책 없음)" value={t1(e.bau_kgco2eq)} sub={`목표 ${formatMetric(e.target_pct, '%')} 감축선 ${t1(e.target_kgco2eq)}`} />
-        <Kpi label="필요 감축량" value={e.already_met ? '불필요' : t1(e.required_reduction_kgco2eq)} sub="연간, 전력 운영탄소" tone={e.already_met ? 'good' : undefined} />
+        <Kpi label="필요 감축량" value={e.already_met ? '불필요' : t1(e.required_reduction_kgco2eq)} sub="연간 · 전력 운영탄소" tone={e.already_met ? 'good' : undefined} />
         <Kpi label="감축 수단 조합" value={mix ? t1(mix.total_kgco2eq) : '입력 전'} sub={mix ? (mix.met ? '목표 달성' : `${t1(mix.gap_kgco2eq)} 부족`) : '3단계에서 입력'} tone={mix ? (mix.met ? 'good' : 'warn') : undefined} />
-        <Kpi label="같은 시·군 비교" value={position ? position.text : '—'} sub={position ? position.detail : '같은 연도·기준 관측일 때만'} />
+        <Kpi label="같은 시·군 비교" value={position ? position.text : '—'} sub={position ? `원단위 낮은 쪽부터${position.pos.quintile ? ` · ${position.pos.quintile}/5분위` : ''}` : '같은 연도·기준 관측일 때만'} />
       </> : analysis ? <Kpi label="감축 노력" value="계산 근거 없음" sub={e?.reason ?? '목표를 넣으면 계산합니다'} tone="warn" /> : null}
     </dl>
     <div className="area-summary-actions">
@@ -75,7 +75,7 @@ export function MeasuresPanel({ effort, measures, setMeasures }: { effort: Effor
   const yieldPerKw = effort?.pv_yield?.kwh_per_kw ?? null;
   const field = (key: keyof MeasuresState, label: string, unit: string, max: number, step: number, hint: string) =>
     <label className="field" key={key}><span>{label}</span><div><input type="number" min={0} max={max} step={step} value={measures[key]} aria-label={label}
-      onChange={(ev) => setMeasures({ ...measures, [key]: Math.min(max, Math.max(0, Number(ev.target.value) || 0)) })} /><em>{unit}</em></div><small className="muted">{hint}</small></label>;
+      onChange={(ev) => setMeasures({ ...measures, [key]: Math.min(max, Math.max(0, Number(ev.target.value) || 0)) })} /><em>{unit}</em></div><span className="field-hint">{hint}</span></label>;
   const fillWithPv = () => {
     if (!mix || mix.met || !yieldPerKw || !effort?.factor_kgco2eq_per_kwh) return;
     const extra = Math.ceil((mix.gap_kgco2eq / effort.factor_kgco2eq_per_kwh / yieldPerKw) * 10) / 10;

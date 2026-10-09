@@ -129,20 +129,21 @@
 .area-steps a:hover { border-color: var(--primary); color: var(--primary); }
 .area-steps a:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .area-steps b { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--primary); color: var(--on-primary); font-size: 11px; }
-.area-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--sp-2) var(--sp-4); margin: 0; }
+.area-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: var(--sp-2) var(--sp-3); margin: 0; }
 .area-kpis > div { min-width: 0; padding-left: var(--sp-2); border-left: 3px solid var(--line); }
+.area-kpis > div:first-child dd { font-size: var(--fs-body); }
 .area-kpis > div.is-good { border-color: var(--success); }
 .area-kpis > div.is-warn { border-color: var(--warning); }
 .area-kpis dt { font-size: var(--fs-caption); color: var(--ink-3); }
-.area-kpis dd { margin: 0; font-size: var(--fs-panel); font-weight: 700; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.area-kpis dd small { display: block; font-size: var(--fs-caption); font-weight: 400; color: var(--ink-2); }
+.area-kpis dd { margin: 0; font-size: var(--fs-panel); font-weight: 700; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.area-kpis dd small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-caption); font-weight: 400; color: var(--ink-2); }
 .area-summary-actions { display: grid; justify-items: end; gap: 2px; }
 .area-summary-actions small { font-size: var(--fs-caption); color: var(--ink-2); max-width: 220px; text-align: right; }
 
 .area-fallback { margin: 0 0 var(--sp-3); padding: var(--sp-2) var(--sp-3); border: 1px solid var(--info); border-radius: var(--r-map); background: var(--info-bg); font-size: var(--fs-label); line-height: 1.55; }
 
 .area-measures .area-measures-form { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.area-measures .field small { display: block; margin-top: 2px; font-size: var(--fs-caption); line-height: 1.4; }
+.area-measures .field-hint { display: block; margin-top: 2px; font-size: var(--fs-caption); line-height: 1.4; color: var(--ink-3); }
 .area-mix { margin-top: var(--sp-3); }
 .area-mix-bar { display: flex; height: 18px; overflow: hidden; border: 1px solid var(--line-strong); border-radius: var(--r-control); background: var(--hatch-image), var(--surface); }
 .area-mix-bar span { height: 100%; border-right: 2px solid var(--surface); }
@@ -164,7 +165,9 @@
 .area-benchmark-strip .mine-label { font-weight: 700; fill: var(--ink); }
 .area-benchmark-text { margin: var(--sp-2) 0 var(--sp-1); font-size: var(--fs-label); }
 
-.area-compare-table th, .area-compare-table td { white-space: nowrap; }
+.area-compare-table { table-layout: fixed; }
+.area-compare-table th, .area-compare-table td { white-space: normal; overflow-wrap: anywhere; vertical-align: top; }
+.area-compare-table th[scope='row'], .area-compare-table thead th:first-child { width: 190px; }
 .area-compare-table thead th { vertical-align: bottom; }
 .area-compare-table thead th > span:first-child { display: block; }
 .area-compare-actions { display: inline-flex; gap: 4px; margin-top: 2px; }
