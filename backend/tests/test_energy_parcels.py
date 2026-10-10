@@ -100,3 +100,43 @@ def test_map_properties_add_building_gas_carbon_with_the_assumed_factor_and_keep
     assert props["bldg_gas_carbon_t"] == round(50_000 * GAS_FACTOR / 1000, 1)
     assert map_properties(dict(item, gas_kwh=None), 0.4781)["bldg_gas_carbon_t"] is None   # no gas observed: missing, not 0
     assert map_properties(None, 0.4781)["bldg_gas_carbon_t"] is None
+
+
+def test_an_empty_provider_answer_is_retried_on_a_fresh_connection_not_failed(monkeypatch):
+    """data.go.kr sometimes answers HTTP 200 with an empty body (10/10 night: 수원 2020·2021, 완주 2020·2022·2024 stopped on one
+    page). That is never a real "no data" answer (no data is resultCode 03), so the page is asked again like 04 HTTP_ERROR."""
+    import app.energy_parcels as ep
+    monkeypatch.setattr(ep.time, 'sleep', lambda s: None)
+
+    class Flaky(FakeClient):
+        def __init__(self, answers, empty_times):
+            super().__init__(answers)
+            self.empty_times, self.forgotten, self.resets = empty_times, 0, 0
+
+        def get(self, provider, operation, url, params):
+            if operation == 'getBeElctyUsgInfo' and self.empty_times:
+                self.empty_times -= 1
+                self.calls.append((operation, params['useYm'], params['pageNo']))
+                return {'body': b'', 'status': 200, 'id': 'x'}
+            return super().get(provider, operation, url, params)
+
+        def forget(self, result):
+            self.forgotten += 1
+
+        def reset_connection(self):
+            self.resets += 1
+
+    db = make_db()
+    client = Flaky({('getBeElctyUsgInfo', '202401', 1): ([row('0011', '0011', 67)], 1)}, empty_times=2)
+    stats = collect_energy_all(db, 2024, client=client, service_key='k', months=['202401'],
+                               regions=[{'sigunguCd': '52113', 'bjdongCd': '11600'}])
+    assert stats['inserted'] == 1 and client.forgotten == 2 and client.resets == 2
+    assert db.scalars(select(EnergyMonthly)).one().usage_kwh == 67
+
+    # still empty after every retry: the year stops with a provider error (the run moves on to the next year)
+    from app.cache import ExternalError
+    import pytest
+    always = Flaky({}, empty_times=99)
+    with pytest.raises(ExternalError, match='일시 오류'):
+        collect_energy_all(make_db(), 2024, client=always, service_key='k', months=['202401'],
+                           regions=[{'sigunguCd': '52113', 'bjdongCd': '11600'}])

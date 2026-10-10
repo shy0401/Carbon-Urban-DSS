@@ -37,7 +37,9 @@ OPERATIONS = {"ELECTRICITY": "getBeElctyUsgInfo", "GAS": "getBeGasUsgInfo"}
 HUB = "국토교통부 건축HUB"
 PAGE = 100  # the provider caps numOfRows at 100
 AUTH_CODES = {"20", "21", "30", "31", "32"}
-TRANSIENT_CODES = {"01", "02", "04", "05", "99"}
+# EMPTY_RESPONSE: HTTP 200 with an empty body from the data.go.kr gateway. "No data" is resultCode 03, never an empty body,
+# so it is asked again on a fresh connection like 04 HTTP_ERROR (10/10 night: one such page stopped 5 region-years).
+TRANSIENT_CODES = {"01", "02", "04", "05", "99", "EMPTY_RESPONSE"}
 MIN_KWH_PER_M2, MAX_KWH_PER_M2 = 2.0, 1500.0  # outside: partial meter or area mismatch, kept out of intensities
 
 
@@ -91,7 +93,7 @@ def request_sigungu(sigungu: str, use_ym: str) -> str:
     return str(sigungu)
 
 
-def _request(session: Any, operation: str, params: dict[str, Any], attempts: int = 3) -> tuple[list[dict[str, Any]], int]:
+def _request(session: Any, operation: str, params: dict[str, Any], attempts: int = 4) -> tuple[list[dict[str, Any]], int]:
     for attempt in range(attempts):
         response = None
         try:
