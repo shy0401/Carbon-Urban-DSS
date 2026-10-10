@@ -351,14 +351,24 @@ def step_weather(db: Any, region: StudyRegion, log: Log) -> dict[str, Any]:
     if region.center_lon is None or region.center_lat is None:
         raise ValueError("지역 중심을 모릅니다: 격자 단계를 먼저 끝내야 합니다")
     last = analysis_year()
-    params = dict(latitude=round(region.center_lat, 4), longitude=round(region.center_lon, 4), start_date="2015-01-01", end_date=f"{last}-12-31",
-                  daily="temperature_2m_mean,temperature_2m_min,temperature_2m_max,precipitation_sum", timezone="Asia/Seoul", models="era5_land")
-    result = client.get("weather", f"region-{region.code}", "https://archive-api.open-meteo.com/v1/archive", params)
+
+    def fetch(lat: float, lon: float) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]]]:
+        params = dict(latitude=round(lat, 4), longitude=round(lon, 4), start_date="2015-01-01", end_date=f"{last}-12-31",
+                      daily="temperature_2m_mean,temperature_2m_min,temperature_2m_max,precipitation_sum", timezone="Asia/Seoul", models="era5_land")
+        result = client.get("weather", f"region-{region.code}", "https://archive-api.open-meteo.com/v1/archive", params)
+        return params, result, monthly_weather(json.loads(result["body"]))
+
+    params, result, rows = fetch(region.center_lat, region.center_lon)
+    note = ""
+    if rows and not any(r["days_observed"] for r in rows):
+        # ERA5-Land is land-only: a centre at sea (군산 bbox with 고군산군도) answers null for every day.
+        land = _land_point(db, region)
+        if land:
+            params, result, rows = fetch(*land)
+            note = " · 지역 중심이 바다라 공동주택 단지 위치 중앙값 지점 사용"
     raw = _root() / "raw" / "weather-regions"
     raw.mkdir(parents=True, exist_ok=True)
     (raw / f"{region.code}.json").write_bytes(result["body"])
-    payload = json.loads(result["body"])
-    rows = monthly_weather(payload)
     for row in rows:
         item = db.get(RegionWeatherMonthly, (region.code, row["use_ym"])) or RegionWeatherMonthly(region_code=region.code, use_ym=row["use_ym"])
         item.provider, item.source_type = "Open-Meteo / ERA5-Land", "FALLBACK"
@@ -377,7 +387,19 @@ def step_weather(db: Any, region: StudyRegion, log: Log) -> dict[str, Any]:
         db.rollback()
         log(f"일사량 받기 실패: {type(exc).__name__}")
     complete = sum(1 for r in rows if r["days_observed"] >= r["expected_days"])
-    return {"rows": len(rows), "message": f"ERA5-Land {len(rows)}개월 (완전월 {complete}개월, 일사량 {solar_months}개월, 지점 {params['latitude']}, {params['longitude']})"}
+    return {"rows": len(rows), "message": f"ERA5-Land {len(rows)}개월 (완전월 {complete}개월, 일사량 {solar_months}개월, 지점 {params['latitude']}, {params['longitude']}{note})"}
+
+
+def _land_point(db: Any, region: StudyRegion) -> tuple[float, float] | None:
+    """Median position of the region's K-apt complexes (where people live), or None when it has none."""
+    from statistics import median
+    from .kapt import ApartmentComplex
+    legal = {str(code)[:5] for code in (region.legal_codes or [region.code])}
+    points = [(lat, lon) for bjd, lat, lon in db.execute(select(ApartmentComplex.bjd_code, ApartmentComplex.latitude, ApartmentComplex.longitude))
+              if bjd and bjd[:5] in legal and lat and lon]
+    if not points:
+        return None
+    return median(p[0] for p in points), median(p[1] for p in points)
 
 
 def _vworld_step(dataset: str) -> Callable[[Any, StudyRegion, Log], dict[str, Any]]:
