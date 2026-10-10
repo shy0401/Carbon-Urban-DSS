@@ -433,7 +433,7 @@ def before_after(history: dict[str, Any], event_year: int | None = None, window:
     # population as the after-period, so the total change is then labelled as mixed with the coverage gap.
     elec_years = lambda ys: [y for y in ys if history["energy"][y]["electricity"]["kwh"] is not None]  # noqa: E731
     observed_before, observed_after = elec_years(before_years), elec_years(after_years)
-    before_parcels = _mean([history["energy"][y]["electricity"]["complete_parcels"] for y in observed_before])
+    before_parcels = _mean([history["energy"][y]["electricity"].get("complete_parcels") for y in observed_before])
     after_existing = _mean([sum(1 for c in history["energy"][y]["electricity"].get("by_complex") or {} if approved.get(c) and approved[c] < event_year)
                             for y in observed_after]) if any(history["energy"][y]["electricity"].get("by_complex") for y in observed_after) else None
     result["coverage"] = {
