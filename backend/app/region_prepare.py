@@ -502,19 +502,89 @@ def collect_energy_years(db: Any, code: str, years: list[int], *, log: Log = pri
     return {"region": code, "done": done, "left": sorted(left), "years_before_hub": sorted(y for y in years if y < HUB_FIRST_YEAR)}
 
 
-def _mark_energy_year(db: Any, region: StudyRegion, year: int, status: str) -> None:
-    """``study_regions.datasets.energy_years[year]``: DONE only when every 법정동 × month of the year was answered."""
+def collect_kapt_years(db: Any, code: str, years: list[int], *, log: Log = print) -> dict[str, Any]:
+    """K-apt monthly energy of a prepared region for past years (the region step takes only the analysis year).
+
+    Newest year first. Each year's state goes to ``study_regions.datasets.kapt_years``: DONE, PARTIAL (months the gateway kept
+    failing for this region's complexes — asked again next run, never 0), WAITING (daily quota, 5,000 calls on a development
+    key: no further year is asked) or SKIPPED. Months already answered are not asked again (DB rows and the response cache)."""
+    from .kapt_energy import ProviderOutageError, collect_kapt_energy
+    region = db.get(StudyRegion, code)
+    if region is None:
+        raise ValueError(f"준비한 지역이 아닙니다: {code}")
+    wanted = sorted(set(years), reverse=True)
+    if ((region.datasets or {}).get("complexes") or {}).get("status") != "DONE":
+        return {"region": code, "done": {}, "left": sorted(wanted), "stopped": "NO_COMPLEXES"}
+    legal = [str(c)[:5] for c in (region.legal_codes or [code])]
+    done: dict[int, Any] = {}
+    left: list[int] = []
+    stopped = None
+    for year in wanted:
+        if stopped:
+            left.append(year)
+            continue
+        if ((region.datasets or {}).get("kapt_years") or {}).get(str(year)) == "DONE":
+            log(f"{code} K-apt {year}: 이미 완료")
+            continue
+        try:
+            stats = collect_kapt_energy(db, year, "full", history=True, region=code, retry_rounds=1, retry_wait_s=120,
+                                        outage_pause_s=300, max_outage_pauses=6)
+            failed = _kapt_failed_months(db, legal, year)   # the collector counts every region's FAILED months
+            status = "DONE" if not failed else "PARTIAL"
+            done[year] = {k: stats.get(k) for k in ("requested", "normalized", "not_reported", "suspect", "skipped", "before_approval")}
+            done[year]["failed"] = failed
+            log(f"{code} K-apt {year}: {status} 요청 {stats.get('requested', 0):,} · 유효 {stats.get('normalized', 0):,} · "
+                f"미보고 {stats.get('not_reported', 0):,} · 사용승인 전 {stats.get('before_approval', 0):,} · 남은 오류 {failed:,}")
+            if failed:
+                left.append(year)
+        except ProviderOutageError as exc:
+            db.rollback()
+            status, stopped = "FAILED", "OUTAGE"
+            left.append(year)
+            log(f"{code} K-apt {year}: FAILED {exc}")
+        except ValueError as exc:   # e.g. no complexes in the region list
+            db.rollback()
+            status = "SKIPPED"
+            log(f"{code} K-apt {year}: SKIPPED {exc}")
+        except ExternalError as exc:
+            db.rollback()
+            status, message = _classify(exc)
+            left.append(year)
+            log(f"{code} K-apt {year}: {status} {message}")
+            if status in ("WAITING", "BLOCKED"):
+                stopped = status
+        region = db.get(StudyRegion, code)
+        _mark_year(db, region, "kapt_years", year, status)
+    return {"region": code, "done": done, "left": sorted(left), "stopped": stopped}
+
+
+def _kapt_failed_months(db: Any, legal: list[str], year: int) -> int:
+    from .kapt import ApartmentComplex
+    from .kapt_energy import ApartmentEnergyMonthly
+    return int(db.scalar(select(func.count()).select_from(ApartmentEnergyMonthly).join(
+        ApartmentComplex, ApartmentComplex.kapt_code == ApartmentEnergyMonthly.complex_code).where(
+        ApartmentEnergyMonthly.year_month.like(f"{year}%"), ApartmentEnergyMonthly.quality_status == "FAILED",
+        func.substr(ApartmentComplex.bjd_code, 1, 5).in_(legal))) or 0)
+
+
+def _mark_year(db: Any, region: StudyRegion, field: str, year: int, status: str) -> None:
+    """``study_regions.datasets[field][year] = status`` (energy_years, kapt_years)."""
     try:
         db.refresh(region, with_for_update=True)
     except Exception:  # noqa: BLE001 - SQLite in tests
         db.rollback()
         db.refresh(region)
     datasets = dict(region.datasets or {})
-    years = dict(datasets.get("energy_years") or {})
+    years = dict(datasets.get(field) or {})
     years[str(year)] = status
-    datasets["energy_years"] = years
+    datasets[field] = years
     region.datasets = datasets
     db.commit()
+
+
+def _mark_energy_year(db: Any, region: StudyRegion, year: int, status: str) -> None:
+    """``study_regions.datasets.energy_years[year]``: DONE only when every 법정동 × month of the year was answered."""
+    _mark_year(db, region, "energy_years", year, status)
 
 
 def step_kapt_energy(db: Any, region: StudyRegion, log: Log) -> dict[str, Any]:

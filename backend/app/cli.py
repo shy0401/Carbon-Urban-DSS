@@ -24,7 +24,7 @@ def init_tables():
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('command',choices=['demo','online','status','enrich','collect','collect-history','collect-missing','validate-models','snapshot','llm-dataset','llm-eval','import-sgis-grid','import-sgis-grid500','import-regional-stats','import-team-grid',
         'national-admin','national-sgis','national-complexes','national-grid500','national-ordinances','national-all','prepare-region','regions',
-        'check-standard','apply-standard','backfill-solar','region-energy-history','verify-cases']);parser.add_argument('--year',type=int,default=DEFAULT_YEAR)
+        'check-standard','apply-standard','backfill-solar','region-energy-history','region-kapt-history','verify-cases']);parser.add_argument('--year',type=int,default=DEFAULT_YEAR)
     parser.add_argument('--from',dest='from_year',type=int,default=2015);parser.add_argument('--to',dest='to_year',type=int,default=DEFAULT_YEAR)
     parser.add_argument('--datasets',default='',help='comma-separated: sgis,kma_asos,kapt_energy,energy,vworld_zoning,vworld_buildings,vworld_cadastral,building_register');parser.add_argument('--force',action='store_true')
     parser.add_argument('--source',choices=['energy','weather','kapt-energy','kma','sgis','vworld-zoning','vworld-cadastral'])
@@ -33,7 +33,7 @@ def main():
     parser.add_argument('--steps',default='',help='prepare-region: comma-separated steps (default: all)')
     parser.add_argument('--no-emd',action='store_true',help='national-sgis: 시군구만 (행정동 생략)')
     parser.add_argument('--model',default=None,help='llm-eval: Ollama model name (default OLLAMA_NARRATIVE_MODEL, then OLLAMA_MODEL)');parser.add_argument('--limit',type=int,default=None);parser.add_argument('--file',default=None)
-    parser.add_argument('--years',default=None,help='region-energy-history: comma-separated years (default 2020..analysis year-1)')
+    parser.add_argument('--years',default=None,help='region-energy-history / region-kapt-history: comma-separated years (default 2020 / 2021 .. analysis year-1)')
     parser.add_argument('--regions',default=None,help='llm-dataset: comma-separated study regions, first one sampled most (e.g. 52110,52710,11740)')
     parser.add_argument('--csv',action='append',default=[],help='check-standard: a CSV table to check before importing (repeatable)')
     parser.add_argument('--cases',default=None,help='verify-cases: cases file (default backend/cases/simulation_cases.json)')
@@ -145,6 +145,16 @@ def main():
             years=[int(y) for y in (args.years or '').split(',') if y.strip()] or list(range(2020,DEFAULT_YEAR))
             for code in [r.strip() for r in (args.region or '').split(',') if r.strip()]:
                 print(json.dumps(collect_energy_years(db,code,years,log=lambda m:print(m,flush=True)),ensure_ascii=False,default=str),flush=True)
+        elif args.command=='region-kapt-history':
+            # 준비한 지역의 K-apt 월별 에너지 과거 연도 (지역 준비는 분석 연도만 받음). --region 52710,41110 --years 2024,2023
+            # 일일 한도(개발계정 5,000건)에 걸리면 그 뒤 지역은 묻지 않음: 한도는 키 하나에 걸림
+            from .region_prepare import collect_kapt_years
+            years=[int(y) for y in (args.years or '').split(',') if y.strip()] or list(range(2021,DEFAULT_YEAR))
+            for code in [r.strip() for r in (args.region or '').split(',') if r.strip()]:
+                result=collect_kapt_years(db,code,years,log=lambda m:print(m,flush=True))
+                print(json.dumps(result,ensure_ascii=False,default=str),flush=True)
+                if result.get('stopped') in ('WAITING','BLOCKED','OUTAGE'):
+                    break
         elif args.command=='backfill-solar':
             # ERA5-Land 일사량을 지역마다 받아 태양광 연 발전량 추정에 씀 (docs/DATA_STANDARD.md 5.13)
             from .solar import backfill

@@ -153,3 +153,63 @@ def test_weather_moves_to_where_people_live_when_the_region_centre_is_at_sea(mon
     row = db.get(RegionWeatherMonthly, ("52130", "202501"))
     assert row.days_observed == 31 and row.mean_temperature == 1.5 and (row.latitude, row.longitude) == (35.97, 126.72)
     assert "완전월 1개월" in result["message"] and "바다" in result["message"]
+
+
+def test_collect_kapt_years_records_each_year_skips_done_ones_and_stops_at_the_daily_quota(monkeypatch):
+    """K-apt past years of a prepared region (지역 준비 takes only the analysis year). Daily quota 5,000 calls: a year cut by the
+    quota is WAITING (asked again next night, answered months are not asked again), and no further year is asked."""
+    from app import kapt_energy, region_prepare
+    from app.cache import ExternalError
+
+    class Region:
+        code = "52710"
+        legal_codes = ["52710"]
+        datasets = {"complexes": {"status": "DONE"}, "kapt_energy": {"status": "DONE", "year": 2025}, "kapt_years": {"2024": "DONE"}}
+
+    region = Region()
+
+    class Db:
+        def get(self, model, code):
+            return region
+
+        def rollback(self):
+            pass
+
+        def refresh(self, obj, **kw):
+            pass
+
+        def commit(self):
+            pass
+
+    calls = []
+
+    def collect(db, year, scope, **kw):
+        calls.append((year, scope, kw["history"], kw["region"]))
+        if year == 2022:
+            raise ExternalError("공공데이터 호출 제한")
+        return {"requested": 500, "normalized": 480, "failed": 0}
+
+    monkeypatch.setattr(kapt_energy, "collect_kapt_energy", collect)
+    monkeypatch.setattr(region_prepare, "_kapt_failed_months", lambda db, legal, year: 3 if year == 2023 else 0)
+    result = region_prepare.collect_kapt_years(Db(), "52710", [2021, 2022, 2023, 2024], log=lambda m: None)
+    assert calls == [(2023, "full", True, "52710"), (2022, "full", True, "52710")]   # 2024 already DONE; newest first
+    assert result["stopped"] == "WAITING" and result["left"] == [2021, 2022, 2023]
+    # 2023 has 3 months still failing at the gateway for this region: PARTIAL (asked again), never 0
+    assert region.datasets["kapt_years"] == {"2024": "DONE", "2023": "PARTIAL", "2022": "WAITING"}
+    assert region.datasets["kapt_energy"] == {"status": "DONE", "year": 2025}
+
+
+def test_collect_kapt_years_needs_the_region_complexes_first():
+    from app import region_prepare
+
+    class Region:
+        code = "41820"
+        legal_codes = ["41820"]
+        datasets = {"grid": {"status": "DONE"}}
+
+    class Db:
+        def get(self, model, code):
+            return Region()
+
+    result = region_prepare.collect_kapt_years(Db(), "41820", [2024], log=lambda m: None)
+    assert result["stopped"] == "NO_COMPLEXES" and result["left"] == [2024]
