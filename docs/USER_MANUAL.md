@@ -555,6 +555,7 @@ J01 화면 맨 아래 **보고서** → 제목(선택) → **현재 조건으로
 | 빠진 연도·자료를 한 번에 | 앱 **수집 데이터 → 빠진 자료 전부 수집**, 또는 `scripts\dss.cmd CollectHistory -FromYear 2015 -ToYear 2025` |
 | 새 지역 상세 준비 | **전국 지역**에서 시·군·구 선택 → 상세 자료 수집 (격자 → 행정동 → 기상·조례 → 단지 → 용도지역·건물·지적 → 대장 → 건축HUB → K-apt) |
 | 준비한 지역의 과거 건축HUB | `docker compose … exec -T api python -m app.cli region-energy-history --region 11740 --years 2024,2023,2022,2021,2020` |
+| 준비한 지역의 과거 K-apt | `… python -m app.cli region-kapt-history --region 52710,41110 --years 2024,2023,2022,2021` (하루 5,000건 한도에서 멈추고 다음 실행이 이어 받음, 연도별 상태는 지역 기록 `kapt_years`) |
 | 일사량(태양광 추정) | `… python -m app.cli backfill-solar` |
 | 받은 파일 넣기 | `data/raw/<출처>/`에 원본 그대로 두고 수집 데이터 → 파일 올리기 |
 | 끝난 뒤 점검 | `… python -m app.cli check-standard` |

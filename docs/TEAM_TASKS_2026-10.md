@@ -98,17 +98,17 @@ docker compose -p carbon-urban-dss-importtest -f compose.yaml -f compose.validat
 | 사례 링크 | `/area?region=11740&area=admin:11250560&from=2015&to=2025&window=3&plan=60000&target=20&basis=apartments` | `/area?region=11740&area=admin:11250630&from=2015&to=2025&window=3&plan=40000&target=20&basis=buildings` |
 | 기준 PC 값 (2025) | K-apt 26,760,667 kWh, 필요 감축 2,937.7 t, 지역 효율 24.1%, 태양광 5,899.5 kW | 건축HUB 107,072,181 kWh(지번 470곳, 원단위 78.40), 필요 감축 10,630.3 t, 지역 효율 22.3%, 태양광 21,348.2 kW |
 | 기준 PC 과거 값 (건축HUB, 10/08 14:20 수집 후) | 같은 지번 93곳 2021→2025 전력 28,975,947 → 29,409,973 kWh (+1.5%), 2025년에만 계측 25곳 30,429,992 kWh | 같은 지번 407곳 79,905,082 → 85,619,670 kWh (+7.2%), 2025년에만 63곳 21,452,511 kWh, 2021년에만 39곳 2,345,567 kWh |
-| 지금 없는 자료 | K-apt 2015~2024 (기준 PC도 없음, T2-dev1 필요). 건축HUB 2020~2024는 기준 PC가 받았으므로 **같은 명령으로 받아 위 값과 같은지 비교** | 같음 |
+| 지금 없는 자료 | K-apt 2015~2024 (기준 PC는 10/11 밤부터 `region-kapt-history`로 2021~2024를 받는 중, 하루 한도 5,000건). 건축HUB 2020~2024는 기준 PC가 받았으므로 **같은 명령으로 받아 위 값과 같은지 비교** | 같음 |
 
 강동구 전체 건축HUB 전력(기준 PC): 2020 691.3 GWh(9·10월이 2021년 같은 달의 72%·57%, 8·11월은 86~87% → 전주와 같은 제공기관 결측) · 2021 765.5 · 2022 942.4 · 2023 1,087.5 · 2024 1,151.9 · 2025 1,314.0 GWh. 자료 지문 D03과 같은 방식으로 셉니다.
 
-**수집**: 건축HUB 과거 연도는 `… python -m app.cli region-energy-history --region 11740 --years 2024,2023,2022,2021,2020` (법정동 9곳 × 12개월 × 5년). **K-apt 과거 연도 일괄 수집은 지금 전주만 됩니다**(`collect-history`가 기본 지역 단지만 대상) → 아래 Claude 개발 과제를 먼저 합니다.
+**수집**: 건축HUB 과거 연도는 `… python -m app.cli region-energy-history --region 11740 --years 2024,2023,2022,2021,2020` (법정동 9곳 × 12개월 × 5년). K-apt 과거 연도는 `… python -m app.cli region-kapt-history --region 11740 --years 2024,2023,2022,2021`(그 지역 단지만, 연도별 상태는 지역 기록 `kapt_years`에 남아 전주 진행과 섞이지 않음).
 **목표**
 - T2-a: 고덕2동 2016~2018 vs 2020~2022 전력 비교(관측 또는 추정 표시)와 같은 지번 2021→2025 변화율
 - T2-b: 천호3동 건물 전체 2020~2025 추이, 2020년 9·10월 결측 표시 확인
 - T2-c: 둔촌2동(2024년 12,604세대 사용승인)을 추가 개발지로 같은 절차 → 사례 추가 PR
 **Claude 개발 과제**
-- T2-dev1 (먼저): `collect-history`에 `--region` 추가 — K-apt 과거 연도를 그 지역 단지만 받고, 진행 기록(`data/ops/history-progress.json`) 키에 지역을 넣어 전주 진행과 섞이지 않게(테스트 포함). T3·T4도 이 기능을 씁니다.
+- ~~T2-dev1~~ (2026-10-10 완료, 이름은 `region-kapt-history`): K-apt 과거 연도를 그 지역 단지만 받고, 연도별 상태를 `study_regions.datasets.kapt_years`에 남겨 전주 진행(`history-progress.json`)과 섞이지 않게 함. 일일 한도에서 멈추고 다음 실행이 이어 받음(테스트 포함). T3·T4도 이 명령을 씁니다.
 - T2-dev2: 지역 시뮬레이션의 "이 지역은 분석연도 자료만 받았습니다" 안내를 실제 수집된 연도에 따라 바꾸기.
 
 ### T3 · 부산 강서구 (26440) — 신도시 개발지, 용도지역 분류 점검
@@ -124,7 +124,7 @@ docker compose -p carbon-urban-dss-importtest -f compose.yaml -f compose.validat
 
 강서구 전체 건축HUB 전력(기준 PC): 2020 483.4 GWh(9·10월이 2021년 같은 달의 69%·66%, 8·11월 86%·95% → 같은 제공기관 결측) · 2021 551.7 · 2022 597.4 · 2023 656.2 · 2024 790.8 · 2025 948.4 GWh.
 
-**수집**: `region-energy-history --region 26440 --years 2024,2023,2022,2021,2020`, K-apt 과거 연도(T2-dev1 이후 `collect-history --region 26440`).
+**수집**: `region-energy-history --region 26440 --years 2024,2023,2022,2021,2020`, K-apt 과거 연도 `region-kapt-history --region 26440 --years 2024,2023,2022,2021`.
 **목표**
 - T3-a: 명지1동 2016년(4,609세대)·2018년(3,729세대) 개발 전후 비교
 - T3-b: **용도지역 분류 점검** — 강서구 격자 930개 중 주된 용도지역이 "기타(OTHER)"인 격자가 대부분. `vworld_zoning_areas`의 `zone_name` 분포를 세고, 세부 구분 없는 "도시지역" 같은 상위 도형이 원인인지 확인
@@ -144,7 +144,7 @@ docker compose -p carbon-urban-dss-importtest -f compose.yaml -f compose.validat
 
 세종시 전체 건축HUB 전력(기준 PC): 2020 633.9 · 2021 931.2 · 2022 1,057.7 · 2023 1,275.3 · 2024 1,388.5 · 2025 1,704.9 GWh. 세종은 2020년이 전체로 낮아(8~11월이 2021년의 57~66%) 9·10월 결측이 따로 보이지 않습니다.
 
-**수집**: 앱 **전국 지역 → 세종특별자치시 → 상세 자료 수집** (또는 `… python -m app.cli prepare-region --region 36110`), 이후 `region-energy-history --region 36110`, K-apt 과거 연도(T2-dev1 이후).
+**수집**: 앱 **전국 지역 → 세종특별자치시 → 상세 자료 수집** (또는 `… python -m app.cli prepare-region --region 36110`), 이후 `region-energy-history --region 36110`, K-apt 과거 연도 `region-kapt-history --region 36110`.
 **목표**
 - T4-a: 지역 준비 모든 단계 DONE, `check-standard` FAIL 0
 - T4-b: 수집 전에 4절 공식으로 예상표를 쓰고, 수집 후 값·기준 PC 값과 비교: 4절 범위 안이면 "예상 적중", 밖이면 원인 (기준 PC의 해밀동 공동주택 원단위 22.94는 참고 범위 24~30 아래 — 이유 찾기)
