@@ -199,6 +199,34 @@ def test_collect_kapt_years_records_each_year_skips_done_ones_and_stops_at_the_d
     assert region.datasets["kapt_energy"] == {"status": "DONE", "year": 2025}
 
 
+def test_kapt_step_of_region_prepare_rides_out_a_gateway_burst_and_counts_only_its_own_region(monkeypatch):
+    """10/13: two short "04" bursts left 1,086 군산 complex-months FAILED with no pause and no retry.
+    The step now pauses and retries like the back-fill, and another region's failures do not fail it."""
+    import pytest
+    from app import kapt_energy, region_prepare
+    from app.cache import ExternalError
+
+    class Region:
+        code = "52130"
+        legal_codes = ["52130"]
+
+    seen = {}
+
+    def collect(db, year, scope, **kw):
+        seen.update(kw)
+        return {"requested": 1896, "normalized": 1500, "failed": 199, "not_reported": 300, "suspect": 10}  # 199 = 가평's, not this region's
+
+    monkeypatch.setattr(kapt_energy, "collect_kapt_energy", collect)
+    monkeypatch.setattr(region_prepare, "_kapt_failed_months", lambda db, legal, year: 0 if legal == ["52130"] else 199)
+    result = region_prepare.step_kapt_energy(None, Region(), print)
+    assert seen["region"] == "52130" and seen["retry_rounds"] == 1 and seen["outage_pause_s"] == 300 and seen["max_outage_pauses"] == 6
+    assert result["rows"] == 1500
+
+    monkeypatch.setattr(region_prepare, "_kapt_failed_months", lambda db, legal, year: 12)
+    with pytest.raises(ExternalError, match="12개 단지·월"):
+        region_prepare.step_kapt_energy(None, Region(), print)
+
+
 def test_collect_kapt_years_needs_the_region_complexes_first():
     from app import region_prepare
 

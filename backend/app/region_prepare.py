@@ -590,9 +590,18 @@ def _mark_energy_year(db: Any, region: StudyRegion, year: int, status: str) -> N
 def step_kapt_energy(db: Any, region: StudyRegion, log: Log) -> dict[str, Any]:
     from .kapt_energy import collect_kapt_energy
     year = analysis_year()
-    stats = collect_kapt_energy(db, year, "full", region=region.code, progress=lambda f, m: log(m) if int(f * 100) % 10 == 0 else None)
-    if stats.get("failed"):
-        raise ExternalError(f"K-apt 제공기관 일시 오류로 {stats['failed']}개 단지·월이 비었습니다. 다시 실행하면 그 달만 요청합니다")
+    # The gateway fails in bursts ("04 HTTP_ERROR"). On 2026-10-13 (21:00–21:17 KST, and 21:56 until
+    # the step ended at 21:59) every complex asked in a burst failed January and February, so the
+    # streak rule skipped its other months: 1,086 군산 and 199 가평 complex-months FAILED. Asked again
+    # 30–90 minutes later, 6 of those complexes answered 18/18 (202501·202506·202512). So, like the
+    # past-year back-fill: pause on a run of failures, then ask the months still FAILED once more
+    # after a wait. Only this region's failures count (the retry round looks at the whole year's
+    # FAILED rows but asks only this region's complexes).
+    stats = collect_kapt_energy(db, year, "full", region=region.code, retry_rounds=1, retry_wait_s=120, outage_pause_s=300, max_outage_pauses=6,
+                                progress=lambda f, m: log(m) if int(f * 100) % 10 == 0 else None)
+    failed = _kapt_failed_months(db, [str(c)[:5] for c in (region.legal_codes or [region.code])], year)
+    if failed:
+        raise ExternalError(f"K-apt 제공기관 일시 오류로 {failed}개 단지·월이 비었습니다. 다시 실행하면 그 달만 요청합니다")
     return {"rows": stats.get("normalized", 0), "message": f"{year}년 요청 {stats['requested']:,}회 / 유효 {stats['normalized']:,} · 미보고 {stats['not_reported']:,} · 이상값 {stats['suspect']:,}", "year": year}
 
 
