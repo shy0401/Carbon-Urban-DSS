@@ -113,7 +113,8 @@ function RegionDetailMap({ offline }: { offline: boolean | null }) {
   const { year, gridId, query, regionQuery, region, setScope } = useAnalysisScope();
   const { data, loading, error, reload } = useApi<MapData>(`/map?year=${year}${regionQuery}`);
   const details = useApi<DashboardData>(`/dashboard?${query}`);
-  const overlays = useApi<OverlayData>(`/map/overlays?year=${year}${regionQuery}`);
+  // 용도지역·행정동 도형은 연도와 무관: 연도를 바꿔도 다시 받지 않는다(전주 36.8MB를 매번 받던 원인).
+  const overlays = useApi<OverlayData>(`/map/overlays${regionParam(region, '?')}`);
   const dongs = useApi<DongData>(`/map/dongs${regionParam(region, '?')}`);
   const [params, setParams] = useSearchParams();
   const dongCode = params.get('dong');
@@ -144,6 +145,9 @@ function RegionDetailMap({ offline }: { offline: boolean | null }) {
 
   const grids = useMemo(() => (data ? withMetricValues(data.grids) : null), [data]);
   const reference = useMemo(() => (grids ? referenceGrid(grids as GeoJSON.FeatureCollection) : EMPTY), [grids]);
+  // 지도는 지역이 바뀔 때만 새로 만든다. 연도만 바뀌면 같은 지도에 새 값만 넣는다(배경지도·레이어·화면 위치 유지).
+  const mapKey = data ? `${data.region?.code ?? ''}|${(data.bbox ?? []).join(',')}` : null;
+  const latest = useRef({ data, grids, reference }); latest.current = { data, grids, reference };
   const classifications = useMemo(() => {
     const result: Record<string, Classification> = {};
     if (!grids) return result;
@@ -169,7 +173,8 @@ function RegionDetailMap({ offline }: { offline: boolean | null }) {
   useEffect(() => { if (offline !== null) setBasemapStatus(showBasemap ? 'shown' : 'none'); }, [offline, showBasemap]);
 
   useEffect(() => {
-    if (!container.current || !data || !grids || offline === null) return;
+    const { data, grids, reference } = latest.current;
+    if (!container.current || !mapKey || !data || !grids || offline === null) return;
     setMapError(null); setBasemapFailed(false); setVisible(DEFAULT_VISIBLE); setAdminInfo(null); setViewport(null);
     const withBasemap = !offline && basemapEnabled;
     const map = new maplibregl.Map({
@@ -234,7 +239,15 @@ function RegionDetailMap({ offline }: { offline: boolean | null }) {
     });
     mapRef.current = map;
     return () => { hoverPopup.current?.remove(); map.remove(); mapRef.current = null; };
-  }, [data, grids, reference, offline, basemapEnabled, setScope]);
+  }, [mapKey, offline, basemapEnabled, setScope]);
+
+  // 같은 지역의 새 연도 값: 소스 자료만 바꾼다.
+  useEffect(() => {
+    const m = mapRef.current; if (!m || !mapReady || !data || !grids) return;
+    const put = (id: string, value: GeoJSON.FeatureCollection | null | undefined) => { const source = m.getSource(id) as maplibregl.GeoJSONSource | undefined; if (source && value) source.setData(value); };
+    put('grids', grids as GeoJSON.FeatureCollection); put('reference', reference); put('boundary', data.boundary); put('complexes', data.complexes ?? EMPTY);
+    if (data.buildings_mode !== 'viewport') put('buildings', data.buildings);
+  }, [data, grids, reference, mapReady]);
 
   useEffect(() => { const m = mapRef.current; if (!m?.getLayer('selected-grid')) return; m.setFilter('selected-grid', selectedFilter(selectedId)); m.setFilter('selected-halo', selectedFilter(selectedId)); }, [selectedId, mapReady]);
   useEffect(() => {
@@ -308,7 +321,7 @@ function RegionDetailMap({ offline }: { offline: boolean | null }) {
 
   if (opening.state === 'opening') return <div className="map-state"><LoadingState label={`${opening.name ?? '이 시·군·구'} 지도를 만드는 중입니다. 전국 자료로 500m 격자·읍면동을 만드는 처음 한 번만 몇 초~1분 걸립니다`} /></div>;
   if (opening.state === 'failed') return <div className="map-state"><ErrorState message={opening.message} onRetry={opening.retry} /></div>;
-  if (loading) return <div className="map-state"><LoadingState label="공간 레이어를 불러오는 중입니다" /></div>;
+  if (loading && !data) return <div className="map-state"><LoadingState label="공간 레이어를 불러오는 중입니다" /></div>;
   if (error || !data || !grids) return <div className="map-state"><ErrorState message={error} onRetry={reload} /></div>;
   const overlayMeta = overlays.data?.meta; const adminMax = maxOf(overlays.data?.admin, 'population_density');
   const focus = () => { const f = grids.features.find((x) => String((x.properties as GridProps).id) === selectedId); if (mapRef.current && f) fitToData(mapRef.current, { type: 'FeatureCollection', features: [f] }, 16, true); };
@@ -327,6 +340,7 @@ function RegionDetailMap({ offline }: { offline: boolean | null }) {
   return <div className={`map-workspace${detailShown || dongShown ? ' has-detail' : ''}`}>
       <div className="map-stage">
         <div ref={container} className={`map-canvas${showBasemap ? '' : ' no-basemap'}`} aria-label={`${regionName} 탄소 공간 지도`} />
+        {loading && <div className="map-busy" role="status" data-testid="map-busy">{year}년 자료를 불러오는 중입니다</div>}
         <div className="map-rail">
           {level === 'BASIC' && data.region?.code && <BasicRegionNote code={data.region.code} name={regionName} />}
           <div className="metric-picker">

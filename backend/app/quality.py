@@ -73,7 +73,30 @@ def _ratio(numerator: int, denominator: int, evidence: str) -> dict[str, Any] | 
     return {"score": min(max(numerator / denominator, 0.0), 1.0), "evidence": evidence}
 
 
+# The dashboard asks for every source's quality on each open and year change (28 sources, 1.6 s of
+# counting on 2026-10-14). Quality only moves when a collection finishes (which updates the source row,
+# part of the key), so the answer is kept up to 2 minutes.
+QUALITY_TTL_S = 120
+_QUALITY: dict[tuple[Any, ...], tuple[float, dict[str, Any]]] = {}
+
+
 def dataset_quality(db: Any, source_id: str, year: int = 2025) -> dict[str, Any]:
+    """Quality of one source for ``year`` (cached ``QUALITY_TTL_S`` seconds)."""
+    import time
+    source = db.get(DataSource, source_id)
+    stamp = (source.collected_at, source.normalized_row_count, source.raw_row_count, source.missing_count, source.status) if source else None
+    key = (id(db.get_bind()), source_id, int(year), stamp)
+    hit = _QUALITY.get(key)
+    if hit and time.monotonic() - hit[0] < QUALITY_TTL_S:
+        return hit[1]
+    value = _dataset_quality(db, source_id, year)
+    if len(_QUALITY) > 512:
+        _QUALITY.clear()
+    _QUALITY[key] = (time.monotonic(), value)
+    return value
+
+
+def _dataset_quality(db: Any, source_id: str, year: int = 2025) -> dict[str, Any]:
     """Calculate quality from the source catalogue and its stored normalized rows."""
 
     source = db.get(DataSource, source_id)

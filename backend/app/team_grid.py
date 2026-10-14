@@ -397,9 +397,10 @@ def carbonmap_comparison(db: Any, region_code: str) -> dict[str, Any] | None:
     out: dict[str, Any] = {"years": {str(y): v for y, v in sorted(totals.items())}, "source": SOURCE_CARBONMAP}
     try:
         from .energy_parcels import grid_building_energy
+        from .regions import region_grid_ids
         from .service import factors_for
         for year in sorted(totals, reverse=True):
-            hub = grid_building_energy(db, year)
+            hub = grid_building_energy(db, year, region_grid_ids(db, region_code) or None)
             if not hub:
                 continue
             factor = (factors_for(db, year).get("ELECTRICITY") or {}).get("factor")

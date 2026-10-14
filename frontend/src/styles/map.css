@@ -6,6 +6,8 @@
 .map-workspace.has-detail { grid-template-columns: minmax(0, 1fr) clamp(320px, 35%, 460px); }
 .map-stage { position: relative; min-height: 0; overflow: hidden; border: 1px solid var(--line-strong); border-radius: var(--r-map); background: var(--canvas); }
 .map-canvas { position: absolute; inset: 0; }
+/* 연도를 바꾸는 동안 지도는 그대로 두고 위쪽 가운데에 상태만 알린다. */
+.map-busy { position: absolute; top: var(--sp-3); left: 50%; transform: translateX(-50%); z-index: 3; padding: var(--sp-1) var(--sp-3); border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface); color: var(--ink); font-size: 13px; box-shadow: 0 1px 3px rgba(0,0,0,.12); pointer-events: none; }
 
 /* 떠 있는 요소: 도면 위 범례·도구 — 흰 바탕 1px 선, 반경 2px, 그림자 없음. 팝오버만 그림자. */
 .map-rail { position: absolute; z-index: 3; top: var(--sp-3); left: var(--sp-3); bottom: var(--sp-3); width: 292px; display: flex; flex-direction: column; gap: var(--sp-2); pointer-events: none; }

@@ -1227,7 +1227,7 @@ def load_inputs(db: Any, years: list[int], region: str | None = None) -> dict[st
     for year in years:
         if year >= HUB_FIRST_YEAR:  # 건축HUB answers from 2020-01 (전북 up to 2023-10 with the old 45xxx code)
             try:
-                by_grid = grid_building_energy(db, year)
+                by_grid = grid_building_energy(db, year, region_ids)
             except Exception:  # noqa: BLE001 - parcel_grid not built yet
                 db.rollback()
                 by_grid = {}
@@ -1235,7 +1235,7 @@ def load_inputs(db: Any, years: list[int], region: str | None = None) -> dict[st
             if by_grid:
                 building_energy[year] = by_grid
     from .sgis_grid import parents
-    zoning = {g: v for g, v in grid_zoning_summary(db).items() if g in region_ids}
+    zoning = grid_zoning_summary(db, region_ids)
     building_energy_complete = {year: region_year_complete(db, sc.code, year) for year in building_energy}
     return {"building_energy": building_energy, "building_energy_complete": building_energy_complete, "sgis_grid": grid_values(db, codes=parents(ids)), "register": register, "complexes": complexes, "energy": energy, "weather": weather, "population": population, "households": households,
             "factor": factors, "grids": grids, "admin": admin.get("features", []), "admin_year": admin_year, "zoning": zoning,
@@ -1436,7 +1436,7 @@ def area_options(region: str | None = Query(None, max_length=10)) -> dict[str, A
             raise HTTPException(404, str(exc)) from None
         from .overlays import admin_features, grid_zoning_summary
         admin, year = admin_features(db, sc=sc)
-        zoning = {g: v for g, v in grid_zoning_summary(db).items() if g in sc.grid_ids}
+        zoning = grid_zoning_summary(db, sc.grid_ids)
         zone_counts: dict[str, int] = defaultdict(int)
         for z in zoning.values():
             if z.get("dominant_zone"):

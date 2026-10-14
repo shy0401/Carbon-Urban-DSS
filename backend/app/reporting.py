@@ -147,7 +147,8 @@ def grid_detail_facts(db,year,grid_id,data):
         from .regions import region_for_grid
         from .service import factors_for
         factor=(factors_for(db,year).get('ELECTRICITY') or {}).get('factor')
-        item=grid_building_energy(db,year).get(grid_id)
+        from .regions import region_grid_ids
+        item=grid_building_energy(db,year,region_grid_ids(db,region_for_grid(db,grid_id) or None) or None).get(grid_id)
         if item:
             props=map_properties(item,factor);complete=region_year_complete(db,region_for_grid(db,grid_id),year)
             out['building_energy']=dict(props,year=year,complete=complete)

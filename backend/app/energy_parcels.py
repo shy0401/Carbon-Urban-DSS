@@ -72,8 +72,55 @@ def build_parcel_grid(db: Any) -> int:
     except Exception:  # noqa: BLE001 - no PostGIS (tests) or no cadastral layer yet
         db.rollback()
         return 0
+    place_missing_parcels(db)
     _GRID_CACHE.clear()
     return db.scalar(select(func.count()).select_from(ParcelGrid)) or 0
+
+
+MAIN_LOT_METHOD = "MAIN_LOT_SIBLING"
+
+
+def place_missing_parcels(db: Any, sigungu_codes: Any = None) -> dict[str, int]:
+    """Metered 건축HUB parcels whose PNU is not in the cadastral layer → the grid of their 본번 siblings.
+
+    The 연속지적도 snapshot lacks parcels split or renumbered after it was taken (전주 2025: 488 metered
+    parcels, 80 GWh of 2,182). A parcel with the same 법정동 + 본번 (``pnu[:15]``) lies on the same original
+    lot, so it is placed in the grid holding most of those siblings (``method = MAIN_LOT_SIBLING``). The
+    energy value stays the observed one; only its location is taken from the siblings. Parcels with no
+    sibling stay unplaced (counted, never guessed)."""
+    from .models import EnergyMonthly as EnergyMonthly_
+    stats = {"missing": 0, "placed": 0, "no_sibling": 0}
+    try:
+        query = select(EnergyMonthly_.sigungu_code, EnergyMonthly_.bjdong_code, EnergyMonthly_.lot_type, EnergyMonthly_.bun, EnergyMonthly_.ji).where(
+            EnergyMonthly_.source == HUB).distinct()
+        if sigungu_codes:
+            query = query.where(EnergyMonthly_.sigungu_code.in_(list(sigungu_codes)))
+        pnus = sorted({parcel_pnu(*row) for row in db.execute(query)})
+        known: set[str] = set()
+        for start in range(0, len(pnus), 2000):
+            batch = pnus[start:start + 2000]
+            known.update(db.scalars(select(ParcelGrid.pnu).where(ParcelGrid.pnu.in_(batch))))
+        missing = [pnu for pnu in pnus if pnu not in known]
+        stats["missing"] = len(missing)
+        rows = []
+        for pnu in missing:
+            main = pnu[:15]
+            votes: dict[str, int] = {}
+            for grid_id in db.scalars(select(ParcelGrid.grid_id).where(ParcelGrid.pnu.between(main + "0000", main + "9999"),
+                                                                       ParcelGrid.method != MAIN_LOT_METHOD)):
+                votes[grid_id] = votes.get(grid_id, 0) + 1
+            if not votes:
+                stats["no_sibling"] += 1
+                continue
+            rows.append({"pnu": pnu, "grid_id": max(sorted(votes), key=votes.get), "method": MAIN_LOT_METHOD})
+        if rows:
+            db.execute(insert(ParcelGrid), rows)
+        db.commit()
+        stats["placed"] = len(rows)
+    except Exception:  # noqa: BLE001 - parcel_grid or energy_monthly not created yet
+        db.rollback()
+    _GRID_CACHE.clear()
+    return stats
 
 
 # 전북특별자치도 출범(2024-01)으로 시·군·구 코드가 45xxx → 52xxx로 바뀌었다. 건축HUB는 2023-10 사용분까지 옛 코드로만
@@ -223,6 +270,8 @@ def collect_energy_all(db: Any, year: int, progress: Callable[[float, str], None
             db.commit()
     if progress:
         progress(1.0, f"{year}년 {len(regions)}개 법정동 완료")
+    # parcels first metered this year may be missing from the cadastral snapshot: place them by their 본번
+    stats["placed_by_main_lot"] = place_missing_parcels(db, sorted({region["sigunguCd"] for region in regions}))["placed"]
     _GRID_CACHE.clear()
     return stats
 
@@ -272,28 +321,57 @@ def region_year_complete(db: Any, region: str | None, year: int) -> bool:
     return (datasets.get("energy_years") or {}).get(str(year)) == "DONE"
 
 # --------------------------------------------------------------------------- grid aggregates
-_GRID_CACHE: dict[int, tuple[int, dict[str, dict[str, Any]]]] = {}  # year -> (row count, per-grid values)
-_PARCEL_GRID: dict[int, dict[str, str]] = {}
+# (year, cells) -> (row count of the cells' 시·군·구 that year, per-grid values). Cells = one study region's grids
+# (None = every parcel): a region's map no longer reads the whole country, and collecting another region does
+# not change its row count, so its cache stays valid while other regions are being collected.
+_GRID_CACHE: dict[tuple[int, Any], tuple[int, dict[str, dict[str, Any]]]] = {}
+_PARCEL_GRID: dict[Any, tuple[int, dict[str, str]]] = {}
+_CACHE_SLOTS = 12
 
 
-def _parcel_grid(db: Any) -> dict[str, str]:
+def _cells_key(grid_ids: Any) -> Any:
+    return None if grid_ids is None else frozenset(grid_ids)
+
+
+def _parcel_grid(db: Any, grid_ids: Any = None) -> dict[str, str]:
+    """PNU → grid, for the parcels inside ``grid_ids`` (None: all), cached per row count."""
+    key = _cells_key(grid_ids)
     try:
-        count = db.scalar(select(func.count()).select_from(ParcelGrid)) or 0
+        if key is None:
+            count = db.scalar(select(func.count()).select_from(ParcelGrid)) or 0
+        else:
+            ids = sorted(key)
+            count = sum(db.scalar(select(func.count()).select_from(ParcelGrid).where(ParcelGrid.grid_id.in_(ids[i:i + 2000]))) or 0
+                        for i in range(0, len(ids), 2000))
     except Exception:  # noqa: BLE001 - table not created yet
         db.rollback()
         return {}
-    if count not in _PARCEL_GRID:
-        _PARCEL_GRID.clear()
-        _PARCEL_GRID[count] = dict(db.execute(select(ParcelGrid.pnu, ParcelGrid.grid_id)).all())
-    return _PARCEL_GRID[count]
+    hit = _PARCEL_GRID.get(key)
+    if hit is None or hit[0] != count:
+        if key is None:
+            value = dict(db.execute(select(ParcelGrid.pnu, ParcelGrid.grid_id)).all())
+        else:
+            value = {}
+            for i in range(0, len(ids), 2000):
+                value.update(db.execute(select(ParcelGrid.pnu, ParcelGrid.grid_id).where(ParcelGrid.grid_id.in_(ids[i:i + 2000]))).all())
+        if len(_PARCEL_GRID) >= _CACHE_SLOTS:
+            _PARCEL_GRID.pop(next(iter(_PARCEL_GRID)))
+        _PARCEL_GRID[key] = (count, value)
+    return _PARCEL_GRID[key][1]
 
 
-def _register_area(db: Any) -> dict[str, float]:
-    """PNU → cleaned 연면적 sum (건축물대장 표제부)."""
+def _register_area(db: Any, sigungu_codes: Any = None) -> dict[str, float]:
+    """PNU → cleaned 연면적 sum (건축물대장 표제부), for the parcels of ``sigungu_codes`` (None: all)."""
     try:
+        from sqlalchemy import or_
         from .official import BuildingRegister, register_areas
         area: dict[str, float] = {}
-        for pnu, attrs in db.execute(select(BuildingRegister.parcel_code, BuildingRegister.attributes)):
+        query = select(BuildingRegister.parcel_code, BuildingRegister.attributes)
+        if sigungu_codes is not None:
+            if not sigungu_codes:
+                return {}
+            query = query.where(or_(*[BuildingRegister.parcel_code.between(code, code + "~") for code in sorted(sigungu_codes)]))
+        for pnu, attrs in db.execute(query):
             gfa = register_areas(attrs or {})[0]
             if gfa:
                 area[pnu] = area.get(pnu, 0.0) + gfa
@@ -356,33 +434,45 @@ def summarize_parcels(parcels: list[dict[str, Any]], grid_of: dict[str, str], ar
     return result
 
 
-def grid_building_energy(db: Any, year: int) -> dict[str, dict[str, Any]]:
-    """Per-grid all-building energy for ``year`` (cached per row count)."""
+def grid_building_energy(db: Any, year: int, grid_ids: Any = None) -> dict[str, dict[str, Any]]:
+    """Per-grid all-building energy for ``year``: every metered parcel placed in a cell of ``grid_ids``
+    (one study region; None = every cell). Same values as the whole-country computation for those cells,
+    because a cell's parcels are taken whatever their 시·군·구. Cached per (year, cells) and that scope's row count."""
     from .models import EnergyMonthly
     lo, hi = f"{year}01", f"{year}12"
-    count = db.scalar(select(func.count()).select_from(EnergyMonthly).where(EnergyMonthly.use_ym.between(lo, hi), EnergyMonthly.source == HUB)) or 0
+    key = (year, _cells_key(grid_ids))
+    grid_of = _parcel_grid(db, grid_ids)
+    if not grid_of:
+        return {}
+    sigungu = None if grid_ids is None else sorted({pnu[:5] for pnu in grid_of})
+    within = (EnergyMonthly.use_ym.between(lo, hi), EnergyMonthly.source == HUB)
+    if sigungu is not None:
+        within = (*within, EnergyMonthly.sigungu_code.in_(sigungu))
+    count = db.scalar(select(func.count()).select_from(EnergyMonthly).where(*within)) or 0
     if not count:
         return {}
-    hit = _GRID_CACHE.get(year)
+    hit = _GRID_CACHE.get(key)
     if hit is None or hit[0] != count:
-        grid_of = _parcel_grid(db)
-        if not grid_of:
-            return {}
         # the months themselves (not only their count): gas billed bi-monthly in summer skips a month
         agg = func.array_agg if db.get_bind().dialect.name == "postgresql" else func.group_concat
         rows = db.execute(
             select(EnergyMonthly.sigungu_code, EnergyMonthly.bjdong_code, EnergyMonthly.lot_type, EnergyMonthly.bun, EnergyMonthly.ji,
                    EnergyMonthly.energy_type, agg(EnergyMonthly.use_ym), func.sum(EnergyMonthly.usage_kwh))
-            .where(EnergyMonthly.use_ym.between(lo, hi), EnergyMonthly.source == HUB, EnergyMonthly.usage_kwh.is_not(None))
+            .where(*within, EnergyMonthly.usage_kwh.is_not(None))
             .group_by(EnergyMonthly.sigungu_code, EnergyMonthly.bjdong_code, EnergyMonthly.lot_type, EnergyMonthly.bun, EnergyMonthly.ji, EnergyMonthly.energy_type)
         ).all()
         parcels = []
         for sg, bd, lot, bun, ji, et, yms, kwh in rows:
+            pnu = parcel_pnu(sg, bd, lot, bun, ji)
+            if pnu not in grid_of:
+                continue
             month_list = sorted(set(yms.split(",") if isinstance(yms, str) else yms))
-            parcels.append({"pnu": parcel_pnu(sg, bd, lot, bun, ji), "energy_type": et, "months": len(month_list), "month_list": month_list,
+            parcels.append({"pnu": pnu, "energy_type": et, "months": len(month_list), "month_list": month_list,
                             "kwh": float(kwh) if kwh is not None else None})
-        _GRID_CACHE[year] = (count, summarize_parcels(parcels, grid_of, _register_area(db)))
-    return _GRID_CACHE[year][1]
+        if len(_GRID_CACHE) >= _CACHE_SLOTS and key not in _GRID_CACHE:
+            _GRID_CACHE.pop(next(iter(_GRID_CACHE)))
+        _GRID_CACHE[key] = (count, summarize_parcels(parcels, grid_of, _register_area(db, sigungu)))
+    return _GRID_CACHE[key][1]
 
 
 def map_properties(item: dict[str, Any] | None, factor: float | None) -> dict[str, Any]:

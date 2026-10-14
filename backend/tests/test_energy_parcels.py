@@ -140,3 +140,54 @@ def test_an_empty_provider_answer_is_retried_on_a_fresh_connection_not_failed(mo
     with pytest.raises(ExternalError, match='일시 오류'):
         collect_energy_all(make_db(), 2024, client=always, service_key='k', months=['202401'],
                            regions=[{'sigunguCd': '52113', 'bjdongCd': '11600'}])
+
+
+def _hub_year(db, sg, bd, bun, ji, kwh_per_month, year=2025, energy_type='ELECTRICITY'):
+    for m in range(1, 13):
+        db.add(EnergyMonthly(source=HUB, sigungu_code=sg, bjdong_code=bd, lot_type='0', bun=bun, ji=ji, use_ym=f'{year}{m:02d}',
+                             energy_type=energy_type, usage_kwh=kwh_per_month, raw_record={}))
+
+
+def _parcel_db():
+    from app.energy_parcels import ParcelGrid, _GRID_CACHE, _PARCEL_GRID
+    _GRID_CACHE.clear(); _PARCEL_GRID.clear()
+    db = make_db()
+    ParcelGrid.__table__.create(db.get_bind())
+    return db, ParcelGrid
+
+
+def test_a_region_map_reads_only_its_cells_with_the_same_values_and_another_region_collecting_keeps_its_cache():
+    """2026-10-14: the first 지도 분석 after a restart took 118 s because every region's 건축HUB year was summed
+    (and again whenever any region was being collected). A region's cells now give the same numbers alone."""
+    from app.energy_parcels import grid_building_energy
+    db, ParcelGrid = _parcel_db()
+    db.add_all([ParcelGrid(pnu='5211311600100110000', grid_id='g1'), ParcelGrid(pnu='5271025000100050000', grid_id='g1'),  # 완주 lot in a 전주 cell
+                ParcelGrid(pnu='5271025000100060000', grid_id='g2')])
+    _hub_year(db, '52113', '11600', '0011', '0000', 100.0)
+    _hub_year(db, '52710', '25000', '0005', '0000', 10.0)
+    _hub_year(db, '52710', '25000', '0006', '0000', 1.0)
+    db.commit()
+    national = grid_building_energy(db, 2025)
+    scoped = grid_building_energy(db, 2025, {'g1'})
+    assert set(scoped) == {'g1'} and scoped['g1']['electricity_kwh'] == national['g1']['electricity_kwh'] == 1320.0
+    assert scoped['g1']['parcels'] == 2
+    _hub_year(db, '41110', '10100', '0001', '0000', 5.0)  # another region is being collected
+    db.commit()
+    assert grid_building_energy(db, 2025, {'g1'}) is scoped  # still the cached answer
+
+
+def test_metered_parcels_missing_from_the_cadastral_snapshot_are_placed_by_their_main_lot():
+    """전주 2025: 488 metered parcels (80 GWh) had a PNU the 연속지적도 does not hold (split or renumbered later)."""
+    from app.energy_parcels import MAIN_LOT_METHOD, grid_building_energy, place_missing_parcels
+    db, ParcelGrid = _parcel_db()
+    db.add_all([ParcelGrid(pnu='5211311600101660001', grid_id='g1'), ParcelGrid(pnu='5211311600101660002', grid_id='g1'),
+                ParcelGrid(pnu='5211311600101660003', grid_id='g2')])
+    _hub_year(db, '52113', '11600', '0166', '0011', 50.0)   # 166-11: not in the snapshot, siblings 166-1/2 in g1, 166-3 in g2
+    _hub_year(db, '52113', '11600', '0999', '0000', 7.0)    # no lot 999 at all: stays unplaced
+    db.commit()
+    stats = place_missing_parcels(db, ['52113'])
+    assert stats == {'missing': 2, 'placed': 1, 'no_sibling': 1}
+    placed = db.get(ParcelGrid, '5211311600101660011')
+    assert placed.grid_id == 'g1' and placed.method == MAIN_LOT_METHOD
+    assert grid_building_energy(db, 2025, {'g1'})['g1']['electricity_kwh'] == 600.0
+    assert place_missing_parcels(db, ['52113'])['placed'] == 0  # a second run adds nothing

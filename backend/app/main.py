@@ -88,6 +88,7 @@ def _warm_caches_in_background():
             with Session() as db:
                 build_readiness(db)
                 dashboard(db,None,DEFAULT_YEAR)
+            _warm_map()
             from .area import warm_inputs
             warm_inputs(2015,DEFAULT_YEAR)
             from .sgis_grid500 import data_root,import_sgis_grid500,scan
@@ -107,6 +108,21 @@ def _warm_caches_in_background():
         except Exception as exc:  # noqa: BLE001 - warming is best effort
             print('캐시 예열 실패:',type(exc).__name__,exc)
     threading.Thread(target=warm,name='warm-caches',daemon=True).start()
+
+def _warm_map(years=None):
+    """지도 분석 3단계(기본 지역)의 느린 부분을 미리 계산: 그 지역 격자의 건축HUB 연간 합(올해·전년), 건축물대장 격자 요약,
+    공식 500m 격자 코드. 2026-10-14 측정: 서버를 켠 뒤 첫 지도 118초(전국 합계를 처음 계산), 연도 바꾸기 37초."""
+    from .energy_parcels import grid_building_energy
+    from .register_grid import grid_register_summary
+    from .regions import scope
+    from .sgis_grid_official import official_codes
+    for year in years or (DEFAULT_YEAR,DEFAULT_YEAR-1):
+        with Session() as db:
+            try:grid_building_energy(db,year,scope(db,None).grid_ids)
+            except Exception:db.rollback()
+    with Session() as db:
+        try:grid_register_summary(db);official_codes(db)
+        except Exception:db.rollback()
 
 app=FastAPI(title='Carbon Urban DSS',version='0.1.0',lifespan=lifespan)
 app.add_middleware(GZipMiddleware,minimum_size=2048)
@@ -158,7 +174,7 @@ def get_dashboard(year:int=Query(DEFAULT_YEAR,ge=2000,le=2100),grid_id:str|None=
     from .overlays import grid_context
     with Session() as db:
         region=region or region_for_grid(db,grid_id)
-        _scope(db,region)
+        sc=_scope(db,region)
         data=dashboard(db,grid_id,year,region)
         # Official context of the same grid (zoning, overlapping 행정동, buildings, K-apt complexes).
         selected=data['selected_sector']['grid_id'] if data['selected_sector'] else None
@@ -167,7 +183,7 @@ def get_dashboard(year:int=Query(DEFAULT_YEAR,ge=2000,le=2100),grid_id:str|None=
         try:
             from .energy_parcels import grid_building_energy,map_properties as building_energy_properties
             factor=(factors_for(db,year).get('ELECTRICITY') or {}).get('factor')
-            item=grid_building_energy(db,year).get(selected) if selected else None
+            item=grid_building_energy(db,year,sc.grid_ids).get(selected) if selected else None
             from .energy_parcels import region_year_complete
             data['building_energy']=dict(building_energy_properties(item,factor),year=year,complete=region_year_complete(db,region,year)) if item else None
         except Exception:
@@ -401,7 +417,7 @@ def map_data(request:Request,year:int=Query(DEFAULT_YEAR,ge=2000,le=2100),region
         sector=region_sector(db,sc)
         factors=factors_for(db,year)
         energy=grid_energy_properties(db,year,factors,sc)
-        zoning=grid_zoning_summary(db)
+        zoning=grid_zoning_summary(db,sc.grid_ids)
         buildings=grid_building_summary(db,sc.grid_ids)
         complexes=complex_features(db,sc)
         from .sgis_grid import grid_metric_properties
@@ -411,7 +427,7 @@ def map_data(request:Request,year:int=Query(DEFAULT_YEAR,ge=2000,le=2100),region
         from .register_grid import grid_register_summary,map_properties as register_properties
         register=grid_register_summary(db)
         from .energy_parcels import grid_building_energy,map_properties as building_energy_properties,region_year_complete
-        building_energy=grid_building_energy(db,year)
+        building_energy=grid_building_energy(db,year,sc.grid_ids)
         from .sgis_grid_official import official_codes,meta as official_grid_meta
         official=official_codes(db)
         # 팀 데이터셋(탄소공간지도 500m 배출, 국토통계지도 100m 합; 국토통계는 공개 게이트웨이 응답에서 뺌)

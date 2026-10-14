@@ -51,13 +51,24 @@ def summarize_zoning(coverage: list[tuple[str, str]], stats: list[tuple[str, str
     return summary
 
 
-def grid_zoning_summary(db: Any) -> dict[str, dict[str, Any]]:
+def grid_zoning_summary(db: Any, grid_ids: Any = None) -> dict[str, dict[str, Any]]:
+    """Per-grid zoning shares for ``grid_ids`` (one region or one grid; None = every grid in the database)."""
     from .vworld import GridZoningStat, VworldGridCoverage
 
     if not _table_exists(db, "vworld_grid_coverage"):
         return {}
-    coverage = [(row.grid_id, row.status) for row in db.scalars(select(VworldGridCoverage).where(VworldGridCoverage.dataset == "zoning"))]
-    stats = [(row.grid_id, row.zone_name, row.grid_area_ratio) for row in db.scalars(select(GridZoningStat))]
+    cover = select(VworldGridCoverage.grid_id, VworldGridCoverage.status).where(VworldGridCoverage.dataset == "zoning")
+    stat = select(GridZoningStat.grid_id, GridZoningStat.zone_name, GridZoningStat.grid_area_ratio)
+    if grid_ids is None:
+        coverage = [tuple(row) for row in db.execute(cover)]
+        stats = [tuple(row) for row in db.execute(stat)]
+    else:
+        ids = sorted(grid_ids)
+        coverage, stats = [], []
+        for i in range(0, len(ids), 2000):
+            chunk = ids[i:i + 2000]
+            coverage += [tuple(row) for row in db.execute(cover.where(VworldGridCoverage.grid_id.in_(chunk)))]
+            stats += [tuple(row) for row in db.execute(stat.where(GridZoningStat.grid_id.in_(chunk)))]
     return summarize_zoning(coverage, stats)
 
 
@@ -230,6 +241,15 @@ def zoning_area_by_category(db: Any, grid_ids: Any = None) -> tuple[dict[str, fl
     return {key: round(value / 1_000_000, 3) for key, value in sorted(totals.items())}, covered
 
 
+def cells_extent(grid_ids: Any) -> tuple[float, float, float, float] | None:
+    """(x_min, y_min, x_max, y_max) in EPSG:5179 of analysis cells ``cell_<x>_<y>`` (None when none parse)."""
+    from .regions import grid_cell_geometry
+    boxes = [box for box in (grid_cell_geometry(g) for g in grid_ids) if box]
+    if not boxes:
+        return None
+    return (min(b[0] for b in boxes), min(b[1] for b in boxes), max(b[2] for b in boxes), max(b[3] for b in boxes))
+
+
 def zoning_features(db: Any, tolerance_m: float = 2.0, sc: Any = None) -> dict[str, Any]:
     """Zoning polygons (``sc``: those touching the region's bounding box)."""
     from .vworld import zone_category
@@ -237,7 +257,13 @@ def zoning_features(db: Any, tolerance_m: float = 2.0, sc: Any = None) -> dict[s
     if not _table_exists(db, "vworld_zoning_areas"):
         return EMPTY
     where, params = "", {"tol": tolerance_m}
-    if sc is not None and getattr(sc, "bbox", None):
+    extent = cells_extent(getattr(sc, "grid_ids", None) or ()) if sc is not None else None
+    if extent:
+        # the region's own 500m cells (EPSG:5179): the original region too, which used to get every
+        # region's polygons (전주 36.8 MB once 8 regions were prepared)
+        where = " WHERE geom && ST_MakeEnvelope(:x0, :y0, :x1, :y1, 5179)"
+        params.update(x0=extent[0], y0=extent[1], x1=extent[2], y1=extent[3])
+    elif sc is not None and getattr(sc, "bbox", None):
         west, south, east, north = sc.bbox
         where = " WHERE geom && ST_Transform(ST_MakeEnvelope(:w, :s, :e, :n, 4326), 5179)"
         params.update(w=west, s=south, e=east, n=north)
@@ -318,7 +344,7 @@ def overlays(year: int = Query(DEFAULT_YEAR, ge=2000, le=2100), region: str | No
             sc = scope(db, region)
         except RegionNotReady as exc:
             raise HTTPException(404, str(exc)) from None
-        zoning = zoning_features(db, sc=None if sc.is_default else sc)
+        zoning = zoning_features(db, sc=sc)
         admin, admin_year = admin_features(db, sc=sc)
         zoning_area, zoning_grids = zoning_area_by_category(db, sc.grid_ids)
         return {
@@ -360,7 +386,7 @@ def grid_context(db: Any, grid_id: str | None) -> dict[str, Any]:
     from .sgis_grid import grid_context_block
     # Parent SGIS 1km cell: official grid statistics (with disclosure noise), never divided into 500m.
     context["sgis_grid"] = grid_context_block(db, grid_id)
-    zoning = grid_zoning_summary(db).get(grid_id)
+    zoning = grid_zoning_summary(db, [grid_id]).get(grid_id)
     if zoning:
         context["zoning"] = {"status": zoning["zoning_status"], "shares_pct": zoning["shares"], "residential_pct": zoning["residential_zone_ratio"], "dominant": zoning["dominant_zone"], "source": "VWorld LT_C_UQ111"}
     if _table_exists(db, "sgis_admin_boundaries"):
