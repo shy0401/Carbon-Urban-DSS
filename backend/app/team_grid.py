@@ -432,6 +432,100 @@ def developments(db: Any, region_code: str) -> list[dict[str, Any]]:
                  **{k: (r.data or {}).get(k) for k in keep}) for r in rows]
 
 
+GRID100_LIMIT = 12000
+_GRID100: dict[tuple[str, int], tuple[int, list[tuple[Any, ...]]]] = {}
+
+
+def _grid100_rows(db: Any, region_code: str, year: int) -> tuple[int, list[tuple[Any, ...]]]:
+    """All 100m rows of a region-year, kept in memory and checked against the row count (a re-import replaces them)."""
+    count = db.scalar(select(func.count()).select_from(TeamGrid100).where(TeamGrid100.region_code == region_code, TeamGrid100.year == year)) or 0
+    hit = _GRID100.get((region_code, year))
+    if hit is None or hit[0] != count:
+        cols = (TeamGrid100.grid_code, TeamGrid100.x, TeamGrid100.y, TeamGrid100.population, TeamGrid100.population_status,
+                TeamGrid100.building_count, TeamGrid100.floor_area_est, TeamGrid100.approval_year, TeamGrid100.zone_class)
+        rows = list(db.execute(select(*cols).where(TeamGrid100.region_code == region_code, TeamGrid100.year == year)
+                               .order_by(TeamGrid100.y, TeamGrid100.x)).tuples())
+        if len(_GRID100) >= 8:
+            _GRID100.pop(next(iter(_GRID100)))
+        _GRID100[(region_code, year)] = (count, rows)
+    return _GRID100[(region_code, year)]
+
+
+def grid100_features(db: Any, region_code: str | None, year: int, bbox: tuple[float, float, float, float] | None = None,
+                     grid500: str | None = None, limit: int = GRID100_LIMIT, meta_only: bool = False) -> dict[str, Any]:
+    """국토통계지도 100m cells (팀 수집) for the map: a lon/lat viewport (``bbox``) or one 500m cell (``grid500`` = cell_x_y).
+
+    The newest team year not after ``year`` is used. Only cells with information exist in the source (the rest are absent, not 0).
+    Population keeps its status: ``observed`` (6 and more), ``masked`` (1~5명 비공개, value None) or ``empty`` (blank in the
+    source — no people or no data, not known; value None). Callers must refuse public-gateway requests (국외 반출 금지)."""
+    from pyproj import Transformer
+    meta: dict[str, Any] = {"source": SOURCE_NGII, "years": [], "year": None, "cells": 0, "returned": 0, "truncated": False, "reason": None}
+    empty = {"type": "FeatureCollection", "features": [], "meta": meta, "summary": None}
+    if not region_code:
+        meta["reason"] = "지역을 고르지 않았습니다."
+        return empty
+    try:
+        meta["years"] = sorted({int(y) for (y,) in db.execute(select(TeamGrid100.year).where(TeamGrid100.region_code == region_code).distinct())})
+    except Exception:  # noqa: BLE001 - table missing (team dataset never imported)
+        db.rollback()
+        meta["reason"] = "100m 격자 자료(국토통계지도)를 아직 가져오지 않았습니다."
+        return empty
+    if not meta["years"]:
+        meta["reason"] = "이 지역에는 100m 격자 자료(국토통계지도)가 없습니다. 팀 데이터셋은 전주·세종·부산 강서·서울 강동만 있습니다."
+        return empty
+    chosen = year_for(meta["years"], year)
+    if chosen is None:
+        meta["reason"] = f"{year}년 이전의 100m 자료가 없습니다. 가장 이른 자료는 {meta['years'][0]}년입니다."
+        return empty
+    meta["year"] = chosen
+    count, rows = _grid100_rows(db, region_code, chosen)
+    meta["cells"] = count
+    if meta_only:
+        return empty
+    if grid500:
+        m = re.fullmatch(r"cell_(\d+)_(\d+)", grid500)
+        if not m:
+            meta["reason"] = "격자 이름이 올바르지 않습니다."
+            return empty
+        gx, gy = int(m.group(1)), int(m.group(2))
+        picked = [r for r in rows if gx <= r[1] < gx + 500 and gy <= r[2] < gy + 500]
+    elif bbox:
+        to_tm = Transformer.from_crs(4326, 5179, always_xy=True).transform
+        w, s, e, n = bbox
+        xs, ys = to_tm([w, e, w, e], [s, s, n, n])
+        x0, x1, y0, y1 = min(xs) - 100, max(xs), min(ys) - 100, max(ys)
+        picked = [r for r in rows if x0 <= r[1] <= x1 and y0 <= r[2] <= y1]
+    else:
+        picked = list(rows)
+    if len(picked) > limit:
+        meta["truncated"] = True
+        picked = picked[:limit]
+    meta["returned"] = len(picked)
+    to_ll = Transformer.from_crs(5179, 4326, always_xy=True).transform
+    corners_x = [v for r in picked for v in (r[1], r[1] + 100, r[1] + 100, r[1])]
+    corners_y = [v for r in picked for v in (r[2], r[2], r[2] + 100, r[2] + 100)]
+    lon, lat = to_ll(corners_x, corners_y) if picked else ([], [])
+    features = []
+    for i, (code, x, y, pop, status, bldg, floor, approval, zone) in enumerate(picked):
+        ring = [[round(lon[4 * i + k], 6), round(lat[4 * i + k], 6)] for k in range(4)]
+        ring.append(ring[0])
+        features.append({"type": "Feature", "geometry": {"type": "Polygon", "coordinates": [ring]}, "properties": {
+            "id": code, "x": int(x), "y": int(y), "grid500": f"cell_{int(x) // 500 * 500}_{int(y) // 500 * 500}",
+            "population": pop if status == "observed" else None, "population_status": status or "empty",
+            "building_count": bldg, "floor_area_m2": floor, "approval_year": int(round(approval)) if approval is not None else None, "zone_class": zone}})
+    summary = None
+    if grid500:
+        def total(values: list[float | None]) -> float | None:
+            vals = [v for v in values if v is not None]
+            return float(sum(vals)) if vals else None
+        props = [f["properties"] for f in features]
+        summary = {"cells_with_data": len(props), "population_sum": total([p["population"] for p in props]),
+                   "population_cells": sum(1 for p in props if p["population"] is not None),
+                   "masked_cells": sum(1 for p in props if p["population_status"] == "masked"),
+                   "buildings_sum": total([p["building_count"] for p in props]), "floor_area_sum": total([p["floor_area_m2"] for p in props])}
+    return {"type": "FeatureCollection", "features": features, "meta": meta, "summary": summary}
+
+
 def is_public(request: Any) -> bool:
     """Requests that came through the public demo gateway (deploy/gateway.conf sets the header)."""
     try:

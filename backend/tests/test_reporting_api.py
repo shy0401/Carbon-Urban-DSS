@@ -41,3 +41,9 @@ def test_plan_report_names_plans_a_b_c_and_carries_the_reference_comparison():
     assert any(f['id']=='scenario_1' and f['text'].startswith('계획안 A') for f in r['facts'])
     assert not any('cell_' in f['text'] for f in r['facts'])
     assert c.get('/api/reports/'+r['id']+'/markdown').text.count('\n## ')==7
+
+def test_grid100_layer_is_refused_on_the_public_gateway():
+    """국토통계지도 100m: 국외 반출 금지 — the public demo gateway never gets the cells."""
+    c=TestClient(app)
+    r=c.get('/api/map/grid100',params={'grid':'cell_971500_1761500'},headers={'X-Public-Gateway':'1'})
+    assert r.status_code==403 and '국외 반출' in r.json()['detail']

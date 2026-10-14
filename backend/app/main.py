@@ -402,6 +402,11 @@ def grid_energy_properties(db,year,factors,sc=None):
         p['gas_carbon_kg_annual']=carbon_kg(g.get('kwh'),factors.get('GAS'))
     return result
 
+def _grid100_meta(db,code,year):
+    from .team_grid import grid100_features
+    try:return grid100_features(db,code,year,meta_only=True)['meta']
+    except Exception:db.rollback();return None
+
 def _level(db,code):
     from .regions import detail_level,get_region
     return detail_level(get_region(db,code)) if code!=DEFAULT_REGION else 'DETAILED'
@@ -498,7 +503,28 @@ def map_data(request:Request,year:int=Query(DEFAULT_YEAR,ge=2000,le=2100),region
             'sgis_grid_official':dict(official_grid_meta(db),source='SGIS OpenAPI grid/data.geojson (grid_level_div=500m)') if official else None,
             'selected_sector':serialize(sector) if sector else None,'center':list(sc.center) if sc.center else [127.148,35.8242],'bbox':list(sc.bbox) if sc.bbox else None,'crs':'EPSG:5179','grid_size_m':500,'grid_area_m2':250000,'year':year,'offline_mode':offline_mode(),
             'region':{'code':sc.code,'name':sc.name,'short_name':sc.short,'status':sc.status,'grids':len(ids),'level':_level(db,sc.code)},
+            # 국토통계지도 100m (팀 수집): what the 100m layer can show here; the public gateway only learns it is restricted.
+            'grid100':{'restricted':True} if is_public(request) else _grid100_meta(db,sc.code,year),
         }
+
+@app.get('/api/map/grid100')
+def map_grid100(request:Request,year:int=Query(DEFAULT_YEAR,ge=2000,le=2100),region:str|None=Query(None,max_length=10),
+                bbox:str|None=Query(None,max_length=120),grid:str|None=Query(None,max_length=40),meta:bool=False):
+    """국토통계지도 100m cells (팀 수집) in a viewport (bbox=w,s,e,n) or one 500m cell (grid=cell_x_y).
+    국외 반출 금지: requests through the public demo gateway are refused."""
+    from .team_grid import grid100_features,is_public
+    if is_public(request):
+        raise HTTPException(403,'국토통계지도 100m 격자는 이용 조건(국외 반출 금지)상 공개 시연 주소에서 제공하지 않습니다. 이 PC의 화면에서만 볼 수 있습니다.')
+    box=None
+    if bbox:
+        try:
+            box=tuple(float(v) for v in bbox.split(','))
+            if len(box)!=4:raise ValueError
+        except ValueError:raise HTTPException(422,'bbox는 서,남,동,북 경위도 네 값입니다') from None
+    if not box and not grid and not meta:raise HTTPException(422,'화면 범위(bbox)나 500m 격자(grid)를 주세요')
+    with Session() as db:
+        sc=_scope(db,region or (region_for_grid(db,grid) if grid else None))
+        return grid100_features(db,sc.code,year,bbox=box,grid500=grid,meta_only=meta)
 
 @app.get('/api/grids/{grid_id}/place')
 def grid_place(grid_id:str):

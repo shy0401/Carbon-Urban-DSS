@@ -330,3 +330,25 @@ small.resolution-tag { margin: 0 0 0 var(--sp-1); }
 .menu-summary .button { justify-self: start; }
 .map-rail > .map-toast { white-space: normal; text-align: left; }
 @media (max-width: 760px) { .region-rank { max-height: 260px; overflow: auto; } }
+
+/* 100m 격자 (국토통계지도, 팀 수집): 지도 범례의 지표 버튼과 격자 상세의 5×5 칸 */
+.grid100-metrics { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: var(--sp-2); }
+.grid100-metrics button { min-height: 28px; padding: 0 var(--sp-2); border: 1px solid var(--line-strong); border-radius: var(--r-control); background: var(--surface); color: var(--ink-2); font-size: var(--fs-caption); font-weight: 500; cursor: pointer; }
+.grid100-metrics button.active, .grid100-metrics button[aria-pressed="true"] { border-color: var(--primary); background: var(--prov-observed-bg); color: var(--primary); }
+.legend-classes.compact li { grid-template-columns: 22px 1fr auto; }
+.grid100-board { display: grid; grid-template-columns: minmax(150px, 200px) 1fr; gap: var(--sp-3); align-items: start; }
+.grid100-cells { display: grid; grid-template-rows: repeat(5, 1fr); gap: 2px; aspect-ratio: 1; padding: 2px; border: 1px solid var(--line-strong); border-radius: var(--r-map); background: var(--surface-sunk); }
+.grid100-cells > div { display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px; }
+.grid100-cell { min-width: 0; min-height: 0; padding: 0; border: 1px solid var(--line); border-radius: 2px; background: var(--surface); cursor: pointer; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+.grid100-cell.absent { border-style: dashed; background: transparent; cursor: default; }
+.grid100-cell.masked { border-color: var(--hatch); background-color: var(--prov-missing-bg); background-image: repeating-linear-gradient(45deg, var(--hatch) 0 1px, transparent 1px 6px); }
+.grid100-cell.picked { outline: 2.5px solid var(--select-line); outline-offset: -1px; }
+.grid100-cell:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+.grid100-legend { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; font-size: var(--fs-caption); color: var(--ink); }
+.grid100-legend li { display: flex; align-items: center; gap: var(--sp-2); }
+.grid100-legend i { flex: none; width: 18px; height: 12px; border: 1px solid var(--line-strong); border-radius: 2px; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+.grid100-legend i.absent { border-style: dashed; background: transparent; }
+.grid100-panel > .muted { margin-top: var(--sp-2); font-size: var(--fs-caption); line-height: 1.5; }
+.grid100-picked { margin-top: var(--sp-2); padding: var(--sp-2); border: 1px solid var(--line); border-radius: var(--r-map); }
+@media (max-width: 560px) { .grid100-board { grid-template-columns: 1fr; } .grid100-cells { max-width: 220px; } }
+.grid100-panel h3 small { margin-left: 4px; font-size: var(--fs-caption); font-weight: 400; color: var(--ink-3); }

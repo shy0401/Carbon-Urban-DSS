@@ -4,6 +4,7 @@ import { ChevronDown, Layers3, LocateFixed, RefreshCw, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { DongPanel } from '../components/DongPanel';
+import { Grid100Panel } from '../components/Grid100Panel';
 import { LayerGroupTitle, LayerToggle } from '../components/LayerToggle';
 import { MetricCard } from '../components/MetricCard';
 import { MissingValue } from '../components/MissingValue';
@@ -22,6 +23,7 @@ import { regionParam, useAnalysisScope } from '../hooks/useAnalysisScope';
 import { useSystemInfo } from '../hooks/useSystemInfo';
 import { api } from '../lib/api';
 import { dongCells } from '../lib/dongs';
+import { grid100ClassLabel, grid100Classify, grid100Color, grid100Metric, grid100Tooltip, grid100Unavailable, GRID100_METRICS, GRID100_MIN_ZOOM, type Grid100Key, type Grid100Props, type Grid100Response } from '../lib/grid100';
 import { formatMetric, withTopic } from '../lib/format';
 import { addHatchImage, HATCH } from '../lib/mapHatch';
 import { referenceGrid } from '../lib/mapGrid';
@@ -36,11 +38,11 @@ maplibregl.setWorkerUrl(workerUrl);
 export const ZONE_LEGEND: ReadonlyArray<readonly [string, string, string]> = [
   ['RESIDENTIAL', '주거지역', TOKENS['zone-r2']], ['COMMERCIAL', '상업지역', TOKENS['zone-cg']], ['INDUSTRIAL', '공업지역', TOKENS['zone-ig']], ['GREEN', '녹지지역', TOKENS['zone-gp']], ['OTHER', '관리·농림·기타', TOKENS['zone-m']],
 ];
-type LayerKey = 'grids' | 'buildings' | 'complexes' | 'boundary' | 'dongs' | 'zoning' | 'admin';
-const LAYER_IDS: Record<LayerKey, string[]> = { grids: ['grid-fill', 'grid-missing', 'grid-line'], buildings: ['buildings-fill', 'buildings-unknown', 'buildings-line'], complexes: ['complexes-circle'], boundary: ['boundary-line'], dongs: ['dong-line'], zoning: ['zoning-unknown', 'zoning-halo', 'zoning-line'], admin: ['admin-fill', 'admin-line'] };
-/** 처음에는 격자 색과 경계선만. 겹쳐 보는 레이어(건물·단지·용도지역·행정동)는 한 번에 하나만 켠다. */
-const DEFAULT_VISIBLE: Record<LayerKey, boolean> = { grids: true, buildings: false, complexes: false, boundary: true, dongs: true, zoning: false, admin: false };
-export const OVERLAY_KEYS: ReadonlyArray<LayerKey> = ['buildings', 'complexes', 'zoning', 'admin'];
+type LayerKey = 'grids' | 'buildings' | 'complexes' | 'boundary' | 'dongs' | 'zoning' | 'admin' | 'grid100';
+const LAYER_IDS: Record<LayerKey, string[]> = { grids: ['grid-fill', 'grid-missing', 'grid-line'], buildings: ['buildings-fill', 'buildings-unknown', 'buildings-line'], complexes: ['complexes-circle'], boundary: ['boundary-line'], dongs: ['dong-line'], zoning: ['zoning-unknown', 'zoning-halo', 'zoning-line'], admin: ['admin-fill', 'admin-line'], grid100: ['g100-fill', 'g100-masked', 'g100-line'] };
+/** 처음에는 격자 색과 경계선만. 겹쳐 보는 레이어(건물·단지·용도지역·행정동·100m 격자)는 한 번에 하나만 켠다. */
+const DEFAULT_VISIBLE: Record<LayerKey, boolean> = { grids: true, buildings: false, complexes: false, boundary: true, dongs: true, zoning: false, admin: false, grid100: false };
+export const OVERLAY_KEYS: ReadonlyArray<LayerKey> = ['buildings', 'complexes', 'zoning', 'admin', 'grid100'];
 /** 레이어 하나를 켜고 끈다. 겹쳐 보기 레이어를 켜면 다른 겹쳐 보기 레이어는 끈다(격자·경계선은 그대로). */
 export function toggleLayer(visible: Record<LayerKey, boolean>, key: LayerKey, on: boolean): Record<LayerKey, boolean> {
   const next = { ...visible, [key]: on };
@@ -142,6 +144,12 @@ function RegionDetailMap({ offline }: { offline: boolean | null }) {
   const [layersOpen, setLayersOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(true);
   const visibleRef = useRef(visible); visibleRef.current = visible;
+  // 국토통계지도 100m (팀 수집, 국외 반출 금지): 확대 13 이상에서 화면 안의 칸만 받는다.
+  const [g100Key, setG100Key] = useState<Grid100Key>('population');
+  const [g100, setG100] = useState<{ fc: Grid100Response | null; needZoom: boolean; error: string | null }>({ fc: null, needZoom: true, error: null });
+  const g100Metric = grid100Metric(g100Key);
+  const g100Class = useMemo(() => grid100Classify(g100.fc?.features ?? [], g100Metric), [g100.fc, g100Metric]);
+  const g100Ref = useRef({ year: g100.fc?.meta.year ?? null }); g100Ref.current = { year: g100.fc?.meta.year ?? null };
 
   const grids = useMemo(() => (data ? withMetricValues(data.grids) : null), [data]);
   const reference = useMemo(() => (grids ? referenceGrid(grids as GeoJSON.FeatureCollection) : EMPTY), [grids]);
@@ -207,6 +215,10 @@ function RegionDetailMap({ offline }: { offline: boolean | null }) {
       map.addLayer({ id: 'buildings-unknown', type: 'fill', source: 'buildings', filter: ['==', ['coalesce', ['get', 'use_category'], 'RESIDENTIAL'], 'UNKNOWN'], minzoom: data.buildings_mode === 'viewport' ? BUILDING_MIN_ZOOM - 0.5 : 0, paint: { 'fill-pattern': HATCH } });
       map.addLayer({ id: 'buildings-line', type: 'line', source: 'buildings', minzoom: 15, paint: { 'line-color': TOKENS['ink-3'], 'line-width': 0.5 } });
       map.addLayer({ id: 'complexes-circle', type: 'circle', source: 'complexes', layout: { visibility: 'none' }, paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, ['max', 2, ['/', ['sqrt', ['coalesce', ['get', 'households'], 1]], 6]], 16, ['max', 4, ['/', ['sqrt', ['coalesce', ['get', 'households'], 1]], 2.2]]], 'circle-color': TOKENS.primary, 'circle-opacity': 0.75, 'circle-stroke-color': TOKENS.surface, 'circle-stroke-width': 1 } });
+      map.addSource('grid100', { type: 'geojson', data: EMPTY });
+      map.addLayer({ id: 'g100-fill', type: 'fill', source: 'grid100', layout: { visibility: 'none' }, paint: { 'fill-color': ['rgba', 0, 0, 0, 0], 'fill-opacity': 0.82 } });
+      map.addLayer({ id: 'g100-masked', type: 'fill', source: 'grid100', filter: ['==', ['get', 'population_status'], 'masked'], layout: { visibility: 'none' }, paint: { 'fill-pattern': HATCH, 'fill-opacity': 0.9 } });
+      map.addLayer({ id: 'g100-line', type: 'line', source: 'grid100', layout: { visibility: 'none' }, paint: { 'line-color': withBasemap ? LINE_ON_BASEMAP : TOKENS.line, 'line-width': ['interpolate', ['linear'], ['zoom'], 13, 0.2, 16, 0.8] } });
       map.addLayer({ id: 'hover-grid', type: 'line', source: 'grids', filter: selectedFilter(''), paint: { 'line-color': TOKENS['select-line'], 'line-width': 1.5, 'line-opacity': 0.6 } });
       map.addLayer({ id: 'selected-halo', type: 'line', source: 'grids', filter: selectedFilter(selectedRef.current), paint: { 'line-color': TOKENS['select-halo'], 'line-width': 4.5 } });
       map.addLayer({ id: 'selected-grid', type: 'line', source: 'grids', filter: selectedFilter(selectedRef.current), paint: { 'line-color': TOKENS['select-line'], 'line-width': 2.5 } });
@@ -219,20 +231,24 @@ function RegionDetailMap({ offline }: { offline: boolean | null }) {
         hoverPopup.current?.setLngLat(e.lngLat).setHTML(gridTooltip(props, metricRef.current.metric, metricRef.current.classification, dongLabel(dongsRef.current, String(props.id)))).addTo(map);
       });
       map.on('mouseleave', 'grid-fill', () => { map.getCanvas().style.cursor = ''; map.setFilter('hover-grid', selectedFilter('')); hoverPopup.current?.remove(); });
-      map.on('click', 'grid-fill', (e) => { const id = e.features?.[0]?.properties?.id; if (id) { setScope({ gridId: String(id) }); setDetailOpen(true); setDongView(false); } });
+      map.on('click', 'grid-fill', (e) => { if (e.defaultPrevented) return; const id = e.features?.[0]?.properties?.id; if (id) { setScope({ gridId: String(id) }); setDetailOpen(true); setDongView(false); } });
       for (const layer of ['buildings-fill', 'buildings-unknown', 'complexes-circle']) {
         map.on('mouseenter', layer, () => { map.getCanvas().style.cursor = 'pointer'; });
         map.on('mouseleave', layer, () => { map.getCanvas().style.cursor = ''; });
       }
       for (const layer of ['buildings-fill', 'buildings-unknown']) map.on('click', layer, (e) => { const p = e.features?.[0]?.properties; if (p) new maplibregl.Popup({ offset: 8, maxWidth: '280px' }).setLngLat(e.lngLat).setHTML(buildingTooltip(p)).addTo(map); });
       map.on('click', 'complexes-circle', (e) => { const p = e.features?.[0]?.properties; if (p) new maplibregl.Popup({ offset: 8, maxWidth: '300px' }).setLngLat(e.lngLat).setHTML(complexTooltip(p)).addTo(map); });
+      // 100m 칸을 누르면 값 팝업만(선택 격자는 바꾸지 않는다). 500m 격자 클릭보다 먼저 처리한다.
+      map.on('click', 'g100-fill', (e) => { const p = e.features?.[0]?.properties as unknown as Grid100Props | undefined; if (!p) return; e.preventDefault(); new maplibregl.Popup({ offset: 8, maxWidth: '280px' }).setLngLat(e.lngLat).setHTML(grid100Tooltip(p, g100Ref.current.year)).addTo(map); });
+      map.on('mouseenter', 'g100-fill', () => { map.getCanvas().style.cursor = 'pointer'; });
+      map.on('mouseleave', 'g100-fill', () => { map.getCanvas().style.cursor = ''; });
       applyVisibility(map, visibleRef.current);
       setMapReady((n) => n + 1);
     });
     map.on('idle', () => {
       const el = container.current; if (!el) return;
       if (map.getLayer('grid-fill')) el.dataset.renderedFeatures = String(map.queryRenderedFeatures({ layers: ['grid-fill'] }).length);
-      for (const [key, ids] of [['renderedZoning', ['zoning-line']], ['renderedAdmin', ['admin-fill']], ['renderedBuildings', ['buildings-fill', 'buildings-unknown']]] as const) {
+      for (const [key, ids] of [['renderedZoning', ['zoning-line']], ['renderedAdmin', ['admin-fill']], ['renderedBuildings', ['buildings-fill', 'buildings-unknown']], ['renderedGrid100', ['g100-fill']]] as const) {
         const shown = ids.filter((id) => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none');
         el.dataset[key] = shown.length ? String(map.queryRenderedFeatures({ layers: [...shown] }).length) : '0';
       }
@@ -319,6 +335,32 @@ function RegionDetailMap({ offline }: { offline: boolean | null }) {
     return () => { m.off('moveend', load); window.clearTimeout(timer); controller?.abort(); };
   }, [mapReady, data?.buildings_mode, visible.buildings]);
 
+  // 100m 격자: 레이어를 켜고 확대 13 이상일 때 화면 범위만 받는다(지역 전체는 수만 칸).
+  const g100Available = !grid100Unavailable(data?.grid100);
+  useEffect(() => {
+    const m = mapRef.current; if (!m || !mapReady || !g100Available) return;
+    let controller: AbortController | null = null; let timer = 0;
+    const load = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        const source = m.getSource('grid100') as maplibregl.GeoJSONSource | undefined; if (!source) return;
+        if (!visibleRef.current.grid100) return;
+        if (m.getZoom() < GRID100_MIN_ZOOM) { source.setData(EMPTY); setG100((old) => ({ ...old, fc: null, needZoom: true })); return; }
+        const b = m.getBounds(); controller?.abort(); controller = new AbortController();
+        api<Grid100Response>(`/map/grid100?year=${year}${regionQuery}&bbox=${[b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].map((v) => v.toFixed(5)).join(',')}`, { signal: controller.signal })
+          .then((fc) => { source.setData(fc as unknown as GeoJSON.FeatureCollection); setG100({ fc, needZoom: false, error: null }); })
+          .catch((e) => { if (!controller?.signal.aborted) setG100({ fc: null, needZoom: false, error: e instanceof Error ? e.message : '100m 자료를 불러오지 못했습니다' }); });
+      }, 250);
+    };
+    load(); m.on('moveend', load);
+    return () => { m.off('moveend', load); window.clearTimeout(timer); controller?.abort(); };
+  }, [mapReady, visible.grid100, g100Available, year, regionQuery]);
+  useEffect(() => {
+    const m = mapRef.current; if (!m?.getLayer('g100-fill')) return;
+    m.setPaintProperty('g100-fill', 'fill-color', grid100Color(g100Metric, g100Class) as unknown as maplibregl.ExpressionSpecification);
+    m.setFilter('g100-masked', g100Metric.key === 'population' ? ['==', ['get', 'population_status'], 'masked'] : ['==', ['get', 'population_status'], '__none__']);
+  }, [g100Metric, g100Class, mapReady]);
+
   if (opening.state === 'opening') return <div className="map-state"><LoadingState label={`${opening.name ?? '이 시·군·구'} 지도를 만드는 중입니다. 전국 자료로 500m 격자·읍면동을 만드는 처음 한 번만 몇 초~1분 걸립니다`} /></div>;
   if (opening.state === 'failed') return <div className="map-state"><ErrorState message={opening.message} onRetry={opening.retry} /></div>;
   if (loading && !data) return <div className="map-state"><LoadingState label="공간 레이어를 불러오는 중입니다" /></div>;
@@ -337,6 +379,8 @@ function RegionDetailMap({ offline }: { offline: boolean | null }) {
   const selectedDongs = selected ? dongLabel(dongs.data, String(selected.id), true) : null;
   const overlayOn = OVERLAY_KEYS.some((key) => visible[key]);
   const toggle = (key: LayerKey) => (on: boolean) => setVisible((old) => toggleLayer(old, key, on));
+  const grid100Meta = data.grid100 && !('restricted' in data.grid100) ? data.grid100 : null;
+  const grid100Year = grid100Meta?.year ?? null; const grid100Cells = grid100Meta?.cells ?? null;
   return <div className={`map-workspace${detailShown || dongShown ? ' has-detail' : ''}`}>
       <div className="map-stage">
         <div ref={container} className={`map-canvas${showBasemap ? '' : ' no-basemap'}`} aria-label={`${regionName} 탄소 공간 지도`} />
@@ -368,6 +412,10 @@ function RegionDetailMap({ offline }: { offline: boolean | null }) {
             <p className="legend-selected"><i aria-hidden="true" />선택 격자</p>
             {visible.zoning && <div className="overlay-legend" aria-label="용도지역 범례"><div className="overlay-head"><strong>용도지역</strong>{zoningQuality && <ProvenanceBadge kind={zoningQuality} />}</div>{zoningCount ? <><ul className="zone-legend">{ZONE_LEGEND.map(([key, label, color]) => { const km2 = overlayMeta?.zoning_area_km2_by_category?.[key]; return <li key={key}><i style={{ borderColor: color }} />{label}{km2 !== undefined && <b>{km2.toFixed(1)}km², {formatMetric(zoningTotal ? km2 / zoningTotal * 100 : null, '%', 1)}</b>}</li>; })}<li><i className="is-missing" />미분류·미지정</li></ul><small>외곽선 색은 세부 용도지역(제1·2·3종 일반주거 등)을 명도로 구분합니다. VWorld LT_C_UQ111, 도형 {zoningCount.toLocaleString('ko-KR')}개, 분석 격자 내 면적.</small></> : <p className="overlay-missing" role="status">{MISSING_NOTICE.zoning}</p>}</div>}
             {visible.admin && <div className="overlay-legend" aria-label="행정동 인구 범례"><div className="overlay-head"><strong>행정동 인구밀도</strong>{adminQuality && <ProvenanceBadge kind={adminQuality} />}</div>{adminCount ? <><ul className="legend-classes compact">{densitySteps(adminMax).map(([from, to], i) => <li key={i}><i style={{ background: SEQ_RAMP[i] }} /><span>{formatMetric(from, '', 0)} ~ {formatMetric(to, '', 0)}{i < 4 ? ' 미만' : ''}</span><em>명/km²</em></li>)}</ul><small>SGIS {overlayMeta?.admin_reference_year ?? ''} 행정통계, 공식 행정동 경계. 격자로 배분하지 않습니다.</small>{adminInfo && <dl className="admin-info"><div><dt>행정동</dt><dd>{String(adminInfo.adm_name ?? '—')}</dd></div><div><dt>인구</dt><dd>{statValue(adminInfo.population, adminInfo.population_status, '명')}</dd></div><div><dt>가구</dt><dd>{statValue(adminInfo.households, adminInfo.household_status, '가구')}</dd></div><div><dt>인구밀도</dt><dd>{typeof adminInfo.population_density === 'number' ? formatMetric(adminInfo.population_density, '명/km²', 0) : '자료 없음'}</dd></div></dl>}</> : <p className="overlay-missing" role="status">{MISSING_NOTICE.admin}</p>}</div>}
+            {visible.grid100 && <div className="overlay-legend" aria-label="100m 격자 범례" data-testid="grid100-legend"><div className="overlay-head"><strong>100m 격자 · 국토통계지도{grid100Year ? ` ${grid100Year}년` : ''}</strong></div>
+              <div className="grid100-metrics" role="group" aria-label="100m 지표">{GRID100_METRICS.map((g) => <button key={g.key} type="button" className={g.key === g100Key ? 'active' : ''} aria-pressed={g.key === g100Key} onClick={() => setG100Key(g.key)}>{g.label}</button>)}</div>
+              {g100.needZoom ? <p className="overlay-missing" role="status">확대({GRID100_MIN_ZOOM} 이상)하면 화면 안의 100m 칸을 칠합니다.</p> : g100.error ? <p className="overlay-missing" role="status">{g100.error}</p> : !g100Class.classes.length && g100Metric.key !== 'population' ? <p className="overlay-missing" role="status">화면 안에 {g100Metric.label} 값이 있는 칸이 없습니다.</p> : <ul className="legend-classes compact">{g100Class.classes.map((c, i) => <li key={i}><i style={{ background: c.color }} /><span>{grid100ClassLabel(g100Class, i, g100Metric)}</span><em>{c.count.toLocaleString('ko-KR')}칸</em></li>)}{g100Metric.key === 'population' && <li><i className="is-missing" /><span>1~5명 비공개</span><em>{(g100.fc?.features.filter((f) => f.properties.population_status === 'masked').length ?? 0).toLocaleString('ko-KR')}칸</em></li>}</ul>}
+              <small>{g100Metric.note} 자료가 있는 칸만 칠합니다(일부 수집: {grid100Cells ? `${regionName} ${grid100Cells.toLocaleString('ko-KR')}칸` : '—'}, 연도 {grid100Meta?.years.join('·') ?? '—'}). {grid100Year && grid100Year !== year ? `${year}년 자료가 없어 가장 가까운 ${grid100Year}년을 씁니다. ` : ''}{g100.fc?.meta.truncated ? '칸이 많아 일부만 그렸습니다. 더 확대하세요. ' : ''}국토통계지도는 국외 반출 금지라 이 PC 화면에서만 보입니다.</small></div>}
             {visible.buildings && <div className="overlay-legend" aria-label="건물 용도 범례"><div className="overlay-head"><strong>건물 용도</strong>{buildingQuality && <ProvenanceBadge kind={buildingQuality} />}</div><ul className="use-legend">{USE_COLORS.map(([key, color]) => <li key={key}><i className={color ? undefined : 'is-missing'} style={{ background: color ?? undefined }} />{USE_NAME[key]}{viewport && !viewport.needZoom && <b>{(viewport.counts[key] ?? 0).toLocaleString('ko-KR')}</b>}</li>)}</ul><small>{data.buildings_source}{data.buildings_mode === 'viewport' ? `. 확대 ${BUILDING_MIN_ZOOM} 이상에서 표시` : ''}{viewport && !viewport.needZoom && viewport.shown > 0 && (viewport.counts.UNKNOWN ?? 0) === viewport.shown ? '. 이 레이어에는 용도코드가 없어 모두 용도 미상으로 칠합니다. 용도는 격자 상세의 건축물대장 항목에서 봅니다.' : ''}</small></div>}
           </section>
         </div>
@@ -386,11 +434,13 @@ function RegionDetailMap({ offline }: { offline: boolean | null }) {
             <LayerToggle swatch="building" label={data.buildings_mode === 'viewport' ? '건물 (도로명주소 건물)' : '건물 (OSM 공동주택, 대체)'} checked={visible.buildings} onChange={toggle('buildings')} hint={data.buildings_mode === 'viewport' ? `확대 ${BUILDING_MIN_ZOOM} 이상에서 표시, 색 = 용도` : '공식 건물 수집 전 대체 자료'} />
             <LayerToggle swatch="dot" label={`공동주택 단지 (K-apt ${data.complexes?.features.length ?? 0})`} checked={visible.complexes} onChange={toggle('complexes')} hint={data.complexes?.features.some((f) => f.properties?.listed_only) ? '전국 단지 목록 위치 (세대수는 상세 자료 수집 후)' : '원 크기 = 세대수'} />
             {([['zoning', '용도지역 (VWorld)', zoningCount], ['admin', '행정동 인구 (SGIS)', adminCount]] as const).map(([key, label, count]) => <LayerToggle key={key} swatch={key} label={label} checked={visible[key]} onChange={toggle(key)} badge={!count ? (overlays.loading ? '확인 중' : '자료 미확보') : undefined} hint={key === 'zoning' ? '색 외곽선 = 용도지역' : '면 색 = 행정동 인구밀도'} />)}
+            <LayerToggle swatch="fill" colors={visible.grid100 ? g100Class.classes.map((c) => c.color) : undefined} label={`100m 격자 (국토통계지도${grid100Year ? ` ${grid100Year}` : ''})`} checked={visible.grid100} disabled={!g100Available} onChange={toggle('grid100')} badge={g100Available ? undefined : '볼 수 없음'} hint={grid100Unavailable(data.grid100) ?? `확대 ${GRID100_MIN_ZOOM} 이상에서 표시, 자료 있는 ${(grid100Cells ?? 0).toLocaleString('ko-KR')}칸 (일부 수집)`} />
             <LayerGroupTitle title="바탕" />
             <LayerToggle swatch="base" label="배경지도 (OpenStreetMap)" checked={basemapEnabled && !offline} disabled={!!offline} onChange={(v) => setBasemapEnabled(v)} hint={offline ? '오프라인 모드: 외부 타일을 요청하지 않음. 도면지 바탕과 1km 참조 격자로 표시' : basemapFailed ? '연결 실패. 도면지 바탕과 1km 참조 격자로 표시' : undefined} />
           </section>}
         </div>
         <div className="map-notices">
+        {visible.grid100 && g100Available && <div className="building-count" role="status" data-testid="grid100-count">{g100.needZoom ? `100m 격자는 확대(${GRID100_MIN_ZOOM} 이상)하면 표시됩니다` : g100.fc ? `화면 안 100m 칸 ${g100.fc.meta.returned.toLocaleString('ko-KR')}칸 (국토통계지도 ${g100.fc.meta.year}년)` : '100m 칸 불러오는 중'}</div>}
         {data.buildings_mode === 'viewport' && visible.buildings && viewport && <div className="building-count" role="status">{viewport.needZoom ? `건물은 확대(${BUILDING_MIN_ZOOM} 이상)하면 표시됩니다` : `화면 안 건물 ${viewport.total.toLocaleString('ko-KR')}동${viewport.truncated ? ` 중 큰 건물 ${viewport.shown.toLocaleString('ko-KR')}동 표시` : ''}`}</div>}
         {metric.group === '건물 전체 에너지 (건축HUB)' && data.building_energy?.complete === false && <div className="map-toast" role="status">{data.year}년 건축HUB 전 지번 수집이 아직 진행 중이라 일부 법정동만 채워져 있습니다.</div>}
         {basemapFailed && !offline && basemapEnabled && <div className="map-toast" role="status">배경지도를 불러오지 못했습니다. 분석 도형은 도면지 바탕 위에 그대로 표시됩니다.</div>}
@@ -399,7 +449,7 @@ function RegionDetailMap({ offline }: { offline: boolean | null }) {
         {mapError && <p role="alert" className="map-error">{mapError}</p>}
       </div>
       {dongShown && dongs.data && <DongPanel data={dongs.data} index={dongIndex >= 0 ? dongIndex : null} grids={gridProps} complexes={data.complexes} metric={metric} regionName={regionName} onSelect={(i) => setDong(i === null ? null : dongs.data?.dongs[i]?.code ?? null)} onClose={() => setDongView(false)} />}
-      {detailShown && <GridDetail props={selected} year={year} name={String(data.selected_sector?.grid_id) === selectedId ? data.selected_sector?.name : undefined} dongs={selectedDongs} metric={metric} classification={classification} details={details.data} detailsLoading={details.loading} onFocus={focus} onClose={() => setDetailOpen(false)} />}
+      {detailShown && <GridDetail props={selected} year={year} name={String(data.selected_sector?.grid_id) === selectedId ? data.selected_sector?.name : undefined} dongs={selectedDongs} metric={metric} classification={classification} details={details.data} detailsLoading={details.loading} onFocus={focus} onClose={() => setDetailOpen(false)} grid100={g100Available ? { region } : null} />}
     </div>;
 }
 
@@ -449,7 +499,7 @@ function BasicRegionNote({ code, name }: { code: string; name: string }) {
   </section>;
 }
 
-function GridDetail({ props: p, year, name, dongs, metric, classification, details, detailsLoading, onFocus, onClose }: { props: GridProps; year: number; name?: string; dongs?: string | null; metric: MetricDef; classification: Classification; details: DashboardData | null; detailsLoading: boolean; onFocus: () => void; onClose: () => void }) {
+function GridDetail({ props: p, year, name, dongs, metric, classification, details, detailsLoading, onFocus, onClose, grid100 = null }: { props: GridProps; year: number; name?: string; dongs?: string | null; metric: MetricDef; classification: Classification; details: DashboardData | null; detailsLoading: boolean; onFocus: () => void; onClose: () => void; grid100?: { region: string | null } | null }) {
   const value = p[metric.key] as number | null;
   const cls = value === null ? null : classification.classes.find((c, i) => i === classification.classes.length - 1 ? value >= c.from : value >= c.from && value < c.to);
   const detailMatches = details?.selected_sector && String(details.selected_sector.grid_id) === p.id;
@@ -482,6 +532,7 @@ function GridDetail({ props: p, year, name, dongs, metric, classification, detai
         <Fact label="가스 탄소 (가정 계수)" value={typeof p.gas_carbon_kg_annual === 'number' ? p.gas_carbon_kg_annual / 1000 : null} unit="tCO₂eq/년" digits={1} why="가스 × 0.1826 kgCO₂eq/kWh (IPCC 2006, 총발열량 기준 가정)" missingText="12개월 가스 관측 지번 없음 (0 아님)" />
       </dl>
     </section>
+    {grid100 && <Grid100Panel gridId={String(p.id)} year={year} region={grid100.region} />}
     <section className="detail-section" aria-label="월별 관측">
       <h3>월별 관측 ({months.length ? `${String(months[0]?.use_ym).slice(0, 4)}년` : `${year}년`})</h3>
       {months.length > 0 ? <><MonthRow label="전력" months={months.map((r) => r.electricity_kwh !== null)} /><MonthRow label="가스" months={months.map((r) => r.gas_kwh !== null)} /></> : detailsLoading ? <p className="muted">월별 관측 확인 중…</p> : <MissingValue reason="이 격자에는 월별 에너지 관측이 없습니다." />}

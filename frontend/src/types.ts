@@ -291,6 +291,8 @@ export interface MapData {
   sgis_grid?: { year: number | null; source: string; note: string } | null;
   /** SGIS 500m 격자 통계 (자료제공 신청분) coverage for this region's cells. */
   sgis_grid500?: { first_year: number | null; last_year: number | null; base_year: number | null; source: string; cells: number; note: string } | null;
+  /** 국토통계지도 100m (팀 수집): 이 지역·연도에 쓸 수 있는 칸 수와 연도. 공개 게이트웨이에는 restricted만. */
+  grid100?: { source: string; years: number[]; year: number | null; cells: number; returned: number; truncated: boolean; reason: string | null } | { restricted: true } | null;
   register?: { grids: number; buildings: number; source: string } | null;
   building_energy?: { grids: number; parcels: number; complete: boolean; source: string } | null;
 }
