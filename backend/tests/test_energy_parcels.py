@@ -237,3 +237,20 @@ def test_new_rows_of_the_region_are_seen_once_the_recheck_time_has_passed(monkey
     assert grid_building_energy(db, 2025, {'g1'}) is first  # within RECHECK_S: the cached answer, no count query
     monkeypatch.setattr(energy_parcels, 'RECHECK_S', 0.0)
     assert grid_building_energy(db, 2025, {'g1'})['g1']['electricity_kwh'] == 1212.0
+
+
+def test_a_parcel_placed_later_reaches_the_map_without_a_restart(monkeypatch):
+    """10/14: place-parcels adds cells for metered parcels while the 건축HUB row count stays the same; the cached
+    map totals must still pick them up (they were checked against the 건축HUB count only)."""
+    from app import energy_parcels
+    from app.energy_parcels import grid_building_energy
+    monkeypatch.setattr(energy_parcels, 'RECHECK_S', 0.0)
+    db, ParcelGrid = _parcel_db()
+    db.add(ParcelGrid(pnu='5211311600100110000', grid_id='g1'))
+    _hub_year(db, '52113', '11600', '0011', '0000', 100.0)
+    _hub_year(db, '52113', '11600', '0012', '0000', 1.0)   # metered, not yet in any cell
+    db.commit()
+    assert grid_building_energy(db, 2025, {'g1'})['g1']['electricity_kwh'] == 1200.0
+    db.add(ParcelGrid(pnu='5211311600100120000', grid_id='g1', method='VWORLD_ROAD_ADDRESS'))
+    db.commit()
+    assert grid_building_energy(db, 2025, {'g1'})['g1']['electricity_kwh'] == 1212.0

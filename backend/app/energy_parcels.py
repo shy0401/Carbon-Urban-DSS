@@ -330,7 +330,7 @@ def region_year_complete(db: Any, region: str | None, year: int) -> bool:
 # (year, cells) -> (row count of the cells' 시·군·구 that year, per-grid values). Cells = one study region's grids
 # (None = every parcel): a region's map no longer reads the whole country, and collecting another region does
 # not change its row count, so its cache stays valid while other regions are being collected.
-_GRID_CACHE: dict[tuple[int, Any], tuple[int, dict[str, dict[str, Any]]]] = {}
+_GRID_CACHE: dict[tuple[int, Any], tuple[tuple[int, int], dict[str, dict[str, Any]]]] = {}
 _PARCEL_GRID: dict[Any, tuple[int, dict[str, str]]] = {}
 _CACHE_SLOTS = 12
 # The row count behind a cached year is checked at most every RECHECK_S seconds (the count itself took 0.6 s
@@ -527,7 +527,8 @@ def summarize_parcels(parcels: list[dict[str, Any]], grid_of: dict[str, str], ar
 def grid_building_energy(db: Any, year: int, grid_ids: Any = None) -> dict[str, dict[str, Any]]:
     """Per-grid all-building energy for ``year``: every metered parcel placed in a cell of ``grid_ids``
     (one study region; None = every cell). Same values as the whole-country computation for those cells,
-    because a cell's parcels are taken whatever their 시·군·구. Cached per (year, cells) and that scope's row count."""
+    because a cell's parcels are taken whatever their 시·군·구. Cached per (year, cells) and checked against that scope's
+    건축HUB row count and its number of placed parcels (place-parcels adds cells without new 건축HUB rows)."""
     from .models import EnergyMonthly
     lo, hi = f"{year}01", f"{year}12"
     key = (year, _cells_key(grid_ids))
@@ -544,8 +545,9 @@ def grid_building_energy(db: Any, year: int, grid_ids: Any = None) -> dict[str, 
     count = db.scalar(select(func.count()).select_from(EnergyMonthly).where(*within)) or 0
     if not count:
         return {}
+    stamp = (count, len(grid_of))
     hit = _GRID_CACHE.get(key)
-    if hit is None or hit[0] != count:
+    if hit is None or hit[0] != stamp:
         # the months themselves (not only their count): gas billed bi-monthly in summer skips a month
         agg = func.array_agg if db.get_bind().dialect.name == "postgresql" else func.group_concat
         rows = db.execute(
@@ -564,7 +566,7 @@ def grid_building_energy(db: Any, year: int, grid_ids: Any = None) -> dict[str, 
                             "kwh": float(kwh) if kwh is not None else None})
         if len(_GRID_CACHE) >= _CACHE_SLOTS and key not in _GRID_CACHE:
             _GRID_CACHE.pop(next(iter(_GRID_CACHE)))
-        _GRID_CACHE[key] = (count, summarize_parcels(parcels, grid_of, _register_area(db, sigungu)))
+        _GRID_CACHE[key] = (stamp, summarize_parcels(parcels, grid_of, _register_area(db, sigungu)))
     _CHECKED[key] = time.monotonic()
     return _GRID_CACHE[key][1]
 
