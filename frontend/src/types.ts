@@ -403,6 +403,7 @@ export interface ScenarioSeries {
   electricity_kwh?: number | null;
   gas_kwh?: number | null;
   carbon_kg?: number | null;
+  electricity_carbon_kg?: number | null;
   energy_kwh?: number | null;
   [key: string]: unknown;
 }
