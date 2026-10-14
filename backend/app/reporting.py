@@ -160,7 +160,7 @@ def grid_detail_facts(db,year,grid_id,data):
     except Exception:db.rollback()
     try:
         from .register_grid import grid_register_summary,map_properties as register_properties
-        reg=grid_register_summary(db).get(grid_id)
+        reg=grid_register_summary(db,[grid_id]).get(grid_id)
         if reg:
             props=register_properties(reg);out['register']=props
             far=f", 격자 면적 기준 용적률 {props['reg_far_pct']:.1f}%" if props.get('reg_far_pct') is not None else ''

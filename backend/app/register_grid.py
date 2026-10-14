@@ -20,7 +20,7 @@ from typing import Any
 from sqlalchemy import func, select
 
 GRID_AREA_M2 = 250_000.0
-_CACHE: dict[int, dict[str, dict[str, Any]]] = {}
+_CACHE: dict[Any, tuple[int, dict[str, dict[str, Any]]]] = {}  # cells (None = all) -> (row count, summary)
 
 
 def summarize(rows: list[dict[str, Any]], grid_area_m2: float = GRID_AREA_M2) -> dict[str, dict[str, Any]]:
@@ -69,26 +69,40 @@ def summarize(rows: list[dict[str, Any]], grid_area_m2: float = GRID_AREA_M2) ->
     return out
 
 
-def grid_register_summary(db: Any) -> dict[str, dict[str, Any]]:
-    """Cached per row count (the register changes only when it is collected again)."""
+def grid_register_summary(db: Any, grid_ids: Any = None) -> dict[str, dict[str, Any]]:
+    """Per-grid 건축물대장 summary for ``grid_ids`` (one region; None = every grid), cached per that scope's
+    row count (the register changes only when it is collected again; another region's collection keeps
+    this region's cache). 10/14: the whole-country summary took 15 s on the first map after a restart."""
     try:
         from .official import BuildingRegister, register_areas
-        count = db.scalar(select(func.count()).select_from(BuildingRegister).where(BuildingRegister.grid_id.is_not(None))) or 0
+        key = None if grid_ids is None else frozenset(grid_ids)
+        ids = sorted(key) if key is not None else None
+        where = [BuildingRegister.grid_id.is_not(None)]
+        if ids is None:
+            count = db.scalar(select(func.count()).select_from(BuildingRegister).where(*where)) or 0
+        else:
+            count = sum(db.scalar(select(func.count()).select_from(BuildingRegister).where(BuildingRegister.grid_id.in_(ids[i:i + 2000]))) or 0
+                        for i in range(0, len(ids), 2000))
     except Exception:  # noqa: BLE001 - table not migrated yet
         db.rollback()
         return {}
     if not count:
         return {}
-    if count not in _CACHE:
+    hit = _CACHE.get(key)
+    if hit is None or hit[0] != count:
+        query = select(BuildingRegister.grid_id, BuildingRegister.attributes, BuildingRegister.approval_year)
+        chunks = [query.where(*where)] if ids is None else [query.where(BuildingRegister.grid_id.in_(ids[i:i + 2000])) for i in range(0, len(ids), 2000)]
         rows = []
-        for grid_id, attrs, year in db.execute(select(BuildingRegister.grid_id, BuildingRegister.attributes, BuildingRegister.approval_year).where(BuildingRegister.grid_id.is_not(None))):
-            attrs = attrs or {}
-            gfa, far, issues = register_areas(attrs)
-            rows.append({"grid_id": grid_id, "use": attrs.get("building_use"), "gfa": gfa, "far_gfa": far,
-                         "approval_year": year, "energy_grade": attrs.get("energy_grade"), "area_issue": bool(issues)})
-        _CACHE.clear()
-        _CACHE[count] = summarize(rows)
-    return _CACHE[count]
+        for chunk in chunks:
+            for grid_id, attrs, year in db.execute(chunk):
+                attrs = attrs or {}
+                gfa, far, issues = register_areas(attrs)
+                rows.append({"grid_id": grid_id, "use": attrs.get("building_use"), "gfa": gfa, "far_gfa": far,
+                             "approval_year": year, "energy_grade": attrs.get("energy_grade"), "area_issue": bool(issues)})
+        if len(_CACHE) >= 12 and key not in _CACHE:
+            _CACHE.pop(next(iter(_CACHE)))
+        _CACHE[key] = (count, summarize(rows))
+    return _CACHE[key][1]
 
 
 def map_properties(summary: dict[str, Any] | None) -> dict[str, Any]:

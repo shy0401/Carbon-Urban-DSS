@@ -121,7 +121,7 @@ def _warm_map(years=None):
             try:grid_building_energy(db,year,scope(db,None).grid_ids)
             except Exception:db.rollback()
     with Session() as db:
-        try:grid_register_summary(db);official_codes(db)
+        try:grid_register_summary(db,scope(db,None).grid_ids);official_codes(db)
         except Exception:db.rollback()
 
 app=FastAPI(title='Carbon Urban DSS',version='0.1.0',lifespan=lifespan)
@@ -425,7 +425,7 @@ def map_data(request:Request,year:int=Query(DEFAULT_YEAR,ge=2000,le=2100),region
         from .sgis_grid500 import grid500_properties,coverage as grid500_coverage,project_code
         grid500=grid500_properties(db,ids)
         from .register_grid import grid_register_summary,map_properties as register_properties
-        register=grid_register_summary(db)
+        register=grid_register_summary(db,sc.grid_ids)
         from .energy_parcels import grid_building_energy,map_properties as building_energy_properties,region_year_complete
         building_energy=grid_building_energy(db,year,sc.grid_ids)
         from .sgis_grid_official import official_codes,meta as official_grid_meta
