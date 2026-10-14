@@ -16,8 +16,9 @@ def test_snapshot_is_honest_and_export_contains_sources():
         assert snapshot['sources']
         assert snapshot['kind']=='STATUS' and snapshot['place'] and 'cell_' not in snapshot['place']
         assert not any('cell_' in f['text'] for f in snapshot['facts'])   # the place, never the cell id, names the site
-        assert snapshot['evidence_hash'] and 'SHA' not in report_markdown(snapshot)   # kept in the stored record, not printed
-        assert '기준 자료' in report_markdown(snapshot)
+        text=report_markdown(snapshot)
+        assert snapshot['evidence_hash'] and 'SHA' not in text   # kept in the stored record, not printed
+        assert snapshot['place'] in text and '## 6. 유의사항' in text and text.count('\n## ')==7
 
 def test_unknown_scenario_and_different_year_are_rejected():
     with Session() as db:
@@ -50,9 +51,11 @@ def test_markdown_names_the_place_shows_the_plan_and_its_savings_and_hides_cell_
                 'factors': {'ELECTRICITY': {'factor': 0.433, 'assumed': False, 'source': 'GIR'}, 'GAS': {'factor': 0.1826, 'assumed': True, 'source': 'rule'}},
                 'context': {'official_code': '다마68b62a', 'facts': [{'id': 'official_grid', 'text': '공식 격자 다마68b62a와 같은 칸입니다.'}, {'id': 'context_admin', 'text': '대상 격자는 행정동 송천1동(격자의 100%, 인구 63,939명)에 걸쳐 있습니다.'}, {'id': 'building_energy', 'text': '건물 전체 전력 14,988,979kWh입니다.'}]},
                 'totals': {'electricity_kwh': 9227634.0, 'gas_kwh': 19050333.0, 'carbon_kg': None, 'electricity_carbon_kg': 4190300.0}, 'coverage': data['coverage'], 'scenarios': [scenario],
-                'cautions': report_cautions(data, detail, [scenario]), 'sources': [{'name': 'K-apt', 'status': 'PARTIAL', 'reference_period': '2025-01', 'collected_at': '2026-09-26T10:00:00', 'normalized_row_count': 1252, 'source_url': 'u'}],
+                'cautions': report_cautions(data, detail, [scenario]), 'sources': [{'id': 'kapt_energy', 'name': 'K-apt', 'status': 'PARTIAL', 'reference_period': '2025-01', 'collected_at': '2026-09-26T10:00:00', 'normalized_row_count': 1252, 'source_url': 'u'},
+                                                                              {'id': 'sgis_grid_1k', 'name': 'SGIS 격자 통계 1km', 'status': 'OK', 'reference_period': '2024', 'collected_at': '2026-10-01T00:00:00', 'normalized_row_count': 9}],
                 'evidence_hash': 'abc123hash', 'scope': '격자 관측 지번 합계'}
     text = report_markdown(snapshot)
+    assert 'SGIS 격자 통계 1km' not in text   # only the sources the plan's numbers rest on
     for heading in ('## 1. 검토 요약', '## 2. 대상지 개요', '## 3. 계획 개요', '## 4. 에너지·탄소 산정', '## 5. 용도지역·조례 상한 확인', '## 6. 유의사항', '## 7. 자료 출처'):
         assert heading in text
     assert text.count('\n## ') == 7
@@ -65,6 +68,8 @@ def test_markdown_names_the_place_shows_the_plan_and_its_savings_and_hides_cell_
     assert '| 제3종일반주거지역 | 99.8% | 50% | 300% |' in text and '조례 기본 상한 이내 (1차 확인)' in text and '지구단위계획구역' in text
     assert '| K-apt | 2025-01 | 2026-09-26 |' in text and '1,252' not in text
     assert '보고서 번호 r1' in text
+    two = dict(snapshot, scenarios=[scenario, dict(scenario, id='s2', label='계획안 B')])
+    assert report_markdown(two).count('| 제3종일반주거지역 |') == 1 and '모든 계획안 (같은 대지)' in report_markdown(two)   # one site, one table
     assert any('가스 탄소' in c for c in snapshot['cautions']) and any('3D 개념 배치' in c for c in snapshot['cautions'])
 
 

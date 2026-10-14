@@ -26,6 +26,8 @@ interface Report {
 }
 /** 대상지 개요에 싣는 격자 설명 (행정동, 용도지역 구성, 공동주택, 건축물대장). 격자 통계·모델 오차는 보고서에 넣지 않는다. */
 const OVERVIEW_FACTS = ['context_admin', 'context_zoning', 'context_complexes', 'register'];
+/** 출처 표에 싣는 자료: 계획안 숫자의 근거(에너지·연면적·용도지역·배출계수)만. 같은 목록을 서버 마크다운도 쓴다. */
+const REPORT_SOURCE_IDS = ['energy', 'kapt_energy', 'kapt', 'jeonju_apartments', 'building_official', 'vworld_zoning', 'vworld_district_plan', 'zoning_ordinances', 'vworld_greenbelt', 'vworld_buildings', 'vworld_cadastral', 'factors', 'sgis_admin'];
 const GRID_ENERGY_FACTS = ['building_energy', 'building_intensity', 'exclusions'];
 const PLAN = ['a', 'b', 'c'] as const;
 
@@ -68,21 +70,24 @@ function PlanReport({ report }: { report: Report }) {
   const first = plans[0];
   const chart = useMemo(() => plansChartOption(plans.map((s, i) => ({ result: s.result, label: s.label ?? `계획안 ${i + 1}`, color: PLAN_COLORS[i] ?? PLAN_COLORS[2] }))), [plans]);
   const overview = (report.context?.facts ?? []).filter((f) => OVERVIEW_FACTS.includes(f.id));
+  const sameSite = plans.length > 1 && plans.every((s) => JSON.stringify(s.result.zoning_check ?? null) === JSON.stringify(first.result.zoning_check ?? null));
   return <article className="report-paper">
     <p className="report-kicker">Carbon Urban DSS 검토 보고서</p>
     <h1>{report.title}</h1>
     <p className="report-subtitle">{placeOf(report)} · {report.year}년 기준 · 계획안 {plans.length}개</p>
     <dl className="report-title-block plan"><div><dt>대상지</dt><dd>{placeOf(report)}</dd></div><div><dt>기준연도</dt><dd>{report.year}</dd></div><div><dt>계획안</dt><dd>{plans.map((p) => p.label ?? '').join(' · ')}</dd></div><div><dt>작성일</dt><dd>{dateOf(report.created_at)}</dd></div></dl>
     <section className="report-section"><h2>1. 핵심 결과</h2>
-      <div className="plan-cards">{plans.map((s, i) => { const plan = annualSide(s.result, 'scenario'); const ref = annualSide(s.result, 'reference'); const sv = s.result.savings_pct?.carbon_kg ?? null; const legal = s.result.zoning_check?.check?.label ?? s.result.legal_status; return <div key={s.id} className={`plan-card plan-${PLAN[i] ?? 'c'}`}>
-        <p className="plan-card-label">{s.label ?? `계획안 ${i + 1}`}</p>
-        <p className="plan-card-size">{s.inputs.floors}층 {s.inputs.building_count}동 · 연면적 {formatMetric(s.result.gross_floor_area, 'm²')} · 용적률 {formatMetric(s.result.far, '%', 1)}</p>
-        <p className="plan-card-main"><span>연간 운영탄소</span><strong>{tonnes(plan?.carbon_kg)}</strong></p>
-        <p className="plan-card-row"><span>기준안 대비</span><strong className={sv !== null ? (sv > 0 ? 'good' : sv < 0 ? 'bad' : '') : ''}>{savingsText(sv)}</strong><small>{ref?.carbon_kg != null ? `기준안 ${tonnes(ref.carbon_kg)}` : ''}</small></p>
-        <p className="plan-card-row"><span>1인당 · 세대당</span><strong>{formatMetric(s.result.carbon_per_person, 'kg', 0)} · {formatMetric(s.result.carbon_per_household, 'kg', 0)}</strong></p>
-        <p className="plan-card-row"><span>조례 상한 1차 확인</span><strong className={`legal ${zoningTone(legal ?? undefined)}`}>{legal ?? '판단 보류'}</strong></p>
+      <div className="plan-rows">{plans.map((s, i) => { const plan = annualSide(s.result, 'scenario'); const ref = annualSide(s.result, 'reference'); const sv = s.result.savings_pct?.carbon_kg ?? null; const legal = s.result.zoning_check?.check?.label ?? s.result.legal_status; return <div key={s.id} className={`plan-row${s.has_image ? '' : ' no-figure'}`}>
+        <div className={`plan-card plan-${PLAN[i] ?? 'c'}`}>
+          <p className="plan-card-label">{s.label ?? `계획안 ${i + 1}`}</p>
+          <p className="plan-card-size">{s.inputs.floors}층 {s.inputs.building_count}동 · 연면적 {formatMetric(s.result.gross_floor_area, 'm²')} · 용적률 {formatMetric(s.result.far, '%', 1)}</p>
+          <p className="plan-card-main"><span>연간 운영탄소</span><strong>{tonnes(plan?.carbon_kg)}</strong></p>
+          <p className="plan-card-row"><span>기준안 대비</span><strong className={sv !== null ? (sv > 0 ? 'good' : sv < 0 ? 'bad' : '') : ''}>{savingsText(sv)}</strong><small>{ref?.carbon_kg != null ? `기준안 ${tonnes(ref.carbon_kg)}` : ''}</small></p>
+          <p className="plan-card-row"><span>1인당 · 세대당</span><strong>{formatMetric(s.result.carbon_per_person, 'kg', 0)} · {formatMetric(s.result.carbon_per_household, 'kg', 0)}</strong></p>
+          <p className="plan-card-row"><span>조례 상한 1차 확인</span><strong className={`legal ${zoningTone(legal ?? undefined)}`}>{legal ?? '판단 보류'}</strong></p>
+        </div>
+        {s.has_image && <figure className={`plan-figure plan-${PLAN[i] ?? 'c'}`}><img src={s.image_url ?? `/api/scenarios/${s.id}/image`} alt={`${s.label ?? ''} 3D 개념 배치`} /><figcaption>{s.label} · 3D 개념 배치 (규모 비교용, 실제 배치안 아님)</figcaption></figure>}
       </div>; })}</div>
-      {plans.some((s) => s.has_image) && <div className="report-figures">{plans.map((s, i) => s.has_image ? <figure key={s.id} className={`plan-${PLAN[i] ?? 'c'}`}><img src={s.image_url ?? `/api/scenarios/${s.id}/image`} alt={`${s.label ?? ''} 3D 개념 배치`} /><figcaption>{s.label} · 3D 개념 배치 (규모 비교용, 실제 배치안 아님)</figcaption></figure> : null)}</div>}
       {report.summary.paragraphs.map((p, i) => <p key={i}>{p}</p>)}{report.summary.reason && <p className="muted">{report.summary.reason}</p>}
     </section>
     <section className="report-section"><h2>2. 대상지 개요</h2><ul className="report-list"><li>대상지: {placeOf(report)} (500m 분석 격자 한 칸, 25만 m²), 기준연도 {report.year}</li>{overview.map((f) => <li key={f.id}>{f.text}</li>)}</ul></section>
@@ -110,7 +115,7 @@ function PlanReport({ report }: { report: Report }) {
       {chart && <figure className="report-chart"><Chart option={chart.option} height={240} ariaLabel="계획안과 기준안의 월별 운영탄소" /><figcaption>월별 운영탄소 ({chart.unit}) — 기준안은 점선</figcaption></figure>}
       <p className="muted">{methodText(first.result, report.factors)}</p>
     </section>
-    <section className="report-section"><h2>5. 용도지역·조례 상한 확인</h2>{plans.map((s) => s.result.zoning_check ? <ZoningSummary key={s.id} zoning={s.result.zoning_check} saved compact title={`${s.label} 대지`} /> : <p key={s.id}>{s.label}: 대지와 겹치는 용도지역 자료가 없습니다.</p>)}</section>
+    <section className="report-section"><h2>5. 용도지역·조례 상한 확인</h2>{sameSite ? (first.result.zoning_check ? <ZoningSummary zoning={first.result.zoning_check} saved compact title="모든 계획안의 대지 (같은 위치)" /> : <p>대지와 겹치는 용도지역 자료가 없습니다.</p>) : plans.map((s) => s.result.zoning_check ? <ZoningSummary key={s.id} zoning={s.result.zoning_check} saved compact title={`${s.label} 대지`} /> : <p key={s.id}>{s.label}: 대지와 겹치는 용도지역 자료가 없습니다.</p>)}</section>
     <section className="report-section"><h2>6. 유의사항</h2><ul className="report-list">{(report.cautions?.length ? report.cautions : [report.scope]).map((c) => <li key={c}>{c}</li>)}</ul></section>
     <SourcesSection report={report} />
     <ReportFooter report={report} />
@@ -139,7 +144,8 @@ function StatusReport({ report }: { report: Report }) {
 
 function SourcesSection({ report }: { report: Report }) {
   const e = report.factors?.ELECTRICITY; const g = report.factors?.GAS;
-  return <section className="report-section"><h2>7. 자료 출처</h2><div className="table-wrap report-table"><table><thead><tr><th>자료</th><th>기간</th><th>수집일</th></tr></thead><tbody>{report.sources.map((s) => <tr key={s.id}><td>{s.name}</td><td>{s.reference_period ?? '기간 미기록'}</td><td>{s.collected_at ? new Date(s.collected_at).toLocaleDateString('ko-KR') : '미수집'}</td></tr>)}</tbody></table></div>
+  const sources = report.sources.filter((s) => REPORT_SOURCE_IDS.includes(String(s.id)));
+  return <section className="report-section"><h2>7. 자료 출처</h2><div className="table-wrap report-table"><table><thead><tr><th>자료</th><th>기간</th><th>수집일</th></tr></thead><tbody>{(sources.length ? sources : report.sources).map((s) => <tr key={s.id}><td>{s.name}</td><td>{s.reference_period ?? '기간 미기록'}</td><td>{s.collected_at ? new Date(s.collected_at).toLocaleDateString('ko-KR') : '미수집'}</td></tr>)}</tbody></table></div>
     {report.factors && <p className="muted">배출계수: 전력 {e?.factor ?? '미등록'} kgCO₂eq/kWh ({e && !e.assumed ? 'GIR 승인' : '확인 필요'}), 가스 {g?.factor ?? '미등록'} kgCO₂eq/kWh ({g?.assumed ? '가정' : '등록'})</p>}
   </section>;
 }

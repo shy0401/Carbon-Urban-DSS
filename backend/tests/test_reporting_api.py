@@ -13,7 +13,7 @@ def test_report_persists_snapshot_and_download():
         saved=c.get('/api/reports/'+rid).json()
         assert saved['evidence_hash']==r['evidence_hash']
         export=c.get('/api/reports/'+rid+'/markdown')
-        assert export.status_code==200 and '기준 자료' in export.text
+        assert export.status_code==200 and '## 6. 유의사항' in export.text and r['place'] in export.text
         assert c.get('/api/reports/missing').status_code==404
 
 def test_selected_grid_is_preserved_in_dashboard_and_report():

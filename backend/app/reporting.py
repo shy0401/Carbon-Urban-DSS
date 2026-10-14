@@ -287,6 +287,12 @@ def _limits(zc):
 
 OVERVIEW_IDS=('context_admin','context_zoning','context_complexes','register')
 GRID_ENERGY_IDS=('building_energy','building_intensity','exclusions')
+# Sources a plan's numbers rest on (energy, floor areas, zoning, factors): the report lists these, not every collected dataset.
+REPORT_SOURCE_IDS=('energy','kapt_energy','kapt','jeonju_apartments','building_official','vworld_zoning','vworld_district_plan','zoning_ordinances','vworld_greenbelt','vworld_buildings','vworld_cadastral','factors','sgis_admin')
+
+def report_sources(sources):
+    chosen=[s for s in sources or [] if s.get('id') in REPORT_SOURCE_IDS]
+    return chosen or list(sources or [])
 
 def _t(value,digits=1):
     """kgCO2eq → tCO2eq text; missing stays '자료 없음', never 0."""
@@ -359,7 +365,11 @@ def report_markdown(s):
             if sc.get('has_image'):energy.append(f"![{sc['label']} 3D 개념 배치]({sc['image_url']})\n\n{sc['label']} 3D 개념 배치(규모 비교용, 실제 배치안이 아닙니다)")
         sections.append(('에너지·탄소 산정',energy))
         zoning=[]
-        for sc in plans:zoning+=zoning_lines(sc)
+        checks=[json.dumps(sc['result'].get('zoning_check'),sort_keys=True,ensure_ascii=False) for sc in plans]
+        if len(plans)>1 and len(set(checks))==1:   # the same site for every plan: one table
+            zoning=zoning_lines(dict(plans[0],label='모든 계획안 (같은 대지)'))
+        else:
+            for sc in plans:zoning+=zoning_lines(sc)
         sections.append(('용도지역·조례 상한 확인',zoning))
     else:
         totals=s.get('totals') or {}
@@ -372,7 +382,7 @@ def report_markdown(s):
         sections.append(('용도지역',['- '+f['text'] for f in context.get('facts') or [] if f['id']=='context_zoning'] or ['- 용도지역 자료가 없습니다.']))
     sections.append(('유의사항',['- '+c for c in s.get('cautions') or [s['scope']]]))
     table=['| 자료 | 기간 | 수집일 |','|---|---|---|']
-    for source in s['sources']:table.append(f'| {source["name"]} | {source["reference_period"] or "-"} | {(source["collected_at"] or "미수집")[:10]} |')
+    for source in report_sources(s['sources']):table.append(f'| {source["name"]} | {source["reference_period"] or "-"} | {(source["collected_at"] or "미수집")[:10]} |')
     e=factors.get('ELECTRICITY') or {};g=factors.get('GAS') or {}
     factor_line=f"- 배출계수: 전력 {e.get('factor') if e.get('factor') is not None else '미등록'} kgCO2eq/kWh({'GIR 승인' if e and not e.get('assumed') else '확인 필요'}), 가스 {g.get('factor') if g.get('factor') is not None else '미등록'} kgCO2eq/kWh({'가정' if g.get('assumed') else '등록'})"
     sections.append(('자료 출처',['\n'.join(table),factor_line]))

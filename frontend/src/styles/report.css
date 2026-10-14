@@ -99,7 +99,15 @@
 
 /* 계획안 보고서 (2026-10-14): 핵심 결과 카드, 3D 그림, 산정 표의 기준안 작은 글씨, 꼬리말. 격자 ID·근거 해시는 싣지 않는다. */
 .report-title-block.plan { grid-template-columns: repeat(4, minmax(0, auto)); }
-.plan-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--sp-3); margin: var(--sp-3) 0; }
+.plan-rows { display: grid; gap: var(--sp-3); margin: var(--sp-3) 0; }
+.plan-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: var(--sp-3); align-items: start; }
+.plan-row.no-figure { grid-template-columns: minmax(0, 1fr); }
+.plan-figure { margin: 0; border: 1px solid var(--line); border-top: 3px solid var(--plan-a); border-radius: var(--r-map); overflow: hidden; background: var(--surface); }
+.plan-figure.plan-b { border-top-color: var(--plan-b); }
+.plan-figure.plan-c { border-top-color: var(--plan-c); }
+.plan-figure img { display: block; width: 100%; height: auto; max-height: 360px; object-fit: cover; }
+.plan-figure figcaption { padding: var(--sp-1) var(--sp-3); font-size: var(--fs-caption); color: var(--ink-2); }
+@media (max-width: 760px) { .plan-row { grid-template-columns: 1fr; } }
 .plan-card { padding: var(--sp-3) var(--sp-4); border: 1px solid var(--line-strong); border-top: 4px solid var(--plan-a); border-radius: var(--r-map); background: var(--surface); }
 .plan-card.plan-b { border-top-color: var(--plan-b); }
 .plan-card.plan-c { border-top-color: var(--plan-c); }
@@ -125,6 +133,6 @@
 .zoning-summary.compact + .zoning-summary.compact { margin-top: var(--sp-4); padding-top: var(--sp-3); border-top: 1px solid var(--line); }
 .report-footer { display: flex; justify-content: space-between; gap: var(--sp-3); flex-wrap: wrap; margin-top: var(--sp-5); padding-top: var(--sp-3); border-top: 1px solid var(--line-strong); font-size: var(--fs-caption); color: var(--ink-3); }
 @media print {
-  .plan-cards, .plan-card, .report-chart, .report-footer { break-inside: avoid; }
+  .plan-row, .plan-card, .plan-figure, .report-chart, .report-footer { break-inside: avoid; }
   .plan-card, .plan-card-row strong, .report-table tr.total { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
 }

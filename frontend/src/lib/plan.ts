@@ -72,8 +72,8 @@ export function plansChartOption(plans: Array<{ result: ScenarioResult; label: s
   return {
     unit,
     option: baseChart({
-      legend: { show: true, top: 0, left: 0, icon: 'roundRect', itemWidth: 14, itemHeight: 3, textStyle: { color: TOKENS['ink-2'] } },
-      grid: { left: 64, right: 20, top: 40, bottom: 30 },
+      legend: { show: true, top: 0, right: 8, icon: 'roundRect', itemWidth: 14, itemHeight: 3, textStyle: { color: TOKENS['ink-2'] } },
+      grid: { left: 64, right: 20, top: 44, bottom: 30 },
       tooltip: { ...(base.tooltip as object), valueFormatter: (value: unknown) => (typeof value === 'number' ? formatMetric(value, unit, 0) : '자료 없음') },
       xAxis: { ...(base.xAxis as object), data: labels },
       yAxis: { ...(base.yAxis as object), name: unit, axisLabel: { ...((base.yAxis as { axisLabel?: object }).axisLabel ?? {}), formatter: compactAxis } },
