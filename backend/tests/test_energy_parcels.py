@@ -156,10 +156,12 @@ def _parcel_db():
     return db, ParcelGrid
 
 
-def test_a_region_map_reads_only_its_cells_with_the_same_values_and_another_region_collecting_keeps_its_cache():
+def test_a_region_map_reads_only_its_cells_with_the_same_values_and_another_region_collecting_keeps_its_cache(monkeypatch):
     """2026-10-14: the first 지도 분석 after a restart took 118 s because every region's 건축HUB year was summed
     (and again whenever any region was being collected). A region's cells now give the same numbers alone."""
+    from app import energy_parcels
     from app.energy_parcels import grid_building_energy
+    monkeypatch.setattr(energy_parcels, 'RECHECK_S', 0.0)  # check the row count on every call
     db, ParcelGrid = _parcel_db()
     db.add_all([ParcelGrid(pnu='5211311600100110000', grid_id='g1'), ParcelGrid(pnu='5271025000100050000', grid_id='g1'),  # 완주 lot in a 전주 cell
                 ParcelGrid(pnu='5271025000100060000', grid_id='g2')])
@@ -220,3 +222,18 @@ def test_address_lookup_cleans_the_provider_address_and_never_asks_without_a_key
     monkeypatch.delenv('VWORLD_API_KEY', raising=False)
     db, _ = _parcel_db()
     assert place_by_address(db, ['52113']) == {'missing': 0, 'placed': 0, 'not_found': 0, 'requests': 0}
+
+
+def test_new_rows_of_the_region_are_seen_once_the_recheck_time_has_passed(monkeypatch):
+    from app import energy_parcels
+    from app.energy_parcels import grid_building_energy
+    db, ParcelGrid = _parcel_db()
+    db.add(ParcelGrid(pnu='5211311600100110000', grid_id='g1')); db.add(ParcelGrid(pnu='5211311600100120000', grid_id='g1'))
+    _hub_year(db, '52113', '11600', '0011', '0000', 100.0)
+    db.commit()
+    first = grid_building_energy(db, 2025, {'g1'})
+    _hub_year(db, '52113', '11600', '0012', '0000', 1.0)
+    db.commit()
+    assert grid_building_energy(db, 2025, {'g1'}) is first  # within RECHECK_S: the cached answer, no count query
+    monkeypatch.setattr(energy_parcels, 'RECHECK_S', 0.0)
+    assert grid_building_energy(db, 2025, {'g1'})['g1']['electricity_kwh'] == 1212.0

@@ -333,6 +333,10 @@ def region_year_complete(db: Any, region: str | None, year: int) -> bool:
 _GRID_CACHE: dict[tuple[int, Any], tuple[int, dict[str, dict[str, Any]]]] = {}
 _PARCEL_GRID: dict[Any, tuple[int, dict[str, str]]] = {}
 _CACHE_SLOTS = 12
+# The row count behind a cached year is checked at most every RECHECK_S seconds (the count itself took 0.6 s
+# for 전주 and was paid by every map, year change and detail panel). New rows show up within that time.
+RECHECK_S = float(os.getenv("DSS_CACHE_RECHECK_S", "30"))
+_CHECKED: dict[tuple[int, Any], float] = {}
 
 
 VWORLD_ADDRESS_URL = "https://api.vworld.kr/req/address"
@@ -527,6 +531,9 @@ def grid_building_energy(db: Any, year: int, grid_ids: Any = None) -> dict[str, 
     from .models import EnergyMonthly
     lo, hi = f"{year}01", f"{year}12"
     key = (year, _cells_key(grid_ids))
+    hit = _GRID_CACHE.get(key)
+    if hit is not None and time.monotonic() - _CHECKED.get(key, 0.0) < RECHECK_S:
+        return hit[1]  # the row count was checked moments ago (the map and its detail panel ask together)
     grid_of = _parcel_grid(db, grid_ids)
     if not grid_of:
         return {}
@@ -558,6 +565,7 @@ def grid_building_energy(db: Any, year: int, grid_ids: Any = None) -> dict[str, 
         if len(_GRID_CACHE) >= _CACHE_SLOTS and key not in _GRID_CACHE:
             _GRID_CACHE.pop(next(iter(_GRID_CACHE)))
         _GRID_CACHE[key] = (count, summarize_parcels(parcels, grid_of, _register_area(db, sigungu)))
+    _CHECKED[key] = time.monotonic()
     return _GRID_CACHE[key][1]
 
 

@@ -79,20 +79,27 @@ def grid_building_summary(db: Any, grid_ids: Any = None) -> dict[str, dict[str, 
 
     if not _table_exists(db, "vworld_buildings"):
         return {}
-    requested = {row.grid_id: row.status for row in db.scalars(select(VworldGridCoverage).where(VworldGridCoverage.dataset == "buildings"))
-                 if grid_ids is None or row.grid_id in grid_ids}
+    # Only the asked cells are read (10/14: the whole country was grouped for every map and every detail panel).
+    chunks = [None] if grid_ids is None else [sorted(grid_ids)[i:i + 2000] for i in range(0, len(grid_ids), 2000)]
     known = VworldBuilding.above_floors.is_not(None)
-    rows = db.execute(select(
-        VworldBuilding.grid_id, VworldBuilding.use_category, func.count(),
-        func.coalesce(func.sum(VworldBuilding.footprint_m2), 0.0),
-        func.count(VworldBuilding.above_floors),
-        func.coalesce(func.sum(case((known, VworldBuilding.footprint_m2), else_=0.0)), 0.0),
-        func.coalesce(func.sum(VworldBuilding.footprint_m2 * VworldBuilding.above_floors), 0.0),
-        func.coalesce(func.sum(VworldBuilding.above_floors), 0),
-        func.max(VworldBuilding.above_floors),
-    ).where(VworldBuilding.grid_id.is_not(None)).group_by(VworldBuilding.grid_id, VworldBuilding.use_category)).all()
-    if grid_ids is not None:
-        rows = [row for row in rows if row[0] in grid_ids]
+    requested: dict[str, str] = {}
+    rows = []
+    for chunk in chunks:
+        cover = select(VworldGridCoverage.grid_id, VworldGridCoverage.status).where(VworldGridCoverage.dataset == "buildings")
+        grouped = select(
+            VworldBuilding.grid_id, VworldBuilding.use_category, func.count(),
+            func.coalesce(func.sum(VworldBuilding.footprint_m2), 0.0),
+            func.count(VworldBuilding.above_floors),
+            func.coalesce(func.sum(case((known, VworldBuilding.footprint_m2), else_=0.0)), 0.0),
+            func.coalesce(func.sum(VworldBuilding.footprint_m2 * VworldBuilding.above_floors), 0.0),
+            func.coalesce(func.sum(VworldBuilding.above_floors), 0),
+            func.max(VworldBuilding.above_floors),
+        ).where(VworldBuilding.grid_id.is_not(None))
+        if chunk is not None:
+            cover = cover.where(VworldGridCoverage.grid_id.in_(chunk))
+            grouped = grouped.where(VworldBuilding.grid_id.in_(chunk))
+        requested.update({grid_id: status for grid_id, status in db.execute(cover)})
+        rows += db.execute(grouped.group_by(VworldBuilding.grid_id, VworldBuilding.use_category)).all()
     if not rows and not requested:
         return {}
     aggregates = [
@@ -408,7 +415,7 @@ def grid_context(db: Any, grid_id: str | None) -> dict[str, Any]:
                 "population": pop.population_count if pop else None, "population_status": pop.value_status if pop else "NOT_COLLECTED",
                 "households": house.household_count if house else None,
             })
-    buildings = grid_building_summary(db).get(grid_id)
+    buildings = grid_building_summary(db, [grid_id]).get(grid_id)
     if buildings:
         context["buildings"] = dict(buildings, source="VWorld LT_C_SPBD 도로명주소 건물")
     from .kapt import ApartmentComplex
