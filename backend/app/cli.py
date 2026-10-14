@@ -24,7 +24,7 @@ def init_tables():
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('command',choices=['demo','online','status','enrich','collect','collect-history','collect-missing','validate-models','snapshot','llm-dataset','llm-eval','import-sgis-grid','import-sgis-grid500','import-regional-stats','import-team-grid',
         'national-admin','national-sgis','national-complexes','national-grid500','national-ordinances','national-all','prepare-region','regions',
-        'check-standard','apply-standard','backfill-solar','region-energy-history','region-kapt-history','verify-cases']);parser.add_argument('--year',type=int,default=DEFAULT_YEAR)
+        'check-standard','apply-standard','backfill-solar','region-energy-history','region-kapt-history','verify-cases','place-parcels']);parser.add_argument('--year',type=int,default=DEFAULT_YEAR)
     parser.add_argument('--from',dest='from_year',type=int,default=2015);parser.add_argument('--to',dest='to_year',type=int,default=DEFAULT_YEAR)
     parser.add_argument('--datasets',default='',help='comma-separated: sgis,kma_asos,kapt_energy,energy,vworld_zoning,vworld_buildings,vworld_cadastral,building_register');parser.add_argument('--force',action='store_true')
     parser.add_argument('--source',choices=['energy','weather','kapt-energy','kma','sgis','vworld-zoning','vworld-cadastral'])
@@ -155,6 +155,16 @@ def main():
                 print(json.dumps(result,ensure_ascii=False,default=str),flush=True)
                 if result.get('stopped') in ('WAITING','BLOCKED','OUTAGE'):
                     break
+        elif args.command=='place-parcels':
+            # 지적도에 없는 건축HUB 계량 지번을 격자에 넣기: 같은 본번 → (그래도 없으면) VWorld 주소 좌표. --region 52110,41110 (없으면 모든 지역)
+            from .energy_parcels import place_by_address,place_missing_parcels
+            from .regions import get_region
+            for code in [r.strip() for r in (args.region or '').split(',') if r.strip()] or [None]:
+                region=get_region(db,code) if code else None
+                codes=sorted({str(c)[:5] for c in ((region.legal_codes if region else None) or ([code] if code else []))}) or None
+                main=place_missing_parcels(db,codes)
+                address=place_by_address(db,codes) if codes else {'skipped':'--region 필요(주소 조회는 지역 단위)'}
+                print(json.dumps({'region':code,'main_lot':main,'address':address},ensure_ascii=False),flush=True)
         elif args.command=='backfill-solar':
             # ERA5-Land 일사량을 지역마다 받아 태양광 연 발전량 추정에 씀 (docs/DATA_STANDARD.md 5.13)
             from .solar import backfill

@@ -54,7 +54,8 @@ SGIS 시군구 이름은 시도 없이 오므로("수원시 장안구") 시도 �
 지역 준비는 건축HUB·K-apt를 **분석 연도만** 받습니다. 과거 연도는 따로 받습니다(받은 페이지·달은 다시 묻지 않음, 연도별 상태는 지역 기록 `energy_years`·`kapt_years`).
 
 - 건축HUB 2020~2024: `python -m app.cli region-energy-history --region <code> --years 2024,2023,2022,2021,2020` (하루 10,000건)
-- K-apt 2021~2024: `python -m app.cli region-kapt-history --region <code>[,<code>…] --years 2024,2023,2022,2021` (하루 5,000건, 한도면 뒤 지역은 묻지 않음)
+- K-apt 2021~2024: `python -m app.cli region-kapt-history --region <code>[,<code>…] --years 2024,2023,2022,2021` (개발계정 하루 5,000건, 10/14 운영계정 뒤로는 그보다 많이 받음. 한도면 뒤 지역은 묻지 않음)
+- 지적도에 없는 계량 지번 위치: `python -m app.cli place-parcels --region <code>[,<code>…]` (같은 본번 칸 → 주소 좌표 칸, 값은 관측 그대로)
 
 ## 4. 지역마다 다른 규칙: 건폐율·용적률 (2026-09-27 개편)
 

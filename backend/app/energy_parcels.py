@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import unquote
 
-from sqlalchemy import String, func, insert, select, text
+from sqlalchemy import String, bindparam, func, insert, select, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .cache import CachedClient, ExternalError, parse_cached_response
@@ -57,12 +57,18 @@ def parcel_pnu(sigungu: str, bjdong: str, lot_type: str | None, bun: str, ji: st
     return f"{sigungu}{bjdong}{land}{str(bun or '0').zfill(4)[-4:]}{str(ji or '0').zfill(4)[-4:]}"
 
 
+# Placements found one by one from an address (VWorld 주소 API, data/ops 작업 10/14): kept when the table is
+# rebuilt from the cadastral layer, unless that parcel has since appeared in the cadastral layer itself.
+ADDRESS_METHODS = ("VWORLD_PARCEL_ADDRESS", "VWORLD_ROAD_ADDRESS")
+
+
 def build_parcel_grid(db: Any) -> int:
     """(Re)build parcel_grid from cadastral_parcels with PostGIS. Returns the row count (0 without PostGIS)."""
     try:
         ParcelGrid.__table__.create(db.get_bind(), checkfirst=True)
         with db.begin_nested():
-            db.execute(text("DELETE FROM parcel_grid"))
+            db.execute(text("DELETE FROM parcel_grid WHERE method NOT IN :kept").bindparams(bindparam("kept", expanding=True)), {"kept": list(ADDRESS_METHODS)})
+            db.execute(text("DELETE FROM parcel_grid p USING cadastral_parcels c WHERE p.pnu = c.pnu"))
             db.execute(text(
                 "INSERT INTO parcel_grid (pnu, grid_id, method) "
                 "SELECT DISTINCT ON (c.pnu) c.pnu, g.id, 'CADASTRAL_POINT_ON_SURFACE' "
@@ -327,6 +333,85 @@ def region_year_complete(db: Any, region: str | None, year: int) -> bool:
 _GRID_CACHE: dict[tuple[int, Any], tuple[int, dict[str, dict[str, Any]]]] = {}
 _PARCEL_GRID: dict[Any, tuple[int, dict[str, str]]] = {}
 _CACHE_SLOTS = 12
+
+
+VWORLD_ADDRESS_URL = "https://api.vworld.kr/req/address"
+
+
+def _clean_address(address: str | None) -> str | None:
+    """'전라북도 전주시 완산구 쑥고개로 356-1 (효자동2가)' → '전북특별자치도 전주시 완산구 쑥고개로 356-1'; None when it ends without a number."""
+    if not address:
+        return None
+    cleaned = re.sub(r"\s*\(.*?\)", "", address).replace("전라북도", "전북특별자치도").strip()
+    return cleaned if cleaned and any(ch.isdigit() for ch in cleaned.split()[-1]) else None
+
+
+def place_by_address(db: Any, sigungu_codes: list[str], *, client: Any | None = None, api_key: str | None = None) -> dict[str, int]:
+    """Metered parcels still without a grid (not in the cadastral layer, no 본번 sibling) → VWorld 주소 API point → grid.
+
+    The 건축HUB row keeps the address the provider sent (도로명 ``newPlatPlc``, 지번 ``platPlc``); the point of
+    that address is placed in the analysis cell holding it (``method = VWORLD_ROAD_ADDRESS / VWORLD_PARCEL_ADDRESS``).
+    Old 지번 that no current address service knows stay unplaced (전주 10/14: 42 of 119 found)."""
+    from .models import EnergyMonthly as EnergyMonthly_
+    from .settings import offline_mode
+    stats = {"missing": 0, "placed": 0, "not_found": 0, "requests": 0}
+    key = (api_key or os.getenv("VWORLD_API_KEY", "")).strip()
+    if not key or offline_mode():
+        return stats
+    session = client or CachedClient(Path(os.getenv("DATA_DIR", "data")) / "cache" / "vworld-address", min_interval=0.3)
+    keys: dict[str, tuple[str, str, str, str, str]] = {}
+    for sg, bd, lot, bun, ji in db.execute(select(EnergyMonthly_.sigungu_code, EnergyMonthly_.bjdong_code, EnergyMonthly_.lot_type, EnergyMonthly_.bun,
+                                                  EnergyMonthly_.ji).where(EnergyMonthly_.source == HUB, EnergyMonthly_.sigungu_code.in_(list(sigungu_codes))).distinct()):
+        keys[parcel_pnu(sg, bd, lot, bun, ji)] = (sg, bd, lot, bun, ji)
+    pnus = sorted(keys)
+    known: set[str] = set()
+    for start in range(0, len(pnus), 2000):
+        known.update(db.scalars(select(ParcelGrid.pnu).where(ParcelGrid.pnu.in_(pnus[start:start + 2000]))))
+    missing = [pnu for pnu in pnus if pnu not in known]
+    stats["missing"] = len(missing)
+    addresses: dict[str, tuple[str | None, str | None]] = {}
+    for pnu in missing:
+        sg, bd, lot, bun, ji = keys[pnu]
+        road = parcel = None
+        for record in db.scalars(select(EnergyMonthly_.raw_record).where(
+                EnergyMonthly_.sigungu_code == sg, EnergyMonthly_.bjdong_code == bd, EnergyMonthly_.lot_type == lot, EnergyMonthly_.bun == bun,
+                EnergyMonthly_.ji == ji, EnergyMonthly_.source == HUB).limit(24)):
+            road, parcel = road or (record or {}).get("newPlatPlc"), parcel or (record or {}).get("platPlc")
+        addresses[pnu] = (road, parcel)
+    for pnu in missing:
+        road, parcel = addresses[pnu]
+        point = None
+        for kind, address in (("ROAD", _clean_address(road)), ("PARCEL", _clean_address(parcel))):
+            if not address:
+                continue
+            params = {"service": "address", "request": "getcoord", "version": "2.0", "crs": "epsg:5179", "address": address, "refine": "true",
+                      "simple": "false", "format": "json", "type": kind, "key": key}
+            stats["requests"] += 1
+            try:
+                import json
+                body = json.loads(session.get("VWorld-address", f"getcoord-{kind}-{address}", VWORLD_ADDRESS_URL, params)["body"].decode("utf-8-sig"))
+            except Exception:  # noqa: BLE001 - one failed lookup leaves that parcel unplaced, never guessed
+                continue
+            response = body.get("response", body)
+            found = (response.get("result") or {}).get("point") if response.get("status") == "OK" else None
+            if found:
+                point = (kind, float(found["x"]), float(found["y"]))
+                break
+        grid = None
+        if point:
+            try:
+                grid = db.execute(text("SELECT g.id FROM grid_500m g WHERE ST_Contains(g.geom, ST_SetSRID(ST_MakePoint(:x, :y), 5179)) LIMIT 1"),
+                                  {"x": point[1], "y": point[2]}).scalar()
+            except Exception:  # noqa: BLE001 - no PostGIS
+                db.rollback()
+        if not grid:
+            stats["not_found"] += 1
+            continue
+        db.execute(insert(ParcelGrid), [{"pnu": pnu, "grid_id": grid, "method": f"VWORLD_{point[0]}_ADDRESS"}])
+        db.commit()
+        stats["placed"] += 1
+    _GRID_CACHE.clear()
+    return stats
 
 
 def _cells_key(grid_ids: Any) -> Any:

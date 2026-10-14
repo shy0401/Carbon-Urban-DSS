@@ -210,3 +210,13 @@ def test_a_region_scoped_map_still_finds_the_register_floor_area_of_its_parcels(
     db.commit()
     cell = grid_building_energy(db, 2025, {'g1'})['g1']
     assert cell['area_m2'] == 1200.0 and cell['kwh_per_m2'] == 100.0
+
+
+def test_address_lookup_cleans_the_provider_address_and_never_asks_without_a_key(monkeypatch):
+    from app.energy_parcels import _clean_address, place_by_address
+    assert _clean_address('전라북도 전주시 완산구 쑥고개로 356-1 (효자동2가)') == '전북특별자치도 전주시 완산구 쑥고개로 356-1'
+    assert _clean_address('전라북도 전주시 덕진구   (팔복동1가 24-4)') is None  # no road name and number: nothing to look up
+    assert _clean_address(None) is None
+    monkeypatch.delenv('VWORLD_API_KEY', raising=False)
+    db, _ = _parcel_db()
+    assert place_by_address(db, ['52113']) == {'missing': 0, 'placed': 0, 'not_found': 0, 'requests': 0}
