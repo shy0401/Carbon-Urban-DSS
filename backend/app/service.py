@@ -120,7 +120,9 @@ def dashboard(db,grid_id=None,year=2025,region=None):
     selected_grid=grid_id or (sector.grid_id if sector else None)
     if grid_id and (not sector or grid_id!=sector.grid_id):
         grid=db.get(Grid,grid_id)
-        selected=dict(id=grid_id,grid_id=grid_id,name=f'선택 격자 {grid_id}',area_m2=250000,reason='사용자가 선택한 500m 분석 격자') if grid else None
+        # Named by its place (전주시 송천1동 일대) for the screens and reports; the cell id is in grid_id.
+        from .overlays import grid_admin_rows,place_label
+        selected=dict(id=grid_id,grid_id=grid_id,name=place_label(grid_admin_rows(db,grid_id),sc.short if sc else None),area_m2=250000,reason='사용자가 선택한 500m 분석 격자') if grid else None
     monthly=monthly_energy(db,selected_grid,year) if selected_grid else []
     clause=sc.legal_clause(EnergyMonthly.sigungu_code) if sc else None
     regional=monthly_energy(db,year=year,clause=clause)

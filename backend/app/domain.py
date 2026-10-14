@@ -88,16 +88,21 @@ def scenario_calculation(params,baseline,baseline_floor_area,factors):
         current={k:row.get(k) for k in ['electricity_kwh','gas_kwh','carbon_kg']}
         # Electricity-only carbon stays available while the gas factor is unregistered (total carbon then None).
         current['electricity_carbon_kg']=row.get('electricity_carbon_kg') if row.get('electricity_carbon_kg') is not None else carbon_kg(current['electricity_kwh'],factors.get('ELECTRICITY'))
-        sc={}
+        sc={};ref={}
         for key in ['electricity_kwh','gas_kwh']:
             ratio=gfa/baseline_floor_area if baseline_floor_area and baseline_floor_area>0 else None
             value=current[key]
+            # Reference plan: the same floor area at the observed intensity as it is (efficiency 1.0, no PV).
+            ref[key]=value*ratio if value is not None and ratio is not None else None
             sc[key]=value*ratio*params['efficiency_factor']*(1-params['pv_ratio'] if key=='electricity_kwh' else 1) if value is not None and ratio is not None else None
         e=carbon_kg(sc['electricity_kwh'],factors.get('ELECTRICITY'));g=carbon_kg(sc['gas_kwh'],factors.get('GAS'))
         sc['carbon_kg']=e+g if e is not None and g is not None else None
         sc['electricity_carbon_kg']=e
-        monthly.append(dict(use_ym=row['use_ym'],current=current,scenario=sc,difference={k:sc[k]-current[k] if sc[k] is not None and current[k] is not None else None for k in sc}))
-    annual={side:{k:nullable_sum(row[side][k] for row in monthly) for k in ['electricity_kwh','gas_kwh','carbon_kg','electricity_carbon_kg']} for side in ['current','scenario','difference']}
+        re_=carbon_kg(ref['electricity_kwh'],factors.get('ELECTRICITY'));rg=carbon_kg(ref['gas_kwh'],factors.get('GAS'))
+        ref['carbon_kg']=re_+rg if re_ is not None and rg is not None else None
+        ref['electricity_carbon_kg']=re_
+        monthly.append(dict(use_ym=row['use_ym'],current=current,scenario=sc,reference=ref,difference={k:sc[k]-current[k] if sc[k] is not None and current[k] is not None else None for k in sc}))
+    annual={side:{k:nullable_sum(row[side][k] for row in monthly) for k in ['electricity_kwh','gas_kwh','carbon_kg','electricity_carbon_kg']} for side in ['current','scenario','reference','difference']}
     decomposition={}
     for key in ['electricity_kwh','gas_kwh']:
         value=annual['current'][key]
@@ -113,4 +118,7 @@ def scenario_calculation(params,baseline,baseline_floor_area,factors):
         if count<12:
             for side in annual:annual[side][key]=None
             percent_change[key]=None
-    return dict(label='원단위 기반 1차 추정',method='INTENSITY_ESTIMATE',data_class='SCENARIO',total_footprint=footprint,gross_floor_area=gfa,far=gfa/params['site_area']*100,bcr=footprint/params['site_area']*100,households=params.get('households'),population=params.get('population'),green_area_m2=params['site_area']*params.get('green_ratio',0),monthly=monthly,annual=annual,observed_period_totals=period_totals,coverage_months=coverage,percent_change=percent_change,decomposition=decomposition,baseline_floor_area_m2=baseline_floor_area,carbon_per_person=annual['scenario']['carbon_kg']/params['population'] if annual['scenario']['carbon_kg'] is not None and params.get('population') else None,carbon_per_m2=annual['scenario']['carbon_kg']/gfa if annual['scenario']['carbon_kg'] is not None and gfa else None,assumptions=['FAR 산정 연면적은 입력 지상층 연면적으로 가정합니다. 지하층·법정 제외면적 미반영.','기준 월별 실측 원단위의 계절성을 그대로 적용합니다. 별도 기상 회귀·AI 학습 없음.','PV 비율은 전기 수요 상쇄율 가정이며 설비 발전량 예측이 아닙니다.','기준 면적과 에너지의 지번 매칭이 확보된 경우에만 추정합니다.','녹지비율은 공간 제약에 적용하며 검증되지 않은 냉방 저감 효과를 에너지에 곱하지 않습니다.'])
+    # Savings against the reference plan (the figure a reader compares, like a ZEB 절감률): None when either side is missing.
+    savings={key:(round((annual['reference'][key]-annual['scenario'][key])/annual['reference'][key]*100,1) if annual['reference'][key] not in (None,0) and annual['scenario'][key] is not None else None) for key in ['electricity_kwh','gas_kwh','carbon_kg']}
+    intensity={f'{key}_per_m2':(round(annual['current'][key]/baseline_floor_area,2) if annual['current'][key] is not None and baseline_floor_area else None) for key in ['electricity_kwh','gas_kwh']}
+    return dict(label='원단위 기반 1차 추정',method='INTENSITY_ESTIMATE',data_class='SCENARIO',total_footprint=footprint,gross_floor_area=gfa,far=gfa/params['site_area']*100,bcr=footprint/params['site_area']*100,households=params.get('households'),population=params.get('population'),green_area_m2=params['site_area']*params.get('green_ratio',0),monthly=monthly,annual=annual,observed_period_totals=period_totals,coverage_months=coverage,percent_change=percent_change,decomposition=decomposition,baseline_floor_area_m2=baseline_floor_area,carbon_per_person=annual['scenario']['carbon_kg']/params['population'] if annual['scenario']['carbon_kg'] is not None and params.get('population') else None,carbon_per_household=annual['scenario']['carbon_kg']/params['households'] if annual['scenario']['carbon_kg'] is not None and params.get('households') else None,savings_pct=savings,baseline_intensity=intensity,carbon_per_m2=annual['scenario']['carbon_kg']/gfa if annual['scenario']['carbon_kg'] is not None and gfa else None,assumptions=['FAR 산정 연면적은 입력 지상층 연면적으로 가정합니다. 지하층·법정 제외면적 미반영.','기준 월별 실측 원단위의 계절성을 그대로 적용합니다. 별도 기상 회귀·AI 학습 없음.','PV 비율은 전기 수요 상쇄율 가정이며 설비 발전량 예측이 아닙니다.','기준 면적과 에너지의 지번 매칭이 확보된 경우에만 추정합니다.','녹지비율은 공간 제약에 적용하며 검증되지 않은 냉방 저감 효과를 에너지에 곱하지 않습니다.'])

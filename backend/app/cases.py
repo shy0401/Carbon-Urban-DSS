@@ -298,7 +298,10 @@ def run_one(db: Any, spec: dict[str, Any]) -> dict[str, Any]:
 #   1: until 2026-10-09
 #   2: 2026-10-10 — before/after sentence names the observed years (no '3년 평균' of one observed year) and the change
 #      sentence adds the same-complex change and a coverage caution when the before-period observed fewer complexes
-FACT_RULES = 2
+#   3: 2026-10-14 — grid report sentences name the place (전주시 송천1동 일대) instead of the cell id, call the plans
+#      계획안 A·B·C, compare each plan with its reference plan (same floor area at the observed intensity) in tCO2eq,
+#      and come right after the scope sentence; the markdown has the same seven sections under new headings
+FACT_RULES = 3
 
 
 def compare(spec: dict[str, Any], got: dict[str, Any], fact_rules: int = FACT_RULES) -> dict[str, Any]:

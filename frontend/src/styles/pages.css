@@ -543,3 +543,36 @@
 .prior-best dt { font-size: var(--fs-caption); color: var(--ink-3); }
 .prior-best dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }
 .prior-best small { color: var(--ink-3); font-size: var(--fs-caption); }
+
+/* 계획안 결과 (2026-10-14): 핵심 네 칸 → 보고서 버튼 → 규모 띠 → 계획안·기준안 표 → 월별 그래프 → 접힌 산정 방법 */
+.result-hero { display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; gap: 0; margin-top: var(--sp-3); border: 1px solid var(--line-strong); border-radius: var(--r-map); overflow: hidden; }
+.result-hero > div { min-width: 0; padding: var(--sp-3) var(--sp-3); }
+.result-hero > div + div { border-left: 1px solid var(--line-strong); }
+.result-hero span { display: block; font-size: var(--fs-caption); color: var(--ink-3); }
+.result-hero strong { display: block; margin-top: 4px; font-size: var(--fs-title); font-weight: 600; line-height: 1.2; overflow-wrap: anywhere; }
+.result-hero .hero-main { background: var(--surface-sunk); }
+.result-hero .hero-main strong { font-size: 26px; }
+.result-hero small { display: block; margin-top: 4px; font-size: var(--fs-caption); color: var(--ink-2); line-height: 1.4; }
+.result-hero .hero-saving.good strong { color: var(--success); }
+.result-hero .hero-saving.bad strong { color: var(--danger); }
+.result-hero strong.legal { font-size: var(--fs-body); }
+.result-hero strong.legal.good { color: var(--success); }
+.result-hero strong.legal.bad { color: var(--danger); }
+.result-hero strong.legal.warn { color: var(--warning, var(--ink-2)); }
+.result-actions { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; margin-top: var(--sp-3); }
+.result-actions small { color: var(--ink-3); font-size: var(--fs-caption); }
+.energy-table { width: 100%; margin-top: var(--sp-4); border-collapse: collapse; font-size: var(--fs-label); }
+.energy-table th, .energy-table td { padding: 6px var(--sp-2); border-bottom: 1px solid var(--line); text-align: left; }
+.energy-table thead th { font-size: var(--fs-caption); font-weight: 600; color: var(--ink-3); background: var(--surface-sunk); }
+.energy-table tbody th { font-weight: 500; color: var(--ink-2); }
+.energy-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.scenario-result .chart-root, .scenario-result [role='img'] { margin-top: var(--sp-3); }
+.method-note { margin-top: var(--sp-3); padding: var(--sp-2) var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-map); background: var(--surface-sunk); font-size: var(--fs-caption); color: var(--ink-2); }
+.method-note summary { cursor: pointer; font-size: var(--fs-label); font-weight: 600; color: var(--ink); }
+.method-note p { margin: var(--sp-2) 0 0; line-height: 1.6; }
+.method-note ul { margin: var(--sp-2) 0 0; padding-left: 18px; line-height: 1.6; }
+@media (max-width: 720px) {
+  .result-hero { grid-template-columns: 1fr 1fr; }
+  .result-hero > div:nth-child(3) { border-left: 0; }
+  .result-hero > div:nth-child(n + 3) { border-top: 1px solid var(--line-strong); }
+}

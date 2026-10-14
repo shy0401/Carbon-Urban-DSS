@@ -29,9 +29,11 @@ const VIEWS: Record<View, { label: string; pitch: number; bearing: number; zoomD
 /** 3D concept massing on the selected grid: official buildings extruded by floor count, the planned
  *  blocks on a movable square site, sun shadows for a chosen day and hour, and the 조례 상한 check.
  *  Read-only for analysis values; `onCapture` gets a PNG of the canvas. */
-export function Massing3D({ gridId, input, site = null, onSiteChange, onCapture, captureLabel = '3D 장면 저장', captureKey = null, onZoning, region = null }: {
+export function Massing3D({ gridId, input, site = null, onSiteChange, onCapture, captureLabel = '3D 장면 저장', captureKey = null, captureRequest = 0, onZoning, region = null }: {
   gridId: string | null; input: ScenarioInput; site?: SitePlacement | null; onSiteChange?: (site: SitePlacement | null) => void;
   onCapture?: (dataUrl: string) => void; captureLabel?: string; captureKey?: string | null; onZoning?: (zoning: ZoningCheck | null) => void;
+  /** Bump to capture the scene from outside (the '보고서 작성' button saves the 3D picture before it opens the report). */
+  captureRequest?: number;
   /** Study region code: decides the legal-limit basis (전주시 조례 or 국토계획법 시행령). */
   region?: string | null;
 }) {
@@ -244,6 +246,8 @@ export function Massing3D({ gridId, input, site = null, onSiteChange, onCapture,
     map.once('idle', () => { onCapture(map.getCanvas().toDataURL('image/png')); setCaptured(true); });
     map.triggerRepaint();
   };
+  const captureRef = useRef(capture); captureRef.current = capture;
+  useEffect(() => { if (captureRequest) captureRef.current(); }, [captureRequest]);
   const setRotation = (value: number) => { if (center) onSiteChange?.({ lon: center[0], lat: center[1], rotation: value }); };
   const planShadow = sun ? shadowLength(plan.height_m, sun) : null;
   const check = zoning?.check;

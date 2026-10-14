@@ -70,8 +70,15 @@ def arrange(selected,facts):
         chosen.setdefault(f['id'],f)
     return sorted(chosen.values(),key=lambda f:order[f['id']])
 
+PLAN_LETTERS='ABC'
+
+def plan_sentences(facts):
+    """The scope sentence and every plan sentence (계획안 A·B·C: 규모, 탄소, 상한) — the summary a plan report opens with."""
+    return [f for f in facts if f['id']=='scope' or f['id'].split('_')[0] in ('scenario','carbon','zoning')]
+
 def summarize(facts,use_local):
-    default={'mode':'TEMPLATE','paragraphs':[f['text'] for f in facts[:5]],'model':None,'validation':'계산 엔진 근거 문장 사용'}
+    lead=plan_sentences(facts)
+    default={'mode':'TEMPLATE','paragraphs':[f['text'] for f in (lead[:7] if len(lead)>1 else facts[:5])],'model':None,'validation':'계산 엔진 근거 문장 사용'}
     if not use_local:return default
     try:
         selected=arrange(choose_evidence(local_selection(facts),facts),facts)
@@ -81,53 +88,70 @@ def summarize(facts,use_local):
 
 def create_snapshot(db,year,grid_id,scenario_ids,region=None):
     from .regions import region_for_grid
+    from .overlays import context_facts,grid_context,place_label
     if grid_id and not db.get(Grid,grid_id):raise ValueError('격자를 찾을 수 없습니다')
     region=region or region_for_grid(db,grid_id)
     data=dashboard(db,grid_id,year,region);sector=data['selected_sector'];actual_grid=sector['grid_id'] if sector else None
-    facts=[{'id':'scope','text':f'{year}년 {sector["name"] if sector else "미선정 대상지"}의 500m 분석 격자를 기준으로 작성했습니다.'},
-           {'id':'coverage','text':f'월별 전력 {data["coverage"]["electricity_months"]}/12개월, 가스 {data["coverage"]["gas_months"]}/12개월이 확보되어 있습니다.'},
-           {'id':'boundary','text':'격자에 매칭된 관측 지번의 합계이며 전체 건물 소비량을 의미하지 않습니다.'}]
-    if not all(data['annual_complete'].values()) or data['carbon_kg'] is None:
-        facts.insert(1,{'id':'missing','text':'기준 자료 또는 배출계수가 부족하여 연간 전체 운영탄소와 탄소 감축률을 확정할 수 없습니다.'})
-    else:
-        facts.insert(1,{'id':'annual','text':f'격자에 매칭된 공동주택 관측 지번 기준 {year}년 연간 운영탄소(전력+가스)는 {data["carbon_kg"]:,.0f} kgCO2eq입니다.'})
-    intensity=(data.get('normalized') or {}).get('electricity_kwh_per_m2')
-    if intensity is not None:
-        area=data['normalized']['electricity_matched_floor_area_m2']
-        facts.insert(2,{'id':'electricity_intensity','text':f'연면적이 매칭된 관측 단지(연면적 {area:,.0f}m²) 기준 {year}년 전력 원단위는 {intensity:,.1f} kWh/m²이고, 전력 운영탄소는 {data["electricity_carbon_kg"]:,.0f} kgCO2eq입니다.' if data.get('electricity_carbon_kg') is not None else f'연면적이 매칭된 관측 단지(연면적 {area:,.0f}m²) 기준 {year}년 전력 원단위는 {intensity:,.1f} kWh/m²입니다.'})
-    facts.append({'id':'legal','text':'시나리오는 운영 단계의 1차 추정이며 법적 인허가 적합성이나 사업 전체 넷제로 달성을 판정하지 않습니다.'})
-    scenarios=[]
+    scenarios=[];plan_facts=[]
     for sid in dict.fromkeys(scenario_ids):
         s=db.get(Scenario,sid);r=db.get(ScenarioResult,sid)
         if not s or not r:raise ValueError('저장된 시나리오를 찾을 수 없습니다')
         if s.inputs.get('type')=='OPTIMIZATION':raise ValueError('면적 시나리오만 비교할 수 있습니다')
         if s.inputs.get('year',DEFAULT_YEAR)!=year or s.inputs.get('grid_id')!=actual_grid:
             raise ValueError('동일 연도와 격자의 시나리오만 비교할 수 있습니다')
-        scenarios.append({'id':sid,'inputs':s.inputs,'result':r.result,'created_at':s.created_at.isoformat()})
-        facts.append({'id':'scenario_'+str(len(scenarios)),'text':f'비교안 {len(scenarios)}은 {s.inputs["floors"]}층, {s.inputs["building_count"]}동이며 계획 용적률 {r.result["far"]:.1f}%, 건폐율 {r.result["bcr"]:.1f}%입니다.'})
-        zc=r.result.get('zoning_check') or {}
-        if zc.get('zones'):
-            zone_text=', '.join(f"{z['zone']} {z['share']:.0f}%" for z in zc['zones'][:3] if z.get('share') is not None)
-            chk=zc.get('check') or {}
-            limit=f"기본 상한 건폐율 {zc['bcr_limit']:g}%·용적률 {zc['far_limit']:g}%" if zc.get('bcr_limit') is not None and zc.get('far_limit') is not None else '기본 상한 판단 보류'
-            law=_law_name(zc)
-            facts.append({'id':'zoning_'+str(len(scenarios)),'text':f"비교안 {len(scenarios)}의 대지는 {zone_text}이며 {law} {limit} 기준 '{chk.get('label','판단 보류')}'입니다(1차 확인, 인허가 판단 아님)."})
-        carbon=r.result.get('annual',{}).get('scenario',{}).get('carbon_kg')
-        change=r.result.get('annual',{}).get('difference',{}).get('carbon_kg')
-        if carbon is not None and change is not None:
-            facts.append({'id':'carbon_'+str(len(scenarios)),'text':f'비교안 {len(scenarios)}의 연간 운영탄소는 {carbon:,.1f} kgCO2eq이며 기준 대비 변화는 {change:+,.1f} kgCO2eq입니다.'})
-    from .overlays import context_facts,grid_context
+        n=len(scenarios)+1;label=f'계획안 {PLAN_LETTERS[n-1] if n<=len(PLAN_LETTERS) else n}'
+        scenarios.append({'id':sid,'label':label,'inputs':s.inputs,'result':r.result,'created_at':s.created_at.isoformat()})
+        plan_facts+=plan_sentence_facts(n,label,s.inputs,r.result)
     context=grid_context(db,actual_grid);context['facts']=context_facts(context)
+    place=place_label(context.get('admin') or [],(data.get('region') or {}).get('short_name') or (data.get('region') or {}).get('name'))
+    # The report opens with the place and the plans; the grid's own energy sentences follow (status report: those alone).
+    facts=[{'id':'scope','text':f'{year}년 {place}의 500m 분석 격자(가로세로 500m, 25만 m²)를 기준으로 작성했습니다.'+(f' 계획안 {len(scenarios)}개를 검토했습니다.' if scenarios else '')}]
+    facts+=plan_facts
+    if not all(data['annual_complete'].values()) or data['carbon_kg'] is None:
+        facts.append({'id':'missing','text':'기준 자료 또는 배출계수가 부족하여 격자 공동주택의 연간 전체 운영탄소와 탄소 감축률을 확정할 수 없습니다.'})
+    else:
+        facts.append({'id':'annual','text':f'격자 안 공동주택(12개월 관측 지번)의 {year}년 연간 운영탄소(전력+가스)는 {data["carbon_kg"]/1000:,.1f} tCO2eq입니다.'})
+    intensity=(data.get('normalized') or {}).get('electricity_kwh_per_m2')
+    if intensity is not None:
+        area=data['normalized']['electricity_matched_floor_area_m2']
+        facts.append({'id':'electricity_intensity','text':f'연면적이 확인된 관측 단지(연면적 {area:,.0f}m²) 기준 {year}년 전력 원단위는 {intensity:,.1f} kWh/m²·년입니다.'+(f' 전력 운영탄소는 {data["electricity_carbon_kg"]/1000:,.1f} tCO2eq입니다.' if data.get('electricity_carbon_kg') is not None else '')})
+    facts.append({'id':'coverage','text':f'월별 전력 {data["coverage"]["electricity_months"]}/12개월, 가스 {data["coverage"]["gas_months"]}/12개월이 확보되어 있습니다.'})
+    facts.append({'id':'boundary','text':'격자 값은 격자에 매칭된 관측 지번의 합계이며 전체 건물 소비량을 의미하지 않습니다.'})
+    facts.append({'id':'legal','text':'계획안 결과는 운영 단계의 1차 추정이며 법적 인허가 적합성이나 사업 전체 넷제로 달성을 판정하지 않습니다.'})
     detail=grid_detail_facts(db,year,actual_grid,data)
     context['facts']+=detail['facts'];context.update({k:v for k,v in detail.items() if k!='facts'})
-    for i,sc in enumerate(scenarios,1):
+    for sc in scenarios:
         sc['has_image']=db.get(ScenarioImage,sc['id']) is not None
         if sc['has_image']:sc['image_url']=f"/api/scenarios/{sc['id']}/image"
     sources=[{k:s.get(k) for k in ['id','name','source_url','reference_period','collected_at','status','source_type','normalized_row_count','limitation']} for s in data['sources']]
-    snapshot={'version':2,'year':year,'grid_id':actual_grid,'region':data.get('region'),'title':'도시계획 의사결정 검토 보고서','created_at':now().isoformat(),'sector':sector,'facts':facts,'sources':sources,'scenarios':scenarios,'context':context,'monthly':data['monthly'],'coverage':data['coverage'],'annual_complete':data['annual_complete'],'totals':{k:data.get(k) for k in ['electricity_kwh','gas_kwh','carbon_kg','electricity_carbon_kg','gas_carbon_kg']},'scope':data['scope'],
+    factors={k:{'factor':v.get('factor'),'assumed':v.get('assumed'),'source':v.get('source')} for k,v in (data.get('carbon_factors') or {}).items()}
+    snapshot={'version':3,'kind':'PLAN' if scenarios else 'STATUS','year':year,'grid_id':actual_grid,'region':data.get('region'),'place':place,
+              'title':'탄소 시뮬레이션 검토 보고서' if scenarios else '격자 에너지·탄소 현황 보고서','created_at':now().isoformat(),'sector':sector,'facts':facts,'sources':sources,'factors':factors,
+              'scenarios':scenarios,'context':context,'monthly':data['monthly'],'coverage':data['coverage'],'annual_complete':data['annual_complete'],'totals':{k:data.get(k) for k in ['electricity_kwh','gas_kwh','carbon_kg','electricity_carbon_kg','gas_carbon_kg']},'scope':data['scope'],
               'cautions':report_cautions(data,detail,scenarios)}
     snapshot['evidence_hash']=hashlib.sha256(json.dumps(snapshot,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
     return snapshot
+
+def plan_sentence_facts(n,label,inputs,result):
+    """계획안 X: its size, its carbon against the reference plan, and its 상한 check — the sentences a reader quotes."""
+    facts=[{'id':f'scenario_{n}','text':f"{label}은 {inputs['floors']}층 {inputs['building_count']}동, 연면적 {result['gross_floor_area']:,.0f}m²(용적률 {result['far']:.1f}%·건폐율 {result['bcr']:.1f}%), {inputs.get('households') or 0:,}세대·{inputs.get('population') or 0:,}명 계획입니다."}]
+    annual=result.get('annual') or {}
+    carbon=(annual.get('scenario') or {}).get('carbon_kg');ref=(annual.get('reference') or {}).get('carbon_kg');change=(annual.get('difference') or {}).get('carbon_kg')
+    saving=(result.get('savings_pct') or {}).get('carbon_kg')
+    if carbon is not None and ref is not None:
+        e=(annual.get('scenario') or {}).get('electricity_carbon_kg');g=carbon-e if e is not None else None
+        parts=f"(전력 {e/1000:,.1f} t, 가스 {g/1000:,.1f} t 가정 계수)" if e is not None and g is not None else ''
+        verdict=f"보다 {abs(saving):.1f}% {'적습니다' if saving>=0 else '많습니다'}" if saving is not None else '와 같습니다'
+        facts.append({'id':f'carbon_{n}','text':f"{label}의 연간 운영탄소는 {carbon/1000:,.1f} tCO2eq{parts}이며, 같은 연면적을 지역 관측 원단위 그대로 지을 때(기준안 {ref/1000:,.1f} t){verdict}."})
+    elif carbon is not None and change is not None:   # plans saved before the reference plan existed
+        facts.append({'id':f'carbon_{n}','text':f'{label}의 연간 운영탄소는 {carbon/1000:,.1f} tCO2eq이며 격자 현재 사용량 대비 변화는 {change/1000:+,.1f} t입니다.'})
+    zc=result.get('zoning_check') or {}
+    if zc.get('zones'):
+        zone_text=', '.join(f"{z['zone']} {z['share']:.0f}%" for z in zc['zones'][:3] if z.get('share') is not None)
+        chk=zc.get('check') or {}
+        limit=f"기본 상한 건폐율 {zc['bcr_limit']:g}%·용적률 {zc['far_limit']:g}%" if zc.get('bcr_limit') is not None and zc.get('far_limit') is not None else '기본 상한 판단 보류'
+        facts.append({'id':f'zoning_{n}','text':f"{label}의 대지는 {zone_text}이며 {_law_name(zc)} {limit} 기준 '{chk.get('label','판단 보류')}'입니다(1차 확인, 인허가 판단 아님)."})
+    return facts
 
 def grid_detail_facts(db,year,grid_id,data):
     """Official building-stock, all-building energy, official grid code and model-validation facts for the grid.
@@ -261,42 +285,101 @@ def _limits(zc):
     if zc.get('bcr_limit') is None or zc.get('far_limit') is None:return '판단 보류'
     return f"{zc['bcr_limit']:g}% / {zc['far_limit']:g}%"
 
+OVERVIEW_IDS=('context_admin','context_zoning','context_complexes','register')
+GRID_ENERGY_IDS=('building_energy','building_intensity','exclusions')
+
+def _t(value,digits=1):
+    """kgCO2eq → tCO2eq text; missing stays '자료 없음', never 0."""
+    return f'{value/1000:,.{digits}f} tCO2eq' if isinstance(value,(int,float)) else '자료 없음'
+
+def _pct(value):
+    return ('−' if value>0 else '+' if value<0 else '')+f'{abs(value):.1f}%' if isinstance(value,(int,float)) else '자료 없음'
+
+def plan_rows(sc):
+    """계획 개요 rows (label, text) for one plan: size, limits, people, assumptions."""
+    i=sc['inputs'];r=sc['result'];zc=r.get('zoning_check') or {}
+    far_lim=f" (상한 {zc['far_limit']:g}%)" if zc.get('far_limit') is not None else '';bcr_lim=f" (상한 {zc['bcr_limit']:g}%)" if zc.get('bcr_limit') is not None else ''
+    return [('대지면적',_num(i.get('site_area'),'m²')),('동수 · 층수',f"{_num(i.get('building_count'),'동')} · {_num(i.get('floors'),'층')}"),('건축면적 합계',_num(r.get('total_footprint'),'m²')),
+            ('연면적',_num(r.get('gross_floor_area'),'m²')),('용적률',_num(r.get('far'),'%',1)+far_lim),('건폐율',_num(r.get('bcr'),'%',1)+bcr_lim),
+            ('세대수 · 계획 인구',f"{_num(i.get('households'),'세대')} · {_num(i.get('population'),'명')}"),('효율 계수',_num(i.get('efficiency_factor'),'배',2)),
+            ('태양광 전력 대체율',_num((i.get('pv_ratio') or 0)*100 if i.get('pv_ratio') is not None else None,'%')),('녹지 비율',_num((i.get('green_ratio') or 0)*100 if i.get('green_ratio') is not None else None,'%'))]
+
+def energy_rows(sc):
+    """에너지·탄소 산정 rows (label, plan, reference, savings) for one plan."""
+    r=sc['result'];a=r.get('annual') or {};plan=a.get('scenario') or {};ref=a.get('reference') or {};sv=r.get('savings_pct') or {}
+    gas_c=lambda side:(side.get('carbon_kg')-side.get('electricity_carbon_kg')) if side.get('carbon_kg') is not None and side.get('electricity_carbon_kg') is not None else None
+    return [('연간 전력',_num(plan.get('electricity_kwh'),' kWh'),_num(ref.get('electricity_kwh'),' kWh'),_pct(sv.get('electricity_kwh'))),
+            ('연간 가스',_num(plan.get('gas_kwh'),' kWh'),_num(ref.get('gas_kwh'),' kWh'),_pct(sv.get('gas_kwh'))),
+            ('전력 탄소',_t(plan.get('electricity_carbon_kg')),_t(ref.get('electricity_carbon_kg')),''),
+            ('가스 탄소 (가정 계수)',_t(gas_c(plan)),_t(gas_c(ref)),''),
+            ('연간 운영탄소 (전력+가스)',_t(plan.get('carbon_kg')),_t(ref.get('carbon_kg')),_pct(sv.get('carbon_kg'))),
+            ('1인당 운영탄소',_num(r.get('carbon_per_person'),' kgCO2eq',1),'',''),('세대당 운영탄소',_num(r.get('carbon_per_household'),' kgCO2eq',1),'','')]
+
+def method_text(sc,factors):
+    bi=(sc['result'].get('baseline_intensity') or {});e=factors.get('ELECTRICITY') or {};g=factors.get('GAS') or {}
+    parts=[f"전력 {bi['electricity_kwh_per_m2']:,.1f} kWh/m²·년" if bi.get('electricity_kwh_per_m2') is not None else None,f"가스 {bi['gas_kwh_per_m2']:,.1f} kWh/m²·년" if bi.get('gas_kwh_per_m2') is not None else None]
+    intensity=', '.join(p for p in parts if p) or '격자 관측 원단위'
+    return (f"산정 방법: 격자 관측 원단위({intensity}) × 계획 연면적 × 효율 계수이며, 전력은 (1 − 태양광 전력 대체율)을 곱합니다. 기준안은 같은 연면적을 효율 계수 1.0·태양광 0으로 지을 때입니다. "
+            f"배출계수는 전력 {e.get('factor') if e.get('factor') is not None else '미등록'} kgCO2eq/kWh({'GIR 승인' if e and not e.get('assumed') else '확인 필요'}), 가스 {g.get('factor') if g.get('factor') is not None else '미등록'} kgCO2eq/kWh({'가정' if g.get('assumed') else '등록'})입니다.")
+
+def zoning_lines(sc):
+    zc=sc['result'].get('zoning_check') or {};chk=zc.get('check') or {}
+    if not zc.get('zones'):return [f"- {sc['label']}: 대지와 겹치는 용도지역 자료가 없습니다."]
+    lines=[f"- {sc['label']} 판정: **{chk.get('label','판단 보류')}** (기본 상한 건폐율/용적률 {_limits(zc)})",
+           '| 용도지역 | 대지 비율 | 건폐율 상한 | 용적률 상한 |','|---|---:|---:|---:|']
+    for z in zc['zones'][:6]:
+        lines.append(f"| {z.get('zone_name') or z.get('zone') or '미상'} | {z['share']:.1f}% | {z.get('applied_bcr_limit',z.get('bcr_limit')) if z.get('applied_bcr_limit',z.get('bcr_limit')) is not None else '규정 없음'}% | {z.get('applied_far_limit',z.get('far_limit')) if z.get('applied_far_limit',z.get('far_limit')) is not None else '확인 필요'}% |" if z.get('share') is not None else f"| {z.get('zone_name') or z.get('zone') or '미상'} | - | - | - |")
+    for n in chk.get('notes') or []:lines.append('- '+n)
+    src=zc.get('source') or {}
+    if src.get('name'):lines.append(f"- 근거: {src['name']} {src.get('articles') or ''}".rstrip())
+    return lines
+
 def report_markdown(s):
-    context=s.get('context') or {};sector=s.get('sector') or {}
-    code=context.get('official_code')
-    lines=['# '+s['title'],f'{sector.get("name","대상지")} · 기준연도 {s["year"]} · 격자 {s["grid_id"]}'+(f' (SGIS 공식 500m 격자 {code})' if code else ''),f'작성시각: {s["created_at"]}']
-    lines+=['## 1. 검토 요약']+list(s.get('summary',{}).get('paragraphs',[f['text'] for f in s['facts']]))
-    lines+=['## 2. 대상지 개요',f'- 분석 단위: 500m 격자 {s["grid_id"]} (250,000m²)'+(f', SGIS 공식 격자 {code}' if code else ''),f'- 자료 범위: 전력 {s["coverage"]["electricity_months"]}/12개월, 가스 {s["coverage"]["gas_months"]}/12개월 (공동주택 관측)']
-    for f in context.get('facts') or []:
-        if f['id'] in ('context_admin','context_zoning','context_complexes','context_buildings','register','context_sgis_grid','official_grid'):lines.append('- '+f['text'])
-    lines+=['## 3. 에너지·탄소 현황']
-    totals=s.get('totals') or {}
-    gas_note='가스 탄소는 가정 계수' if totals.get('gas_carbon_kg') is not None else '가스 탄소는 계수 미확정'
-    lines+=[f'- 공동주택 관측 전력 {_num(totals.get("electricity_kwh"),"kWh")}, 가스 {_num(totals.get("gas_kwh"),"kWh")}, 전력 탄소 {_num(totals.get("electricity_carbon_kg"),"kgCO2eq")}, 가스 탄소 {_num(totals.get("gas_carbon_kg"),"kgCO2eq")} (12개월 관측 지번 합계; {gas_note})']
-    for f in s['facts']:
-        if f['id'] in ('electricity_intensity','annual','missing'):lines.append('- '+f['text'])
-    for f in context.get('facts') or []:
-        if f['id'] in ('building_energy','building_intensity','exclusions','model_validation'):lines.append('- '+f['text'])
-    lines+=['## 4. 계획안 비교']
-    if s['scenarios']:
-        table=['| 항목 | '+' | '.join(f'대안 {i}' for i in range(1,len(s['scenarios'])+1))+' |','|---|'+'---:|'*len(s['scenarios'])]
-        rows=[('층수',lambda sc:_num(sc['inputs'].get('floors'),'층')),('동수',lambda sc:_num(sc['inputs'].get('building_count'),'동')),('연면적',lambda sc:_num(sc['result'].get('gross_floor_area'),'m²')),
-              ('용적률',lambda sc:_num(sc['result'].get('far'),'%',1)),('건폐율',lambda sc:_num(sc['result'].get('bcr'),'%',1)),('세대수',lambda sc:_num(sc['inputs'].get('households'),'세대')),('계획 인구',lambda sc:_num(sc['inputs'].get('population'),'명')),
-              ('계획 연간 전력',lambda sc:_num((sc['result'].get('annual') or {}).get('scenario',{}).get('electricity_kwh'),'kWh')),('계획 연간 가스',lambda sc:_num((sc['result'].get('annual') or {}).get('scenario',{}).get('gas_kwh'),'kWh')),
-              ('계획 연간 전력 탄소',lambda sc:_num((sc['result'].get('annual') or {}).get('scenario',{}).get('electricity_carbon_kg'),'kgCO2eq',1)),('기준 대비 전력 탄소 변화',lambda sc:_num((sc['result'].get('annual') or {}).get('difference',{}).get('electricity_carbon_kg'),'kgCO2eq',1)),
-              ('계획 연간 전체 탄소 (전력+가스)',lambda sc:_num((sc['result'].get('annual') or {}).get('scenario',{}).get('carbon_kg'),'kgCO2eq',1)),
-              ('대지 용도지역',lambda sc:_zones(sc['result'].get('zoning_check'))),('기본 상한 (건폐율/용적률)',lambda sc:_limits(sc['result'].get('zoning_check'))),
-              ('상한 1차 확인',lambda sc:((sc['result'].get('zoning_check') or {}).get('check') or {}).get('label','판단 보류'))]
-        for label,fn in rows:table.append(f'| {label} | '+' | '.join(fn(sc) for sc in s['scenarios'])+' |')
-        lines.append('\n'.join(table))
-        for i,sc in enumerate(s['scenarios'],1):
-            if sc.get('has_image'):lines.append(f'![대안 {i} 3D 개념 배치]({sc["image_url"]})\n\n대안 {i} 3D 개념 배치(규모 비교용, 실제 배치안 아님)')
-    else:lines.append('선택한 계획안 없음 (현재 자료 현황 보고서)')
-    lines+=['## 5. 해석 범위와 유의사항']+['- '+c for c in s.get('cautions') or [s['scope']]]
-    table=['| 자료 | 상태 | 기간 | 수집일 | 행 |','|---|---|---|---|---:|']
-    for source in s['sources']:table.append(f'| {source["name"]} | {source["status"]} | {source["reference_period"] or "-"} | {(source["collected_at"] or "미수집")[:10]} | {_num(source.get("normalized_row_count"))} |')
-    lines+=['## 6. 데이터 출처','\n'.join(table)]
-    lines+=['## 7. 재현 정보',f'- 보고서 ID: {s.get("id","")}',f'- 근거 SHA256: {s["evidence_hash"]}','- 수치는 계산 엔진이 생성하며 로컬 AI는 검증된 근거 문장을 선택·요약하는 방식으로만 사용합니다. 생성 이후의 수집·설정 변경은 이 보고서를 바꾸지 않습니다.']
+    """The report text a reader prints or files: the place (never the cell id), the plans, the numbers with their basis.
+    The evidence hash stays in the stored record; the footer carries the report number for re-opening."""
+    context=s.get('context') or {};place=s.get('place') or (s.get('sector') or {}).get('name') or '대상지'
+    plans=s.get('scenarios') or [];factors=s.get('factors') or {}
+    sections=[]
+    sections.append(('검토 요약',list(s.get('summary',{}).get('paragraphs',[f['text'] for f in s['facts']]))))
+    overview=[f'- 대상지: {place} (500m 분석 격자 한 칸, 25만 m²), 기준연도 {s["year"]}']
+    overview+=['- '+f['text'] for f in context.get('facts') or [] if f['id'] in OVERVIEW_IDS]
+    sections.append(('대상지 개요',overview))
+    if plans:
+        table=['| 항목 | '+' | '.join(sc['label'] for sc in plans)+' |','|---|'+'---:|'*len(plans)]
+        rows=[plan_rows(sc) for sc in plans]
+        for k,(label,_) in enumerate(rows[0]):table.append(f'| {label} | '+' | '.join(r[k][1] for r in rows)+' |')
+        sections.append(('계획 개요',['\n'.join(table)]))
+        energy=[]
+        for sc in plans:
+            table=[f"**{sc['label']}**",'| 항목 | 계획안 | 기준안 (효율 1.0·태양광 0) | 절감 |','|---|---:|---:|---:|']
+            for label,plan,ref,sv in energy_rows(sc):table.append(f'| {label} | {plan} | {ref} | {sv} |')
+            energy.append('\n'.join(table))
+        energy.append(method_text(plans[0],factors))
+        for sc in plans:
+            if sc.get('has_image'):energy.append(f"![{sc['label']} 3D 개념 배치]({sc['image_url']})\n\n{sc['label']} 3D 개념 배치(규모 비교용, 실제 배치안이 아닙니다)")
+        sections.append(('에너지·탄소 산정',energy))
+        zoning=[]
+        for sc in plans:zoning+=zoning_lines(sc)
+        sections.append(('용도지역·조례 상한 확인',zoning))
+    else:
+        totals=s.get('totals') or {}
+        gas_note='가스 탄소는 가정 계수' if totals.get('gas_carbon_kg') is not None else '가스 탄소는 계수 미확정'
+        status=[f'- 공동주택 관측 전력 {_num(totals.get("electricity_kwh")," kWh")}, 가스 {_num(totals.get("gas_kwh")," kWh")}, 전력 탄소 {_t(totals.get("electricity_carbon_kg"))}, 가스 탄소 {_t(totals.get("gas_carbon_kg"))} (12개월 관측 지번 합계; {gas_note})']
+        status+=['- '+f['text'] for f in s['facts'] if f['id'] in ('electricity_intensity','annual','missing')]
+        status+=['- '+f['text'] for f in context.get('facts') or [] if f['id'] in GRID_ENERGY_IDS]
+        sections.append(('에너지·탄소 현황',status))
+        sections.append(('계획안',['검토한 계획안이 없습니다. 시뮬레이션에서 계획안을 계산한 뒤 보고서를 작성하면 계획 개요·산정 표·상한 확인이 들어갑니다.']))
+        sections.append(('용도지역',['- '+f['text'] for f in context.get('facts') or [] if f['id']=='context_zoning'] or ['- 용도지역 자료가 없습니다.']))
+    sections.append(('유의사항',['- '+c for c in s.get('cautions') or [s['scope']]]))
+    table=['| 자료 | 기간 | 수집일 |','|---|---|---|']
+    for source in s['sources']:table.append(f'| {source["name"]} | {source["reference_period"] or "-"} | {(source["collected_at"] or "미수집")[:10]} |')
+    e=factors.get('ELECTRICITY') or {};g=factors.get('GAS') or {}
+    factor_line=f"- 배출계수: 전력 {e.get('factor') if e.get('factor') is not None else '미등록'} kgCO2eq/kWh({'GIR 승인' if e and not e.get('assumed') else '확인 필요'}), 가스 {g.get('factor') if g.get('factor') is not None else '미등록'} kgCO2eq/kWh({'가정' if g.get('assumed') else '등록'})"
+    sections.append(('자료 출처',['\n'.join(table),factor_line]))
+    lines=['# '+s['title'],f'{place} · 기준연도 {s["year"]} · 작성 {str(s["created_at"])[:16].replace("T"," ")}']
+    for n,(heading,body) in enumerate(sections,1):
+        lines.append(f'## {n}. {heading}');lines+=body
+    lines.append(f'보고서 번호 {s.get("id","")} · 수치는 계산 엔진이 생성하며 로컬 AI는 검증된 근거 문장을 고르는 데만 쓰입니다. 작성 뒤의 수집·설정 변경은 이 보고서를 바꾸지 않습니다.')
     return '\n\n'.join(lines)+'\n'
 
 class ReportInput(BaseModel):

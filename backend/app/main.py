@@ -500,6 +500,15 @@ def map_data(request:Request,year:int=Query(DEFAULT_YEAR,ge=2000,le=2100),region
             'region':{'code':sc.code,'name':sc.name,'short_name':sc.short,'status':sc.status,'grids':len(ids),'level':_level(db,sc.code)},
         }
 
+@app.get('/api/grids/{grid_id}/place')
+def grid_place(grid_id:str):
+    """A reader's name for the cell (전주시 송천1동 일대) for the scope header; the cell id stays in the URL only."""
+    with Session() as db:
+        if not db.get(Grid,grid_id):raise HTTPException(404,'격자를 찾을 수 없습니다')
+        from .overlays import grid_admin_rows,place_label
+        sc=_scope(db,region_for_grid(db,grid_id))
+        return {'grid_id':grid_id,'place':place_label(grid_admin_rows(db,grid_id),sc.short if sc else None)}
+
 @app.get('/api/grids/{grid_id}')
 def grid_detail(grid_id:str,year:int=Query(DEFAULT_YEAR,ge=2000,le=2100),region:str|None=Query(None,max_length=10)):
     with Session() as db:
@@ -582,6 +591,9 @@ def compute_scenario(db,request):
     result['baseline']={k:baseline.get(k) for k in ['current_far','current_bcr','households','population','gross_floor_area_m2','developable_site_area_m2']}
     result['grid_id']=baseline['selected_sector']['grid_id'] if baseline['selected_sector'] else None
     result['region']=baseline.get('region')
+    # A reader's name for the site (전주시 송천1동 일대), used by the result panel and the report instead of the cell id.
+    from .overlays import grid_admin_rows,place_label
+    result['place']=place_label(grid_admin_rows(db,result['grid_id']),(result['region'] or {}).get('short_name') or (result['region'] or {}).get('name'))
     zoning=_site_zoning_for(db,request,result['grid_id'],region)
     if zoning:
         from .zoning_limits import check_plan

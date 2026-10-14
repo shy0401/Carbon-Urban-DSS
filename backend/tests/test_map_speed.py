@@ -26,3 +26,15 @@ def test_the_original_region_gets_zoning_polygons_of_its_own_cells_only():
     from app.overlays import cells_extent
     assert cells_extent(['cell_1000_2000', 'cell_1500_2500', 'not-a-cell']) == (1000.0, 2000.0, 2000.0, 3000.0)
     assert cells_extent(['legacy-id']) is None
+
+
+def test_place_label_names_the_region_and_its_dongs_never_the_cell_id():
+    """Reports and the simulation screen name the place (전주시 송천1동 일대), not cell_<x>_<y>."""
+    from app.overlays import place_label
+    rows = [{'adm_name': '전북특별자치도 전주시 덕진구 송천1동', 'grid_share_pct': 86.0}, {'adm_name': '전북특별자치도 전주시 덕진구 송천2동', 'grid_share_pct': 14.0},
+            {'adm_name': '전북특별자치도 전주시 덕진구 조촌동', 'grid_share_pct': 0.4}]
+    assert place_label(rows, '전주시') == '전주시 송천1동·송천2동 일대'
+    assert place_label(rows[:1], '전주시') == '전주시 송천1동 일대'
+    assert place_label([], '전주시') == '전주시 (500m 격자)'
+    assert place_label([], None) == '500m 분석 격자'
+    assert 'cell_' not in place_label(rows, None)

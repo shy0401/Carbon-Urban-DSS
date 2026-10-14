@@ -28,3 +28,16 @@ def test_incompatible_scenario_comparison_is_rejected():
     c=TestClient(app)
     s=c.post('/api/scenarios',json={'year':2024}).json()
     assert c.post('/api/reports',json={'year':2025,'scenario_ids':[s['id']]}).status_code==422
+
+def test_plan_report_names_plans_a_b_c_and_carries_the_reference_comparison():
+    c=TestClient(app)
+    s=c.post('/api/scenarios',json={'year':2024}).json()
+    assert 'place' in s and 'cell_' not in (s['place'] or '')
+    assert set(s['annual'])>={'current','scenario','reference','difference'} and 'savings_pct' in s
+    r=c.post('/api/reports',json={'year':2024,'scenario_ids':[s['id']]}).json()
+    assert r['kind']=='PLAN' and r['scenarios'][0]['label']=='계획안 A'
+    ids=[f['id'] for f in r['facts']]
+    assert ids[0]=='scope' and ids[1]=='scenario_1'   # plan sentences right after the scope
+    assert any(f['id']=='scenario_1' and f['text'].startswith('계획안 A') for f in r['facts'])
+    assert not any('cell_' in f['text'] for f in r['facts'])
+    assert c.get('/api/reports/'+r['id']+'/markdown').text.count('\n## ')==7

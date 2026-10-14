@@ -437,6 +437,37 @@ def grid_context(db: Any, grid_id: str | None) -> dict[str, Any]:
     return context
 
 
+def place_label(admin_rows: list[dict[str, Any]], region_name: str | None) -> str:
+    """A reader's name for a 500m cell — "전주시 송천1동·송천2동 일대" — from the 행정동 that cover at least 1% of it
+    (largest first, at most two). Never the cell id, which means nothing to a reader."""
+    dongs: list[str] = []
+    for row in sorted((r for r in admin_rows or [] if (r.get("grid_share_pct") or 0) >= 1), key=lambda r: -(r.get("grid_share_pct") or 0)):
+        name = str(row.get("adm_name") or "").split()[-1:]
+        if name and name[0] not in dongs:
+            dongs.append(name[0])
+        if len(dongs) == 2:
+            break
+    if dongs:
+        return f"{region_name + ' ' if region_name else ''}{'·'.join(dongs)} 일대"
+    return f"{region_name} (500m 격자)" if region_name else "500m 분석 격자"
+
+
+def grid_admin_rows(db: Any, grid_id: str | None) -> list[dict[str, Any]]:
+    """The 행정동 (latest SGIS boundary vintage) overlapping one cell, with the share of the cell each covers."""
+    if not grid_id or not _table_exists(db, "sgis_admin_boundaries"):
+        return []
+    try:
+        rows = db.execute(text(
+            "SELECT b.adm_name, ST_Area(ST_Intersection(b.geom, g.geom)) / NULLIF(ST_Area(g.geom), 0) AS grid_share "
+            "FROM sgis_admin_boundaries b JOIN grid_500m g ON g.id = :grid "
+            "WHERE b.reference_year = (SELECT max(reference_year) FROM sgis_admin_boundaries) AND ST_Intersects(b.geom, g.geom) ORDER BY grid_share DESC"
+        ), {"grid": grid_id}).mappings().all()
+    except Exception:  # noqa: BLE001 - no PostGIS (unit-test database): the label falls back to the region name
+        db.rollback()
+        return []
+    return [{"adm_name": row["adm_name"], "grid_share_pct": round(float(row["grid_share"] or 0) * 100, 1)} for row in rows]
+
+
 ZONE_LABEL = {"RESIDENTIAL": "주거", "COMMERCIAL": "상업", "INDUSTRIAL": "공업", "GREEN": "녹지", "OTHER": "기타", "UNKNOWN": "이름 없음"}
 
 

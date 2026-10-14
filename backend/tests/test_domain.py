@@ -53,3 +53,27 @@ def test_scenario_scales_only_observed_months():
     assert result['observed_period_totals']['scenario']['electricity_kwh']==1440
     assert result['coverage_months']['electricity_kwh']==1
     assert result['percent_change']['electricity_kwh'] is None
+
+def test_scenario_reports_the_reference_plan_and_the_savings_against_it():
+    """10/14: the result panel and the report compare the plan with the same floor area built at the observed intensity
+    (efficiency 1.0, no PV) — the 'reference plan' — not with this grid's current use, which is a different size."""
+    factors={'ELECTRICITY':{'factor':0.5,'factor_unit':'kgCO2eq/kWh'},'GAS':{'factor':0.2,'factor_unit':'kgCO2eq/kWh'}}
+    baseline=[{'use_ym':f'2025{m:02d}','electricity_kwh':1000,'gas_kwh':500,'carbon_kg':600} for m in range(1,13)]   # rows as the dashboard gives them
+    params=dict(site_area=10000,building_count=4,footprint_per_building=500,floors=10,efficiency_factor=0.8,pv_ratio=0.1,households=200,population=500)
+    result=scenario_calculation(params,baseline,10000,factors)   # plan floor area 20,000 = 2 × baseline
+    ref=result['annual']['reference']
+    assert ref['electricity_kwh']==24000 and ref['gas_kwh']==12000 and ref['carbon_kg']==24000*0.5+12000*0.2
+    plan=result['annual']['scenario']
+    assert plan['electricity_kwh']==24000*0.8*0.9 and plan['gas_kwh']==12000*0.8
+    assert result['savings_pct']['carbon_kg']==round((ref['carbon_kg']-plan['carbon_kg'])/ref['carbon_kg']*100,1)
+    assert result['savings_pct']['electricity_kwh']==28.0 and result['savings_pct']['gas_kwh']==20.0
+    assert result['monthly'][0]['reference']['electricity_kwh']==2000
+    assert result['carbon_per_household']==plan['carbon_kg']/200
+    assert result['baseline_intensity']=={'electricity_kwh_per_m2':1.2,'gas_kwh_per_m2':0.6}
+
+def test_scenario_reference_and_savings_stay_missing_without_a_baseline():
+    result=scenario_calculation(dict(site_area=10000,building_count=4,footprint_per_building=500,floors=10,efficiency_factor=0.8,pv_ratio=0.1),[{'use_ym':'202501','electricity_kwh':1000,'gas_kwh':None}],10000,{})
+    assert result['annual']['reference']['electricity_kwh'] is None   # 1 observed month: no annual value
+    assert result['savings_pct']=={'electricity_kwh':None,'gas_kwh':None,'carbon_kg':None}
+    assert result['carbon_per_household'] is None
+    assert result['baseline_intensity']=={'electricity_kwh_per_m2':None,'gas_kwh_per_m2':None}

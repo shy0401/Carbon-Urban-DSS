@@ -416,9 +416,19 @@ export interface ScenarioResult {
   annual: {
     current: ScenarioSeries | null;
     scenario: ScenarioSeries | null;
+    /** 같은 연면적을 효율 1.0·태양광 0으로 지을 때 (기준안). 10/14 이전에 저장한 계획안에는 없다. */
+    reference?: ScenarioSeries | null;
     difference: ScenarioSeries | null;
     [key: string]: unknown;
   };
+  /** 기준안 대비 절감률(%): 양수가 절감. 어느 한쪽이 없으면 null. */
+  savings_pct?: { electricity_kwh: number | null; gas_kwh: number | null; carbon_kg: number | null };
+  carbon_per_person?: number | null;
+  carbon_per_household?: number | null;
+  /** 계산에 쓴 격자 관측 원단위 (kWh/m²·년). */
+  baseline_intensity?: { electricity_kwh_per_m2: number | null; gas_kwh_per_m2: number | null };
+  /** 대상지 이름 (예: 전주시 송천1동 일대). 격자 ID 대신 화면에 쓴다. */
+  place?: string | null;
   current?: ScenarioSeries | Array<Record<string, unknown>>;
   scenario?: ScenarioSeries | Array<Record<string, unknown>>;
   difference?: ScenarioSeries | Array<Record<string, unknown>>;

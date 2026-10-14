@@ -96,3 +96,35 @@
 .scenario-picker small.legal { color: var(--success); font-weight: 600; }
 .scenario-picker small.legal.over { color: var(--danger); }
 .report-table td.over { color: var(--danger); font-weight: 600; }
+
+/* 계획안 보고서 (2026-10-14): 핵심 결과 카드, 3D 그림, 산정 표의 기준안 작은 글씨, 꼬리말. 격자 ID·근거 해시는 싣지 않는다. */
+.report-title-block.plan { grid-template-columns: repeat(4, minmax(0, auto)); }
+.plan-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--sp-3); margin: var(--sp-3) 0; }
+.plan-card { padding: var(--sp-3) var(--sp-4); border: 1px solid var(--line-strong); border-top: 4px solid var(--plan-a); border-radius: var(--r-map); background: var(--surface); }
+.plan-card.plan-b { border-top-color: var(--plan-b); }
+.plan-card.plan-c { border-top-color: var(--plan-c); }
+.plan-card p { margin: 0; font-size: var(--fs-label); line-height: 1.5; }
+.plan-card-label { font-weight: 700; color: var(--ink); }
+.plan-card-size { color: var(--ink-2); font-size: var(--fs-caption) !important; }
+.plan-card-main { margin-top: var(--sp-2) !important; }
+.plan-card-main span, .plan-card-row span { display: block; font-size: var(--fs-caption); color: var(--ink-3); }
+.plan-card-main strong { display: block; font-size: 26px; font-weight: 700; line-height: 1.2; }
+.plan-card-row { display: grid; grid-template-columns: 1fr auto; column-gap: var(--sp-2); align-items: baseline; margin-top: var(--sp-2) !important; padding-top: var(--sp-1); border-top: 1px solid var(--line); }
+.plan-card-row strong { font-weight: 600; text-align: right; }
+.plan-card-row small { grid-column: 1 / -1; color: var(--ink-3); font-size: var(--fs-caption); text-align: right; }
+.plan-card-row strong.good { color: var(--success); }
+.plan-card-row strong.bad { color: var(--danger); }
+.plan-card-row strong.legal { font-size: var(--fs-caption); }
+.plan-card-row strong.legal.good { color: var(--success); }
+.plan-card-row strong.legal.bad { color: var(--danger); }
+.report-table th small { display: block; margin-top: 2px; font-weight: 400; color: var(--ink-3); font-size: var(--fs-caption); }
+.report-table tr.total td, .report-table tr.total th { border-top: 1px solid var(--ink); }
+.report-chart { margin: var(--sp-3) 0 0; }
+.report-chart figcaption { margin-top: var(--sp-1); font-size: var(--fs-caption); color: var(--ink-3); }
+.zoning-summary.compact { margin-top: var(--sp-3); padding-top: 0; border-top: 0; }
+.zoning-summary.compact + .zoning-summary.compact { margin-top: var(--sp-4); padding-top: var(--sp-3); border-top: 1px solid var(--line); }
+.report-footer { display: flex; justify-content: space-between; gap: var(--sp-3); flex-wrap: wrap; margin-top: var(--sp-5); padding-top: var(--sp-3); border-top: 1px solid var(--line-strong); font-size: var(--fs-caption); color: var(--ink-3); }
+@media print {
+  .plan-cards, .plan-card, .report-chart, .report-footer { break-inside: avoid; }
+  .plan-card, .plan-card-row strong, .report-table tr.total { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+}
