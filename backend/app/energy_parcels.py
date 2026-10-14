@@ -363,14 +363,15 @@ def _parcel_grid(db: Any, grid_ids: Any = None) -> dict[str, str]:
 def _register_area(db: Any, sigungu_codes: Any = None) -> dict[str, float]:
     """PNU → cleaned 연면적 sum (건축물대장 표제부), for the parcels of ``sigungu_codes`` (None: all)."""
     try:
-        from sqlalchemy import or_
         from .official import BuildingRegister, register_areas
         area: dict[str, float] = {}
         query = select(BuildingRegister.parcel_code, BuildingRegister.attributes)
         if sigungu_codes is not None:
             if not sigungu_codes:
                 return {}
-            query = query.where(or_(*[BuildingRegister.parcel_code.between(code, code + "~") for code in sorted(sigungu_codes)]))
+            # substr, not a range ending in "~": under the server's locale collation symbols sort before digits,
+            # and the range matched nothing (10/14 deploy: every grid lost its 건물 전체 전력 원단위)
+            query = query.where(func.substr(BuildingRegister.parcel_code, 1, 5).in_(sorted(sigungu_codes)))
         for pnu, attrs in db.execute(query):
             gfa = register_areas(attrs or {})[0]
             if gfa:

@@ -171,6 +171,7 @@ def test_a_region_map_reads_only_its_cells_with_the_same_values_and_another_regi
     scoped = grid_building_energy(db, 2025, {'g1'})
     assert set(scoped) == {'g1'} and scoped['g1']['electricity_kwh'] == national['g1']['electricity_kwh'] == 1320.0
     assert scoped['g1']['parcels'] == 2
+    assert scoped['g1']['kwh_per_m2'] is None  # no 건축물대장 table yet: no area, no intensity (never 0)
     _hub_year(db, '41110', '10100', '0001', '0000', 5.0)  # another region is being collected
     db.commit()
     assert grid_building_energy(db, 2025, {'g1'}) is scoped  # still the cached answer
@@ -191,3 +192,21 @@ def test_metered_parcels_missing_from_the_cadastral_snapshot_are_placed_by_their
     assert placed.grid_id == 'g1' and placed.method == MAIN_LOT_METHOD
     assert grid_building_energy(db, 2025, {'g1'})['g1']['electricity_kwh'] == 600.0
     assert place_missing_parcels(db, ['52113'])['placed'] == 0  # a second run adds nothing
+
+
+def test_a_region_scoped_map_still_finds_the_register_floor_area_of_its_parcels():
+    """10/14 deploy: the region filter on the 건축물대장 matched nothing on the PC (locale collation) and every
+    grid lost its 건물 전체 전력 원단위; the floor area must come with the scoped totals."""
+    from app.energy_parcels import grid_building_energy
+    from app.official import BuildingRegister
+    db, ParcelGrid = _parcel_db()
+    BuildingRegister.__table__.create(db.get_bind())
+    db.add(ParcelGrid(pnu='5211311600100110000', grid_id='g1'))
+    db.add(BuildingRegister(id='b1', parcel_code='5211311600100110000', source='t', reference_period='2025', attributes={'gross_floor_area_m2': 1200.0},
+                            raw_record={}))
+    db.add(BuildingRegister(id='b2', parcel_code='4111110100100010000', source='t', reference_period='2025', attributes={'gross_floor_area_m2': 9.0},
+                            raw_record={}))
+    _hub_year(db, '52113', '11600', '0011', '0000', 10000.0)
+    db.commit()
+    cell = grid_building_energy(db, 2025, {'g1'})['g1']
+    assert cell['area_m2'] == 1200.0 and cell['kwh_per_m2'] == 100.0
