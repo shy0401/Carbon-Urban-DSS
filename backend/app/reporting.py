@@ -141,7 +141,7 @@ def plan_sentence_facts(n,label,inputs,result):
     if carbon is not None and ref is not None:
         e=(annual.get('scenario') or {}).get('electricity_carbon_kg');g=carbon-e if e is not None else None
         parts=f"(전력 {e/1000:,.1f} t, 가스 {g/1000:,.1f} t 가정 계수)" if e is not None and g is not None else ''
-        verdict=f"보다 {abs(saving):.1f}% {'적습니다' if saving>=0 else '많습니다'}" if saving is not None else '와 같습니다'
+        verdict=('과 같습니다' if saving is None or abs(saving)<0.05 else f"보다 {abs(saving):.1f}% {'적습니다' if saving>0 else '많습니다'}")
         facts.append({'id':f'carbon_{n}','text':f"{label}의 연간 운영탄소는 {carbon/1000:,.1f} tCO2eq{parts}이며, 같은 연면적을 지역 관측 원단위 그대로 지을 때(기준안 {ref/1000:,.1f} t){verdict}."})
     elif carbon is not None and change is not None:   # plans saved before the reference plan existed
         facts.append({'id':f'carbon_{n}','text':f'{label}의 연간 운영탄소는 {carbon/1000:,.1f} tCO2eq이며 격자 현재 사용량 대비 변화는 {change/1000:+,.1f} t입니다.'})
