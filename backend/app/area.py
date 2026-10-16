@@ -640,11 +640,16 @@ def _effort_on(history: dict[str, Any], plan: dict[str, Any], target_pct: float,
 def _effort_kcsm(history: dict[str, Any], plan: dict[str, Any], target_pct: float, pv: dict[str, Any] | None, factor: float) -> dict[str, Any]:
     """Effort on the provider's all-building electricity emissions (탄소공간지도 100m, 선도소프트).
 
-    baseline  = the latest data year's emissions of the 100m cells inside the area outline (tCO2eq as delivered);
-    new load  = planned floor area × (the same year's emissions of the area's 500m grids ÷ their 건축물대장 floor area
-                approved by then) — numerator and denominator over the same grids;
-    kWh / PV  = carbon ÷ this tool's electricity factor (a conversion: the provider's own factor is not known yet).
+    The provider's carbon is turned back into electricity with that year's approved factor (DATA_STANDARD 5.4: 2023·2024 =
+    0.4781 — the provider does not state its factor; 2024 matches KEPCO 주택·일반·교육용 sales × 0.4781 within 1.2% and is
+    exactly 0.4781/0.4173 times the public 500m map in every cell, 2026-10-17), then priced with this screen's factor like
+    the other bases, so the three bases are in the same carbon units.
+
+    baseline  = the latest data year's electricity of the 100m cells inside the area outline;
+    new load  = planned floor area × (the same year's electricity of the area's 500m grids ÷ their 건축물대장 floor area
+                approved by then) — numerator and denominator over the same grids.
     """
+    from .emissions import electricity_factor_for_year
     k = history.get("kcsm") or {}
     years = k.get("years") or {}
     label = EFFORT_BASIS["kcsm"]
@@ -656,21 +661,27 @@ def _effort_kcsm(history: dict[str, Any], plan: dict[str, Any], target_pct: floa
     gfa = item.get("register_gfa_m2")
     if not gfa or not item.get("grid_t"):
         return {"available": False, "basis": "kcsm", "basis_label": label,
-                "reason": "구역 격자의 건축물대장 연면적이 없어 신축 부하 원단위(탄소공간지도 배출 ÷ 연면적)를 낼 수 없습니다"}
-    base_kg = float(item["boundary_t"]) * 1000
-    intensity_kg = float(item["grid_t"]) * 1000 / float(gfa)
-    load_text = (f"신축 부하 = 계획 연면적 × 구역 격자의 탄소공간지도 전력 배출 원단위 {intensity_kg:,.2f} kgCO2eq/m²·년 "
-                 f"({base_year}년, 격자 {item['grid_cells']:,}칸 {float(item['grid_t']):,.1f} tCO2eq ÷ 건축물대장 연면적 {float(gfa):,.0f}m²)")
+                "reason": "구역 격자의 건축물대장 연면적이 없어 신축 부하 원단위(탄소공간지도 전력 ÷ 연면적)를 낼 수 없습니다"}
+    provider_factor = electricity_factor_for_year(int(base_year))
+    if not provider_factor:
+        return {"available": False, "basis": "kcsm", "basis_label": label, "reason": f"{base_year}년 승인 전력 계수가 없어 탄소공간지도 값을 전력량으로 되돌릴 수 없습니다"}
+    base_kwh = float(item["boundary_t"]) * 1000 / provider_factor
+    intensity_kwh = float(item["grid_t"]) * 1000 / provider_factor / float(gfa)
+    load_text = (f"신축 부하 = 계획 연면적 × 구역 격자의 탄소공간지도 전력 원단위 {intensity_kwh:,.2f} kWh/m²·년 "
+                 f"({base_year}년 격자 {item['grid_cells']:,}칸 {float(item['grid_t']):,.1f} tCO2eq ÷ {provider_factor} ÷ 건축물대장 연면적 {float(gfa):,.0f}m²)")
     result = _effort_result(history, plan, target_pct, pv["kwh_per_kw"] if pv else None, factor, base_year, "PROVIDED",
-                            intensity_kg / factor, base_kg / factor, float(gfa), "kcsm", load_text)
-    result["intensity_kgco2eq_per_m2"] = round(intensity_kg, 3)
+                            intensity_kwh, base_kwh, float(gfa), "kcsm", load_text)
+    result["intensity_kgco2eq_per_m2"] = round(intensity_kwh * factor, 3)
     result["baseline_source"] = k.get("source")
-    result["baseline_kwh_converted"] = True
+    result["provider_t"] = item["boundary_t"]
+    result["provider_factor"] = provider_factor
     result["baseline_cells"] = item.get("cells")
     result["baseline_drop_cells"] = item.get("drop_cells")
     result["assumptions"] = [load_text,
-        f"기준 배출은 선도소프트가 준 탄소공간지도 100m 건물 전기 배출({base_year}년, {k.get('boundary_basis') or '구역 안 100m 칸'} {item.get('cells') or 0:,}칸)의 합입니다. 산정에 쓴 배출계수는 아직 받지 않았습니다(확인 필요)",
-        f"전력량(kWh)과 태양광 용량은 배출량을 이 도구의 전력 계수 {factor} kgCO2eq/kWh로 나눈 환산값입니다",
+        f"기준은 선도소프트가 준 탄소공간지도 100m 건물 전기 배출({base_year}년, {k.get('boundary_basis') or '구역 안 100m 칸'} {item.get('cells') or 0:,}칸 "
+        f"{float(item['boundary_t']):,.1f} tCO2eq)을 그해 승인 계수 {provider_factor}로 전력 {base_kwh:,.0f} kWh로 되돌린 뒤 이 화면의 계수 {factor}를 곱한 값입니다",
+        f"제공 값이 {provider_factor}로 산정됐다는 것은 추정입니다(전주 2024년 합계가 한전 주택·일반·교육용 판매량 × {provider_factor}와 1.2% 차이, "
+        "공공 500m 탄소공간지도와 모든 칸·달에서 0.4781/0.4173배). 선도소프트 확인 필요",
         *[a for a in result["assumptions"] if not a.startswith("신축 부하")]]
     if item.get("drop_cells"):
         result["assumptions"].append(f"{base_year}년 급감 칸 {item['drop_cells']}개(원자료 누락 의심)는 제공값 그대로 기준에 들어 있습니다")
@@ -1199,9 +1210,11 @@ def area_facts(history: dict[str, Any], comparison: dict[str, Any] | None = None
                 f"원단위 {effort_result['intensity_kwh_per_m2']:,.2f} kWh/m²·년(연면적 확인 {effort_result['intensity_area_m2']:,.0f}m²).",
                 effort_result["baseline_year"], effort_result["baseline_kwh"], effort_result["intensity_kwh_per_m2"], effort_result["intensity_area_m2"])
         if effort_result.get("basis") == "kcsm":
-            add("effort_basis", f"감축 노력은 구역 건물 전체의 탄소공간지도 100m 전력 배출(선도소프트 제공) 기준입니다: {effort_result['baseline_year']}년 "
-                f"{effort_result['baseline_kgco2eq'] / 1000:,.1f} tCO2eq, 신축 원단위 {effort_result['intensity_kgco2eq_per_m2']:,.2f} kgCO2eq/m²·년(건축물대장 연면적 {effort_result['intensity_area_m2']:,.0f}m² 기준).",
-                effort_result["baseline_year"], round(effort_result["baseline_kgco2eq"] / 1000, 1), effort_result["intensity_kgco2eq_per_m2"], effort_result["intensity_area_m2"])
+            add("effort_basis", f"감축 노력은 구역 건물 전체의 탄소공간지도 100m 전력 배출(선도소프트 제공) 기준입니다: {effort_result['baseline_year']}년 제공 값 "
+                f"{effort_result['provider_t']:,.1f} tCO2eq를 계수 {effort_result['provider_factor']}로 전력 {effort_result['baseline_kwh']:,.0f} kWh로 되돌렸고(추정), "
+                f"원단위는 {effort_result['intensity_kwh_per_m2']:,.2f} kWh/m²·년(건축물대장 연면적 {effort_result['intensity_area_m2']:,.0f}m² 기준)입니다.",
+                effort_result["baseline_year"], effort_result["provider_t"], effort_result["provider_factor"], effort_result["baseline_kwh"],
+                round(effort_result["intensity_kwh_per_m2"], 2), effort_result["intensity_area_m2"])
         if effort_result.get("basis") == "buildings":
             add("effort_basis", f"감축 노력은 구역 건물 전체(건축HUB 계측 지번, 상가·업무 포함) 기준입니다: {effort_result['baseline_year']}년 전력 {effort_result['baseline_kwh']:,.0f} kWh, 원단위 {effort_result['intensity_kwh_per_m2']:,.2f} kWh/m²·년.", effort_result["baseline_year"], effort_result["baseline_kwh"], effort_result["intensity_kwh_per_m2"])
         add("effort_target", f"{effort_result['baseline_year']}년 대비 {effort_result['target_pct']:,.0f}% 감축을 목표로 하면 계획 반영 후 연간 {effort_result['required_reduction_kgco2eq']:,.0f} kgCO2eq를 줄여야 합니다.", effort_result["baseline_year"], effort_result["target_pct"], effort_result["required_reduction_kgco2eq"])

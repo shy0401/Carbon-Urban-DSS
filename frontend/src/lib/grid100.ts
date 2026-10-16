@@ -15,12 +15,12 @@ export interface Grid100Response { type: 'FeatureCollection'; features: Array<Ge
 export type Grid100Key = 'population' | 'building_count' | 'floor_area_m2' | 'approval_year';
 export interface Grid100Metric { key: Grid100Key; label: string; unit: string; digits: number; breaks: number[]; note: string }
 
-/** 100m 칸 하나(1ha) 기준의 고정 경계: 화면을 옮겨도 같은 값은 같은 색. */
+/** 100m 칸 하나(1ha) 기준의 고정 경계: 화면을 옮겨도 같은 값은 같은 색. 색 띠가 5색이라 경계는 4개(구간 5개)까지. */
 export const GRID100_METRICS: Grid100Metric[] = [
-  { key: 'population', label: '인구', unit: '명', digits: 0, breaks: [20, 50, 100, 200, 400], note: '공개값은 6명 이상입니다. 1~5명 칸은 비공개라 빗금으로, 값이 비어 있는 칸은 칠하지 않습니다(0 아님).' },
-  { key: 'building_count', label: '건물 수', unit: '동', digits: 0, breaks: [2, 4, 8, 15, 30], note: '국토통계지도 건물 격자 통계의 건축물 수입니다. 건물이 없는 칸은 값이 비어 있습니다.' },
-  { key: 'floor_area_m2', label: '추정 연면적', unit: 'm²', digits: 0, breaks: [1000, 3000, 8000, 20000, 50000], note: '국토통계지도의 칸 평균 연면적 × 건물 수로 낸 추정입니다(팀 계산).' },
-  { key: 'approval_year', label: '평균 사용승인연도', unit: '년', digits: 0, breaks: [1980, 1990, 2000, 2010, 2018], note: '칸 안 건물의 평균 사용승인연도입니다. 색이 진할수록 최근 건물입니다.' },
+  { key: 'population', label: '인구', unit: '명', digits: 0, breaks: [20, 50, 100, 250], note: '공개값은 6명 이상입니다. 1~5명 칸은 비공개라 빗금으로, 값이 비어 있는 칸은 칠하지 않습니다(0 아님).' },
+  { key: 'building_count', label: '건물 수', unit: '동', digits: 0, breaks: [2, 5, 10, 20], note: '국토통계지도 건물 격자 통계의 건축물 수입니다. 건물이 없는 칸은 값이 비어 있습니다.' },
+  { key: 'floor_area_m2', label: '추정 연면적', unit: 'm²', digits: 0, breaks: [2000, 5000, 15000, 40000], note: '국토통계지도의 칸 평균 연면적 × 건물 수로 낸 추정입니다(팀 계산).' },
+  { key: 'approval_year', label: '평균 사용승인연도', unit: '년', digits: 0, breaks: [1980, 1990, 2000, 2010], note: '칸 안 건물의 평균 사용승인연도입니다. 색이 진할수록 최근 건물입니다.' },
 ];
 
 export const ZONE_CLASS_NAME: Record<string, string> = {

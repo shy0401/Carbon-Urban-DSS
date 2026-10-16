@@ -20,7 +20,9 @@ describe('탄소공간지도 100m 전기 배출 helpers', () => {
     expect(expr[0]).toBe('case');
     expect(expr[2]).toBe(KCSM_ZERO_FILL);
     expect(kcsmClassLabel(c, 0)).toBe('10 미만');
-    expect(kcsmClassLabel(c, 5)).toBe('1,000 이상');
+    expect(kcsmClassLabel(c, 4)).toBe('1,000 이상');
+    expect(c.classes.every((cl) => typeof cl.color === 'string' && cl.color.startsWith('#'))).toBe(true);   // every class has a ramp colour (a missing one broke the MapLibre style)
+    expect((kcsmColor(c) as unknown[]).flat(Infinity).includes(undefined as never)).toBe(false);
   });
   it('names the previous year, the change and a suspected drop, and escapes the popup', () => {
     const lines = Object.fromEntries(kcsmLines(cell({ elec_t: 0, status: 'zero', prev_t: 360, change_pct: -100, drop: true, drop_from_t: 360 }), 2024));

@@ -240,6 +240,9 @@ export interface EffortResult {
   /** kcsm 기준: 신축 부하 원단위(탄소공간지도 배출 ÷ 건축물대장 연면적), kgCO2eq/m²·년. */
   intensity_kgco2eq_per_m2?: number;
   baseline_source?: string;
+  /** kcsm 기준: 경계 안 100m 칸의 제공 값(tCO2eq)과 그것을 전력량으로 되돌린 계수(그해 승인 계수, 추정). */
+  provider_t?: number;
+  provider_factor?: number;
   baseline_cells?: number;
   baseline_drop_cells?: number;
   data_class?: string;

@@ -19,8 +19,8 @@ export interface KcsmMeta { source: string | null; unit?: string; years: number[
 export interface KcsmSummary { cells: number; value_cells: number; zero_cells: number; total_t: number | null; prev_total_t: number | null; drop_cells: number; monthly: Array<number | null> }
 export interface KcsmResponse { type: 'FeatureCollection'; features: Array<GeoJSON.Feature<GeoJSON.Polygon, KcsmProps>>; meta: KcsmMeta; summary: KcsmSummary | null }
 
-/** 1ha 칸 기준 고정 경계(tCO₂eq/년): 전주 2024년 값 있는 칸의 중앙값 약 50 t, 상위 10% 약 440 t. */
-export const KCSM_BREAKS = [10, 50, 150, 400, 1000];
+/** 1ha 칸 기준 고정 경계(tCO₂eq/년): 전주 2024년 값 있는 칸의 중앙값 약 50 t, 상위 10% 약 440 t. 색 띠가 5색이라 경계는 4개. */
+export const KCSM_BREAKS = [10, 50, 200, 1000];
 export const KCSM_MIN_ZOOM = 13;
 export const KCSM_ZERO_FILL = TOKENS['surface-sunk'] ?? '#eef0f3';
 

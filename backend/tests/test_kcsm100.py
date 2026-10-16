@@ -124,13 +124,17 @@ def test_effort_on_the_provider_basis_uses_its_carbon_and_its_own_intensity():
     history = history_with_kcsm()
     result = effort(history, {"added_floor_area_m2": 1000}, 20, 1000, basis="kcsm")
     assert result["available"] and result["basis"] == "kcsm" and result["baseline_mode"] == "PROVIDED" and result["baseline_year"] == 2024
-    assert result["baseline_kgco2eq"] == pytest.approx(120000.0)          # 100m cells inside the 행정동 outline
-    assert result["intensity_kgco2eq_per_m2"] == pytest.approx(80.0)      # 160 t over the area grids ÷ 2,000 m² register floor area
-    bau = 120000.0 + 80.0 * 1000
-    need = bau - 120000.0 * 0.8
-    assert result["bau_kgco2eq"] == pytest.approx(bau) and result["required_reduction_kgco2eq"] == pytest.approx(need)
-    assert result["options"]["offset_kwh_per_year"] == pytest.approx(need / 0.5, abs=0.2)   # kWh only as a conversion with this tool's factor
-    assert any("환산값" in a for a in result["assumptions"]) and any("급감" in a for a in result["assumptions"])
+    # 120 t inside the 행정동 outline → electricity with the 2024 approved factor (0.4781) → this screen's factor (0.5 here)
+    assert result["provider_t"] == pytest.approx(120.0) and result["provider_factor"] == 0.4781
+    assert result["baseline_kwh"] == pytest.approx(120000.0 / 0.4781, abs=0.1)
+    assert result["baseline_kgco2eq"] == pytest.approx(120000.0 / 0.4781 * 0.5, abs=0.1)
+    assert result["intensity_kwh_per_m2"] == pytest.approx(160000.0 / 0.4781 / 2000.0)   # 160 t over the area grids ÷ 2,000 m² register floor area
+    base = 120000.0 / 0.4781 * 0.5
+    bau = base + 160000.0 / 0.4781 / 2000.0 * 1000 * 0.5
+    need = bau - base * 0.8
+    assert result["bau_kgco2eq"] == pytest.approx(bau, abs=0.2) and result["required_reduction_kgco2eq"] == pytest.approx(need, abs=0.2)
+    assert result["options"]["offset_kwh_per_year"] == pytest.approx(need / 0.5, abs=0.5)
+    assert any("되돌린" in a for a in result["assumptions"]) and any("추정" in a for a in result["assumptions"]) and any("급감" in a for a in result["assumptions"])
     facts = {f["id"]: f for f in area_facts(history, None, result)}
     assert {"kcsm_total", "kcsm_grid", "kcsm_tool", "kcsm_change", "kcsm_drop", "effort_basis"} <= set(facts)
     assert facts["kcsm_change"]["signed_pct"] < 0

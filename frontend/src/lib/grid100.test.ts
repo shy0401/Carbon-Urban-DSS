@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { grid100ClassLabel, grid100Classify, grid100Color, grid100Fill, grid100Lines, grid100Metric, grid100Tooltip, grid100Unavailable, grid100Value, populationText, type Grid100Props } from './grid100';
+import { GRID100_METRICS, grid100ClassLabel, grid100Classify, grid100Color, grid100Fill, grid100Lines, grid100Metric, grid100Tooltip, grid100Unavailable, grid100Value, populationText, type Grid100Props } from './grid100';
 
 const cell = (over: Partial<Grid100Props> = {}): Grid100Props => ({
   id: 'g', x: 962000, y: 1748000, grid500: 'cell_962000_1748000', population: 120, population_status: 'observed',
@@ -22,16 +22,16 @@ describe('100m grid (국토통계지도) helpers', () => {
   it('classifies on fixed bounds and labels classes from the bounds, years without separators', () => {
     const metric = grid100Metric('approval_year');
     const c = grid100Classify([f({ approval_year: 2015 }), f({ approval_year: 2020 }), f({ approval_year: null })], metric);
-    expect(c.lowerBounds).toEqual([1980, 1990, 2000, 2010, 2018]);
+    expect(c.lowerBounds).toEqual([1980, 1990, 2000, 2010]);
     expect(c.missing).toBe(1);
     expect(grid100ClassLabel(c, 0, metric)).toBe('1980년 이전');
     expect(grid100ClassLabel(c, 3, metric)).toBe('2000년 ~ 2010년 미만');
-    expect(grid100ClassLabel(c, 5, metric)).toBe('2018년 이상');
+    expect(grid100ClassLabel(c, 4, metric)).toBe('2010년 이상');
     expect(grid100Value(1994.6, metric)).toBe('1995년');
     const pop = grid100Metric('population');
     const cp = grid100Classify([f({ population: 500 })], pop);
     expect(grid100ClassLabel(cp, 0, pop)).toBe('20 미만');
-    expect(grid100ClassLabel(cp, 5, pop)).toBe('400 이상');
+    expect(grid100ClassLabel(cp, 4, pop)).toBe('250 이상');
   });
   it('paints a cell without the value transparent, not with the lowest class', () => {
     const metric = grid100Metric('population');
@@ -39,6 +39,12 @@ describe('100m grid (국토통계지도) helpers', () => {
     expect(grid100Fill(null, c)).toBeNull();
     expect(grid100Fill(30, c)).toBe(c.classes[1].color);
     expect(grid100Fill(300, c)).toBe(c.classes[4].color);
+    // every metric: every class has a colour of the 5-colour ramp (6 classes left the top one undefined and broke the MapLibre style)
+    for (const m of GRID100_METRICS) {
+      const k = grid100Classify([f({ population: 1, building_count: 1, floor_area_m2: 1, approval_year: 1970 })], m);
+      expect(k.classes.every((cl) => typeof cl.color === 'string' && cl.color.startsWith('#'))).toBe(true);
+      expect((grid100Color(m, k) as unknown[]).flat(Infinity).includes(undefined as never)).toBe(false);
+    }
     const expr = grid100Color(metric, c) as unknown[];
     expect(expr[0]).toBe('case');
     expect(expr[2]).toEqual(['rgba', 0, 0, 0, 0]);
