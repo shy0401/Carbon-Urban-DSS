@@ -14,7 +14,7 @@ import { setAnalysisScope, useAnalysisScope } from '../hooks/useAnalysisScope';
 import { areaLink, parseAreaLink, type AreaLink } from '../lib/caseLink';
 import { useApi } from '../hooks/useApi';
 import { api } from '../lib/api';
-import { at, buildSpec, EFFORT_BASIS_LABEL, effortHeadline, eventYears, measuresBody, MODE_LABEL, NO_MEASURES, planBody, plannedArea, pvNote, REPORT_MODE_LABEL, type AreaAnalysis, type AreaMode, type AreaOptions, type AreaReport, type AreaSpec, type BeforeAfter, type Benchmark, type EffortBasis, type EffortResult, type MeasuresState, type PlanState } from '../lib/area';
+import { at, BASELINE_MODE_LABEL, buildSpec, EFFORT_BASIS_LABEL, effortHeadline, eventYears, measuresBody, MODE_LABEL, NO_MEASURES, planBody, plannedArea, pvNote, REPORT_MODE_LABEL, type AreaAnalysis, type AreaMode, type AreaOptions, type AreaReport, type AreaSpec, type BeforeAfter, type Benchmark, type EffortBasis, type EffortResult, type MeasuresState, type PlanState } from '../lib/area';
 import { formatDate, formatMetric } from '../lib/format';
 
 const YEARS = Array.from({ length: 17 }, (_, i) => 2010 + i);
@@ -154,7 +154,8 @@ export function AreaPage() {
   };
 
   // 같은 시·군·구 행정동 원단위 분포: 감축 기준(자동 전환 포함)과 기간이 바뀔 때만 다시 받는다. 실패해도 화면은 그대로.
-  const benchBasis = analysis?.effort?.available ? analysis.effort.basis ?? null : null;
+  // 탄소공간지도 기준(kcsm)은 관측 원단위가 아니라 비교표가 없다: 행정동 비교는 관측 기준에서만.
+  const benchBasis = analysis?.effort?.available && analysis.effort.basis !== 'kcsm' ? analysis.effort.basis ?? null : null;
   useEffect(() => {
     if (!benchBasis) { setBench(null); return; }
     let live = true;
@@ -228,13 +229,14 @@ export function AreaPage() {
         <RegisterPanel analysis={analysis} eventYear={activeEvent} />
       </div>
       <BuildingEnergyPanel analysis={analysis} />
+      <KcsmPanel analysis={analysis} />
       <SgisAreaPanel analysis={analysis} />
 
       <div className="section-label"><h2>개발 전후 영향</h2><span>개발 연도는 전환기라 제외하고 앞뒤 {windowSize}년 평균을 비교합니다</span></div>
       <BeforeAfterPanel comparison={analysis.before_after} candidates={eventYears(analysis.history)} eventYear={eventYear} setEventYear={setEventYear} windowSize={windowSize} setWindowSize={setWindowSize} />
 
       <div className="section-label" id="area-step-plan"><h2>미래 개발과 감축 노력</h2><span>목표 감축률을 넣으면 필요한 노력을 계산합니다</span></div>
-      <EffortPanel effort={analysis.effort} plan={plan} setPlan={setPlan} target={target} setTarget={setTarget} pvYield={pvYield} setPvYield={setPvYield} basis={effortBasis} setBasis={setEffortBasis} />
+      <EffortPanel effort={analysis.effort} plan={plan} setPlan={setPlan} target={target} setTarget={setTarget} pvYield={pvYield} setPvYield={setPvYield} basis={effortBasis} setBasis={setEffortBasis} kcsmAvailable={!!analysis.history.kcsm?.available} />
       <BenchmarkPanel bench={bench} effort={analysis.effort} regionName={options.data?.region?.short_name ?? '시·군·구'} />
 
       <div className="section-label" id="area-step-measures"><h2>감축 수단 조합</h2><span>수단별 감축량을 더해 필요 감축량을 채우는지 봅니다</span></div>
@@ -330,6 +332,31 @@ function BuildingEnergyPanel({ analysis }: { analysis: AreaAnalysis }) {
   </section>;
 }
 
+/** 선도소프트 탄소공간지도 100m 건물 전기 배출: 경계 안 100m 칸 합, 같은 500m 격자 범위 합, 같은 범위의 이 도구 건축HUB 값(더하지 않고 비율만). */
+export function KcsmPanel({ analysis }: { analysis: AreaAnalysis }) {
+  const k = analysis.history.kcsm;
+  if (!k) return null;
+  const years = Object.values(k.years ?? {}).sort((a, b) => a.year - b.year);
+  const t1 = (v: number | null | undefined) => (v == null ? '자료 없음' : formatMetric(v, '', 1));
+  return <section className="panel area-kcsm" aria-label="탄소공간지도 100m 전력 배출" data-testid="area-kcsm">
+    <div className="panel-title"><h3>건물 전기 배출 (탄소공간지도 100m · 선도소프트 제공)</h3><div className="badge-row"><ProvenanceBadge kind="computed" detail="제공기관 산정값" /><span className="status-tag neutral">이 PC에서만</span></div></div>
+    {!k.available || !years.length ? <EmptyState title="이 구역에는 100m 전력 배출 자료가 없습니다" description={k.reason ?? '전주시 2023·2024년만 받았습니다.'} /> : <>
+      <div className="table-wrap"><table>
+        <thead><tr><th>연도</th><th className="num">{k.boundary_basis ?? '경계 안 100m 칸'}</th><th className="num">tCO₂eq (경계 기준)</th><th className="num">tCO₂eq (500m 격자 범위)</th><th className="num">건축HUB 계측 tCO₂eq (같은 격자)</th><th className="num">급감 칸</th></tr></thead>
+        <tbody>{years.map((v) => <tr key={v.year}>
+          <td>{v.year}{v.change_pct != null && <small className="muted"> ({v.change_pct > 0 ? '+' : ''}{v.change_pct.toFixed(1)}%)</small>}</td>
+          <td className="num">{formatMetric(v.cells)}<small> (값 {formatMetric(v.value_cells)} · 0 {formatMetric(v.zero_cells)})</small></td>
+          <td className="num"><b>{t1(v.boundary_t)}</b></td>
+          <td className="num">{t1(v.grid_t)}<small> ({formatMetric(v.grid_cells)}칸)</small></td>
+          <td className="num">{v.tool ? <>{t1(v.tool.t)}<small> ({v.tool.share_pct == null ? '—' : `${v.tool.share_pct.toFixed(1)}%`})</small></> : '자료 없음'}</td>
+          <td className="num">{v.drop_cells ? <span className="status-tag warn" title={`앞 해 ${t1(v.drop_from_t)} → ${t1(v.drop_now_t)} tCO₂eq`}>{v.drop_cells}칸</span> : '없음'}</td>
+        </tr>)}</tbody>
+      </table></div>
+      <p className="muted">{k.note} 건축HUB 값은 같은 500m 격자의 12개월 계측 지번 전력 × 그해 승인 계수이고, 괄호 안은 탄소공간지도 값에 대한 비율입니다(단독주택·200세대 미만 공동주택은 건축HUB 범위 밖). 급감 칸은 앞 해 100 tCO₂eq 이상이던 칸이 절반 아래로 줄어든 칸으로, 원자료 누락이 의심되어 표시만 합니다.</p>
+    </>}
+  </section>;
+}
+
 /** 구역이 걸친 SGIS 1km 격자 전체의 합(관측)과, 면적 비례로 나눈 참고값(추정)을 나란히 둔다. */
 function SgisAreaPanel({ analysis }: { analysis: AreaAnalysis }) {
   const sg = analysis.history.sgis_grid;
@@ -397,7 +424,7 @@ function BeforeAfterPanel({ comparison, candidates, eventYear, setEventYear, win
   </section>;
 }
 
-function EffortPanel({ effort, plan, setPlan, target, setTarget, pvYield, setPvYield, basis, setBasis }: { effort: EffortResult | null; plan: PlanState; setPlan: (p: PlanState) => void; target: number; setTarget: (t: number) => void; pvYield: string; setPvYield: (v: string) => void; basis: EffortBasis; setBasis: (b: EffortBasis) => void }) {
+function EffortPanel({ effort, plan, setPlan, target, setTarget, pvYield, setPvYield, basis, setBasis, kcsmAvailable = false }: { effort: EffortResult | null; plan: PlanState; setPlan: (p: PlanState) => void; target: number; setTarget: (t: number) => void; pvYield: string; setPvYield: (v: string) => void; basis: EffortBasis; setBasis: (b: EffortBasis) => void; kcsmAvailable?: boolean }) {
   const headline = effortHeadline(effort);
   const num = (key: keyof PlanState, label: string, unit: string, step = 1) => <label className="field" key={key}><span>{label}</span><div><input type="number" min={0} step={step} value={plan[key] as number} onChange={(e) => setPlan({ ...plan, [key]: Math.max(0, Number(e.target.value)) })} /><em>{unit}</em></div></label>;
   const o = effort?.options;
@@ -417,20 +444,20 @@ function EffortPanel({ effort, plan, setPlan, target, setTarget, pvYield, setPvY
         <p className="muted">계획 연면적 {formatMetric(plannedArea(plan), 'm²')}</p>
         <label className="area-target"><span>목표 감축률 (기준 연도 대비)</span><div><input type="range" min={0} max={100} step={1} value={target} onChange={(e) => setTarget(Number(e.target.value))} aria-label="목표 감축률 슬라이더" /><div className="with-unit"><input type="number" min={0} max={100} value={target} onChange={(e) => setTarget(Math.min(100, Math.max(0, Number(e.target.value))))} aria-label="목표 감축률" /><em>%</em></div></div></label>
         <div className="area-effort-basis"><span>기준 건물</span><div className="area-modes small" role="tablist" aria-label="감축 노력 기준 건물">
-          {(['apartments', 'buildings'] as const).map((b) => <button key={b} role="tab" aria-selected={basis === b} onClick={() => setBasis(b)}>{EFFORT_BASIS_LABEL[b]}</button>)}
-        </div><small className="muted">{basis === 'buildings' ? '상가·업무·학교 등 구역의 계측 건물 전체(건축HUB, 최근 12개월 완비 연도). 상업지역은 이 기준이 맞습니다.' : '공동주택 관리비 전력(같은 출처로 연도 비교). 주거지역 기본값.'}</small></div>
+          {(kcsmAvailable || basis === 'kcsm' ? (['apartments', 'buildings', 'kcsm'] as const) : (['apartments', 'buildings'] as const)).map((b) => <button key={b} role="tab" aria-selected={basis === b} onClick={() => setBasis(b)}>{EFFORT_BASIS_LABEL[b]}</button>)}
+        </div><small className="muted">{basis === 'kcsm' ? '선도소프트가 준 탄소공간지도 100m 건물 전기 배출(단독주택 포함 모든 건물, 2024년까지). 경계 안 100m 칸 합을 기준으로, 신축 부하는 같은 격자의 배출 ÷ 건축물대장 연면적으로 냅니다.' : basis === 'buildings' ? '상가·업무·학교 등 구역의 계측 건물 전체(건축HUB, 최근 12개월 완비 연도). 상업지역은 이 기준이 맞습니다.' : '공동주택 관리비 전력(같은 출처로 연도 비교). 주거지역 기본값.'}</small></div>
         <label className="field"><span>태양광 kW당 연 발전량 (선택)</span><div><input type="number" min={0} step={10} value={pvYield} placeholder={effort?.pv_yield?.basis === 'ESTIMATED' ? `비우면 지역 추정 ${effort.pv_yield.kwh_per_kw.toLocaleString('ko-KR')}` : '근거가 있을 때만 입력'} onChange={(e) => setPvYield(e.target.value)} /><em>kWh/kW</em></div></label>
       </div>
       <div className="area-effort-result">
         {!effort ? <EmptyState title="목표를 넣으면 계산합니다" /> : !effort.available ? <EmptyState title="계산할 근거가 없습니다" description={effort.reason} /> : <>
-          <div className="panel-title"><h3>필요한 노력</h3><div className="badge-row"><ProvenanceBadge kind="scenario" /><span className={`status-tag ${effort.baseline_mode === 'OBSERVED' ? 'good' : 'warn'}`}>기준 부하 {effort.baseline_mode === 'OBSERVED' ? '관측' : '추정'} · {effort.baseline_year}년{effort.basis ? ` · ${EFFORT_BASIS_LABEL[effort.basis]}` : ''}</span></div></div>
+          <div className="panel-title"><h3>필요한 노력</h3><div className="badge-row"><ProvenanceBadge kind="scenario" /><span className={`status-tag ${effort.baseline_mode === 'ESTIMATED' ? 'warn' : 'good'}`}>기준 부하 {BASELINE_MODE_LABEL[effort.baseline_mode ?? 'OBSERVED']} · {effort.baseline_year}년{effort.basis ? ` · ${EFFORT_BASIS_LABEL[effort.basis]}` : ''}</span></div></div>
           <FallbackNotice effort={effort} />
           {headline && <p className={`area-headline ${headline.tone}`} role="status">{headline.text}</p>}
           <EffortBars effort={effort} />
           <dl className="area-figures cols">
             <Figure label="필요 감축량" value={t(effort.required_reduction_kgco2eq)} unit="tCO₂eq/년" digits={1} />
             <Figure label="신축 부하 (추가 대책 없음)" value={effort.new_load_kwh} unit="kWh/년" />
-            <div className={o?.new_only_efficiency_pct == null ? 'is-missing' : undefined}><dt>신축 건물만 개선할 때</dt><dd>{o?.new_only_efficiency_pct == null ? '신축 없음' : o.new_only_efficiency_pct > 100 ? `${formatMetric(o.new_only_efficiency_pct, '%', 1)} 필요 → 불가` : `${formatMetric(Math.max(0, o.new_only_efficiency_pct), '%', 1)} 절감`}<small>{o?.new_building_intensity_target != null ? `신축 원단위 ${o.new_building_intensity_target} kWh/m²·년 이하 (현재 ${formatMetric(effort.intensity_kwh_per_m2, '', 2)})` : '신축 원단위를 0 아래로 낮출 수 없음'}</small></dd></div>
+            <div className={o?.new_only_efficiency_pct == null ? 'is-missing' : undefined}><dt>신축 건물만 개선할 때</dt><dd>{o?.new_only_efficiency_pct == null ? '신축 없음' : o.new_only_efficiency_pct > 100 ? `${formatMetric(o.new_only_efficiency_pct, '%', 1)} 필요 → 불가` : `${formatMetric(Math.max(0, o.new_only_efficiency_pct), '%', 1)} 절감`}<small>{effort.basis === 'kcsm' && effort.intensity_kgco2eq_per_m2 != null ? `신축 원단위 현재 ${formatMetric(effort.intensity_kgco2eq_per_m2, 'kgCO₂eq/m²·년', 2)} (탄소공간지도 ÷ 건축물대장)` : o?.new_building_intensity_target != null ? `신축 원단위 ${o.new_building_intensity_target} kWh/m²·년 이하 (현재 ${formatMetric(effort.intensity_kwh_per_m2, '', 2)})` : '신축 원단위를 0 아래로 낮출 수 없음'}</small></dd></div>
             <Figure label="지역 전체 건물 효율 개선" value={o?.all_buildings_efficiency_pct != null ? Math.max(0, o.all_buildings_efficiency_pct) : null} unit="%" digits={1} note="기존 + 신축 전력 사용 절감률" />
             <Figure label="재생에너지로 상쇄할 전력" value={o?.offset_kwh_per_year} unit="kWh/년" />
             <Figure label="태양광 설비 용량" value={o?.pv_capacity_kw} unit="kW" digits={1} note={pvNote(effort.pv_yield, o?.pv_capacity_kw)} />

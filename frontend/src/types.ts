@@ -293,6 +293,8 @@ export interface MapData {
   sgis_grid500?: { first_year: number | null; last_year: number | null; base_year: number | null; source: string; cells: number; note: string } | null;
   /** 국토통계지도 100m (팀 수집): 이 지역·연도에 쓸 수 있는 칸 수와 연도. 공개 게이트웨이에는 restricted만. */
   grid100?: { source: string; years: number[]; year: number | null; cells: number; returned: number; truncated: boolean; reason: string | null } | { restricted: true } | null;
+  /** 선도소프트 탄소공간지도 100m 건물 전기 배출: 받은 지역·연도와 칸 수 (공개 주소에는 restricted만). */
+  kcsm100?: { source: string | null; unit?: string; years: number[]; year: number | null; cells: number; returned: number; truncated: boolean; reason: string | null } | { restricted: true } | null;
   register?: { grids: number; buildings: number; source: string } | null;
   building_energy?: { grids: number; parcels: number; complete: boolean; source: string } | null;
 }

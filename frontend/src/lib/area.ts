@@ -102,6 +102,33 @@ export interface AreaHistory {
   register?: RegisterHistory;
   sgis_grid?: AreaSgisGrid | null;
   building_energy?: AreaBuildingEnergy;
+  /** 선도소프트 탄소공간지도 100m 건물 전기 배출 (받은 지역·연도만, 공개 주소에서는 빠짐). */
+  kcsm?: AreaKcsm | null;
+}
+
+export interface AreaKcsmYear {
+  year: number;
+  /** 구역 경계(행정동·다각형·반경) 안에 중심점이 있는 100m 칸의 합, tCO2eq. */
+  boundary_t: number | null;
+  /** 구역 500m 격자 안 100m 칸의 합 (이 화면의 다른 값과 같은 범위), tCO2eq. */
+  grid_t: number | null;
+  cells: number; value_cells: number; zero_cells: number; grid_cells: number;
+  monthly: Array<number | null>;
+  drop_cells: number; drop_from_t: number | null; drop_now_t: number | null;
+  tool?: { kwh: number; factor: number; t: number; parcels: number | null; complete: boolean; share_pct: number | null };
+  register_gfa_m2?: number | null; register_buildings?: number;
+  change_pct?: number | null; change_from?: number;
+}
+
+export interface AreaKcsm {
+  available: boolean;
+  reason?: string;
+  source: string;
+  unit?: string;
+  years: Record<string, AreaKcsmYear>;
+  boundary_basis?: string;
+  grid_basis?: string;
+  note?: string;
 }
 
 /** 건축HUB 법정동 단위 전 지번 (전주 2020-, 수원·완주 2024-): 구역 격자 안 계측 건물 전체. */
@@ -178,9 +205,10 @@ export interface BeforeAfter {
   coverage?: { observed_before_years: number[]; observed_after_years: number[]; before_parcels_mean: number | null; after_existing_parcels_mean: number | null; comparable: boolean };
 }
 
-/** 감축 노력의 기준 건물: 공동주택(K-apt) 또는 구역 건물 전체(건축HUB, 상가·업무 포함). */
-export type EffortBasis = 'apartments' | 'buildings';
-export const EFFORT_BASIS_LABEL: Record<EffortBasis, string> = { apartments: '공동주택 (K-apt)', buildings: '건물 전체 (건축HUB)' };
+/** 감축 노력의 기준 건물: 공동주택(K-apt), 구역 건물 전체(건축HUB, 상가·업무 포함), 건물 전체(탄소공간지도 100m, 선도소프트 제공). */
+export type EffortBasis = 'apartments' | 'buildings' | 'kcsm';
+export const EFFORT_BASIS_LABEL: Record<EffortBasis, string> = { apartments: '공동주택 (K-apt)', buildings: '건물 전체 (건축HUB)', kcsm: '건물 전체 (탄소공간지도 100m)' };
+export const BASELINE_MODE_LABEL: Record<string, string> = { OBSERVED: '관측', ESTIMATED: '추정', PROVIDED: '제공 값' };
 
 export interface PvYield {
   kwh_per_kw: number;
@@ -207,7 +235,13 @@ export interface EffortResult {
   basis_label?: string;
   baseline_year?: number;
   target_pct?: number;
-  baseline_mode?: 'OBSERVED' | 'ESTIMATED';
+  /** OBSERVED 관측, ESTIMATED 추정, PROVIDED 제공기관 값(탄소공간지도 100m). */
+  baseline_mode?: 'OBSERVED' | 'ESTIMATED' | 'PROVIDED';
+  /** kcsm 기준: 신축 부하 원단위(탄소공간지도 배출 ÷ 건축물대장 연면적), kgCO2eq/m²·년. */
+  intensity_kgco2eq_per_m2?: number;
+  baseline_source?: string;
+  baseline_cells?: number;
+  baseline_drop_cells?: number;
   data_class?: string;
   intensity_kwh_per_m2?: number;
   intensity_area_m2?: number;

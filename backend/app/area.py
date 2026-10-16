@@ -20,7 +20,7 @@ import math
 from collections import defaultdict
 from typing import Any, Iterable, Literal
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from .grid_metrics import annual_complete, electricity_plausibility
@@ -511,7 +511,9 @@ def before_after(history: dict[str, Any], event_year: int | None = None, window:
     return result
 
 
-EFFORT_BASIS = {"apartments": "공동주택(K-apt 관리비 전력)", "buildings": "건물 전체(건축HUB 계측 지번, 상가·업무 포함)"}
+EFFORT_BASIS = {"apartments": "공동주택(K-apt 관리비 전력)", "buildings": "건물 전체(건축HUB 계측 지번, 상가·업무 포함)",
+                "kcsm": "건물 전체(탄소공간지도 100m 전력, 선도소프트 제공)"}
+FALLBACK_ORDER = {"apartments": ("buildings",), "buildings": ("apartments",), "kcsm": ("buildings", "apartments")}
 
 
 def effort(history: dict[str, Any], plan: dict[str, Any], target_pct: float, pv_yield_kwh_per_kw: float | None = None,
@@ -524,15 +526,16 @@ def effort(history: dict[str, Any], plan: dict[str, Any], target_pct: float, pv_
     against the requirement (``mix``): the way a 도시·군기본계획 checks a target by summing each measure's reduction.
     """
     if basis not in EFFORT_BASIS:
-        raise ValueError("기준 건물은 apartments 또는 buildings 입니다")
+        raise ValueError("기준 건물은 apartments, buildings, kcsm 중 하나입니다")
     result = _effort_on(history, plan, target_pct, pv_yield_kwh_per_kw, basis)
     if not result.get("available"):
-        other = "buildings" if basis == "apartments" else "apartments"
-        alternative = _effort_on(history, plan, target_pct, pv_yield_kwh_per_kw, other)
-        if alternative.get("available"):
-            alternative["fallback_from"] = basis
-            alternative["fallback_reason"] = result.get("reason")
-            result = alternative
+        for other in FALLBACK_ORDER[basis]:
+            alternative = _effort_on(history, plan, target_pct, pv_yield_kwh_per_kw, other)
+            if alternative.get("available"):
+                alternative["fallback_from"] = basis
+                alternative["fallback_reason"] = result.get("reason")
+                result = alternative
+                break
     if result.get("available") and measures:
         result["mix"] = measure_mix(result, measures)
     return result
@@ -592,10 +595,12 @@ def _effort_on(history: dict[str, Any], plan: dict[str, Any], target_pct: float,
     pv = pv_basis(history, pv_yield_kwh_per_kw)
     pv_yield_kwh_per_kw = pv["kwh_per_kw"] if pv else None
     if basis not in EFFORT_BASIS:
-        raise ValueError("기준 건물은 apartments 또는 buildings 입니다")
+        raise ValueError("기준 건물은 apartments, buildings, kcsm 중 하나입니다")
     factor = history.get("factor", {}).get("electricity")
     if not factor:
         return {"available": False, "reason": "전력 배출계수가 등록되어 있지 않습니다", "basis": basis, "basis_label": EFFORT_BASIS[basis]}
+    if basis == "kcsm":
+        return _effort_kcsm(history, plan, target_pct, pv, factor)
     if basis == "buildings":
         years = (history.get("building_energy") or {}).get("years") or {}
         base_year = next((y for y in sorted(years, reverse=True)
@@ -632,8 +637,50 @@ def _effort_on(history: dict[str, Any], plan: dict[str, Any], target_pct: float,
     return _with_pv(pv, _effort_result(history, plan, target_pct, pv_yield_kwh_per_kw, factor, base_year, baseline_mode, intensity, base_kwh, basis_area, basis, load_text))
 
 
+def _effort_kcsm(history: dict[str, Any], plan: dict[str, Any], target_pct: float, pv: dict[str, Any] | None, factor: float) -> dict[str, Any]:
+    """Effort on the provider's all-building electricity emissions (탄소공간지도 100m, 선도소프트).
+
+    baseline  = the latest data year's emissions of the 100m cells inside the area outline (tCO2eq as delivered);
+    new load  = planned floor area × (the same year's emissions of the area's 500m grids ÷ their 건축물대장 floor area
+                approved by then) — numerator and denominator over the same grids;
+    kWh / PV  = carbon ÷ this tool's electricity factor (a conversion: the provider's own factor is not known yet).
+    """
+    k = history.get("kcsm") or {}
+    years = k.get("years") or {}
+    label = EFFORT_BASIS["kcsm"]
+    base_year = max((y for y, v in years.items() if v.get("boundary_t")), default=None)
+    if base_year is None:
+        return {"available": False, "basis": "kcsm", "basis_label": label,
+                "reason": "이 구역에는 선도소프트 탄소공간지도 100m 전력 자료가 없습니다(전주시 2023·2024년만 받음)"}
+    item = years[base_year]
+    gfa = item.get("register_gfa_m2")
+    if not gfa or not item.get("grid_t"):
+        return {"available": False, "basis": "kcsm", "basis_label": label,
+                "reason": "구역 격자의 건축물대장 연면적이 없어 신축 부하 원단위(탄소공간지도 배출 ÷ 연면적)를 낼 수 없습니다"}
+    base_kg = float(item["boundary_t"]) * 1000
+    intensity_kg = float(item["grid_t"]) * 1000 / float(gfa)
+    load_text = (f"신축 부하 = 계획 연면적 × 구역 격자의 탄소공간지도 전력 배출 원단위 {intensity_kg:,.2f} kgCO2eq/m²·년 "
+                 f"({base_year}년, 격자 {item['grid_cells']:,}칸 {float(item['grid_t']):,.1f} tCO2eq ÷ 건축물대장 연면적 {float(gfa):,.0f}m²)")
+    result = _effort_result(history, plan, target_pct, pv["kwh_per_kw"] if pv else None, factor, base_year, "PROVIDED",
+                            intensity_kg / factor, base_kg / factor, float(gfa), "kcsm", load_text)
+    result["intensity_kgco2eq_per_m2"] = round(intensity_kg, 3)
+    result["baseline_source"] = k.get("source")
+    result["baseline_kwh_converted"] = True
+    result["baseline_cells"] = item.get("cells")
+    result["baseline_drop_cells"] = item.get("drop_cells")
+    result["assumptions"] = [load_text,
+        f"기준 배출은 선도소프트가 준 탄소공간지도 100m 건물 전기 배출({base_year}년, {k.get('boundary_basis') or '구역 안 100m 칸'} {item.get('cells') or 0:,}칸)의 합입니다. 산정에 쓴 배출계수는 아직 받지 않았습니다(확인 필요)",
+        f"전력량(kWh)과 태양광 용량은 배출량을 이 도구의 전력 계수 {factor} kgCO2eq/kWh로 나눈 환산값입니다",
+        *[a for a in result["assumptions"] if not a.startswith("신축 부하")]]
+    if item.get("drop_cells"):
+        result["assumptions"].append(f"{base_year}년 급감 칸 {item['drop_cells']}개(원자료 누락 의심)는 제공값 그대로 기준에 들어 있습니다")
+    return _with_pv(pv, result)
+
+
 def observed_baseline(history: dict[str, Any], basis: str) -> dict[str, Any] | None:
     """The observed baseline year and intensity ``effort`` would use on ``basis`` (None: no observed year)."""
+    if basis == "kcsm":
+        return None
     if basis == "buildings":
         years = (history.get("building_energy") or {}).get("years") or {}
         year = next((y for y in sorted(years, reverse=True)
@@ -933,7 +980,7 @@ def consistent_energy(rows: list[dict[str, Any]], area: dict[str, Any], complexe
     return out
 
 
-def build_history(area: dict[str, Any], years: list[int], inputs: dict[str, Any]) -> dict[str, Any]:
+def build_history(area: dict[str, Any], years: list[int], inputs: dict[str, Any], include_kcsm: bool = True) -> dict[str, Any]:
     complexes = inputs["complexes"]
     history = {
         "years": years, "area": {k: v for k, v in area.items()},
@@ -960,6 +1007,11 @@ def build_history(area: dict[str, Any], years: list[int], inputs: dict[str, Any]
     history["sgis_grid"] = area_block(area["grid_ids"], sgis_year, sgis_values)
     history["building_energy"] = building_energy_block(area["grid_ids"], inputs.get("building_energy") or {}, factor,
                                                        inputs.get("building_energy_complete"))
+    history["kcsm"] = None
+    if include_kcsm and inputs.get("kcsm"):
+        from .emissions import electricity_factor_for_year
+        from .kcsm100 import area_block
+        history["kcsm"] = area_block(area, inputs["kcsm"], history["building_energy"]["years"], inputs.get("register"), electricity_factor_for_year)
     city = inputs.get("city_intensity")
     history["city_intensity"] = city
     history["solar"] = inputs.get("solar")  # 태양광 연 발전량 추정 (solar.py, DATA_STANDARD 5.13), None when no complete year
@@ -985,6 +1037,41 @@ def build_history(area: dict[str, Any], years: list[int], inputs: dict[str, Any]
 def only_in(year: int | str, parcels: int, kwh: float) -> str:
     """'2025년 3곳(5,836,169 kWh)', or '2021년 없음' — an empty set has no usage to report, not 0 kWh."""
     return f"{year}년 {parcels:,}곳({kwh:,.0f} kWh)" if parcels else f"{year}년 없음"
+
+
+def kcsm_facts(history: dict[str, Any], add: Any) -> None:
+    """Sentences for the provider's 100m electricity emissions of the area (선도소프트 탄소공간지도)."""
+    k = history.get("kcsm") or {}
+    if not k.get("available"):
+        return
+    items = [k["years"][y] for y in sorted(k["years"])]
+    latest = items[-1]
+    area = history["area"]
+    if latest.get("boundary_t") is None:
+        return
+    add("kcsm_total", f"선도소프트가 준 탄소공간지도 100m 자료로 보면 {k['boundary_basis']} {latest['cells']:,}개(값이 있는 칸 {latest['value_cells']:,}개)의 "
+        f"{latest['year']}년 건물 전기 배출은 {latest['boundary_t']:,.1f} tCO2eq입니다(제공 값, 산정 계수 확인 필요).",
+        latest["cells"], latest["value_cells"], latest["year"], latest["boundary_t"])
+    if area.get("type") in ("admin", "polygon", "circle") and latest.get("grid_t") is not None and latest["grid_t"] != latest["boundary_t"] and latest["boundary_t"]:
+        diff = round((latest["grid_t"] - latest["boundary_t"]) / latest["boundary_t"] * 100, 1)
+        add("kcsm_grid", f"같은 해 구역 500m 격자 {len(area['grid_ids'])}개 범위로 더하면 {latest['grid_t']:,.1f} tCO2eq로, 경계 기준보다 {abs(diff):,.1f}% "
+            f"{'많습니다' if diff > 0 else '적습니다'}(500m 격자는 경계를 칸 단위로만 따름).", len(area["grid_ids"]), latest["grid_t"], abs(diff))
+    for item in items:
+        tool = item.get("tool")
+        if tool and tool.get("share_pct") is not None and tool.get("complete", True):
+            add("kcsm_tool", f"같은 격자 범위에서 이 도구의 {item['year']}년 건축HUB 계측 전력({tool['parcels'] or 0:,}개 지번, {tool['kwh']:,.0f} kWh × {tool['factor']} kgCO2eq/kWh = "
+                f"{tool['t']:,.1f} tCO2eq)은 탄소공간지도 값({item['grid_t']:,.1f} tCO2eq)의 {tool['share_pct']:,.1f}%입니다. 단독주택·200세대 미만 공동주택은 건축HUB 제공 범위 밖이라 두 값을 더하지 않습니다.",
+                item["year"], tool["parcels"] or 0, tool["kwh"], tool["factor"], tool["t"], item["grid_t"], tool["share_pct"])
+    if latest.get("change_pct") is not None:
+        before = k["years"][latest["change_from"]]
+        add("kcsm_change", f"탄소공간지도 기준 {latest['change_from']}년 {before['boundary_t']:,.1f} tCO2eq에서 {latest['year']}년 {latest['boundary_t']:,.1f} tCO2eq로 "
+            f"{latest['change_pct']:+,.1f}% 변했습니다.", latest["change_from"], before["boundary_t"], latest["year"], latest["boundary_t"], latest["change_pct"],
+            signed_pct=latest["change_pct"])
+    for item in items:
+        if item.get("drop_cells"):
+            add("kcsm_drop", f"{item['year']}년에 앞 해 100 tCO2eq 이상이던 칸 {item['drop_cells']}개가 절반 아래로 줄었습니다"
+                f"(앞 해 {item['drop_from_t']:,.1f} → {item['drop_now_t']:,.1f} tCO2eq). 원자료 누락이 의심되어 표시만 하고 값은 고치지 않았습니다.",
+                item["year"], item["drop_cells"], item["drop_from_t"], item["drop_now_t"], 100)
 
 
 def area_facts(history: dict[str, Any], comparison: dict[str, Any] | None = None, effort_result: dict[str, Any] | None = None) -> list[dict[str, Any]]:
@@ -1037,6 +1124,7 @@ def area_facts(history: dict[str, Any], comparison: dict[str, Any] | None = None
         gaps = sorted(y for y, w in be.items() if w.get("provider_gap"))
         for y in gaps:
             add("building_energy_gap", f"{y}년 건축HUB 값은 쓰되 비교하지 않습니다: {be[y]['provider_gap']}.", y)
+    kcsm_facts(history, add)
     sg = history.get("sgis_grid") or {}
     if sg.get("overlap"):
         o = sg["overlap"]
@@ -1100,8 +1188,8 @@ def area_facts(history: dict[str, Any], comparison: dict[str, Any] | None = None
     if effort_result and effort_result.get("available"):
         o = effort_result["options"]
         if effort_result.get("fallback_from"):
-            asked = "공동주택(K-apt)" if effort_result["fallback_from"] == "apartments" else "건물 전체(건축HUB)"
-            used = "건물 전체(건축HUB)" if effort_result["basis"] == "buildings" else "공동주택(K-apt)"
+            names = {"apartments": "공동주택(K-apt)", "buildings": "건물 전체(건축HUB)", "kcsm": "건물 전체(탄소공간지도 100m)"}
+            asked, used = names[effort_result["fallback_from"]], names[effort_result["basis"]]
             add("effort_fallback", f"이 구역은 {asked} 기준으로 계산할 근거가 없어 {used} 기준으로 바꿔 계산했습니다.")
         if effort_result.get("baseline_mode") == "ESTIMATED":
             city = history.get("city_intensity") or {}
@@ -1110,6 +1198,10 @@ def area_facts(history: dict[str, Any], comparison: dict[str, Any] | None = None
             add("effort_basis", f"감축 노력은 공동주택 단지(K-apt 관리비 전력) 기준입니다: {effort_result['baseline_year']}년 전력 {effort_result['baseline_kwh']:,.0f} kWh, "
                 f"원단위 {effort_result['intensity_kwh_per_m2']:,.2f} kWh/m²·년(연면적 확인 {effort_result['intensity_area_m2']:,.0f}m²).",
                 effort_result["baseline_year"], effort_result["baseline_kwh"], effort_result["intensity_kwh_per_m2"], effort_result["intensity_area_m2"])
+        if effort_result.get("basis") == "kcsm":
+            add("effort_basis", f"감축 노력은 구역 건물 전체의 탄소공간지도 100m 전력 배출(선도소프트 제공) 기준입니다: {effort_result['baseline_year']}년 "
+                f"{effort_result['baseline_kgco2eq'] / 1000:,.1f} tCO2eq, 신축 원단위 {effort_result['intensity_kgco2eq_per_m2']:,.2f} kgCO2eq/m²·년(건축물대장 연면적 {effort_result['intensity_area_m2']:,.0f}m² 기준).",
+                effort_result["baseline_year"], round(effort_result["baseline_kgco2eq"] / 1000, 1), effort_result["intensity_kgco2eq_per_m2"], effort_result["intensity_area_m2"])
         if effort_result.get("basis") == "buildings":
             add("effort_basis", f"감축 노력은 구역 건물 전체(건축HUB 계측 지번, 상가·업무 포함) 기준입니다: {effort_result['baseline_year']}년 전력 {effort_result['baseline_kwh']:,.0f} kWh, 원단위 {effort_result['intensity_kwh_per_m2']:,.2f} kWh/m²·년.", effort_result["baseline_year"], effort_result["baseline_kwh"], effort_result["intensity_kwh_per_m2"])
         add("effort_target", f"{effort_result['baseline_year']}년 대비 {effort_result['target_pct']:,.0f}% 감축을 목표로 하면 계획 반영 후 연간 {effort_result['required_reduction_kgco2eq']:,.0f} kgCO2eq를 줄여야 합니다.", effort_result["baseline_year"], effort_result["target_pct"], effort_result["required_reduction_kgco2eq"])
@@ -1237,7 +1329,13 @@ def load_inputs(db: Any, years: list[int], region: str | None = None) -> dict[st
     from .sgis_grid import parents
     zoning = grid_zoning_summary(db, region_ids)
     building_energy_complete = {year: region_year_complete(db, sc.code, year) for year in building_energy}
-    return {"building_energy": building_energy, "building_energy_complete": building_energy_complete, "sgis_grid": grid_values(db, codes=parents(ids)), "register": register, "complexes": complexes, "energy": energy, "weather": weather, "population": population, "households": households,
+    try:  # 선도소프트 탄소공간지도 100m 전력 (받은 지역만, 이용 조건 확인 전이라 공개 주소에서는 analyze가 뺌)
+        from .kcsm100 import area_inputs as kcsm_inputs
+        kcsm = kcsm_inputs(db, sc.code)
+    except Exception:  # noqa: BLE001 - table not created (never imported)
+        db.rollback()
+        kcsm = None
+    return {"kcsm": kcsm, "building_energy": building_energy, "building_energy_complete": building_energy_complete, "sgis_grid": grid_values(db, codes=parents(ids)), "register": register, "complexes": complexes, "energy": energy, "weather": weather, "population": population, "households": households,
             "factor": factors, "grids": grids, "admin": admin.get("features", []), "admin_year": admin_year, "zoning": zoning,
             "region": {"code": sc.code, "name": sc.name, "short_name": sc.short, "is_default": sc.is_default}}
 
@@ -1356,15 +1454,20 @@ def prepare_inputs(db: Any, years: list[int], region: str | None = None) -> dict
 def analyze(db: Any, spec: dict[str, Any], from_year: int, to_year: int, event_year: int | None = None,
             window: int = 3, plan: dict[str, Any] | None = None, target_pct: float | None = None,
             pv_yield: float | None = None, *, inputs: dict[str, Any] | None = None, region: str | None = None,
-            effort_basis: str = "apartments", measures: dict[str, Any] | None = None) -> dict[str, Any]:
+            effort_basis: str = "apartments", measures: dict[str, Any] | None = None, public: bool = False) -> dict[str, Any]:
+    """``public``: the request came through the public demo gateway — the provider's 100m data (선도소프트, 이용 조건 확인 전)
+    is left out and its basis refused."""
     if from_year > to_year or to_year - from_year > 30:
         raise ValueError("분석 기간을 확인하세요 (최대 31년)")
+    if public and effort_basis == "kcsm":
+        from .kcsm100 import RESTRICTED_TEXT
+        raise ValueError(RESTRICTED_TEXT)
     years = list(range(from_year, to_year + 1))
     if inputs is None or inputs.get("years") != years:
         inputs = cached_inputs(db, years, region)
     complex_points = [{"kapt_code": c["kapt_code"], "lon": c["lon"], "lat": c["lat"], "grid_id": c["grid_id"]} for c in inputs["complexes"].values()]
     area = resolve_area(spec, inputs["grids"], complex_points, inputs["admin"], inputs["zoning"])
-    history = build_history(area, years, inputs)
+    history = build_history(area, years, inputs, include_kcsm=not public)
     comparison = before_after(history, event_year, window)
     effort_result = effort(history, plan or {}, target_pct, pv_yield, effort_basis, measures) if target_pct is not None else None
     members = set(area["grid_ids"])
@@ -1417,8 +1520,8 @@ class AnalyzeInput(BaseModel):
     plan: PlanInput | None = None
     target_pct: float | None = Field(default=None, ge=0, le=100)
     pv_yield_kwh_per_kw: float | None = Field(default=None, gt=0)
-    # 감축 노력의 기준 건물: 공동주택(K-apt) 또는 건물 전체(건축HUB, 상가·업무 포함)
-    effort_basis: Literal["apartments", "buildings"] = "apartments"
+    # 감축 노력의 기준 건물: 공동주택(K-apt), 건물 전체(건축HUB, 상가·업무 포함), 건물 전체(탄소공간지도 100m, 선도소프트 제공)
+    effort_basis: Literal["apartments", "buildings", "kcsm"] = "apartments"
     measures: MeasuresInput | None = None
 
 
@@ -1483,15 +1586,16 @@ def area_collection_status() -> dict[str, Any]:
 
 
 @router.post("/analyze")
-def area_analyze(request: AnalyzeInput) -> dict[str, Any]:
+def area_analyze(request: AnalyzeInput, http: Request) -> dict[str, Any]:
     from .db import Session
     from .regions import RegionNotReady
+    from .team_grid import is_public
     with Session() as db:
         try:
             return analyze(db, request.area.model_dump(), request.from_year, request.to_year, request.event_year,
                            request.window, request.plan.model_dump() if request.plan else None, request.target_pct,
                            request.pv_yield_kwh_per_kw, region=request.region, effort_basis=request.effort_basis,
-                           measures=request.measures.model_dump() if request.measures else None)
+                           measures=request.measures.model_dump() if request.measures else None, public=is_public(http))
         except RegionNotReady as exc:
             raise HTTPException(404, str(exc)) from None
         except (ValueError, KeyError) as exc:

@@ -15,7 +15,7 @@ import uuid
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
 from pydantic import Field
 
@@ -186,11 +186,11 @@ class AreaReportInput(AnalyzeInput):
     title: str | None = Field(default=None, max_length=80)
 
 
-def _snapshot(request: AreaReportInput) -> dict[str, Any]:
+def _snapshot(request: AreaReportInput, public: bool = False) -> dict[str, Any]:
     with Session() as db:
         result = analyze(db, request.area.model_dump(), request.from_year, request.to_year, request.event_year, request.window,
                          request.plan.model_dump() if request.plan else None, request.target_pct, request.pv_yield_kwh_per_kw, region=request.region,
-                         effort_basis=request.effort_basis, measures=request.measures.model_dump() if request.measures else None)
+                         effort_basis=request.effort_basis, measures=request.measures.model_dump() if request.measures else None, public=public)
     history = result["history"]
     facts = list(result["facts"])
     bench = None
@@ -226,10 +226,30 @@ def _snapshot(request: AreaReportInput) -> dict[str, Any]:
     return snapshot
 
 
+def public_view(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """A stored report as the public demo gateway may show it: without the provider's 100m data (선도소프트, 이용 조건 확인 전)."""
+    if not (snapshot.get("history") or {}).get("kcsm") and not any(str(f.get("id", "")).startswith("kcsm") for f in snapshot.get("facts") or []) \
+            and (snapshot.get("effort") or {}).get("basis") != "kcsm":
+        return snapshot
+    from .kcsm100 import RESTRICTED_TEXT
+    out = dict(snapshot)
+    out["history"] = {k: v for k, v in (snapshot.get("history") or {}).items() if k != "kcsm"}
+    out["facts"] = [f for f in snapshot.get("facts") or [] if not str(f.get("id", "")).startswith("kcsm")]
+    if (snapshot.get("effort") or {}).get("basis") == "kcsm":
+        out["effort"] = {"available": False, "basis": "kcsm", "reason": RESTRICTED_TEXT}
+        out["facts"] = [f for f in out["facts"] if not str(f.get("id", "")).startswith("effort")]
+    summary = dict(snapshot.get("summary") or {})
+    if summary:
+        summary["paragraphs"] = [f["text"] for f in out["facts"]] if summary.get("mode") != "LOCAL_SLM_NARRATIVE" else [RESTRICTED_TEXT]
+        out["summary"] = summary
+    return out
+
+
 @router.post("", status_code=201)
-def create_area_report(request: AreaReportInput) -> dict[str, Any]:
+def create_area_report(request: AreaReportInput, http: Request) -> dict[str, Any]:
+    from .team_grid import is_public
     try:
-        snapshot = _snapshot(request)
+        snapshot = _snapshot(request, public=is_public(http))
     except (ValueError, KeyError) as exc:
         raise HTTPException(422, str(exc)) from None
     snapshot["summary"] = summarize_area(snapshot["facts"], request.use_local_model)
@@ -250,12 +270,14 @@ def list_area_reports() -> list[dict[str, Any]]:
 
 
 @router.get("/{report_id}")
-def get_area_report(report_id: str) -> dict[str, Any]:
+def get_area_report(report_id: str, http: Request = None) -> dict[str, Any]:  # type: ignore[assignment]
+    from .team_grid import is_public
     with Session() as db:
         r = db.get(DecisionReport, report_id)
         if not r or r.snapshot.get("kind") != "AREA":
             raise HTTPException(404, "지역 보고서를 찾을 수 없습니다")
-        return {"id": r.id, **r.snapshot}
+        snapshot = public_view(r.snapshot) if http is not None and is_public(http) else r.snapshot
+        return {"id": r.id, **snapshot}
 
 
 def _t(kg: float | None) -> str:
@@ -290,6 +312,7 @@ def key_results(s: dict[str, Any]) -> list[tuple[str, str]]:
 HTML_SECTIONS = (
     ("1. 검토 대상과 방법", ("scope", "coverage", "rules")),
     ("2. 온실가스 배출 현황 (관측)", ("latest_energy", "latest_carbon", "latest_intensity", "building_energy", "building_energy_trend", "building_energy_gap", "benchmark")),
+    ("2-1. 탄소공간지도 100m 전력 배출 (선도소프트 제공)", ("kcsm_",)),
     ("3. 개발 이력과 전후 영향", ("development", "register", "event", "before_after", "change", "new_share", "estimated_change", "gap_")),
     ("4. 감축 목표와 필요 감축량", ("effort_fallback", "effort_basis", "effort_target", "effort_met")),
     ("5. 감축 방안", ("effort_new", "effort_all", "effort_offset", "effort_pv", "effort_mix", "effort_mix_gap")),
@@ -356,6 +379,19 @@ def area_html(s: dict[str, Any]) -> str:
     for title, prefixes in HTML_SECTIONS:
         texts = section_facts(prefixes)
         extra = ""
+        if title.startswith("2-1."):
+            k = (h.get("kcsm") or {}).get("years") or {}
+            if k:
+                def t1(v: Any) -> str:
+                    return "자료 없음" if v is None else f"{v:,.1f}"
+                body = []
+                for y, v in sorted(k.items(), key=lambda kv: int(kv[0])):
+                    tool = v.get("tool")
+                    tool_text = "자료 없음" if not tool else f"{t1(tool.get('t'))} ({tool.get('share_pct')}%)"
+                    body.append(f"<tr><td>{y}</td><td class=num>{v.get('cells', 0):,}</td><td class=num>{t1(v.get('boundary_t'))}</td>"
+                                f"<td class=num>{t1(v.get('grid_t'))}</td><td class=num>{escape(tool_text)}</td><td class=num>{v.get('drop_cells', 0)}</td></tr>")
+                extra += ("<table><thead><tr><th>연도</th><th>경계 안 100m 칸</th><th>경계 기준 tCO2eq</th><th>500m 격자 기준 tCO2eq</th>"
+                          "<th>건축HUB 계측 tCO2eq (같은 격자, 비율)</th><th>급감 칸</th></tr></thead><tbody>" + "".join(body) + "</tbody></table>")
         if title.startswith("2."):
             rows = []
             for y in h["years"]:
@@ -451,13 +487,13 @@ def area_markdown(s: dict[str, Any]) -> str:
 
 
 @router.get("/{report_id}/html")
-def area_report_html(report_id: str) -> Response:
+def area_report_html(report_id: str, http: Request) -> Response:
     """인쇄·PDF 저장용 보고서 (브라우저 인쇄 → PDF). 숫자는 마크다운과 같은 스냅숏에서만 가져온다."""
-    report = get_area_report(report_id)
+    report = get_area_report(report_id, http)
     return Response(area_html(report), media_type="text/html; charset=utf-8")
 
 
 @router.get("/{report_id}/markdown")
-def download_area_report(report_id: str) -> Response:
-    report = get_area_report(report_id)
+def download_area_report(report_id: str, http: Request) -> Response:
+    report = get_area_report(report_id, http)
     return Response(area_markdown(report), media_type="text/markdown", headers={"Content-Disposition": f'attachment; filename="area-report-{report_id}.md"'})

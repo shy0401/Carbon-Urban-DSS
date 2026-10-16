@@ -154,3 +154,20 @@ describe('AreaPage', () => {
     }
   });
 });
+
+describe('KcsmPanel (탄소공간지도 100m, 선도소프트)', () => {
+  it('shows the outline total, the 500m-grid total and the tool share side by side, never added', async () => {
+    const { KcsmPanel } = await import('./AreaPage');
+    const { render: r, screen: sc } = await import('@testing-library/react');
+    const analysis = { history: { kcsm: { available: true, source: 's', boundary_basis: '행정동 경계 안에 중심점이 있는 100m 칸', note: '선도소프트가 준 값입니다.', years: {
+      2023: { year: 2023, boundary_t: 550, grid_t: 580, cells: 3, value_cells: 3, zero_cells: 0, grid_cells: 4, monthly: [], drop_cells: 0, drop_from_t: null, drop_now_t: null },
+      2024: { year: 2024, boundary_t: 120, grid_t: 160, cells: 3, value_cells: 2, zero_cells: 1, grid_cells: 4, monthly: [], drop_cells: 1, drop_from_t: 400, drop_now_t: 10, change_pct: -78.2, change_from: 2023,
+        tool: { kwh: 200000, factor: 0.4781, t: 95.6, parcels: 3, complete: true, share_pct: 59.8 } } } } } } as never;
+    r(<KcsmPanel analysis={analysis} />);
+    const table = sc.getByTestId('area-kcsm');
+    expect(table.textContent).toContain('120160 (4칸)');   // outline total and 500m-grid total in their own columns
+    expect(table.textContent).toContain('59.8%');
+    expect(table.textContent).toContain('-78.2%');
+    expect(table.textContent).toContain('1칸');
+  });
+});

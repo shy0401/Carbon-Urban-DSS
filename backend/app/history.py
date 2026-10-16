@@ -557,6 +557,15 @@ def manual_sources(data_dir: str | Path | None = None) -> list[dict[str, Any]]:
     gir = raw / "research" / "gir"
     if all(any(gir.glob(f"b{board}_*.pdf")) for board in (44, 56, 86)):
         out = [item for item in out if item["id"] != "factors_yearly"]
+    kcsm = raw / "sundosoft_kcsm100"
+    if kcsm.is_dir() and any(kcsm.rglob("탄소배출_건물_전기_격자_100m_*.csv")):
+        # the file came (전주 전기 2023·2024, 2026-10-17); what is still open is the provider's own definitions
+        out = [item if item["id"] != "grid_100m" else {
+            "id": "grid_100m", "label": "선도소프트 100m 탄소격자: 산정 기준·이용 조건 확인",
+            "why": "전주 덕진구·완산구 건물 전기 2023·2024년 파일은 받아 적용했습니다. 산정에 쓴 전력 배출계수, 0 값이 '건물 없음'인지 '사용량 미연계'인지, "
+                   "2024년 공장 칸이 0이 된 이유, 외부 공개·재배포 가능 여부, 가스·지역난방 부문과 2025년 자료는 아직 모릅니다.",
+            "how": "선도소프트에 위 항목을 문의 → 답을 docs/DATA_STANDARD.md 2절 표와 kcsm100.py 설명에 적기 (공개 가능하면 공개 주소 제한을 풉니다)",
+            "link": None} for item in out]
     return out
 
 

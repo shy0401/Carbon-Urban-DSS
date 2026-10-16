@@ -116,7 +116,7 @@ export function parseAreaLink(search: string): AreaLink | null {
   const pv = num(params.get('pv'));
   if (pv !== undefined && pv > 0) link.pv = String(pv);
   const basis = params.get('basis');
-  if (basis === 'apartments' || basis === 'buildings') link.basis = basis;
+  if (basis === 'apartments' || basis === 'buildings' || basis === 'kcsm') link.basis = basis;
   const mx = (params.get('mx') ?? '').split(',').map(Number);
   if (mx.length === 3 && mx.every((v) => Number.isFinite(v) && v >= 0) && mx[0] <= 100 && mx[1] <= 100) {
     link.measures = { new_efficiency_pct: mx[0], existing_efficiency_pct: mx[1], pv_kw: mx[2] };

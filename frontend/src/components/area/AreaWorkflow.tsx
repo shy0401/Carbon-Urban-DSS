@@ -8,7 +8,7 @@
  */
 import { Download, ExternalLink, Save, Sun, Trash2 } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { benchmarkPosition, EFFORT_BASIS_LABEL, NO_MEASURES, toTonnes, type AreaAnalysis, type Benchmark, type EffortResult, type MeasuresState } from '../../lib/area';
+import { BASELINE_MODE_LABEL, benchmarkPosition, EFFORT_BASIS_LABEL, NO_MEASURES, toTonnes, type AreaAnalysis, type Benchmark, type EffortResult, type MeasuresState } from '../../lib/area';
 import { comparisonRows, MAX_SCENARIOS, scenariosCsv, type SavedScenario } from '../../lib/areaScenarios';
 import { formatMetric } from '../../lib/format';
 
@@ -51,7 +51,7 @@ export function AreaSummaryBar({ analysis, running, bench, onSave, saveNote }: {
     <dl className="area-kpis" aria-live="polite">
       <Kpi label="구역" value={analysis?.history.area.label ?? '구역을 고르세요'} sub={running ? '계산 중…' : analysis ? `${analysis.history.years[0]}~${analysis.history.years[analysis.history.years.length - 1]}` : undefined} />
       {ok && e ? <>
-        <Kpi label="기준 배출" value={t1(e.baseline_kgco2eq)} sub={`${e.baseline_year}년 ${e.baseline_mode === 'OBSERVED' ? '관측' : '추정'} · ${e.basis === 'buildings' ? '건물 전체' : '공동주택'}${e.fallback_from ? '(자동 전환)' : ''}`} />
+        <Kpi label="기준 배출" value={t1(e.baseline_kgco2eq)} sub={`${e.baseline_year}년 ${BASELINE_MODE_LABEL[e.baseline_mode ?? 'OBSERVED']} · ${e.basis === 'kcsm' ? '건물 전체(탄소공간지도)' : e.basis === 'buildings' ? '건물 전체' : '공동주택'}${e.fallback_from ? '(자동 전환)' : ''}`} />
         <Kpi label="계획 반영 (대책 없음)" value={t1(e.bau_kgco2eq)} sub={`목표 ${formatMetric(e.target_pct, '%')} 감축선 ${t1(e.target_kgco2eq)}`} />
         <Kpi label="필요 감축량" value={e.already_met ? '불필요' : t1(e.required_reduction_kgco2eq)} sub="연간 · 전력 운영탄소" tone={e.already_met ? 'good' : undefined} />
         <Kpi label="감축 수단 조합" value={mix ? t1(mix.total_kgco2eq) : '입력 전'} sub={mix ? (mix.met ? '목표 달성' : `${t1(mix.gap_kgco2eq)} 부족`) : '3단계에서 입력'} tone={mix ? (mix.met ? 'good' : 'warn') : undefined} />

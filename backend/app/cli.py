@@ -8,7 +8,7 @@ from .catalog import seed_sources
 from .settings import DATA_DIR,DEFAULT_YEAR
 
 def init_tables():
-    from . import official,kapt,kapt_energy,kma_asos,sgis,sgis_grid,vworld,energy_parcels,sgis_grid_official,regions,national,ordinances,sgis_grid500,regional_stats,team_grid,solar
+    from . import official,kapt,kapt_energy,kma_asos,sgis,sgis_grid,vworld,energy_parcels,sgis_grid_official,regions,national,ordinances,sgis_grid500,regional_stats,team_grid,kcsm100,solar
     try:from . import imports
     except ImportError:pass
     with engine.begin() as c:c.execute(text('CREATE EXTENSION IF NOT EXISTS postgis'))
@@ -22,7 +22,7 @@ def init_tables():
         except Exception:db.rollback()
 
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument('command',choices=['demo','online','status','enrich','collect','collect-history','collect-missing','validate-models','snapshot','llm-dataset','llm-eval','import-sgis-grid','import-sgis-grid500','import-regional-stats','import-team-grid',
+    parser=argparse.ArgumentParser();parser.add_argument('command',choices=['demo','online','status','enrich','collect','collect-history','collect-missing','validate-models','snapshot','llm-dataset','llm-eval','import-sgis-grid','import-sgis-grid500','import-regional-stats','import-team-grid','import-kcsm100',
         'national-admin','national-sgis','national-complexes','national-grid500','national-ordinances','national-all','prepare-region','regions',
         'check-standard','apply-standard','backfill-solar','region-energy-history','region-kapt-history','verify-cases','place-parcels']);parser.add_argument('--year',type=int,default=DEFAULT_YEAR)
     parser.add_argument('--from',dest='from_year',type=int,default=2015);parser.add_argument('--to',dest='to_year',type=int,default=DEFAULT_YEAR)
@@ -112,6 +112,13 @@ def main():
             from .team_grid import import_team_grid,counts
             result=import_team_grid(db,Path(args.file) if args.file else None,force=args.force,log=lambda m:print(m,flush=True))
             print(json.dumps(dict(result,rows=counts(db)),ensure_ascii=False))
+        elif args.command=='import-kcsm100':
+            # 선도소프트 탄소공간지도 100m 건물 전기 배출: DATA_DIR/raw/sundosoft_kcsm100/<받은 날>/**/탄소배출_건물_전기_격자_100m_*_<연도>.csv
+            from .kcsm100 import import_kcsm100,counts as kcsm_counts
+            from .area import forget_inputs
+            result=import_kcsm100(db,Path(args.file) if args.file else None,force=args.force,log=lambda m:print(m,flush=True))
+            forget_inputs()
+            print(json.dumps(dict(result,rows=kcsm_counts(db)),ensure_ascii=False))
         elif args.command=='validate-models':
             from .model_service import model_status
             print(json.dumps(model_status(db,args.year,train=True,region=args.region),ensure_ascii=False,indent=2))

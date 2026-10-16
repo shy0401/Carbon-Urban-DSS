@@ -147,6 +147,7 @@ app.include_router(dongs_router)
 from .sgis_grid500 import router as sgis_grid500_router  # also registers sgis_grid500_values before create_all
 from . import regional_stats  # noqa: F401 - registers gir_regional_ghg, citygas_sido_monthly before create_all
 from . import team_grid  # noqa: F401 - registers team_grid500/100, team_developments before create_all
+from . import kcsm100  # noqa: F401 - registers kcsm_grid100 (선도소프트 탄소공간지도 100m 전력) before create_all
 from . import solar  # noqa: F401 - registers solar_monthly before create_all
 app.include_router(sgis_grid500_router)
 from .national_map import router as national_map_router
@@ -407,6 +408,11 @@ def _grid100_meta(db,code,year):
     try:return grid100_features(db,code,year,meta_only=True)['meta']
     except Exception:db.rollback();return None
 
+def _kcsm100_meta(db,code,year):
+    from .kcsm100 import meta
+    try:return meta(db,code,year)
+    except Exception:db.rollback();return None
+
 def _level(db,code):
     from .regions import detail_level,get_region
     return detail_level(get_region(db,code)) if code!=DEFAULT_REGION else 'DETAILED'
@@ -505,6 +511,8 @@ def map_data(request:Request,year:int=Query(DEFAULT_YEAR,ge=2000,le=2100),region
             'region':{'code':sc.code,'name':sc.name,'short_name':sc.short,'status':sc.status,'grids':len(ids),'level':_level(db,sc.code)},
             # 국토통계지도 100m (팀 수집): what the 100m layer can show here; the public gateway only learns it is restricted.
             'grid100':{'restricted':True} if is_public(request) else _grid100_meta(db,sc.code,year),
+            # 선도소프트 탄소공간지도 100m 전력: 이용 조건 확인 전이라 공개 주소에는 restricted만
+            'kcsm100':{'restricted':True} if is_public(request) else _kcsm100_meta(db,sc.code,year),
         }
 
 @app.get('/api/map/grid100')
@@ -525,6 +533,28 @@ def map_grid100(request:Request,year:int=Query(DEFAULT_YEAR,ge=2000,le=2100),reg
     with Session() as db:
         sc=_scope(db,region or (region_for_grid(db,grid) if grid else None))
         return grid100_features(db,sc.code,year,bbox=box,grid500=grid,meta_only=meta)
+
+@app.get('/api/map/kcsm100')
+def map_kcsm100(request:Request,year:int=Query(DEFAULT_YEAR,ge=2000,le=2100),region:str|None=Query(None,max_length=10),
+                bbox:str|None=Query(None,max_length=120),grid:str|None=Query(None,max_length=40),meta:bool=False):
+    """선도소프트 탄소공간지도 100m 건물 전기 배출 (tCO2eq) in a viewport (bbox=w,s,e,n) or one 500m cell (grid=cell_x_y).
+    이용 조건(외부 공개·재배포)을 확인하기 전이라 공개 시연 주소(게이트웨이)에서는 거부한다."""
+    from .kcsm100 import RESTRICTED_TEXT,features
+    from .team_grid import is_public
+    if is_public(request):raise HTTPException(403,RESTRICTED_TEXT)
+    box=None
+    if bbox:
+        try:
+            box=tuple(float(v) for v in bbox.split(','))
+            if len(box)!=4:raise ValueError
+        except ValueError:raise HTTPException(422,'bbox는 서,남,동,북 경위도 네 값입니다') from None
+    if not box and not grid and not meta:raise HTTPException(422,'화면 범위(bbox)나 500m 격자(grid)를 주세요')
+    with Session() as db:
+        sc=_scope(db,region or (region_for_grid(db,grid) if grid else None))
+        try:return features(db,sc.code,year,bbox=box,grid500=grid,meta_only=meta)
+        except Exception:
+            db.rollback()
+            return {'type':'FeatureCollection','features':[],'meta':{'source':None,'years':[],'year':None,'cells':0,'returned':0,'truncated':False,'reason':'100m 전력 배출 자료를 아직 가져오지 않았습니다.'},'summary':None}
 
 @app.get('/api/grids/{grid_id}/place')
 def grid_place(grid_id:str):
