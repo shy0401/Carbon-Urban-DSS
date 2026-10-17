@@ -4,7 +4,7 @@
 
 사용자가 PC를 켜 두는 무료 시연 배포를 선택했다. 기존 Docker의 PostgreSQL/PostGIS, Redis, Celery, FastAPI, React, Ollama를 유지하고 Cloudflare Quick Tunnel의 HTTPS 주소로 연결한다. 공개 접속은 Nginx의 비밀번호 인증을 통과해야 한다. 비밀번호를 받은 시연자는 수집·업로드·계산·보고서 작성을 실행할 수 있다.
 
-호스팅·도메인 구입 비용이 없는 방식이며 PC의 전기·네트워크는 사용한다. GitHub Pages는 정적 파일 호스팅이어서 이 프로젝트의 DB와 작업 서버를 실행하지 못한다. Render 무료 PostgreSQL은 30일 만료 및 무료 웹의 영속 디스크 제한이 있다.
+호스팅·도메인 구입 비용이 없는 방식이며 PC의 전기·네트워크는 사용한다. GitHub Pages는 정적 파일 호스팅이어서 이 프로젝트의 DB와 작업 서버를 실행하지 못한다. 그래서 GitHub Pages에는 **바뀌지 않는 안내 주소만** 두고, 그 페이지가 PC의 지금 터널 주소로 보낸다([GitHub Pages 고정 안내 주소](#github-pages-고정-안내-주소)). Render 무료 PostgreSQL은 30일 만료 및 무료 웹의 영속 디스크 제한이 있다.
 
 ## 실행
 
@@ -36,6 +36,35 @@ powershell -ExecutionPolicy Bypass -File scripts/prototype.ps1 Stop
 - 인증 gateway의 로컬 검증 주소: http://127.0.0.1:5180/
 
 주소는 터널 재생성 또는 재시작 시 변경될 수 있다. `Status`는 마지막 터널 로그의 주소를 보여주므로 현재 실제 접속도 확인한다. PC 종료·절전·네트워크 단절·Docker 중단 시 사이트가 중단된다. Docker가 다시 실행되면 `unless-stopped` 정책으로 컨테이너가 재시작하지만 Windows에서 Docker 자체의 자동 실행은 사용자 설정에 따른다. 절전이나 로그인 설정을 스크립트가 변경하지 않는다.
+
+## GitHub Pages 고정 안내 주소
+
+**https://shy0401.github.io/Carbon-Urban-DSS/** 는 바뀌지 않는다. 빠른 터널 주소는 PC 재부팅·터널 재시작 때마다 바뀌므로, 이 주소를 공유하면 된다(2026-10-17부터).
+
+- 페이지(`deploy/pages/index.html`, 같은 내용의 `404.html`)는 `gh-pages` 브랜치의 `demo.json`(`url`, `updated_at`)을 읽고, 시연 서버의 `/__ping`으로 켜져 있는지 확인한 뒤 그 주소로 옮긴다. 하위 경로와 질의도 그대로 넘긴다(예: `…/Carbon-Urban-DSS/map?view=region` → 시연 서버의 `/map?view=region`). 서버가 꺼져 있으면 안내 문구와 "다시 확인" 버튼을 보여 준다.
+- `/__ping`은 gateway(`deploy/gateway.conf`)에서 로그인 없이 빈 응답(204)만 준다. 앱·API·자료에는 닿지 않고, 브라우저 교차 출처 허용은 `https://shy0401.github.io` 하나다. 옮겨 간 뒤에는 지금처럼 시연 계정 로그인 창이 뜨고, 국토통계지도·선도소프트 100m 자료는 공개 주소에서 빠진다.
+- `demo.json`은 공개 저장소의 `gh-pages` 브랜치에 있으므로 시연 서버 주소는 누구나 볼 수 있다. 접속에는 여전히 로그인이 필요하다.
+
+### 주소를 스스로 고치는 지킴이
+
+`scripts/demo-watch.ps1`이 Windows 작업 스케줄러 작업 **`CarbonDSS demo address watch`**로 로그온 1분 뒤 시작하고 5분마다 다시 돈다(`scripts/demo-watch.vbs`가 창 없이 실행). 한 번 돌 때:
+
+1. Docker 엔진이 꺼져 있으면 Docker Desktop을 켜고 최대 5분 기다린다(Docker Desktop 자동 시작 설정은 바꾸지 않는다).
+2. `postgres redis api worker frontend gateway tunnel` 가운데 멈춘 것이 있으면 1분 기다린 뒤(부팅 직후 Docker가 스스로 올리는 시간) 그래도 멈춘 것만 `docker compose … up -d --no-build`로 올린다. 이미지를 새로 만들지 않고 DB 볼륨을 건드리지 않는다.
+3. 터널 컨테이너의 이번 실행 로그에서 `https://….trycloudflare.com` 주소를 읽어 `/__ping`을 묻는다. 두 번 연속 안 열리면 터널만 다시 시작한다(새 터널이 자리 잡는 10분, 다시 시작 사이 30분 간격을 둔다).
+4. 주소가 바뀌었거나 `deploy/pages`가 바뀌었으면 `data/deployment/public-url.txt`를 고치고, `data/ops/pages-site`(gh-pages 작업 폴더)에 `demo.json`을 써서 커밋·푸시한다(강제 푸시 없음). GitHub Pages 반영은 보통 1분 안팎이다.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/install-demo-watch.ps1          # 등록(관리자 권한 필요 없음)
+powershell -ExecutionPolicy Bypass -File scripts/install-demo-watch.ps1 -Remove  # 해제
+powershell -ExecutionPolicy Bypass -File scripts/demo-watch.ps1 -Publish         # 지금 바로 한 번 확인하고 다시 올리기
+```
+
+- 기록: `data/ops/demo-watch.log`(주소·계정 없이 사건만, 512KB 넘으면 뒤 2,000줄만 남김), 상태 `data/ops/demo-watch-state.json`. 둘 다 Git에 올리지 않는다.
+- 쉬게 하기: `scripts/prototype.ps1 Stop`이 `data/deployment/demo-watch.paused`를 만들어 지킴이가 공개 접속을 다시 켜지 않게 하고, `Start`가 그 파일을 지운다.
+- 푸시는 이 PC의 Git Credential Manager에 저장된 GitHub 로그인을 쓴다. 토큰을 파일에 두지 않는다. 로그인이 만료되면 로그에 `pages: push failed`가 남으니 저장소에서 `git push`를 한 번 해 다시 로그인한다.
+- GitHub 저장소 설정: Settings → Pages → Source **Deploy from a branch**, 브랜치 `gh-pages` / `(root)`.
+- 한계: PC가 켜져 있고 **Windows에 로그온한 상태**여야 한다(Docker Desktop과 작업이 로그온 세션에서 돈다). 재부팅 뒤 로그온하지 않으면 안내 페이지는 "연결되지 않습니다"를 보여 준다. 절전·로그온 설정은 스크립트가 바꾸지 않는다. 주소가 바뀐 뒤 안내 주소에 반영되기까지 최대 약 5분 + Pages 반영 1분 안팎이 걸리고, 옛 주소로 열어 둔 탭은 끊긴다.
 
 ## 백업·복원과 Docker 디스크 위치
 

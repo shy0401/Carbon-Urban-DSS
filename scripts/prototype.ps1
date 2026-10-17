@@ -12,12 +12,16 @@ function Invoke-Compose {
 
 if ($Action -eq 'Stop') {
     Invoke-Compose stop tunnel gateway
-    Write-Host 'Public access stopped. Local application and database are preserved.'
+    # Keep the demo address watcher (scripts/demo-watch.ps1) from starting public access again until Start.
+    New-Item -ItemType Directory -Force -Path 'data/deployment' | Out-Null
+    Set-Content -LiteralPath 'data/deployment/demo-watch.paused' -Value 'paused by scripts/prototype.ps1 Stop' -Encoding ascii
+    Write-Host 'Public access stopped. Local application and database are preserved. The demo address watcher is paused until Start.'
     exit
 }
 
 if ($Action -eq 'Start') {
     if (!(Test-Path -LiteralPath '.env')) { Copy-Item -LiteralPath '.env.example' -Destination '.env' }
+    Remove-Item -LiteralPath 'data/deployment/demo-watch.paused' -Force -ErrorAction SilentlyContinue
     # Do not start any public connector until local credentials exist.
     Invoke-Compose up -d --build --wait postgres redis api worker frontend ollama
     New-Item -ItemType Directory -Force -Path '.secrets' | Out-Null
