@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Carbon Urban DSS 시연</title>
+<style>
+  :root { --bg: #f6f6f3; --surface: #ffffff; --ink: #1d2430; --ink-2: #5b6575; --line: #d9dce2; --accent: #1f6f5c; --warn: #9a5b00; --bad: #a33a2b; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #15181d; --surface: #1d2128; --ink: #e8eaee; --ink-2: #a3abb8; --line: #333a45; --accent: #5cc3a6; --warn: #e2a64b; --bad: #ef8a7a; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 16px; background: var(--bg); color: var(--ink); font: 15px/1.6 system-ui, -apple-system, "Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif; }
+  main { width: 100%; max-width: 560px; padding: 28px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+  h1 { margin: 0 0 4px; font-size: 22px; }
+  .sub { margin: 0 0 20px; color: var(--ink-2); }
+  #status { margin: 0 0 16px; padding: 12px 14px; border-radius: 8px; border: 1px solid var(--line); }
+  #status[data-tone="good"] { border-color: var(--accent); color: var(--accent); }
+  #status[data-tone="warn"] { border-color: var(--warn); color: var(--warn); }
+  #status[data-tone="bad"] { border-color: var(--bad); color: var(--bad); }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+  a.button, button { display: inline-flex; align-items: center; min-height: 40px; padding: 0 16px; border-radius: 8px; border: 1px solid var(--accent); background: var(--accent); color: var(--surface); font: inherit; font-weight: 600; text-decoration: none; cursor: pointer; }
+  button.ghost { background: transparent; color: var(--accent); }
+  dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 0; font-size: 13px; color: var(--ink-2); }
+  dd { margin: 0; overflow-wrap: anywhere; }
+  .note { margin: 16px 0 0; font-size: 13px; color: var(--ink-2); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Carbon Urban DSS 시연</h1>
+  <p class="sub">전북대 캡스톤 · 도시 탄소 의사결정 지원 도구</p>
+  <p id="status" role="status" data-tone="warn">시연 서버 주소를 확인하는 중입니다…</p>
+  <div class="row">
+    <a id="go" class="button" href="#" hidden>시연 사이트 열기</a>
+    <button id="retry" class="ghost" type="button" hidden>다시 확인</button>
+  </div>
+  <dl>
+    <dt>이 안내 주소</dt><dd>바뀌지 않습니다. 이 주소를 공유하세요.</dd>
+    <dt>시연 서버 주소</dt><dd id="url">—</dd>
+    <dt>주소가 바뀐 때</dt><dd id="updated">—</dd>
+  </dl>
+  <p class="note">시연 서버는 연구실 PC에서 돌아갑니다. PC가 다시 켜지거나 터널이 다시 연결되면 서버 주소가 바뀌고, PC가 몇 분 안에 이 페이지의 주소를 스스로 고칩니다. 들어가면 시연 계정 로그인 창이 뜹니다. 국토통계지도·선도소프트 100m 자료는 이용 조건상 이 주소에서는 보이지 않습니다.</p>
+</main>
+<script>
+(function () {
+  var PREFIX = '/Carbon-Urban-DSS';
+  var statusEl = document.getElementById('status');
+  var go = document.getElementById('go');
+  var retry = document.getElementById('retry');
+  function say(text, tone) { statusEl.textContent = text; statusEl.setAttribute('data-tone', tone); }
+  function target(base) {
+    var rest = location.pathname.indexOf(PREFIX) === 0 ? location.pathname.slice(PREFIX.length) : location.pathname;
+    if (rest === '' || rest === '/' || rest === '/index.html' || rest === '/404.html') rest = '/';
+    return base.replace(/\/+$/, '') + rest + location.search + location.hash;
+  }
+  function reachable(base) {
+    var ctl = 'AbortController' in window ? new AbortController() : null;
+    var timer = setTimeout(function () { if (ctl) ctl.abort(); }, 10000);
+    return fetch(base.replace(/\/+$/, '') + '/__ping?t=' + Date.now(), { cache: 'no-store', signal: ctl ? ctl.signal : undefined })
+      .then(function (r) { return r.status === 204 || r.ok; })
+      .catch(function () { return false; })
+      .then(function (ok) { clearTimeout(timer); return ok; });
+  }
+  function check() {
+    retry.hidden = true;
+    say('시연 서버 주소를 확인하는 중입니다…', 'warn');
+    fetch(PREFIX + '/demo.json?t=' + Date.now(), { cache: 'no-store' })
+      .then(function (r) { if (!r.ok) throw new Error(String(r.status)); return r.json(); })
+      .then(function (d) {
+        if (!d || !d.url) throw new Error('no url');
+        var dest = target(d.url);
+        document.getElementById('url').textContent = d.url;
+        document.getElementById('updated').textContent = d.updated_at ? new Date(d.updated_at).toLocaleString('ko-KR') : '—';
+        go.href = dest; go.hidden = false;
+        return reachable(d.url).then(function (ok) {
+          if (ok) { say('시연 서버가 켜져 있습니다. 잠시 뒤 이동합니다.', 'good'); setTimeout(function () { location.replace(dest); }, 900); }
+          else { say('시연 서버에 연결되지 않습니다. PC가 꺼져 있거나 주소를 바꾸는 중입니다. 5분쯤 뒤 다시 확인해 주세요.', 'bad'); retry.hidden = false; }
+        });
+      })
+      .catch(function () { say('시연 서버 주소를 읽지 못했습니다. 잠시 뒤 다시 확인해 주세요.', 'bad'); retry.hidden = false; });
+  }
+  retry.addEventListener('click', check);
+  check();
+})();
+</script>
+</body>
+</html>
