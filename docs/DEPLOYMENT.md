@@ -63,7 +63,8 @@ powershell -ExecutionPolicy Bypass -File scripts/demo-watch.ps1 -Publish        
 - 기록: `data/ops/demo-watch.log`(주소·계정 없이 사건만, 512KB 넘으면 뒤 2,000줄만 남김), 상태 `data/ops/demo-watch-state.json`. 둘 다 Git에 올리지 않는다.
 - 쉬게 하기: `scripts/prototype.ps1 Stop`이 `data/deployment/demo-watch.paused`를 만들어 지킴이가 공개 접속을 다시 켜지 않게 하고, `Start`가 그 파일을 지운다.
 - 푸시는 이 PC의 Git Credential Manager에 저장된 GitHub 로그인을 쓴다. 토큰을 파일에 두지 않는다. 로그인이 만료되면 로그에 `pages: push failed`가 남으니 저장소에서 `git push`를 한 번 해 다시 로그인한다.
-- GitHub 저장소 설정: Settings → Pages → Source **Deploy from a branch**, 브랜치 `gh-pages` / `(root)`.
+- GitHub 저장소 설정: `gh-pages` 브랜치를 처음 올리자 GitHub이 Pages를 스스로 켰다(2026-10-17, 저장소 `has_pages=true`, 따로 API 호출 없음). 화면에서 확인·변경할 때는 Settings → Pages → Source **Deploy from a branch**, 브랜치 `gh-pages` / `(root)`.
+- 2026-10-17 확인(PC 작업 577·578): gateway `/__ping` 로컬·공개 204, 로그인 없는 `/`·`/api/health`는 그대로 401. 지킴이 첫 실행으로 `gh-pages` 생성·푸시, 안내 주소 200, `demo.json`의 주소 = `public-url.txt`. 작업 스케줄러 작업 등록(로그온 1분 뒤·5분마다, 반복 무기한) 후 예약 실행 결과 0. **터널만 다시 시작해 주소를 바꾸자 예약 실행된 지킴이가 243초 만에 `demo.json`을 새 주소로 고쳤고**, 브라우저(Playwright)로 안내 주소 → 새 시연 주소 이동·로그인 뒤 앱 표시, `…/map?view=region` 경로 유지와 지도 표시, 서버가 꺼진 경우의 안내 문구·다시 확인 버튼, 페이지 오류 0을 확인했다. 재부팅 자체는 해 보지 않았다(재부팅 뒤에는 로그온 트리거와 위 흐름이 같은 방식으로 돈다).
 - 한계: PC가 켜져 있고 **Windows에 로그온한 상태**여야 한다(Docker Desktop과 작업이 로그온 세션에서 돈다). 재부팅 뒤 로그온하지 않으면 안내 페이지는 "연결되지 않습니다"를 보여 준다. 절전·로그온 설정은 스크립트가 바꾸지 않는다. 주소가 바뀐 뒤 안내 주소에 반영되기까지 최대 약 5분 + Pages 반영 1분 안팎이 걸리고, 옛 주소로 열어 둔 탭은 끊긴다.
 
 ## 백업·복원과 Docker 디스크 위치
