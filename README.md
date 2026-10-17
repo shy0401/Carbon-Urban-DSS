@@ -1,6 +1,6 @@
 # Carbon Urban DSS
 
-> **시연 주소(고정): https://shy0401.github.io/Carbon-Urban-DSS/** — 연구실 PC가 켜져 있으면 지금의 시연 서버로 옮겨 갑니다(시연 계정 로그인 필요). PC가 주소를 스스로 고칩니다: [GitHub Pages 고정 안내 주소](docs/DEPLOYMENT.md#github-pages-고정-안내-주소)
+> **시연 주소(고정): https://shy0401.github.io/Carbon-Urban-DSS/** — 연구실 PC가 켜져 있으면 지금의 시연 서버로 옮겨 갑니다(시연 계정 로그인 필요). PC가 주소를 스스로 고칩니다: [GitHub Pages 고정 안내 주소](docs/DEPLOYMENT.md#github-pages-고정-안내-주소) · 바탕화면 **Carbon DSS 켜기/끄기** 버튼으로 Docker까지 켜고 끕니다([켜기·끄기 버튼](docs/DEPLOYMENT.md#바탕화면-켜기끄기-버튼))
 >
 > **사용자 매뉴얼: [docs/USER_MANUAL.md](docs/USER_MANUAL.md)** ([PDF](docs/manual/Carbon-Urban-DSS-사용자-매뉴얼.pdf)) — 지역을 골라 입력값을 넣으면 어떤 결과가 나오는지 사례 25개(전주·수원·서울 강동·부산 강서), 3D·보고서, 다른 PC에서 같은 결과 확인(`scripts\dss.cmd VerifyCases`).
 > **팀원 과제: [docs/TEAM_TASKS_2026-10.md](docs/TEAM_TASKS_2026-10.md)** ([PPT](docs/presentation/Carbon-Urban-DSS-팀원-작업지시서.pptx) · [PDF](docs/presentation/Carbon-Urban-DSS-팀원-작업지시서.pdf)) · 발표: [기능과 시뮬레이션 사례 18장](docs/presentation/Carbon-Urban-DSS-기능과-시뮬레이션-사례.pptx) ([PDF](docs/presentation/Carbon-Urban-DSS-기능과-시뮬레이션-사례.pdf))

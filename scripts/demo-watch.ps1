@@ -4,7 +4,9 @@
 # - 주소가 바뀌었거나 안내 페이지가 바뀌었거나 -Publish를 주면 GitHub Pages(gh-pages 브랜치)의 demo.json을 고쳐 올립니다.
 #   고정 안내 주소 https://shy0401.github.io/Carbon-Urban-DSS/ 는 demo.json을 읽어 지금의 시연 주소로 보냅니다.
 # 로그(data\ops\demo-watch.log)에는 주소·계정·토큰을 적지 않습니다. 강제 푸시·기록 다시 쓰기를 하지 않습니다.
-# 쉬게 하기: data\deployment\demo-watch.paused 파일이 있으면 아무것도 하지 않습니다(scripts\prototype.ps1 Stop이 만들고 Start가 지움).
+# 쉬게 하기: data\deployment\demo-watch.paused 파일이 있으면 아무것도 하지 않습니다. 바탕화면 [Carbon DSS 끄기](scripts\dss-power.ps1 -Mode Off)·
+#   scripts\prototype.ps1 Stop이 만들고 [Carbon DSS 켜기]·prototype.ps1 Start가 지웁니다.
+#   같은 로그온 동안 켜져 있던 Docker Desktop을 사람이 직접 끄면(작업 표시줄 Quit) 그 뜻으로 보고 스스로 쉽니다. 재부팅·새 로그온 뒤에는 다시 켭니다.
 param(
     [string]$Root = (Split-Path -Parent $PSScriptRoot),
     [switch]$Publish,
@@ -59,7 +61,7 @@ function Invoke-Tool([string]$File, [string[]]$Arguments) {
 }
 
 function Read-State {
-    $s = [ordered]@{ published_url = $null; published_at = $null; page_hash = $null; tunnel_ticks = $null; tunnel_url = $null; fails = 0; last_restart = $null }
+    $s = [ordered]@{ published_url = $null; published_at = $null; page_hash = $null; tunnel_ticks = $null; tunnel_url = $null; fails = 0; last_restart = $null; engine_session = $null }
     if (Test-Path -LiteralPath $StateFile) {
         try {
             $j = Get-Content -LiteralPath $StateFile -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -210,6 +212,13 @@ function Publish-Pages([string]$Url) {
     return $true
 }
 
+function Get-SessionMark {
+    # 이번 Windows 로그온을 가리키는 값: 가장 먼저 뜬 explorer.exe의 시작 시각(재부팅·로그오프 뒤 바뀜).
+    $first = Get-Process -Name explorer -ErrorAction SilentlyContinue | Where-Object { $_.StartTime } | Sort-Object StartTime | Select-Object -First 1
+    if ($first) { return [string]$first.StartTime.ToUniversalTime().Ticks }
+    return $null
+}
+
 function Invoke-Watch {
     if (Test-Path -LiteralPath $PauseFile) {
         if ($Publish) { Write-Log 'paused (data\deployment\demo-watch.paused exists): nothing done' }
@@ -217,7 +226,18 @@ function Invoke-Watch {
     }
     $exitCode = 0
     $state = Read-State
+    $session = Get-SessionMark
+    if (-not (Test-Engine)) {
+        $desktopRunning = [bool](Get-Process -Name 'Docker Desktop' -ErrorAction SilentlyContinue)
+        if (-not $Publish -and -not $desktopRunning -and $session -and [string]$state.engine_session -eq $session) {
+            # 이번 로그온에서 켜져 있던 Docker를 누가 껐음 → 다시 켜지 않고 쉼
+            Set-Content -LiteralPath $PauseFile -Value ('paused: Docker Desktop was closed by hand ' + (Get-Date).ToString('s')) -Encoding ascii
+            Write-Log 'Docker Desktop was closed by hand in this logon: the watcher now leaves it off (press [Carbon DSS 켜기] to turn everything back on)'
+            return 0
+        }
+    }
     if (-not (Start-Engine)) { return 1 }
+    if ($session) { $state.engine_session = $session }
 
     $states = Get-States
     $down = @(Get-Down $states)

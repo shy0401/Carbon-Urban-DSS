@@ -49,7 +49,7 @@ powershell -ExecutionPolicy Bypass -File scripts/prototype.ps1 Stop
 
 `scripts/demo-watch.ps1`이 Windows 작업 스케줄러 작업 **`CarbonDSS demo address watch`**로 로그온 1분 뒤 시작하고 5분마다 다시 돈다(`scripts/demo-watch.vbs`가 창 없이 실행). 한 번 돌 때:
 
-1. Docker 엔진이 꺼져 있으면 Docker Desktop을 켜고 최대 5분 기다린다(Docker Desktop 자동 시작 설정은 바꾸지 않는다).
+1. Docker 엔진이 꺼져 있으면 Docker Desktop을 켜고 최대 5분 기다린다(Docker Desktop 자동 시작 설정은 바꾸지 않는다). 단, **같은 로그온 동안 켜져 있던 Docker Desktop을 사람이 직접 껐으면**(작업 표시줄 Quit) 다시 켜지 않고 스스로 쉰다. 재부팅·새 로그온 뒤에는 다시 켠다(로그온은 가장 먼저 뜬 `explorer.exe` 시각으로 구분).
 2. `postgres redis api worker frontend gateway tunnel` 가운데 멈춘 것이 있으면 1분 기다린 뒤(부팅 직후 Docker가 스스로 올리는 시간) 그래도 멈춘 것만 `docker compose … up -d --no-build`로 올린다. 이미지를 새로 만들지 않고 DB 볼륨을 건드리지 않는다.
 3. 터널 컨테이너의 이번 실행 로그에서 `https://….trycloudflare.com` 주소를 읽어 `/__ping`을 묻는다. 두 번 연속 안 열리면 터널만 다시 시작한다(새 터널이 자리 잡는 10분, 다시 시작 사이 30분 간격을 둔다).
 4. 주소가 바뀌었거나 `deploy/pages`가 바뀌었으면 `data/deployment/public-url.txt`를 고치고, `data/ops/pages-site`(gh-pages 작업 폴더)에 `demo.json`을 써서 커밋·푸시한다(강제 푸시 없음). GitHub Pages 반영은 보통 1분 안팎이다.
@@ -61,11 +61,24 @@ powershell -ExecutionPolicy Bypass -File scripts/demo-watch.ps1 -Publish        
 ```
 
 - 기록: `data/ops/demo-watch.log`(주소·계정 없이 사건만, 512KB 넘으면 뒤 2,000줄만 남김), 상태 `data/ops/demo-watch-state.json`. 둘 다 Git에 올리지 않는다.
-- 쉬게 하기: `scripts/prototype.ps1 Stop`이 `data/deployment/demo-watch.paused`를 만들어 지킴이가 공개 접속을 다시 켜지 않게 하고, `Start`가 그 파일을 지운다.
+- 쉬게 하기: `data/deployment/demo-watch.paused`가 있으면 지킴이는 아무것도 하지 않는다(재부팅 뒤에도). 바탕화면 **[Carbon DSS 끄기]**, `scripts/prototype.ps1 Stop`, Docker Desktop 직접 종료가 이 파일을 만들고, **[Carbon DSS 켜기]**와 `prototype.ps1 Start`가 지운다.
 - 푸시는 이 PC의 Git Credential Manager에 저장된 GitHub 로그인을 쓴다. 토큰을 파일에 두지 않는다. 로그인이 만료되면 로그에 `pages: push failed`가 남으니 저장소에서 `git push`를 한 번 해 다시 로그인한다.
 - GitHub 저장소 설정: `gh-pages` 브랜치를 처음 올리자 GitHub이 Pages를 스스로 켰다(2026-10-17, 저장소 `has_pages=true`, 따로 API 호출 없음). 화면에서 확인·변경할 때는 Settings → Pages → Source **Deploy from a branch**, 브랜치 `gh-pages` / `(root)`.
 - 2026-10-17 확인(PC 작업 577·578): gateway `/__ping` 로컬·공개 204, 로그인 없는 `/`·`/api/health`는 그대로 401. 지킴이 첫 실행으로 `gh-pages` 생성·푸시, 안내 주소 200, `demo.json`의 주소 = `public-url.txt`. 작업 스케줄러 작업 등록(로그온 1분 뒤·5분마다, 반복 무기한) 후 예약 실행 결과 0. **터널만 다시 시작해 주소를 바꾸자 예약 실행된 지킴이가 243초 만에 `demo.json`을 새 주소로 고쳤고**, 브라우저(Playwright)로 안내 주소 → 새 시연 주소 이동·로그인 뒤 앱 표시, `…/map?view=region` 경로 유지와 지도 표시, 서버가 꺼진 경우의 안내 문구·다시 확인 버튼, 페이지 오류 0을 확인했다. 재부팅 자체는 해 보지 않았다(재부팅 뒤에는 로그온 트리거와 위 흐름이 같은 방식으로 돈다).
 - 한계: PC가 켜져 있고 **Windows에 로그온한 상태**여야 한다(Docker Desktop과 작업이 로그온 세션에서 돈다). 재부팅 뒤 로그온하지 않으면 안내 페이지는 "연결되지 않습니다"를 보여 준다. 절전·로그온 설정은 스크립트가 바꾸지 않는다. 주소가 바뀐 뒤 안내 주소에 반영되기까지 최대 약 5분 + Pages 반영 1분 안팎이 걸리고, 옛 주소로 열어 둔 탭은 끊긴다.
+
+### 바탕화면 켜기·끄기 버튼
+
+바탕화면의 **`Carbon DSS 켜기`**·**`Carbon DSS 끄기`**(`.cmd`)는 `scripts/dss-power.ps1 -Mode On|Off`를 부른다. 다른 PC나 저장소를 옮긴 뒤에는 `powershell -ExecutionPolicy Bypass -File scripts/install-power-buttons.ps1`로 다시 만든다.
+
+| 버튼 | 하는 일 | 걸리는 시간 |
+|---|---|---|
+| 끄기 | 지킴이 쉬게 함(`demo-watch.paused`) → `docker compose stop`(DB 안전 종료, 볼륨 그대로) → `docker desktop stop`으로 Docker Desktop 종료. 재부팅해도 자동으로 켜지지 않음 | 1~2분 |
+| 켜기 | 쉬기 표시 지움 → Docker Desktop 켜기(`docker desktop start`) → `up -d --no-build --wait`로 DB·API·화면·gateway·터널(·로컬 AI) → `demo-watch.ps1 -Publish`로 새 터널 주소를 GitHub Pages 안내 주소에 올림 | 2~4분 |
+
+- 켜기는 이미지를 새로 만들지 않는다. 처음 설치했거나 코드가 바뀌어 이미지가 없으면 기존 **`Carbon Urban DSS 서버 실행`**(빌드·로컬 AI 준비 포함)을 쓴다.
+- 끄면 공개 안내 주소는 "연결되지 않습니다"로 보이고, 실행 중이던 수집 작업도 멈춘다.
+- 상태만 보기: `powershell -ExecutionPolicy Bypass -File scripts/dss-power.ps1 -Mode Status`.
 
 ## 백업·복원과 Docker 디스크 위치
 
