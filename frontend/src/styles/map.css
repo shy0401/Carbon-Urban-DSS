@@ -352,3 +352,16 @@ small.resolution-tag { margin: 0 0 0 var(--sp-1); }
 .grid100-picked { margin-top: var(--sp-2); padding: var(--sp-2); border: 1px solid var(--line); border-radius: var(--r-map); }
 @media (max-width: 560px) { .grid100-board { grid-template-columns: 1fr; } .grid100-cells { max-width: 220px; } }
 .grid100-panel h3 small { margin-left: 4px; font-size: var(--fs-caption); font-weight: 400; color: var(--ink-3); }
+
+/* 팀 변화 모델 패널 (격자 상세) */
+.team-model-panel h3 small { margin-left: 4px; font-size: var(--fs-caption); font-weight: 400; color: var(--ink-3); }
+.team-model-panel > .muted { margin-top: var(--sp-2); font-size: var(--fs-caption); line-height: 1.5; }
+.team-model-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--sp-2); margin-top: var(--sp-3); }
+.team-model-form .area-select { min-width: 0; }
+.team-cases { width: 100%; font-size: var(--fs-caption); }
+.team-cases small { color: var(--ink-3); }
+.team-model-result { margin-top: var(--sp-3); padding: var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-map); }
+.team-model-result .detail-figure .unit { font-size: var(--fs-caption); font-weight: 400; color: var(--ink-2); }
+.team-model-warnings { margin: var(--sp-2) 0 0; padding-left: 1.1em; font-size: var(--fs-caption); color: var(--ink-2); line-height: 1.5; }
+.team-model-result details, .team-model-accuracy { margin-top: var(--sp-2); font-size: var(--fs-caption); }
+.team-model-accuracy table { width: 100%; }

@@ -1,7 +1,14 @@
-"""팀원 데이터셋(urban-carbon, 윤영준, 2026-10-01)의 격자 자료를 이 도구에 붙인다.
+"""팀원 데이터셋(urban-carbon, 윤영준)의 격자 자료를 이 도구에 붙인다.
 
-공유 묶음의 ``data/processed/<도시>/<연도>/grid_500m.csv``, ``grid_100m.csv``, ``<도시>/developments.csv``를
-``DATA_DIR/raw/team_urban_carbon/<묶음 날짜>/<도시>/...``에 두고 ``python -m app.cli import-team-grid``로 넣는다.
+두 가지 묶음 모양을 읽는다(``DATA_DIR/raw/team_urban_carbon/<묶음 날짜>/``, ``python -m app.cli import-team-grid``):
+
+* 2026-10-01 공유 묶음: ``<도시>/<연도>/grid_500m.csv``, ``grid_100m.csv``, ``<도시>/developments.csv`` (4개 도시 × 4개 해)
+* 2026-10-20 인계 묶음(7차): ``code/data/processed/<도시>/training.csv``(500m 칸 × 7개 해, 월별·100m 없음),
+  ``developments.csv``, 그리고 모델 점수 ``00_합본_7차/baseline/development_cases.csv``(학습 42곳 교차검증)와
+  ``code/docs/results/data/r011-split-a/holdout_cases_join7_42_w10.csv``(시험 10곳) — 53개 지역
+
+같은 도시·같은 해는 가장 새 묶음 한 곳에서만 읽는다(500m는 해마다, 100m는 해마다, 개발 사례는 도시마다). 새 묶음에
+월별 값이 없으면 앞 묶음의 월별 값을 연간 합계가 같을 때만 남긴다. 100m는 7차 묶음에 없어 2026-10-01 값을 그대로 쓴다.
 
 넣는 것 (이 도구에 없던 출처):
 
@@ -32,10 +39,15 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from .db import Base
 
-SNAPSHOT = "2026-10-01"
-SOURCE_CARBONMAP = "국토교통부 탄소공간지도 500m 건물 배출 (팀 수집: 윤영준, 2026-10-01)"
+SNAPSHOT = "2026-10-20"
+SOURCE_CARBONMAP = "국토교통부 탄소공간지도 500m 건물 배출 (팀 수집: 윤영준, 7차 인계 2026-10-20)"
 SOURCE_NGII = "국토지리정보원 국토통계지도 100m (팀 수집, 국외 반출 금지)"
-YEARS = (2016, 2019, 2022, 2024)
+YEARS = (2014, 2016, 2018, 2019, 2021, 2022, 2024)
+TRAINING_FILE = "training.csv"  # 7차 인계: 한 도시의 모든 해 500m 칸
+# 모델 점수 파일(7차): 학습 42곳 사례의 교차검증 예측과 시험 10곳 사례의 예측(학습에 없던 지역)
+CASES_CV = ("code", "data", "processed", "00_합본_7차", "baseline", "development_cases.csv")
+CASES_TEST = ("code", "docs", "results", "data", "r011-split-a", "holdout_cases_join7_42_w10.csv")
+MODEL_NAME = "팀 변화 모델 7차 (00_합본_7차, 42곳, 사례 가중 ×10)"
 HEADER_PUBLIC = "x-public-gateway"
 UNKNOWN_ZERO = ("zero_with_buildings", "zero_buildings_unknown")
 
@@ -139,7 +151,7 @@ REGISTER_500 = {
     "office": "reg_office_floor_area_m2", "industrial": "reg_industrial_floor_area_m2",
 }
 FLAGS_500 = ("carbon_zero_status", "elec_drop_status", "gas_drop_status", "heat_drop_status", "elec_underreport_status",
-             "floor_area_check_status", "train_issues", "zone_main_class")
+             "floor_area_check_status", "register_check_status", "train_issues", "zone_main_class")
 
 
 def row500(dataset: str, year: int, r: dict[str, str], source_file: str) -> dict[str, Any] | None:
@@ -192,7 +204,8 @@ def dev_row(dataset: str, r: dict[str, str]) -> dict[str, Any] | None:
         return None
     dev = (r.get("development_id") or f"{int(b)}_{int(a)}_{grid}").strip()
     values = {k: (num(v) if num(v) is not None else (v or None)) for k, v in r.items()}
-    return {"id": f"{dataset}|{dev}|{grid}", "dataset": dataset, "region_code": dataset_region(dataset) or "", "grid_code": grid,
+    # 7차 표는 한 칸에 가능한 전후 해 쌍을 모두 담으므로 해까지 넣어 한 줄 = 한 쌍
+    return {"id": f"{dataset}|{dev}|{grid}|{int(b)}-{int(a)}", "dataset": dataset, "region_code": dataset_region(dataset) or "", "grid_code": grid,
             "x": int(x), "y": int(y), "before_year": int(b), "after_year": int(a), "data": values}
 
 
@@ -201,14 +214,36 @@ def team_root() -> Path:
     return Path(os.getenv("DATA_DIR", "data")) / "raw" / "team_urban_carbon"
 
 
+def snapshot_dirs(root: Path) -> list[Path]:
+    """Snapshot folders, oldest first (``_incoming``·``_docs`` 같은 이름은 묶음이 아님)."""
+    return sorted(p for p in root.glob("*") if p.is_dir() and not p.name.startswith(("_", ".")))
+
+
+def city_dirs(snap: Path) -> list[Path]:
+    """City folders of one snapshot: ``<snap>/<도시>`` (10-01 공유) and ``<snap>/code/data/processed/<도시>`` (10-20 인계)."""
+    out: list[Path] = []
+    for base in (snap, snap / "code" / "data" / "processed"):
+        if base.is_dir():
+            out += [d for d in sorted(base.iterdir()) if d.is_dir() and dataset_region(d.name)]
+    return out
+
+
 def dataset_dirs(root: Path) -> list[Path]:
     """City dataset folders of every snapshot (the newest snapshot wins for the same dataset name)."""
     found: dict[str, Path] = {}
-    for snap in sorted(p for p in root.glob("*") if p.is_dir()):
-        for d in sorted(p for p in snap.glob("*") if p.is_dir()):
-            if dataset_region(d.name):
-                found[d.name] = d
+    for snap in snapshot_dirs(root):
+        for d in city_dirs(snap):
+            found[d.name] = d
     return [found[k] for k in sorted(found)]
+
+
+def dataset_snapshots(root: Path) -> dict[str, list[Path]]:
+    """{dataset name: its folders in every snapshot, newest first}."""
+    found: dict[str, list[Path]] = {}
+    for snap in snapshot_dirs(root):
+        for d in city_dirs(snap):
+            found.setdefault(d.name, []).insert(0, d)
+    return dict(sorted(found.items()))
 
 
 def _sha(path: Path) -> str:
@@ -224,51 +259,223 @@ def _rows(path: Path) -> Iterable[dict[str, str]]:
         yield from csv.DictReader(f)
 
 
+def file_years(path: Path) -> list[int]:
+    """Years present in a multi-year table (the ``year`` column)."""
+    years = {int(v) for v in (num(r.get("year")) for r in _rows(path)) if v is not None}
+    return sorted(years)
+
+
+def plan_sources(folders: list[Path]) -> dict[str, Any]:
+    """Which file gives each kind of a dataset: the newest folder that has it (500m and 100m per year)."""
+    g500: dict[int, tuple[Path, str]] = {}
+    g100: dict[int, Path] = {}
+    dev: Path | None = None
+    for folder in folders:  # newest first
+        training = folder / TRAINING_FILE
+        if training.exists():
+            for year in file_years(training):
+                g500.setdefault(year, (training, "training"))
+        for year_dir in sorted(p for p in folder.glob("*") if p.is_dir() and p.name.isdigit()):
+            year = int(year_dir.name)
+            if (year_dir / "grid_500m.csv").exists():
+                g500.setdefault(year, (year_dir / "grid_500m.csv", "grid500"))
+            if (year_dir / "grid_100m.csv").exists():
+                g100.setdefault(year, year_dir / "grid_100m.csv")
+        if dev is None and (folder / "developments.csv").exists():
+            dev = folder / "developments.csv"
+    return {"g500": g500, "g100": g100, "dev": dev}
+
+
+def _close(a: float | None, b: float | None) -> bool:
+    if a is None or b is None:
+        return a is None and b is None
+    return abs(a - b) <= max(0.5, 0.005 * abs(b))
+
+
+def _insert(db: Any, model: Any, rows: list[dict[str, Any]]) -> None:
+    for start in range(0, len(rows), 5000):
+        db.execute(insert(model), rows[start:start + 5000])
+
+
+def _write_g500(db: Any, dataset: str, year: int, rows: list[dict[str, Any]]) -> dict[str, int]:
+    """Replace one dataset-year of 500m rows. A row without months keeps the months it had when its annual totals are
+    the same (the 10-01 shared bundle had months, the 7차 table has none); otherwise the months are left out."""
+    old = {g: (t, e, gs, h, m) for g, t, e, gs, h, m in db.execute(
+        select(TeamGrid500.grid_code, TeamGrid500.total_t, TeamGrid500.elec_t, TeamGrid500.gas_t, TeamGrid500.heat_t, TeamGrid500.monthly)
+        .where(TeamGrid500.dataset == dataset, TeamGrid500.year == year))}
+    kept = dropped = 0
+    for r in rows:
+        if r["monthly"] or r["grid_code"] not in old:
+            continue
+        t, e, gs, h, months = old[r["grid_code"]]
+        if not months:
+            continue
+        if all(_close(a, b) for a, b in ((r["total_t"], t), (r["elec_t"], e), (r["gas_t"], gs), (r["heat_t"], h))):
+            r["monthly"] = months
+            r["flags"] = dict(r["flags"], monthly_from="2026-10-01 공유 묶음")
+            kept += 1
+        else:
+            dropped += 1
+    db.execute(delete(TeamGrid500).where(TeamGrid500.dataset == dataset, TeamGrid500.year == year))
+    _insert(db, TeamGrid500, rows)
+    return {"months_kept": kept, "months_dropped": dropped}
+
+
+def _done(db: Any, rel: str, sha: str, force: bool) -> tuple[bool, Any]:
+    done = db.get(TeamImport, rel)
+    return bool(done and done.sha256 == sha and not force), done
+
+
+def _record(db: Any, done: Any, rel: str, sha: str, rows: int) -> None:
+    if done:
+        done.sha256, done.rows = sha, rows
+    else:
+        db.add(TeamImport(path=rel, sha256=sha, rows=rows))
+
+
+def newest_file(root: Path, parts: tuple[str, ...]) -> Path | None:
+    for snap in reversed(snapshot_dirs(root)):
+        path = snap.joinpath(*parts)
+        if path.exists():
+            return path
+    return None
+
+
+def case_scores(root: Path) -> dict[tuple[str, str, int, int], dict[str, Any]]:
+    """{(dataset, grid, before, after): model score} from the 7차 score files (pure reading).
+
+    학습 42곳 사례는 교차검증 예측(그 칸을 빼고 학습한 모델)과 도시 보류 예측(그 지역을 빼고 학습)을, 시험 10곳 사례는
+    7차 모델을 그대로 적용한 예측을 담는다. 어느 쪽도 그 사례를 보고 학습한 값이 아니다."""
+    out: dict[tuple[str, str, int, int], dict[str, Any]] = {}
+    cv = newest_file(root, CASES_CV)
+    if cv:
+        for r in _rows(cv):
+            b, a = num(r.get("before_year")), num(r.get("after_year"))
+            if b is None or a is None:
+                continue
+            out[(r.get("region") or "", (r.get("grid_id_500m") or "").strip(), int(b), int(a))] = {
+                "set": "train_cv", "actual_tco2e": num(r.get("actual_change_tco2e")),
+                "pred_tco2e": num(r.get("pred_change_model_all_regions_cv_tco2e")),
+                "pred_other_regions_tco2e": num(r.get("pred_change_model_other_regions_tco2e")),
+                "years_from": r.get("years_from") or None, "model": MODEL_NAME}
+    test = newest_file(root, CASES_TEST)
+    if test:
+        for r in _rows(test):
+            b, a = num(r.get("before_year")), num(r.get("after_year"))
+            if b is None or a is None:
+                continue
+            out[(r.get("region") or "", (r.get("grid_id_500m") or "").strip(), int(b), int(a))] = {
+                "set": "test", "actual_tco2e": num(r.get("actual_change_tco2e")), "pred_tco2e": num(r.get("pred_change_model_frozen")),
+                "years_from": r.get("years_from") or None, "model": MODEL_NAME}
+    return out
+
+
+def apply_case_scores(db: Any, scores: dict[tuple[str, str, int, int], dict[str, Any]]) -> int:
+    """Put each score on its development pair row (``data["model"]``); returns how many rows got one."""
+    if not scores:
+        return 0
+    datasets = sorted({k[0] for k in scores})
+    hit = 0
+    for row in db.scalars(select(TeamDevelopment).where(TeamDevelopment.dataset.in_(datasets))):
+        score = scores.get((row.dataset, row.grid_code, row.before_year, row.after_year))
+        data = dict(row.data or {})
+        if score is None and "model" not in data:
+            continue
+        if score is None:
+            data.pop("model", None)
+        else:
+            data["model"] = score
+            hit += 1
+        row.data = data
+    return hit
+
+
 def import_team_grid(db: Any, root: Path | None = None, force: bool = False, log=print) -> dict[str, Any]:
     root = root or team_root()
     for model in (TeamGrid500, TeamGrid100, TeamDevelopment, TeamImport):
         model.__table__.create(db.get_bind(), checkfirst=True)
-    stats: dict[str, Any] = {"datasets": [], "grid500": 0, "grid100": 0, "developments": 0, "skipped_files": 0}
-    for d in dataset_dirs(root):
-        stats["datasets"].append(d.name)
-        jobs: list[tuple[Path, Any]] = []
-        for year_dir in sorted(p for p in d.glob("*") if p.is_dir() and p.name.isdigit()):
-            year = int(year_dir.name)
-            jobs.append((year_dir / "grid_500m.csv", ("g500", year)))
-            jobs.append((year_dir / "grid_100m.csv", ("g100", year)))
-        jobs.append((d / "developments.csv", ("dev", None)))
-        for path, (kind, year) in jobs:
-            if not path.exists():
-                continue
+    stats: dict[str, Any] = {"datasets": [], "grid500": 0, "grid100": 0, "developments": 0, "skipped_files": 0,
+                             "months_kept": 0, "months_dropped": 0, "scored_cases": None}
+    dev_changed = False
+    for name, folders in dataset_snapshots(root).items():
+        stats["datasets"].append(name)
+        plan = plan_sources(folders)
+        # 500m: a multi-year training table is one file for several years
+        by_file: dict[Path, list[int]] = {}
+        for year, (path, _kind) in sorted(plan["g500"].items()):
+            by_file.setdefault(path, []).append(year)
+        for path, years in by_file.items():
             rel = str(path.relative_to(root))
             sha = _sha(path)
-            done = db.get(TeamImport, rel)
-            if done and done.sha256 == sha and not force:
+            skip, done = _done(db, rel, sha, force)
+            if skip:
                 stats["skipped_files"] += 1
                 continue
-            if kind == "g500":
-                db.execute(delete(TeamGrid500).where(TeamGrid500.dataset == d.name, TeamGrid500.year == year))
-                rows = [x for x in (row500(d.name, year, r, rel) for r in _rows(path)) if x]
-                model = TeamGrid500
-            elif kind == "g100":
-                db.execute(delete(TeamGrid100).where(TeamGrid100.dataset == d.name, TeamGrid100.year == year))
-                rows = [x for x in (row100(d.name, year, r) for r in _rows(path)) if x]
-                model = TeamGrid100
+            rows_by_year: dict[int, list[dict[str, Any]]] = {y: [] for y in years}
+            if path.name == TRAINING_FILE:
+                for r in _rows(path):
+                    y = num(r.get("year"))
+                    if y is not None and int(y) in rows_by_year:
+                        row = row500(name, int(y), r, rel)
+                        if row:
+                            rows_by_year[int(y)].append(row)
             else:
-                db.execute(delete(TeamDevelopment).where(TeamDevelopment.dataset == d.name))
-                rows = [x for x in (dev_row(d.name, r) for r in _rows(path)) if x]
-                model = TeamDevelopment
-            unique = {r["id"]: r for r in rows}  # the same key twice in one file: the last row (no double count)
-            rows = list(unique.values())
-            for start in range(0, len(rows), 5000):
-                db.execute(insert(model), rows[start:start + 5000])
-            if done:
-                done.sha256, done.rows = sha, len(rows)
-            else:
-                db.add(TeamImport(path=rel, sha256=sha, rows=len(rows)))
+                rows_by_year[years[0]] = [x for x in (row500(name, years[0], r, rel) for r in _rows(path)) if x]
+            total = 0
+            for year, rows in rows_by_year.items():
+                rows = list({r["id"]: r for r in rows}.values())  # the same key twice in one file: the last row (no double count)
+                kept = _write_g500(db, name, year, rows)
+                stats["months_kept"] += kept["months_kept"]
+                stats["months_dropped"] += kept["months_dropped"]
+                total += len(rows)
+            _record(db, done, rel, sha, total)
             db.commit()
-            stats[{"g500": "grid500", "g100": "grid100", "dev": "developments"}[kind]] += len(rows)
+            stats["grid500"] += total
+            log(f"{rel}: {total} ({', '.join(str(y) for y in years)})")
+        for year, path in sorted(plan["g100"].items()):
+            rel = str(path.relative_to(root))
+            sha = _sha(path)
+            skip, done = _done(db, rel, sha, force)
+            if skip:
+                stats["skipped_files"] += 1
+                continue
+            db.execute(delete(TeamGrid100).where(TeamGrid100.dataset == name, TeamGrid100.year == year))
+            rows = list({r["id"]: r for r in (x for x in (row100(name, year, r) for r in _rows(path)) if x)}.values())
+            _insert(db, TeamGrid100, rows)
+            _record(db, done, rel, sha, len(rows))
+            db.commit()
+            stats["grid100"] += len(rows)
             log(f"{rel}: {len(rows)}")
+        path = plan["dev"]
+        if path is not None:
+            rel = str(path.relative_to(root))
+            sha = _sha(path)
+            skip, done = _done(db, rel, sha, force)
+            if skip:
+                stats["skipped_files"] += 1
+            else:
+                db.execute(delete(TeamDevelopment).where(TeamDevelopment.dataset == name))
+                rows = list({r["id"]: r for r in (x for x in (dev_row(name, r) for r in _rows(path)) if x)}.values())
+                _insert(db, TeamDevelopment, rows)
+                _record(db, done, rel, sha, len(rows))
+                db.commit()
+                dev_changed = True
+                stats["developments"] += len(rows)
+                log(f"{rel}: {len(rows)}")
+    # model scores of the development cases (7차): again whenever a case table or a score file changed
+    files = [p for p in (newest_file(root, CASES_CV), newest_file(root, CASES_TEST)) if p]
+    changed = dev_changed
+    for p in files:
+        rel = str(p.relative_to(root))
+        sha = _sha(p)
+        skip, done = _done(db, rel, sha, force)
+        if not skip:
+            changed = True
+            _record(db, done, rel, sha, 0)
+    if changed and files:
+        stats["scored_cases"] = apply_case_scores(db, case_scores(root))
+        db.commit()
+        log(f"model scores on development cases: {stats['scored_cases']}")
     _CACHE.clear()
     return stats
 
@@ -419,17 +626,57 @@ def carbonmap_comparison(db: Any, region_code: str) -> dict[str, Any] | None:
     return out
 
 
-def developments(db: Any, region_code: str) -> list[dict[str, Any]]:
+def developments(db: Any, region_code: str, scored_only: bool = False) -> list[dict[str, Any]]:
+    """Development pairs of a region (7차: every before/after pair of a developed cell; ``model`` on the scored pair)."""
     try:
         rows = db.scalars(select(TeamDevelopment).where(TeamDevelopment.region_code == region_code)
                           .order_by(TeamDevelopment.before_year, TeamDevelopment.grid_code)).all()
     except Exception:  # noqa: BLE001
         db.rollback()
         return []
-    keep = ("dong_name", "zone_main_class", "floor_area_added_m2", "buildings_tco2e_before", "buildings_tco2e_after", "buildings_tco2e_change",
-            "elec_tco2e_change", "gas_tco2e_change", "heat_tco2e_change", "pair_usable", "site_kind", "use_kind", "development_id", "development_cells")
-    return [dict({"grid_id": f"cell_{r.x}_{r.y}", "grid_code": r.grid_code, "before_year": r.before_year, "after_year": r.after_year},
-                 **{k: (r.data or {}).get(k) for k in keep}) for r in rows]
+    keep = ("dong_name", "zone_main_class", "floor_area_added_m2", "reg_floor_area_added_m2", "reg_dwellings_added", "buildings_tco2e_before",
+            "buildings_tco2e_after", "buildings_tco2e_change", "elec_tco2e_change", "gas_tco2e_change", "heat_tco2e_change", "pair_usable",
+            "site_kind", "use_kind", "development_id", "development_cells", "case_start_year", "case_approval_year", "model")
+    out = [dict({"grid_id": f"cell_{r.x}_{r.y}", "grid_code": r.grid_code, "before_year": r.before_year, "after_year": r.after_year},
+                **{k: (r.data or {}).get(k) for k in keep}) for r in rows]
+    return [d for d in out if d.get("model")] if scored_only else out
+
+
+def relative_error(actual: float | None, predicted: float | None) -> float | None:
+    """|예측 − 실제| ÷ |실제| (팀 기준: 실제 100 tCO2e 이상 사례만 오차를 잰다)."""
+    if actual is None or predicted is None or abs(actual) < 100:
+        return None
+    return abs(predicted - actual) / abs(actual)
+
+
+def score_summary(cases: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """사례별 오차 중앙값·±50% 안·방향 일치·예측 합 ÷ 실제 합 (팀 결과 표와 같은 정의, pure)."""
+    pairs = [(c["actual_tco2e"], c["pred_tco2e"]) for c in cases if c.get("actual_tco2e") is not None and c.get("pred_tco2e") is not None]
+    if not pairs:
+        return None
+    errors = sorted(e for e in (relative_error(a, p) for a, p in pairs) if e is not None)
+    n = len(errors)
+    med = (errors[n // 2] if n % 2 else (errors[n // 2 - 1] + errors[n // 2]) / 2) if n else None
+    actual_sum = sum(a for a, _ in pairs)
+    return {"cases": len(pairs), "measured": n, "median_relative_error": round(med, 3) if med is not None else None,
+            "within_50pct": round(sum(1 for e in errors if e <= 0.5) / n, 3) if n else None,
+            "same_direction": round(sum(1 for a, p in pairs if (a >= 0) == (p >= 0)) / len(pairs), 3),
+            "sum_ratio": round(sum(p for _, p in pairs) / actual_sum, 3) if actual_sum else None,
+            "big_cases": sum(1 for a, _ in pairs if abs(a) >= 1000)}
+
+
+def development_summary(db: Any, region_code: str) -> dict[str, Any]:
+    """개발 사례 수와, 점수가 있으면 이 지역 사례에서 팀 변화 모델이 맞힌 정도(학습 교차검증 또는 시험)."""
+    devs = developments(db, region_code)
+    cells = {d["grid_code"] for d in devs}
+    usable = {(d["grid_code"], d["before_year"], d["after_year"]) for d in devs if d.get("pair_usable") in (True, "True", 1, 1.0)}
+    scored = [d["model"] for d in devs if d.get("model")]
+    out: dict[str, Any] = {"cases": len(cells), "usable": len(usable), "pairs": len(devs), "scored": len(scored)}
+    if scored:
+        sets = sorted({s.get("set") for s in scored})
+        out["model"] = {"name": scored[0].get("model"), "set": sets[0] if len(sets) == 1 else "mixed",
+                        "all": score_summary(scored), "big": score_summary([s for s in scored if s.get("actual_tco2e") is not None and abs(s["actual_tco2e"]) >= 1000])}
+    return out
 
 
 GRID100_LIMIT = 12000
@@ -471,7 +718,7 @@ def grid100_features(db: Any, region_code: str | None, year: int, bbox: tuple[fl
         meta["reason"] = "100m 격자 자료(국토통계지도)를 아직 가져오지 않았습니다."
         return empty
     if not meta["years"]:
-        meta["reason"] = "이 지역에는 100m 격자 자료(국토통계지도)가 없습니다. 팀 데이터셋은 전주·세종·부산 강서·서울 강동만 있습니다."
+        meta["reason"] = "이 지역에는 100m 격자 자료(국토통계지도)가 없습니다. 팀 100m 자료는 전주·세종·부산 강서·서울 강동만 있습니다(7차 인계 묶음에는 100m 없음)."
         return empty
     chosen = year_for(meta["years"], year)
     if chosen is None:

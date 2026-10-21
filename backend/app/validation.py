@@ -231,12 +231,10 @@ def region_validation(db: Any, region: str | None = None) -> dict[str, Any]:
     # 탄소공간지도 500m 건물 배출(팀 데이터셋): 지역 합계와, 같은 해 이 도구의 건축HUB 전력 탄소를 칸끼리
     carbonmap = None
     try:
-        from .team_grid import carbonmap_comparison, developments
+        from .team_grid import carbonmap_comparison, development_summary
         carbonmap = carbonmap_comparison(db, sc.code)
         if carbonmap is not None:
-            devs = developments(db, sc.code)
-            usable = [d for d in devs if d.get("pair_usable") in (True, "True")]
-            carbonmap["developments"] = {"cases": len(devs), "usable": len(usable)}
+            carbonmap["developments"] = development_summary(db, sc.code)
     except Exception:  # noqa: BLE001
         db.rollback()
 

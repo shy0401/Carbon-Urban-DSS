@@ -6,6 +6,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { DongPanel } from '../components/DongPanel';
 import { Grid100Panel } from '../components/Grid100Panel';
 import { Kcsm100Panel } from '../components/Kcsm100Panel';
+import { TeamModelPanel } from '../components/TeamModelPanel';
 import { kcsmClassify, kcsmClassLabel, kcsmColor, kcsmFromFeature, kcsmTooltip, kcsmUnavailable, KCSM_MIN_ZOOM, KCSM_ZERO_FILL, type KcsmResponse } from '../lib/kcsm100';
 import { LayerGroupTitle, LayerToggle } from '../components/LayerToggle';
 import { MetricCard } from '../components/MetricCard';
@@ -370,6 +371,7 @@ function RegionDetailMap({ offline }: { offline: boolean | null }) {
   }, [mapReady, visible.grid100, g100Available, year, regionQuery]);
   // 탄소공간지도 100m 전력 배출: 같은 방식(확대 13 이상, 화면 범위만)
   const k100Available = !kcsmUnavailable(data?.kcsm100);
+  const teamAvailable = !!data?.team_model && !('restricted' in data.team_model);
   useEffect(() => {
     const m = mapRef.current; if (!m || !mapReady || !k100Available) return;
     let controller: AbortController | null = null; let timer = 0;
@@ -493,7 +495,7 @@ function RegionDetailMap({ offline }: { offline: boolean | null }) {
         {mapError && <p role="alert" className="map-error">{mapError}</p>}
       </div>
       {dongShown && dongs.data && <DongPanel data={dongs.data} index={dongIndex >= 0 ? dongIndex : null} grids={gridProps} complexes={data.complexes} metric={metric} regionName={regionName} onSelect={(i) => setDong(i === null ? null : dongs.data?.dongs[i]?.code ?? null)} onClose={() => setDongView(false)} />}
-      {detailShown && <GridDetail props={selected} year={year} name={String(data.selected_sector?.grid_id) === selectedId ? data.selected_sector?.name : undefined} dongs={selectedDongs} metric={metric} classification={classification} details={details.data} detailsLoading={details.loading} onFocus={focus} onClose={() => setDetailOpen(false)} grid100={g100Available ? { region } : null} kcsm100={k100Available ? { region } : null} />}
+      {detailShown && <GridDetail props={selected} year={year} name={String(data.selected_sector?.grid_id) === selectedId ? data.selected_sector?.name : undefined} dongs={selectedDongs} metric={metric} classification={classification} details={details.data} detailsLoading={details.loading} onFocus={focus} onClose={() => setDetailOpen(false)} grid100={g100Available ? { region } : null} kcsm100={k100Available ? { region } : null} teamModel={teamAvailable ? { region } : null} />}
     </div>;
 }
 
@@ -543,7 +545,7 @@ function BasicRegionNote({ code, name }: { code: string; name: string }) {
   </section>;
 }
 
-function GridDetail({ props: p, year, name, dongs, metric, classification, details, detailsLoading, onFocus, onClose, grid100 = null, kcsm100 = null }: { props: GridProps; year: number; name?: string; dongs?: string | null; metric: MetricDef; classification: Classification; details: DashboardData | null; detailsLoading: boolean; onFocus: () => void; onClose: () => void; grid100?: { region: string | null } | null; kcsm100?: { region: string | null } | null }) {
+function GridDetail({ props: p, year, name, dongs, metric, classification, details, detailsLoading, onFocus, onClose, grid100 = null, kcsm100 = null, teamModel = null }: { props: GridProps; year: number; name?: string; dongs?: string | null; metric: MetricDef; classification: Classification; details: DashboardData | null; detailsLoading: boolean; onFocus: () => void; onClose: () => void; grid100?: { region: string | null } | null; kcsm100?: { region: string | null } | null; teamModel?: { region: string | null } | null }) {
   const value = p[metric.key] as number | null;
   const cls = value === null ? null : classification.classes.find((c, i) => i === classification.classes.length - 1 ? value >= c.from : value >= c.from && value < c.to);
   const detailMatches = details?.selected_sector && String(details.selected_sector.grid_id) === p.id;
@@ -578,6 +580,7 @@ function GridDetail({ props: p, year, name, dongs, metric, classification, detai
     </section>
     {kcsm100 && <Kcsm100Panel gridId={String(p.id)} year={year} region={kcsm100.region} />}
     {grid100 && <Grid100Panel gridId={String(p.id)} year={year} region={grid100.region} />}
+    {teamModel && <TeamModelPanel gridId={String(p.id)} region={teamModel.region} />}
     <section className="detail-section" aria-label="월별 관측">
       <h3>월별 관측 ({months.length ? `${String(months[0]?.use_ym).slice(0, 4)}년` : `${year}년`})</h3>
       {months.length > 0 ? <><MonthRow label="전력" months={months.map((r) => r.electricity_kwh !== null)} /><MonthRow label="가스" months={months.map((r) => r.gas_kwh !== null)} /></> : detailsLoading ? <p className="muted">월별 관측 확인 중…</p> : <MissingValue reason="이 격자에는 월별 에너지 관측이 없습니다." />}

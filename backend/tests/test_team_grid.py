@@ -1,7 +1,7 @@
 """팀 데이터셋(탄소공간지도 500m·국토통계지도 100m·개발 사례) 붙이기: 중복 없이, 빈 값은 결측."""
 from pathlib import Path
 
-from app.team_grid import (cell_properties, dataset_dirs, dataset_region, dev_row, num, pair_stats, row100, row500, year_for)
+from app.team_grid import (cell_properties, dataset_dirs, dataset_region, dev_row, num, pair_stats, row100, row500, score_summary, year_for)
 
 HEAD500 = ("grid_id_500m,x_min_m,y_min_m,is_partial_cell,population_total_persons_sum,floor_area_total_est_m2,elec_tco2e_m01,"
            "elec_tco2e_total,gas_tco2e_total,heat_tco2e_total,buildings_tco2e_total,carbon_zero_status,reg_floor_area_m2,train_usable,elec_drop_status")
@@ -51,13 +51,20 @@ def test_pair_stats_and_development_rows():
     assert pair_stats([(1.0, 1.0)]) is None
     d = dev_row("52110_전주시", {"grid_id_500m": "다마59b60b", "x_min_m": "959500", "y_min_m": "1760500", "before_year": "2016",
                                 "after_year": "2019", "development_id": "2016_2019_다마59b60b", "buildings_tco2e_change": "2692.9"})
-    assert d["id"] == "52110_전주시|2016_2019_다마59b60b|다마59b60b" and d["data"]["buildings_tco2e_change"] == 2692.9
+    assert d["id"] == "52110_전주시|2016_2019_다마59b60b|다마59b60b|2016-2019" and d["data"]["buildings_tco2e_change"] == 2692.9
 
 
 def test_dataset_folders_skip_the_combined_table(tmp_path: Path):
     for name in ("00_합본_1차", "52110_전주시", "36110_세종특별자치시"):
         (tmp_path / "2026-10-01" / name / "2024").mkdir(parents=True)
     assert [d.name for d in dataset_dirs(tmp_path)] == ["36110_세종특별자치시", "52110_전주시"]
+    # 7차 인계 묶음은 code/data/processed 아래에 도시 폴더가 있고, 같은 이름이면 새 묶음이 앞선다
+    for name in ("00_합본_7차", "52110_전주시", "41117_경기도_수원시_영통구"):
+        (tmp_path / "2026-10-20" / "code" / "data" / "processed" / name).mkdir(parents=True)
+    (tmp_path / "_incoming").mkdir()
+    dirs = {d.name: d for d in dataset_dirs(tmp_path)}
+    assert sorted(dirs) == ["36110_세종특별자치시", "41117_경기도_수원시_영통구", "52110_전주시"]
+    assert "2026-10-20" in str(dirs["52110_전주시"])
 
 
 def test_import_is_idempotent_and_never_double_counts(tmp_path: Path):
@@ -146,3 +153,96 @@ def test_grid100_viewport_years_and_regions_without_data():
     assert none["features"] == [] and none["meta"]["years"] == [] and none["meta"]["reason"]
     meta = grid100_features(db, "52110", 2025, meta_only=True)
     assert meta["features"] == [] and meta["meta"]["cells"] == 4 and meta["meta"]["year"] == 2024
+
+
+TRAIN_HEAD = ("grid_id_500m,year,x_min_m,y_min_m,is_partial_cell,population_total_persons_sum,floor_area_total_est_m2,"
+              "elec_tco2e_total,gas_tco2e_total,heat_tco2e_total,buildings_tco2e_total,carbon_zero_status,reg_floor_area_m2,train_usable,train_issues")
+DEV_HEAD = "grid_id_500m,x_min_m,y_min_m,before_year,after_year,development_id,buildings_tco2e_change,pair_usable,site_kind,use_kind"
+
+
+def _seven(tmp_path: Path, elec_2024: str = "60") -> None:
+    """A 10-01 shared bundle (months, 100m) and a 7차 인계 bundle (training.csv for every year, no months, no 100m)."""
+    old = tmp_path / "2026-10-01" / "52110_전주시"
+    for year, total in ((2016, "80"), (2024, "100")):
+        (old / str(year)).mkdir(parents=True)
+        (old / str(year) / "grid_500m.csv").write_text("\n".join([HEAD500, f"다마71b61b,971500,1761500,False,120,20000,5,60,40,0,{total},positive,,True,ok"]), encoding="utf-8")
+        (old / str(year) / "grid_100m.csv").write_text(
+            "grid_id_100m,grid_id_500m,x_min_m,y_min_m,population_total_persons,population_total_persons_status,building_count,reg_floor_area_m2\n"
+            "다마715615,다마71b61b,971500,1761500,40,observed,3,900\n", encoding="utf-8")
+    (old / "developments.csv").write_text(DEV_HEAD + "\n다마71b61b,971500,1761500,2016,2024,d1,20,True,built_up,residential\n", encoding="utf-8")
+    new = tmp_path / "2026-10-20" / "code" / "data" / "processed" / "52110_전주시"
+    new.mkdir(parents=True)
+    rows = [TRAIN_HEAD, "다마71b61b,2014,971500,1761500,False,110,19000,50,35,0,85,positive,,True,none",
+            "다마71b61b,2016,971500,1761500,False,120,20000,60,40,0,80,positive,,True,none",  # same totals as 10-01 → months kept
+            f"다마71b61b,2024,971500,1761500,False,120,20000,{elec_2024},40,0,100,positive,,False,suspect_region_drop"]
+    (new / "training.csv").write_text("\n".join(rows), encoding="utf-8")
+    (new / "developments.csv").write_text(DEV_HEAD + "\n다마71b61b,971500,1761500,2014,2024,d1,15,True,built_up,residential"
+                                          "\n다마71b61b,971500,1761500,2016,2024,d1,20,True,built_up,residential\n", encoding="utf-8")
+    cv = tmp_path / "2026-10-20" / "code" / "data" / "processed" / "00_합본_7차" / "baseline"
+    cv.mkdir(parents=True)
+    (cv / "development_cases.csv").write_text("region,grid_id_500m,before_year,after_year,years_from,actual_change_tco2e,"
+                                              "pred_change_model_all_regions_cv_tco2e,pred_change_model_other_regions_tco2e\n"
+                                              "52110_전주시,다마71b61b,2016,2024,dated,1200,1500,900\n", encoding="utf-8")
+
+
+def test_seventh_bundle_replaces_years_keeps_months_and_100m(tmp_path: Path):
+    from sqlalchemy import create_engine, select
+    from sqlalchemy.orm import sessionmaker
+
+    from app.team_grid import TeamGrid100, TeamGrid500, development_summary, developments, import_team_grid, map_properties
+    db = sessionmaker(create_engine("sqlite+pysqlite:///:memory:"))()
+    old_only = tmp_path / "only-old"
+    _seven(tmp_path)
+    # first the 10-01 bundle alone (as it was in the DB before the 7차 bundle came)
+    old_only.mkdir()
+    (tmp_path / "2026-10-01").rename(old_only / "2026-10-01")
+    import_team_grid(db, old_only, log=lambda m: None)
+    (old_only / "2026-10-01").rename(tmp_path / "2026-10-01")
+    stats = import_team_grid(db, tmp_path, log=lambda m: None)
+    assert stats["grid500"] == 3 and stats["months_kept"] == 2 and stats["months_dropped"] == 0
+    rows = {r.year: r for r in db.scalars(select(TeamGrid500))}
+    assert sorted(rows) == [2014, 2016, 2024]
+    assert rows[2016].monthly["elec"][0] == 5.0 and rows[2016].flags["monthly_from"].startswith("2026-10-01")
+    assert rows[2024].monthly["elec"][0] == 5.0  # 2024 totals are the same too
+    assert rows[2014].monthly == {} and "training.csv" in rows[2014].source_file
+    assert rows[2024].flags["train_issues"] == "suspect_region_drop" and rows[2024].flags["train_usable"] is False
+    assert db.query(TeamGrid100).count() == 2  # 100m stays from the 10-01 bundle (the 7차 bundle has none)
+    devs = developments(db, "52110")
+    assert {(d["before_year"], d["after_year"]) for d in devs} == {(2014, 2024), (2016, 2024)}  # 10-01 cases replaced, no double
+    scored = developments(db, "52110", scored_only=True)
+    assert len(scored) == 1 and scored[0]["model"]["pred_tco2e"] == 1500 and scored[0]["model"]["set"] == "train_cv"
+    summary = development_summary(db, "52110")
+    assert summary["cases"] == 1 and summary["pairs"] == 2 and summary["scored"] == 1
+    assert summary["model"]["all"]["median_relative_error"] == 0.25 and summary["model"]["all"]["sum_ratio"] == 1.25
+    props = map_properties(db, "52110", 2025, ["cell_971500_1761500"])["cell_971500_1761500"]
+    assert props["cm_year"] == 2024 and props["cm_change_base_year"] == 2014
+    again = import_team_grid(db, tmp_path, log=lambda m: None)
+    assert again["grid500"] == 0 and again["scored_cases"] is None
+    assert db.query(TeamGrid500).count() == 3
+
+
+def test_seventh_bundle_drops_months_when_totals_differ(tmp_path: Path):
+    from sqlalchemy import create_engine, select
+    from sqlalchemy.orm import sessionmaker
+
+    from app.team_grid import TeamGrid500, import_team_grid
+    db = sessionmaker(create_engine("sqlite+pysqlite:///:memory:"))()
+    _seven(tmp_path, elec_2024="70")
+    old_only = tmp_path / "only-old"
+    old_only.mkdir()
+    (tmp_path / "2026-10-01").rename(old_only / "2026-10-01")
+    import_team_grid(db, old_only, log=lambda m: None)
+    (old_only / "2026-10-01").rename(tmp_path / "2026-10-01")
+    stats = import_team_grid(db, tmp_path, log=lambda m: None)
+    assert stats["months_kept"] == 1 and stats["months_dropped"] == 1
+    assert next(r for r in db.scalars(select(TeamGrid500)) if r.year == 2024).monthly == {}
+
+
+def test_score_summary_uses_the_team_definitions():
+    cases = [{"actual_tco2e": 1000, "pred_tco2e": 1300}, {"actual_tco2e": 2000, "pred_tco2e": 1000}, {"actual_tco2e": -500, "pred_tco2e": 200},
+             {"actual_tco2e": 50, "pred_tco2e": 400}]  # below 100 tCO2e: only the direction and the sum count
+    s = score_summary(cases)
+    assert s["cases"] == 4 and s["measured"] == 3 and s["median_relative_error"] == 0.5
+    assert s["within_50pct"] == 0.667 and s["same_direction"] == 0.75 and s["big_cases"] == 2
+    assert s["sum_ratio"] == round(2900 / 2550, 3)
+    assert score_summary([]) is None

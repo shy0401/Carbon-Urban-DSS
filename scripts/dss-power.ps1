@@ -16,7 +16,7 @@ Set-Location -LiteralPath $Root
 $PauseFile = Join-Path $Root 'data\deployment\demo-watch.paused'
 $UrlFile = Join-Path $Root 'data\deployment\public-url.txt'
 $PagesUrl = 'https://shy0401.github.io/Carbon-Urban-DSS/'
-$C = @('compose', '-p', 'carbon-urban-dss', '-f', 'compose.yaml', '-f', 'compose.demo.yaml', '--profile', 'public-demo', '--profile', 'local-ai')
+$C = @('compose', '-p', 'carbon-urban-dss', '-f', 'compose.yaml', '-f', 'compose.demo.yaml', '--profile', 'public-demo', '--profile', 'local-ai', '--profile', 'team-model')
 $Services = @('postgres', 'redis', 'api', 'worker', 'frontend', 'gateway', 'tunnel')
 try { $Host.UI.RawUI.WindowTitle = "Carbon DSS $(@{ On = '켜기'; Off = '끄기'; Status = '상태' }[$Mode])" } catch { }
 
@@ -65,7 +65,7 @@ function Show-Status {
     Say ("자동 켜기(지킴이): " + $(if ($paused) { '쉬는 중 - Docker를 스스로 켜지 않음' } else { '켜짐 - 로그온 때 켜고 멈춘 서비스를 다시 올림(작업 표시줄에서 Docker를 직접 끄면 쉼)' }))
     if ($engine) {
         $states = Get-States
-        $line = ($Services + @('ollama') | Where-Object { $states.ContainsKey($_) } | ForEach-Object { "$_=$($states[$_])" }) -join ', '
+        $line = ($Services + @('ollama', 'team-model') | Where-Object { $states.ContainsKey($_) } | ForEach-Object { "$_=$($states[$_])" }) -join ', '
         Say ("서비스          : " + $line)
     }
 }
@@ -144,6 +144,7 @@ Say '3/4 DB·API·화면·공개 연결을 올립니다...'
 $states = Get-States
 $targets = @($Services)
 if ($states.ContainsKey('ollama')) { $targets += 'ollama' }
+if ($states.ContainsKey('team-model')) { $targets += 'team-model' }  # 팀 변화 모델: 팀 인계 묶음이 있는 PC에서 한 번 만든 뒤에만
 $r = Invoke-Tool 'docker' ($C + @('up', '-d', '--no-build', '--wait', '--wait-timeout', '300') + $targets)
 if ($r.Code -ne 0) {
     Say ("    올리기 실패(exit $($r.Code)): " + (($r.Lines | Select-Object -Last 3) -join ' | ')) 'Red'

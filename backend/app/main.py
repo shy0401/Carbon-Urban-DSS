@@ -154,6 +154,8 @@ from .national_map import router as national_map_router
 app.include_router(national_map_router)
 from .validation import router as validation_router
 app.include_router(validation_router)
+from .team_model import router as team_model_router
+app.include_router(team_model_router)
 from .regions import RegionNotReady,DEFAULT_REGION,region_for_grid
 
 def _scope(db,region):
@@ -413,6 +415,11 @@ def _kcsm100_meta(db,code,year):
     try:return meta(db,code,year)
     except Exception:db.rollback();return None
 
+def _team_model_meta(db,code):
+    from .team_model import team_dataset
+    dataset=team_dataset(db,code)
+    return {'dataset':dataset} if dataset else None
+
 def _level(db,code):
     from .regions import detail_level,get_region
     return detail_level(get_region(db,code)) if code!=DEFAULT_REGION else 'DETAILED'
@@ -513,6 +520,8 @@ def map_data(request:Request,year:int=Query(DEFAULT_YEAR,ge=2000,le=2100),region
             'grid100':{'restricted':True} if is_public(request) else _grid100_meta(db,sc.code,year),
             # 선도소프트 탄소공간지도 100m 전력: 이용 조건 확인 전이라 공개 주소에는 restricted만
             'kcsm100':{'restricted':True} if is_public(request) else _kcsm100_meta(db,sc.code,year),
+            # 팀 데이터셋(urban-carbon 7차): 이 지역의 팀 500m 표가 있으면 격자 상세에 개발 사례·변화 모델 패널을 연다(이 PC만)
+            'team_model':{'restricted':True} if is_public(request) else _team_model_meta(db,sc.code),
         }
 
 @app.get('/api/map/grid100')

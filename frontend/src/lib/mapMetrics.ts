@@ -59,8 +59,8 @@ export const BUILDING_ENERGY_GROUP = '건물 전체 에너지 (건축HUB)';
 export const CARBONMAP_GROUP = '건물 배출 (탄소공간지도)';
 export const NGII_GROUP = '국토통계지도 100m';
 export const METRIC_GROUPS = ['에너지 관측', '에너지 원단위', '탄소', BUILDING_ENERGY_GROUP, CARBONMAP_GROUP, '도시 형태', REGISTER_GROUP, NGII_GROUP, '토지이용', SGIS500_GROUP, SGIS_GROUP, '데이터 품질'] as const;
-const CM_SOURCE = '국토교통부 탄소공간지도 500m 건물 배출 (팀 수집: 윤영준, 2026-10-01)';
-const CM_NOTE = '탄소공간지도는 한국부동산원 건물에너지 DB(전기·가스·지역난방)로 산정한 공식 배출이며, 건축HUB API가 빼는 단독주택·소규모 공동주택까지 들어 있습니다. 지도 연도 이전의 가장 가까운 공표 연도(2016·2019·2022·2024)를 씁니다. 건물이 있는데 0인 칸은 원자료 누락으로 보고 비웁니다(0 아님).';
+const CM_SOURCE = '국토교통부 탄소공간지도 500m 건물 배출 (팀 수집: 윤영준, 7차 인계 2026-10-20)';
+const CM_NOTE = '탄소공간지도는 한국부동산원 건물에너지 DB(전기·가스·지역난방)로 산정한 공식 배출이며, 건축HUB API가 빼는 단독주택·소규모 공동주택까지 들어 있습니다. 팀 데이터셋 53개 지역은 2014·2016·2018·2019·2021·2022·2024년이 있고, 지도 연도 이전의 가장 가까운 해를 씁니다. 건물이 있는데 0인 칸은 원자료 누락으로 보고 비웁니다(0 아님).';
 const NGII_SOURCE = '국토지리정보원 국토통계지도 100m (팀 수집, 국외 반출 금지)';
 const NGII_NOTE = '국토통계지도 100m 격자 값을 이 500m 격자 안에서 더한 것입니다. 이용 조건상 국외 반출이 금지되어 공개 시연 주소에서는 보이지 않습니다.';
 /** 팀 데이터셋이 표시한 문제(급감 의심·건물 없는 배출 등). */
@@ -69,6 +69,11 @@ const cmIssues = (p: GridProps): string => {
   const notes: string[] = [];
   if (['elec_drop_status', 'gas_drop_status', 'heat_drop_status'].some((k) => f[k] === 'suspect_drop')) notes.push('직전 연도보다 급감(원자료 누락 의심)');
   if (f.elec_underreport_status === 'suspect_low') notes.push('신규 단지 전기 과소 의심');
+  const issues = String(f.train_issues ?? '');
+  if (issues.includes('suspect_region_drop')) notes.push('그해 지역 합계 결손(팀 학습 제외)');
+  if (issues.includes('suspect_surge')) notes.push('지역 집계 급증 의심');
+  if (issues.includes('suspect_cell_spike') || issues.includes('suspect_appearance')) notes.push('칸 집계 몰림 의심');
+  if (issues.includes('emission_without_buildings')) notes.push('건물 없는 배출');
   if (p.cm_partial) notes.push('시 경계 칸(시 안쪽 값만)');
   return notes.length ? ` · ${notes.join(' · ')}` : '';
 };
@@ -217,8 +222,8 @@ export const METRICS: MetricDef[] = [
   {
     key: 'cm_change_pct', label: '건물 배출 증감률', unit: '%', group: CARBONMAP_GROUP, ramp: 'diff', digits: 1,
     value: (p) => n(p.cm_change_pct), breaks: [-15, -5, 5, 15],
-    definition: `팀 데이터셋의 첫 연도(2016년)와 지도 연도에 가까운 공표 연도의 건물 배출 합계를 비교합니다. 2024년은 일부 칸이 원자료 누락으로 급감해 있어(공장·관리지역 등) 그런 칸은 상세에 표시합니다. ${CM_NOTE}`,
-    formula: '(그해 배출 − 2016년 배출) ÷ 2016년 배출 × 100',
+    definition: `팀 데이터셋의 첫 연도(대개 2014년)와 지도 연도에 가까운 해의 건물 배출 합계를 비교합니다. 2024년은 일부 칸이 원자료 누락으로 급감해 있어(공장·관리지역 등) 그런 칸은 상세에 표시합니다. ${CM_NOTE}`,
+    formula: '(그해 배출 − 첫 해 배출) ÷ 첫 해 배출 × 100',
     basis: (p) => (n(p.cm_change_pct) !== null ? `${p.cm_change_base_year}→${p.cm_year}년${cmIssues(p)}` : null), source: CM_SOURCE,
     use: '개발·인구 변화와 함께 배출이 늘거나 준 곳을 찾습니다. 전력 배출계수 변화도 섞여 있습니다.',
   },

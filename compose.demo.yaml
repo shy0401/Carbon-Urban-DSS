@@ -12,6 +12,8 @@ services:
     restart: unless-stopped
   ollama:
     restart: unless-stopped
+  team-model:
+    restart: unless-stopped
   gateway:
     image: nginx:stable-alpine
     profiles: [public-demo]

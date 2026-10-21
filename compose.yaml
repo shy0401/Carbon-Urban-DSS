@@ -29,6 +29,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       DATA_DIR: /data
       OLLAMA_URL: http://ollama:11434
+      TEAM_MODEL_URL: http://team-model:8090
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:1.5b}
       OLLAMA_NARRATIVE_MODEL: ${OLLAMA_NARRATIVE_MODEL:-}
     ports:
@@ -63,6 +64,16 @@ services:
     volumes:
       - ollama_data:/root/.ollama
     mem_limit: 4g
+  # 팀 변화 모델(urban-carbon 7차): 팀 인계 묶음이 있는 PC에서만 켠다(--profile team-model). 묶음은 읽기만 한다.
+  team-model:
+    build: ./deploy/team-model
+    profiles: [team-model]
+    environment:
+      TEAM_ROOT: /team-root
+      TEAM_TRAIN: 00_합본_7차
+    volumes:
+      - ./data/raw/team_urban_carbon:/team-root:ro
+    mem_limit: 6g
 volumes:
   ollama_data:
   postgres_data:

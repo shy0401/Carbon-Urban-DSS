@@ -295,6 +295,8 @@ export interface MapData {
   grid100?: { source: string; years: number[]; year: number | null; cells: number; returned: number; truncated: boolean; reason: string | null } | { restricted: true } | null;
   /** 선도소프트 탄소공간지도 100m 건물 전기 배출: 받은 지역·연도와 칸 수 (공개 주소에는 restricted만). */
   kcsm100?: { source: string | null; unit?: string; years: number[]; year: number | null; cells: number; returned: number; truncated: boolean; reason: string | null } | { restricted: true } | null;
+  /** 팀 데이터셋(urban-carbon 7차)이 있는 지역: 격자 상세에 개발 사례·변화 모델 패널(이 PC만). */
+  team_model?: { dataset: string } | { restricted: true } | null;
   register?: { grids: number; buildings: number; source: string } | null;
   building_energy?: { grids: number; parcels: number; complete: boolean; source: string } | null;
 }

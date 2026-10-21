@@ -3,6 +3,9 @@ import { formatMetric } from '../lib/format';
 import { LoadingState } from './Status';
 
 /** GET /api/validation: the region's totals next to independent official statistics. */
+/** 팀 변화 모델이 한 지역 사례에서 맞힌 정도 (오차 = |예측 − 실제| ÷ |실제|, 실제 100 tCO₂e 이상). */
+export interface DevScore { cases: number; measured: number; median_relative_error: number | null; within_50pct: number | null; same_direction: number; sum_ratio: number | null; big_cases: number }
+
 export interface ValidationYear {
   year: number; hub_gwh: number; hub_months: number; kepco_building_gwh: number | null; kepco_total_gwh: number | null;
   coverage_building: number | null; coverage_total: number | null; monthly_r: number | null; ratio_min: number | null; ratio_max: number | null;
@@ -23,7 +26,7 @@ export interface ValidationData {
     years: Record<string, { elec_t: number; gas_t: number; heat_t: number; total_t: number; cells: number }>;
     source: string;
     cells?: { cells: number; sum_ratio: number; median_ratio: number; within_20pct: number; log_r: number | null; year: number; factor: number };
-    developments?: { cases: number; usable: number };
+    developments?: { cases: number; usable: number; pairs?: number; scored?: number; model?: { name: string; set: string; all: DevScore | null; big: DevScore | null } };
   } | null;
   notes: string[];
 }
@@ -66,7 +69,8 @@ export function ValidationPanel({ regionQuery }: { regionQuery: string }) {
         <tbody>{cmYears.map(([y, v]) => <tr key={y}><td>{y}</td><td className="num">{num(v.elec_t / 1000, '', 1)}</td><td className="num">{num(v.gas_t / 1000, '', 1)}</td><td className="num">{num(v.heat_t / 1000, '', 1)}</td><td className="num">{num(v.total_t / 1000, '', 1)}</td><td className="num">{num(v.cells)}</td></tr>)}</tbody>
       </table></div>
       {cm.cells && <p>{cm.cells.year}년 같은 칸 {formatMetric(cm.cells.cells, '곳')}: 이 도구(건축HUB 전력 × {num(cm.cells.factor, '', 4)}) ÷ 탄소공간지도 전기 = 합계 <b>{pct(cm.cells.sum_ratio)}</b>, 칸별 중앙값 {pct(cm.cells.median_ratio)}, ±20% 안 {pct(cm.cells.within_20pct)}, 로그 상관 {num(cm.cells.log_r, '', 2)}.</p>}
-      {cm.developments && cm.developments.cases > 0 && <p className="muted">개발 사례(연면적이 크게 는 500m 칸 × 두 시점) {formatMetric(cm.developments.cases, '건')}, 전후 모두 쓸 수 있는 것 {formatMetric(cm.developments.usable, '건')}.</p>}
+      {cm.developments && cm.developments.cases > 0 && <p className="muted">개발 사례(연면적이 크게 는 500m 칸) {formatMetric(cm.developments.cases, '칸')}, 전후 모두 쓸 수 있는 해 쌍 {formatMetric(cm.developments.usable, '쌍')}.</p>}
+      {cm.developments?.model?.all && <p data-testid="validation-team-model">팀 변화 모델 점수({cm.developments.model.set === 'test' ? '학습에 없던 시험 지역' : cm.developments.model.set === 'train_cv' ? '학습 지역, 그 칸을 빼고 학습한 교차검증' : '학습·시험'}): 이 지역 사례 {formatMetric(cm.developments.model.all.cases, '건')}의 오차 중앙값 <b>{num(cm.developments.model.all.median_relative_error, '', 2)}</b>, ±50% 안 {pct(cm.developments.model.all.within_50pct)}, 방향 일치 {pct(cm.developments.model.all.same_direction)}, 예측 합 ÷ 실제 합 {num(cm.developments.model.all.sum_ratio, '', 2)}{cm.developments.model.big ? ` · 1천 tCO₂e 이상 ${cm.developments.model.big.cases}건 오차 ${num(cm.developments.model.big.median_relative_error, '', 2)}` : ''}.</p>}
       <p className="validation-note">탄소공간지도는 한국부동산원 건물에너지 DB로 산정해 단독주택·지역난방까지 들어 있습니다. 건축HUB API(단독주택·소규모 공동주택 제외)보다 넓어서, 같은 칸의 비율은 이 도구가 놓치는 몫을 보여 줍니다. 2024년은 일부 칸이 원자료 누락으로 급감해 있습니다(공장·관리지역 등).</p></>}
     {g && <><h4>온실가스: 지역 인벤토리 ↔ 이 도구 계산</h4>
       <dl className="compact-list">
