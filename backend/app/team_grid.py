@@ -516,6 +516,7 @@ def import_team_grid(db: Any, root: Path | None = None, force: bool = False, log
         db.commit()
         log(f"model scores on development cases: {stats['scored_cases']}")
     _CACHE.clear()
+    _DATASETS.clear()
     return stats
 
 
@@ -573,13 +574,79 @@ def cell_properties(now: dict[str, Any], base: dict[str, Any] | None, public: bo
     return p
 
 
+_DATASETS: dict[str, list[str]] = {}
+_MEAN_KEYS = ("approval_year", "height", "floors")  # 국토통계 500m 값 가운데 합이 아니라 평균인 것
+
+
+def region_datasets(db: Any, region_code: str | None) -> list[str]:
+    """Team datasets of a study region: the one of its own code (전주 52110), else those of its 일반구 (수원 41110 → 41113 권선구,
+    41117 영통구 — this tool keeps a city with its 구 as one region, ``StudyRegion.legal_codes``)."""
+    if not region_code:
+        return []
+    if region_code in _DATASETS:
+        return _DATASETS[region_code]
+    codes = {region_code}
+    try:
+        from .regions import StudyRegion
+        region = db.get(StudyRegion, region_code)
+        if region is not None:
+            codes.update(str(c) for c in (region.legal_codes or []))
+    except Exception:  # noqa: BLE001 - table missing (tests)
+        db.rollback()
+    try:
+        pairs = list(db.execute(select(TeamGrid500.region_code, TeamGrid500.dataset).where(TeamGrid500.region_code.in_(sorted(codes))).distinct()))
+    except Exception:  # noqa: BLE001
+        db.rollback()
+        return []
+    own = sorted({d for c, d in pairs if c == region_code})
+    found = own or sorted({d for _, d in pairs})
+    _DATASETS[region_code] = found
+    return found
+
+
+def combine_parts(parts: list[dict[str, Any]]) -> dict[str, Any]:
+    """One 500m cell held by two 구 tables (each with its own part of the cell, ``is_partial_cell``) as one row (pure).
+
+    배출·연면적·인구·대장 값은 더하고(없는 값은 빼고 더하되 모두 없으면 None), 평균값(사용승인연도·높이·층수)은 연면적이 큰 쪽,
+    표시는 합치고, 학습 가능은 모든 몫이 가능할 때만. 시 경계인지 알 수 없어 ``partial``은 None으로 둔다."""
+    if len(parts) == 1:
+        return parts[0]
+
+    def total(values: list[Any]) -> float | None:
+        vals = [v for v in values if v is not None]
+        return float(sum(vals)) if vals else None
+    biggest = max(parts, key=lambda p: ((p.get("ngii") or {}).get("floor_area") or 0))
+    keys = {k for p in parts for k in (p.get("ngii") or {})}
+    ngii = {k: ((biggest.get("ngii") or {}).get(k) if k in _MEAN_KEYS else total([(p.get("ngii") or {}).get(k) for p in parts])) for k in keys}
+    register = {k: total([(p.get("register") or {}).get(k) for p in parts]) for k in {k for p in parts for k in (p.get("register") or {})}}
+    flags: dict[str, Any] = {}
+    for p in parts:
+        for k, v in (p.get("flags") or {}).items():
+            if v in (None, "", "ok", "none", "positive") and k in flags:
+                continue
+            flags[k] = v
+    issues = sorted({i for p in parts for i in str((p.get("flags") or {}).get("train_issues") or "").split("+") if i and i != "none"})
+    flags["train_issues"] = "+".join(issues) if issues else "none"
+    flags["train_usable"] = all((p.get("flags") or {}).get("train_usable") is True for p in parts)
+    flags["districts"] = len(parts)
+    monthly: dict[str, list[float | None]] = {}
+    for source in ("elec", "gas", "heat"):
+        series = [(p.get("monthly") or {}).get(source) for p in parts]
+        if all(series):
+            monthly[source] = [total(list(m)) for m in zip(*series)]
+    return {"year": parts[0]["year"], "total_t": total([p.get("total_t") for p in parts]), "elec_t": total([p.get("elec_t") for p in parts]),
+            "gas_t": total([p.get("gas_t") for p in parts]), "heat_t": total([p.get("heat_t") for p in parts]), "ngii": ngii,
+            "register": register, "flags": flags, "partial": None, "monthly": monthly}
+
+
 def map_properties(db: Any, region_code: str | None, year: int, grid_ids: Iterable[str], public: bool = False,
                    register_ids: Iterable[str] = ()) -> dict[str, dict[str, Any]]:
-    """{'cell_x_y': props} for the cells of the region's team dataset (empty when the region has none)."""
-    if not region_code:
+    """{'cell_x_y': props} for the cells of the region's team datasets (empty when the region has none)."""
+    datasets = region_datasets(db, region_code)
+    if not datasets:
         return {}
     try:
-        years = sorted({int(y) for (y,) in db.execute(select(TeamGrid500.year).where(TeamGrid500.region_code == region_code).distinct())})
+        years = sorted({int(y) for (y,) in db.execute(select(TeamGrid500.year).where(TeamGrid500.dataset.in_(datasets)).distinct())})
     except Exception:  # noqa: BLE001 - table missing
         db.rollback()
         return {}
@@ -587,17 +654,17 @@ def map_properties(db: Any, region_code: str | None, year: int, grid_ids: Iterab
     if chosen is None:
         return {}
     first = years[0] if years and years[0] < chosen else None
-    key = (region_code, chosen, first, public)
+    key = (region_code, tuple(datasets), chosen, first, public)
     if key not in _CACHE:
         def load(y: int) -> dict[str, dict[str, Any]]:
             cols = (TeamGrid500.x, TeamGrid500.y, TeamGrid500.year, TeamGrid500.total_t, TeamGrid500.elec_t, TeamGrid500.gas_t,
                     TeamGrid500.heat_t, TeamGrid500.ngii, TeamGrid500.register, TeamGrid500.flags, TeamGrid500.partial)
-            out = {}
+            parts: dict[str, list[dict[str, Any]]] = {}
             for x, yy, yr, total, e, g, h, ngii, reg, flags, partial in db.execute(
-                    select(*cols).where(TeamGrid500.region_code == region_code, TeamGrid500.year == y)):
-                out[f"cell_{x}_{yy}"] = {"year": yr, "total_t": total, "elec_t": e, "gas_t": g, "heat_t": h, "ngii": ngii,
-                                          "register": reg, "flags": flags, "partial": partial}
-            return out
+                    select(*cols).where(TeamGrid500.dataset.in_(datasets), TeamGrid500.year == y)):
+                parts.setdefault(f"cell_{x}_{yy}", []).append({"year": yr, "total_t": total, "elec_t": e, "gas_t": g, "heat_t": h, "ngii": ngii,
+                                                                "register": reg, "flags": flags, "partial": partial})
+            return {gid: combine_parts(rows) for gid, rows in parts.items()}
         _CACHE[key] = (load(chosen), load(first) if first else {})
     now_rows, base_rows = _CACHE[key]
     wanted = set(grid_ids)
@@ -610,8 +677,8 @@ def region_totals(db: Any, region_code: str) -> dict[int, dict[str, float]]:
     out: dict[int, dict[str, float]] = {}
     try:
         for year, e, g, h, t, n in db.execute(select(TeamGrid500.year, func.sum(TeamGrid500.elec_t), func.sum(TeamGrid500.gas_t),
-                                                      func.sum(TeamGrid500.heat_t), func.sum(TeamGrid500.total_t), func.count())
-                                               .where(TeamGrid500.region_code == region_code).group_by(TeamGrid500.year)):
+                                                      func.sum(TeamGrid500.heat_t), func.sum(TeamGrid500.total_t), func.count(func.distinct(TeamGrid500.grid_code)))
+                                               .where(TeamGrid500.dataset.in_(region_datasets(db, region_code))).group_by(TeamGrid500.year)):
             out[int(year)] = {"elec_t": round(e or 0, 1), "gas_t": round(g or 0, 1), "heat_t": round(h or 0, 1), "total_t": round(t or 0, 1), "cells": int(n)}
     except Exception:  # noqa: BLE001
         db.rollback()
@@ -652,8 +719,11 @@ def carbonmap_comparison(db: Any, region_code: str) -> dict[str, Any] | None:
             factor = (factors_for(db, year).get("ELECTRICITY") or {}).get("factor")
             if not factor:
                 continue
-            team = {f"cell_{x}_{y}": e for x, y, e in db.execute(select(TeamGrid500.x, TeamGrid500.y, TeamGrid500.elec_t)
-                                                                    .where(TeamGrid500.region_code == region_code, TeamGrid500.year == year))}
+            team: dict[str, float] = {}
+            for x, y, e in db.execute(select(TeamGrid500.x, TeamGrid500.y, TeamGrid500.elec_t)
+                                      .where(TeamGrid500.dataset.in_(region_datasets(db, region_code)), TeamGrid500.year == year)):
+                if e is not None:
+                    team[f"cell_{x}_{y}"] = team.get(f"cell_{x}_{y}", 0.0) + e
             pairs = [(item["electricity_kwh"] * factor / 1000, team[g]) for g, item in hub.items()
                      if g in team and item.get("electricity_kwh") and team[g]]
             stats = pair_stats(pairs)
@@ -668,7 +738,7 @@ def carbonmap_comparison(db: Any, region_code: str) -> dict[str, Any] | None:
 def developments(db: Any, region_code: str, scored_only: bool = False) -> list[dict[str, Any]]:
     """Development pairs of a region (7차: every before/after pair of a developed cell; ``model`` on the scored pair)."""
     try:
-        rows = db.scalars(select(TeamDevelopment).where(TeamDevelopment.region_code == region_code)
+        rows = db.scalars(select(TeamDevelopment).where(TeamDevelopment.dataset.in_(region_datasets(db, region_code)))
                           .order_by(TeamDevelopment.before_year, TeamDevelopment.grid_code)).all()
     except Exception:  # noqa: BLE001
         db.rollback()
@@ -676,7 +746,7 @@ def developments(db: Any, region_code: str, scored_only: bool = False) -> list[d
     keep = ("dong_name", "zone_main_class", "floor_area_added_m2", "reg_floor_area_added_m2", "reg_dwellings_added", "buildings_tco2e_before",
             "buildings_tco2e_after", "buildings_tco2e_change", "elec_tco2e_change", "gas_tco2e_change", "heat_tco2e_change", "pair_usable",
             "site_kind", "use_kind", "development_id", "development_cells", "case_start_year", "case_approval_year", "model")
-    out = [dict({"grid_id": f"cell_{r.x}_{r.y}", "grid_code": r.grid_code, "before_year": r.before_year, "after_year": r.after_year},
+    out = [dict({"grid_id": f"cell_{r.x}_{r.y}", "grid_code": r.grid_code, "dataset": r.dataset, "before_year": r.before_year, "after_year": r.after_year},
                 **{k: (r.data or {}).get(k) for k in keep}) for r in rows]
     return [d for d in out if d.get("model")] if scored_only else out
 

@@ -255,3 +255,38 @@ def test_score_summary_uses_the_team_definitions():
     assert s["within_50pct"] == 0.667 and s["same_direction"] == 0.75 and s["big_cases"] == 2
     assert s["sum_ratio"] == round(2900 / 2550, 3)
     assert score_summary([]) is None
+
+
+def test_a_city_with_districts_reads_its_district_tables_and_adds_a_shared_cell():
+    """수원시(41110)는 이 도구에서 한 지역이고 팀 표는 구(권선 41113·영통 41117)마다 있다: 두 구에 걸친 칸은 몫을 더한다."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from app.regions import StudyRegion
+    from app.team_grid import _CACHE, _DATASETS, TeamGrid500, combine_parts, map_properties, region_datasets, region_totals
+    _CACHE.clear()
+    _DATASETS.clear()
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    TeamGrid500.__table__.create(engine)
+    StudyRegion.__table__.create(engine)
+    db = sessionmaker(engine)()
+    db.add(StudyRegion(code="41110", name="경기도 수원시", sido_name="경기도", legal_codes=["41111", "41113", "41115", "41117"]))
+    def row(ds, x, total, floor, usable=True, issues="none", year=2024):
+        return TeamGrid500(id=f"{ds}|g{x}|{year}", dataset=ds, region_code=ds[:5], grid_code=f"g{x}", x=x, y=1000, year=year, elec_t=total / 2,
+                           gas_t=total / 2, heat_t=None, total_t=total, monthly={}, ngii={"floor_area": floor, "approval_year": 2000.0 + floor / 1000},
+                           register={"floor_area": floor}, flags={"train_usable": usable, "train_issues": issues}, partial=True, source_file="t")
+    db.add_all([row("41113_경기도_수원시_권선구", 500, 100.0, 10000.0), row("41117_경기도_수원시_영통구", 500, 300.0, 30000.0, usable=False, issues="suspect_drop"),
+                row("41117_경기도_수원시_영통구", 1000, 50.0, 5000.0), row("41117_경기도_수원시_영통구", 500, 200.0, 20000.0, year=2014),
+                row("41117_경기도_수원시_영통구", 1000, 40.0, 4000.0, year=2014)])
+    db.commit()
+    assert region_datasets(db, "41110") == ["41113_경기도_수원시_권선구", "41117_경기도_수원시_영통구"]
+    assert region_datasets(db, "52110") == []
+    props = map_properties(db, "41110", 2025, ["cell_500_1000", "cell_1000_1000"])
+    shared = props["cell_500_1000"]
+    assert shared["cm_total_t"] == 400.0 and shared["cm_change_base_year"] == 2014 and shared["cm_change_pct"] == 100.0
+    assert shared["ngii_floor_area_m2"] == 40000.0 and shared["ngii_approval_year"] == 2030.0  # a mean: the larger part's value
+    assert shared["cm_flags"]["train_issues"] == "suspect_drop" and shared["cm_flags"]["train_usable"] is False and shared["cm_partial"] is None
+    totals = region_totals(db, "41110")
+    assert totals[2024]["total_t"] == 450.0 and totals[2024]["cells"] == 2  # the shared cell counted once
+    one = {"year": 2024, "total_t": 1.0, "flags": {}, "ngii": {}, "register": {}, "partial": True}
+    assert combine_parts([one]) is one

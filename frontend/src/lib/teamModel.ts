@@ -22,7 +22,7 @@ export interface TeamCase {
   pair_usable?: boolean | string | null; site_kind?: string | null; use_kind?: string | null; development_id?: string | null;
   case_start_year?: number | null; case_approval_year?: number | null; model?: TeamCaseScore | null;
 }
-export interface TeamCellResponse { region: string | null; dataset: string | null; grid: string; cases: TeamCase[]; scored: number }
+export interface TeamCellResponse { region: string | null; dataset: string | null; model_region?: string | null; grid: string; cases: TeamCase[]; scored: number }
 
 export interface TeamAccuracyRow { band: string; cases: number; median_error: number; within_50pct: number; sum_ratio: number; note?: string }
 export interface TeamStatus {

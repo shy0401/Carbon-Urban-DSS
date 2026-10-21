@@ -50,7 +50,7 @@ export function TeamModelPanel({ gridId, region }: { gridId: string; region: str
         new: floorValue > 0 ? [{ use, floor_area_m2: floorValue, ...(use === 'residential' && dwellingValue > 0 ? { dwellings: dwellingValue } : {}) }] : [],
         removed: removedValue > 0 ? [{ use: 'residential' as const, floor_area_m2: removedValue }] : [],
       };
-      setResult(await api<TeamPredictResponse>('/team-model/predict', { method: 'POST', body: JSON.stringify({ region, plans: [plan] }) }));
+      setResult(await api<TeamPredictResponse>('/team-model/predict', { method: 'POST', body: JSON.stringify({ region: cell?.model_region ?? region, plans: [plan] }) }));
     } catch (e) {
       setError(e instanceof Error ? e.message : '예측하지 못했습니다');
     } finally { setBusy(false); }
@@ -61,7 +61,7 @@ export function TeamModelPanel({ gridId, region }: { gridId: string; region: str
   const shownCases = scored.length ? scored : cases.filter((c) => c.pair_usable === true || c.pair_usable === 'True').slice(-3);
   const r: TeamPrediction | undefined = result?.results[0];
   return <section className="detail-section team-model-panel" aria-label="개발 변화 예측 (팀 변화 모델)" data-testid="team-model-panel">
-    <h3>개발 변화 예측 <small>팀 변화 모델 7차 · 추정</small></h3>
+    <h3>개발 변화 예측 <small>팀 변화 모델 7차 · 추정{cell?.dataset ? ` · ${cell.dataset.replace(/^\d{5}_/, '')} 표` : ''}</small></h3>
     <p className="muted" role="status" data-testid="team-model-status">{statusText(status)}</p>
     {shownCases.length > 0 && <>
       <h3 className="sub">이 칸의 개발 사례 <small>탄소공간지도 실제 변화{scored.length ? ' · 모델이 그 사례를 보지 않고 낸 예측' : ''}</small></h3>

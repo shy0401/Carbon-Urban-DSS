@@ -76,17 +76,27 @@ def service_status() -> dict[str, Any]:
 
 
 def team_dataset(db: Any, region_code: str | None) -> str | None:
-    """The team dataset name of a region (``52110_전주시``) when its 500m table was imported."""
-    if not region_code:
-        return None
+    """The team dataset names of a region (``52110_전주시``; a city with 일반구 may have several, comma-joined)."""
+    from .team_grid import region_datasets
+    names = region_datasets(db, region_code)
+    return ", ".join(names) if names else None
+
+
+def cell_dataset(db: Any, region_code: str | None, x: int, y: int) -> str | None:
+    """The team dataset that holds this 500m cell (of a city's 구, the one with the larger part)."""
     from sqlalchemy import select
 
-    from .team_grid import TeamGrid500
-    try:
-        return db.scalar(select(TeamGrid500.dataset).where(TeamGrid500.region_code == region_code).limit(1))
-    except Exception:  # noqa: BLE001 - table missing
-        db.rollback()
+    from .team_grid import TeamGrid500, region_datasets
+    names = region_datasets(db, region_code)
+    if not names:
         return None
+    rows = db.execute(select(TeamGrid500.dataset, TeamGrid500.total_t).where(TeamGrid500.dataset.in_(names), TeamGrid500.x == x, TeamGrid500.y == y)).all()
+    if not rows:
+        return None
+    best: dict[str, float] = {}
+    for name, total in rows:
+        best[name] = max(best.get(name, 0.0), total or 0.0)
+    return max(sorted(best), key=lambda n: best[n])
 
 
 @router.get("/status")
@@ -105,13 +115,15 @@ def cell(request: Request, grid: str = Query(..., max_length=40), region: str | 
     if not m:
         raise HTTPException(422, "격자 이름은 cell_<x>_<y>입니다")
     from .regions import region_for_grid
-    from .team_grid import developments
+    from .team_grid import dataset_region, developments
     with Session() as db:
         code = region or region_for_grid(db, grid)
-        dataset = team_dataset(db, code)
+        dataset = cell_dataset(db, code, int(m.group(1)), int(m.group(2)))
         cases = [d for d in developments(db, code) if d["grid_id"] == grid] if dataset else []
     scored = [d for d in cases if d.get("model")]
-    return {"region": code, "dataset": dataset, "grid": grid, "cases": cases, "scored": len(scored)}
+    # the model answers per team region (a 구 of a city has its own table): the code to send with /predict
+    return {"region": code, "dataset": dataset, "model_region": dataset_region(dataset) if dataset else None, "grid": grid,
+            "cases": cases, "scored": len(scored)}
 
 
 Use = Literal["residential", "commercial", "large_retail", "office", "officetel", "industrial", "knowledge_industry", "education",
