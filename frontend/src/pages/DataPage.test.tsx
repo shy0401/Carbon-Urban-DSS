@@ -33,7 +33,7 @@ it('외부 공급기관과 안전한 단계별 수집 범위를 선택할 수 �
   expect(screen.getByText('SGIS 인구·가구')).toBeInTheDocument();
   expect(screen.getByText('VWorld 용도지역')).toBeInTheDocument();
   expect(screen.getByText('VWorld 연속지적')).toBeInTheDocument();
-  expect(screen.getByRole('radio', { name: /SMOKE/ })).toBeChecked();
+  expect(screen.getByRole('radio', { name: /첫 검증/ })).toBeChecked();
   expect(screen.getByText('VWorld 건물')).toBeInTheDocument();
   expect(screen.getByRole('group', { name: '수집 기간' })).toBeInTheDocument();
   expect(screen.getByText('데이터가 의사결정으로 연결되는 과정')).toBeInTheDocument();

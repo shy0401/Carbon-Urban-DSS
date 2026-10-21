@@ -1,8 +1,9 @@
 import type { Quality } from '../types';
 
-export function formatMetric(value: number | null | undefined, unit = '', maximumFractionDigits = 0): string {
+/** 숫자 + 단위. fixed면 소수 자리를 늘 같은 수로 맞춘다(같은 지표 카드끼리 '39'와 '48.5'처럼 섞이지 않게, UX 검토 F18). */
+export function formatMetric(value: number | null | undefined, unit = '', maximumFractionDigits = 0, fixed = false): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return '자료 없음';
-  const number = new Intl.NumberFormat('ko-KR', { maximumFractionDigits }).format(value);
+  const number = new Intl.NumberFormat('ko-KR', { maximumFractionDigits, minimumFractionDigits: fixed ? maximumFractionDigits : 0 }).format(value);
   return unit ? `${number} ${unit}` : number;
 }
 
@@ -32,7 +33,16 @@ export function qualityLabel(quality: Quality | null | undefined): string {
     ENERGY_OPTIMAL: '에너지 기준 후보',
     NO_FEASIBLE_CANDIDATES: '조건을 만족하는 후보 없음',
   };
-  return quality ? labels[quality.toUpperCase()] ?? quality : '미평가';
+  return quality ? labels[quality.toUpperCase()] ?? plainScopeText(quality) : '미평가';
+}
+
+const SCOPE_WORDS: Record<string, string> = { smoke: '첫 검증', limited: '일부', full: '전체' };
+
+/** 예전 수집 기록의 개발 용어(smoke·limited·full 수집)를 화면 말로 바꾼다. 새 기록은 서버가 처음부터 한국어로 남긴다. */
+export function plainScopeText(text: string): string {
+  return text
+    .replace(/\b(smoke|limited|full) 수집/gi, (_, w: string) => `${SCOPE_WORDS[w.toLowerCase()]} 수집`)
+    .replace(/\((smoke|limited|full)\)/gi, (_, w: string) => `(${SCOPE_WORDS[w.toLowerCase()]} 수집)`);
 }
 
 export function qualityTone(quality: Quality | null | undefined): string {
@@ -81,6 +91,14 @@ export function share(part: number | null | undefined, total: number | null | un
 }
 
 /** 이름 뒤 보조사: 받침이 있으면 '은', 없으면 '는' ("완주군은", "수원시는"). */
+/** 방향 조사 '(으)로': 받침이 없거나 ㄹ 받침이면 '로', 그 밖의 받침이면 '으로'. */
+export function withTo(name: string): string {
+  const code = name.trim().slice(-1).charCodeAt(0) - 0xac00;
+  if (code < 0 || code > 11171) return `${name}(으)로`;
+  const final = code % 28;
+  return `${name}${final === 0 || final === 8 ? '로' : '으로'}`;
+}
+
 export function withTopic(name: string): string {
   const last = name.trim().slice(-1);
   const code = last.charCodeAt(0) - 0xac00;

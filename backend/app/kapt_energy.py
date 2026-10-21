@@ -14,6 +14,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from .cache import CachedClient, ExternalError, parse_cached_response
 from .db import Base
+from .domain import scope_label
 from .models import DataSource, EnergyMonthly, RawDataAsset
 
 KAPT_ENERGY_CATALOG_URL = "https://www.data.go.kr/data/15012964/openapi.do"
@@ -393,7 +394,7 @@ def collect_kapt_energy(
             ApartmentEnergyMonthly.quality_status.in_(sorted(ANSWERED)),
         ).limit(1))
         if not smoke:
-            raise ValueError("K-apt full 수집 전에 같은 연도의 smoke 성공이 필요합니다")
+            raise ValueError("K-apt 전체 수집 전에 같은 연도의 첫 검증(smoke) 수집이 성공해야 합니다")
     targets = _targets(db, scope, region)
     if not targets:
         raise ValueError("K-apt 단지 기본정보가 없습니다")
@@ -543,7 +544,7 @@ def _finish(db: Any, source: Any, year: int, scope: str, stats: dict[str, int]) 
     source.quality = (
         f"요청 단지 {complexes}개 중 사용량 보고 {reporting}개 / 유효 {by_status.get('SUCCESS', 0)}행 · "
         f"미보고 {by_status.get('NOT_REPORTED', 0)}행 · 이상값 {by_status.get('SUSPECT', 0)}행 · "
-        f"일시 오류 {by_status.get('FAILED', 0)}행 / {scope} 수집"
+        f"일시 오류 {by_status.get('FAILED', 0)}행 / {scope_label(scope)} 수집"
     )
     stats["total_rows"] = int(total)
     source.collected_at = datetime.now(timezone.utc)

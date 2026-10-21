@@ -145,3 +145,8 @@
   .scope-controls { flex: 1 1 100%; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: var(--sp-2); }
   .scope-controls .scope-field, .scope-controls .select-wrap, .scope-controls select { min-width: 0; width: 100%; max-width: none; }
 }
+
+/* 본문으로 건너뛰기: 키보드 초점을 받을 때만 보인다 (UX 검토 접근성) */
+.skip-link { position: absolute; left: var(--sp-3); top: -48px; z-index: 50; padding: var(--sp-2) var(--sp-3); border-radius: var(--r-control); background: var(--surface); color: var(--ink); border: 2px solid var(--primary); font-weight: 600; }
+.skip-link:focus { top: var(--sp-3); }
+.main-shell:focus { outline: none; }

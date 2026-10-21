@@ -32,7 +32,7 @@
 
   --ink: #1C2622;           /* 본문 */
   --ink-2: #505B55;         /* 보조 텍스트 */
-  --ink-3: #6B746E;         /* 캡션, 단위 (흰 바탕 대비 4.5:1 이상) */
+  --ink-3: #5E6761;         /* 캡션, 단위 (흰 바탕·캔버스·--surface-sunk 모두 대비 4.5:1 이상; 2026-10-21 #6B746E에서 조정, 사용성 검토) */
 
   --primary: #2F5D50;       /* 주 버튼, 활성 탭, 주 계열 차트 */
   --primary-hover: #264C42;
@@ -70,7 +70,7 @@
 | 공공데이터 계산 | `--prov-computed` | #2E5A87 / #E5ECF4 | 실선, 면 채움 100% | 계산 |
 | 추정 | `--prov-estimated` | #7A5418 / #F4EBDA | 차트 점선(4 3), 배지 점선 테두리, 지도 면 위 가는 사선 | 추정 |
 | 시나리오 | `--prov-scenario` | #4A5568 / #E8EBF0 | 차트 짧은 점선(1 3), 배지 점 테두리, 계획안 이름 필수 | 시나리오 |
-| 결측·미확보 | `--prov-missing` | #6B746E / #F1F0EA | 45° 해치(아래 CSS), 값 자리에 "—" | 자료 미확보 |
+| 결측·미확보 | `--prov-missing` | #5E6761 / #F1F0EA | 45° 해치(아래 CSS), 값 자리에 "—" | 자료 미확보 |
 | 대체 자료 (적용 중 추가) | `--prov-estimated` 색 쌍 재사용 | #7A5418 / #F4EBDA | 배지 점선 테두리, 라벨로 추정과 구분 | 대체 |
 
 ```css
@@ -79,7 +79,7 @@
   --prov-computed: #2E5A87;  --prov-computed-bg: #E5ECF4;
   --prov-estimated: #7A5418; --prov-estimated-bg: #F4EBDA;
   --prov-scenario: #4A5568;  --prov-scenario-bg: #E8EBF0;
-  --prov-missing: #6B746E;   --prov-missing-bg: #F1F0EA;
+  --prov-missing: #5E6761;   --prov-missing-bg: #F1F0EA;
   --hatch: #CFCBBF;
 }
 .is-missing {
@@ -327,7 +327,7 @@
 ## 8. 접근성
 
 - 본문 대비 4.5:1 이상, 큰 수치 3:1 이상.
-- (적용 중 확인) `--ink-3`은 흰 바탕(`--surface`)에서만 4.5:1을 넘는다(4.83). 도면지 `--canvas` 4.34, `--surface-sunk` 4.04, `--prov-missing-bg` 4.23이므로 이 바탕 위의 캡션·단위는 `--ink-2`를 쓴다.
+- (2026-10-21 조정) `--ink-3`을 #6B746E에서 #5E6761로 어둡게 했다. 예전 값은 흰 바탕에서만 4.5:1을 넘어(도면지 4.34, `--surface-sunk` 4.04, `--prov-missing-bg` 4.23) 사용성 검토(10/13)에서 이 바탕 위 캡션 3곳이 걸렸다. 지금 값은 흰 바탕 5.85, 도면지 5.26, `--surface-sunk` 4.90, `--prov-missing-bg` 5.13이다.
 - (적용 중 확인) 결측 배지의 글자는 `--prov-missing` 대신 `--ink-2`를 쓴다(4.23 → 5.9). `--prov-missing`은 해치·선·아이콘에만 쓴다.
 - (적용 중 확인) 입력칸·선택 상자의 테두리는 비텍스트 대비 3:1을 위해 `--ink-3`을 쓴다(`--line-strong`은 1.94). 버튼은 글자로 식별되므로 `--line-strong` 그대로 둔다.
 - 해치 위에 글자를 올릴 때는 글자 뒤에 `--prov-missing-bg` 바탕을 깔아 사선이 글자를 가로지르지 않게 한다.

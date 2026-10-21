@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { at, buildSpec, cohortOf, cohortSeries, complexFeatures, complexState, draftFeature, effortHeadline, eventYears, planBody, plannedArea, pvNote, type AreaHistory, type CarrierYear } from './area';
+import { at, buildSpec, cohortOf, cohortSeries, complexFeatures, complexState, draftFeature, effortHeadline, eventYears, partialYears, planBody, plannedArea, pvNote, type AreaHistory, type CarrierYear } from './area';
 
 const empty: CarrierYear = { kwh: null, observed_parcels: 0, complete_parcels: 0, partial_parcels: 0, months_max: 0, by_cohort: {}, intensity_kwh_per_m2: null, intensity_area_m2: null, kwh_per_household: null, households: null };
 
@@ -70,6 +70,13 @@ describe('area helpers', () => {
     expect(s.unknown).toEqual([0, null, 100]);
     expect(s.estimated).toEqual([900, 1500, null]);
     expect(eventYears(history())).toEqual([2020]);
+  });
+
+  it('관측 단지가 가장 잘 관측된 해의 절반이 안 되는 해를 일부 단지 해로 고른다 (관측 없는 해는 제외)', () => {
+    const h = history();
+    expect(partialYears(h)).toEqual([2019]);
+    h.stock = { '2019': { year: 2019, complexes: 1, households: 0, gfa_m2: 0, gfa_excluded: 0, unknown_approval: 0 }, '2021': { year: 2021, complexes: 3, households: 0, gfa_m2: 0, gfa_excluded: 0, unknown_approval: 0 } };
+    expect(partialYears(h)).toEqual([]);
   });
 
   it('감축 노력 문장은 엔진 결과의 달성 가능 여부를 따른다', () => {

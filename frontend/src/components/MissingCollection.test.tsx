@@ -50,4 +50,13 @@ describe('MissingCollection', () => {
     expect(screen.getByTestId('collect-missing-start')).toHaveTextContent('지금 바로 다시 시도');
     expect(screen.getByTestId('collect-missing-start')).toBeEnabled();
   });
+
+  it('대기 중(QUEUED) 작업은 진행 막대 없이 안내하고 다시 요청할 수 있다 (F11)', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify(plan({ job: { id: 'j1', status: 'QUEUED', progress: 100, message: '예약 시각이 지나 이어서 수집합니다' } }))));
+    render(<MissingCollection />);
+    expect(await screen.findByText('대기 중')).toBeInTheDocument();
+    expect(screen.queryByRole('progressbar')).toBeNull();
+    expect(screen.getByTestId('collect-missing-start')).toHaveTextContent('대기 중 — 다시 요청');
+    expect(screen.getByTestId('collect-missing-start')).toBeEnabled();
+  });
 });

@@ -15,7 +15,8 @@ export function baseChart(overrides: EChartsOption = {}): EChartsOption {
     textStyle: { fontFamily: FONT_STACK, color: TOKENS['ink-2'] },
     animation: false,
     grid: { left: 64, right: 20, top: 40, bottom: 30, containLabel: false },
-    legend: { top: 0, right: 0, icon: 'rect', itemWidth: 14, itemHeight: 2, textStyle: { color: TOKENS['ink-2'], fontSize: 12 } },
+    // 범례 표시가 보이도록 14×2 → 16×6 (사용성 검토 F7: 2px 막대는 화면에서 색을 알아볼 수 없었다)
+    legend: { top: 0, right: 0, icon: 'roundRect', itemWidth: 16, itemHeight: 6, textStyle: { color: TOKENS['ink-2'], fontSize: 12 } },
     tooltip: { trigger: 'axis', axisPointer: { type: 'line', lineStyle: { color: TOKENS['line-strong'] } }, backgroundColor: TOKENS.surface, borderColor: TOKENS.line, borderWidth: 1, padding: [6, 10], textStyle: { color: TOKENS.ink, fontSize: 12 }, extraCssText: `border-radius:2px;box-shadow:${POPOVER_SHADOW};` },
     xAxis: { type: 'category', axisLine: { lineStyle: { color: TOKENS['line-strong'] } }, axisTick: { show: false }, axisLabel: { color: TOKENS['ink-3'], fontSize: 12 } },
     yAxis: { type: 'value', nameTextStyle: { color: TOKENS['ink-3'], fontSize: 12, align: 'right' }, splitLine: { lineStyle: { color: TOKENS.line } }, axisLabel: { color: TOKENS['ink-3'], fontSize: 12 } },
@@ -56,11 +57,17 @@ export function missingRuns(series: Array<Array<number | null | undefined>>, len
 export function missingBands(categories: string[], series: Array<Array<number | null | undefined>>) {
   const runs = missingRuns(series, categories.length);
   if (!runs.length) return undefined;
+  return hatchBands(runs.map(([a, b]) => [categories[a], categories[b], '자료 없음']));
+}
+
+/** Hatch bands over category ranges, each with its own label ([from, to, label]). */
+export function hatchBands(ranges: Array<[string, string, string]>) {
+  if (!ranges.length) return undefined;
   return {
     silent: true,
     itemStyle: { color: hatchFill() as never, opacity: 1 },
-    label: { show: true, position: 'insideTop' as const, color: TOKENS['ink-2'], fontSize: 12, backgroundColor: TOKENS['prov-missing-bg'], padding: [1, 3], formatter: '자료 없음' },
-    data: runs.map(([a, b]) => [{ xAxis: categories[a] }, { xAxis: categories[b] }]) as never,
+    label: { show: true, position: 'insideTop' as const, color: TOKENS['ink-2'], fontSize: 12, backgroundColor: TOKENS['prov-missing-bg'], padding: [1, 3], formatter: (p: { name?: string }) => p.name ?? '' },
+    data: ranges.map(([a, b, name]) => [{ xAxis: a, name }, { xAxis: b }]) as never,
   };
 }
 

@@ -10,7 +10,7 @@ export const TOKENS = {
   'line-strong': '#BDBAAE',
   ink: '#1C2622',
   'ink-2': '#505B55',
-  'ink-3': '#6B746E',
+  'ink-3': '#5E6761',
   primary: '#2F5D50',
   'primary-hover': '#264C42',
   'on-primary': '#FFFFFF',
@@ -31,7 +31,7 @@ export const TOKENS = {
   'prov-computed': '#2E5A87', 'prov-computed-bg': '#E5ECF4',
   'prov-estimated': '#7A5418', 'prov-estimated-bg': '#F4EBDA',
   'prov-scenario': '#4A5568', 'prov-scenario-bg': '#E8EBF0',
-  'prov-missing': '#6B746E', 'prov-missing-bg': '#F1F0EA',
+  'prov-missing': '#5E6761', 'prov-missing-bg': '#F1F0EA',
   hatch: '#CFCBBF',
 
   'load-1': '#F1EAD9', 'load-2': '#E2C58F', 'load-3': '#CC9350', 'load-4': '#A65B2B', 'load-5': '#6A2E17',

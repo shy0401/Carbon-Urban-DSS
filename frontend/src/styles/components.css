@@ -85,7 +85,7 @@
 .table-wrap td strong, .table-wrap td small { display: block; }
 .table-wrap td strong { font-weight: 500; }
 .table-wrap td small { margin-top: 2px; color: var(--ink-3); }
-.table-wrap td.num, .table-wrap th.num { text-align: right; }
+.table-wrap td.num, .table-wrap th.num { text-align: right; white-space: nowrap; } /* 숫자가 칸 안에서 끊기지 않게 (UX 검토 F18) */
 
 .compact-list { margin: 0; }
 .compact-list > div { display: flex; justify-content: space-between; align-items: baseline; gap: var(--sp-3); padding: var(--sp-2) 0; border-bottom: 1px solid var(--line); }
@@ -160,3 +160,4 @@
 .case-link { display: grid; gap: var(--sp-1); margin-top: var(--sp-3); font-size: var(--fs-label); color: var(--ink-2); }
 .case-link input { width: 100%; min-width: 0; font: inherit; font-size: 12px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-sunk); color: var(--ink); }
 .area-link-button { align-self: end; margin-left: auto; }
+.not-found-links { display: grid; gap: var(--sp-2); padding-left: 1.2em; }

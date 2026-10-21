@@ -4,10 +4,12 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { lastCompletedMonth, MonthRangePicker, rangeProblem } from '../components/MonthRangePicker';
 import { MissingCollection } from '../components/MissingCollection';
 import { MissingValue } from '../components/MissingValue';
+import { RegionYearProgress } from '../components/RegionYearProgress';
 import { PageHeader } from '../components/PageHeader';
 import { QualityBadge } from '../components/QualityBadge';
 import { EmptyState, ErrorState, LoadingState } from '../components/Status';
 import { useAnalysisScope } from '../hooks/useAnalysisScope';
+import { useSystemInfo } from '../hooks/useSystemInfo';
 import { api } from '../lib/api';
 import { asRows, formatDate, formatMetric, qualityTone } from '../lib/format';
 import type { CollectionJob, DataSource, LocalEngineStatus, ReadinessData, ReadinessSource, SourceDetail } from '../types';
@@ -26,11 +28,15 @@ const collectionDatasets = [
 ] as const;
 const YEARLY = new Set(['kapt_energy', 'kma_asos']);
 const PERIODLESS = new Set(['vworld_buildings', 'building_register', 'sgis', 'vworld_zoning', 'vworld_cadastral']);
-const SCOPES = [['smoke', 'SMOKE', '최소 1건 검증'], ['limited', 'LIMITED', '제한 범위'], ['full', 'FULL', '전체 범위']] as const;
+const SCOPES = [['smoke', '첫 검증', '최소 1건으로 연결 확인'], ['limited', '일부', '제한 범위'], ['full', '전체', '전체 범위']] as const;
 
 export function DataPage() {
   const navigate = useNavigate();
-  const {year}=useAnalysisScope();
+  const { year, region } = useAnalysisScope();
+  const system = useSystemInfo();
+  const defaultRegion = system?.default_region ?? '52110';
+  const headerRegion = region && region !== defaultRegion ? region : null;
+  const headerName = headerRegion ? (system?.region?.code === headerRegion ? system.region.short_name : system?.regions?.find((r) => r.code === headerRegion)?.short_name ?? headerRegion) : null;
   const [sources, setSources] = useState<DataSource[]>([]);
   const [jobs, setJobs] = useState<CollectionJob[]>([]);
   const [readiness, setReadiness] = useState<ReadinessData | null>(null);
@@ -105,7 +111,10 @@ export function DataPage() {
   return <div className="page">
     <PageHeader title="수집 데이터" description="공식·대체 출처의 수집 범위와 원본에서 정규화까지의 이력을 확인합니다." action={<button className="button secondary" onClick={() => void load()}><RefreshCw size={15} />새로고침</button>} />
     <p className="panel-description"><b>수집 전에 <a href="/guide#standard">공통 데이터 기준</a>을 확인하세요</b> (결측·단위·격자·계수·공식) · <a href="/guide#collect">이 화면 사용 방법</a> · <a href="https://github.com/shy0401/Carbon-Urban-DSS/blob/main/docs/DATA_SETUP_GUIDE.md" target="_blank" rel="noopener noreferrer">자료별 인증키 신청 · 다운로드 · 필드 매핑 안내</a></p>
-    <p className="data-scope-note"><Globe2 size={15} aria-hidden="true" /><span>이 화면의 '빠진 자료 전부 수집'과 수동 수집은 최초 연구 지역(전주시) 범위입니다. 다른 시·군·구는 <Link to="/regions">전국 지역</Link>에서 지역을 골라 준비하면 그 지역 자료를 받습니다.</span></p>
+    <p className="data-scope-note" data-testid="data-scope-note"><Globe2 size={15} aria-hidden="true" />{headerRegion
+      ? <span>머리의 분석 지역은 <b>{headerName}</b>입니다. 아래 표가 이 지역의 연도별 수집 진행이고, 이 지역 자료는 <Link to={`/regions?select=${headerRegion}`}>전국 지역</Link>에서 받습니다. 그 아래 '빠진 자료 전부 수집'과 수동 수집은 최초 연구 지역(전주시) 범위입니다.</span>
+      : <span>이 화면의 '빠진 자료 전부 수집'과 수동 수집은 최초 연구 지역(전주시) 범위입니다. 다른 시·군·구는 <Link to="/regions">전국 지역</Link>에서 지역을 골라 준비하면 그 지역 자료를 받습니다.</span>}</p>
+    {headerRegion && headerName && <RegionYearProgress code={headerRegion} name={headerName} lastYear={system?.baseline_year ?? year} />}
     <MissingCollection onChanged={() => void load(true)} />
     <section className="data-summary">{sourceSummary.map(([label, value, tone]) => <article className={tone} key={label}><span>{label}</span><strong>{value}</strong></article>)}<article><span>마지막 수집</span><strong>{latestCollection(sources)}</strong></article></section>
     <div className="data-layout">
@@ -117,16 +126,16 @@ export function DataPage() {
         <div className="form-step"><header><b>2</b><strong>수집 기간</strong><small>완료된 달만 · 최대 12개월</small></header>
           <MonthRangePicker value={{ start: form.start_month, end: form.end_month }} maxMonth={maxMonth} onChange={(range) => setForm((old) => ({ ...old, start_month: range.start, end_month: range.end }))} />
         </div>
-        <div className="form-step"><header><b>3</b><strong>수집 범위</strong><small>SMOKE → LIMITED → FULL 순서 권장</small></header>
+        <div className="form-step"><header><b>3</b><strong>수집 범위</strong><small>첫 검증 → 일부 → 전체 순서 권장</small></header>
           <div className="segmented" role="radiogroup" aria-label="수집 범위">{SCOPES.map(([value, label, hint]) => <label key={value}><input type="radio" name="scope" value={value} checked={form.scope === value} onChange={() => setForm((old) => ({ ...old, scope: value }))} /><span>{label}<small>{hint}</small></span></label>)}</div>
         </div>
         <RequestEstimate datasets={form.datasets} scope={form.scope} start={form.start_month} end={form.end_month} readiness={readinessByDataset} />
         {formError && <p className="form-error"><AlertTriangle size={15} />{formError}</p>}
         <button className="button primary full" disabled={submitting}><CloudDownload size={17} />{submitting ? '요청 중…' : '수집 작업 시작'}</button>
-        <p className="form-caption">수집은 백그라운드에서 실행되고 진행률이 오른쪽 작업 이력에 표시됩니다. FULL은 같은 출처의 SMOKE 성공 후에만 시작되며, 성공한 응답은 캐시되어 다시 요청하지 않습니다.</p>
+        <p className="form-caption">수집은 백그라운드에서 실행되고 진행률이 오른쪽 작업 이력에 표시됩니다. '전체'는 같은 출처의 '첫 검증'이 성공한 뒤에만 시작되며, 성공한 응답은 캐시되어 다시 요청하지 않습니다.</p>
       </form>
       <section className="panel jobs-panel"><div className="panel-title"><h3>작업 이력</h3></div>
-        {jobs.length ? <div className="job-list">{jobs.map((job) => <article key={job.id}><div className={`job-state ${job.resolved ? 'good' : qualityTone(job.status)}`}><span>{statusLabel(job.status)}</span>{job.resolved && <b className="resolved-badge">이후 해결</b>}<small title={String(job.id)}>작업 {String(job.id).slice(0, 8)}</small></div><div className="job-body"><strong>{datasetLabel(job.dataset) ?? job.datasets?.map((d) => datasetLabel(d)).join(', ') ?? '데이터 수집'}</strong><small>{formatDate(job.updated_at ?? job.created_at)}</small>{job.message && <p>{job.message}</p>}{job.error && <p className="error-text">{job.error}</p>}{job.resolved_datasets?.length ? <p className="resolved-text">이후 작업에서 수집 성공: {job.resolved_datasets.join(', ')}</p> : null}{job.errors?.map((item, index) => <p className={typeof item !== 'string' && item.dataset && job.resolved_datasets?.includes(item.dataset) ? 'error-text resolved' : 'error-text'} key={`${typeof item === 'string' ? 'error' : item.dataset ?? 'error'}-${index}`}><b>{typeof item !== 'string' && item.dataset ? `${item.dataset}: ` : ''}</b>{typeof item === 'string' ? item : item.message ?? '수집 오류'}</p>)}{typeof job.progress === 'number' && <div className="progress"><span style={{ width: `${Math.max(0, Math.min(100, job.progress))}%` }} /></div>}</div></article>)}</div> : <EmptyState title="수집 작업 이력이 없습니다" />}
+        {jobs.length ? <div className="job-list" tabIndex={0} role="region" aria-label="수집 작업 이력">{jobs.map((job) => <article key={job.id}><div className={`job-state ${job.resolved ? 'good' : qualityTone(job.status)}`}><span>{statusLabel(job.status)}</span>{job.resolved && <b className="resolved-badge">이후 해결</b>}<small title={String(job.id)}>작업 {String(job.id).slice(0, 8)}</small></div><div className="job-body"><strong>{datasetLabel(job.dataset) ?? job.datasets?.map((d) => datasetLabel(d)).join(', ') ?? '데이터 수집'}</strong><small>{formatDate(job.updated_at ?? job.created_at)}</small>{job.message && <p>{job.message}</p>}{job.error && <p className="error-text">{job.error}</p>}{job.resolved_datasets?.length ? <p className="resolved-text">이후 작업에서 수집 성공: {job.resolved_datasets.join(', ')}</p> : null}{job.errors?.map((item, index) => <p className={typeof item !== 'string' && item.dataset && job.resolved_datasets?.includes(item.dataset) ? 'error-text resolved' : 'error-text'} key={`${typeof item === 'string' ? 'error' : item.dataset ?? 'error'}-${index}`}><b>{typeof item !== 'string' && item.dataset ? `${item.dataset}: ` : ''}</b>{typeof item === 'string' ? item : item.message ?? '수집 오류'}</p>)}{typeof job.progress === 'number' && ['RUNNING', 'STARTED'].includes(String(job.status).toUpperCase()) && <div className="progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(job.progress)} aria-label="수집 진행률"><span style={{ width: `${Math.max(0, Math.min(100, job.progress))}%` }} /></div>}</div></article>)}</div> : <EmptyState title="수집 작업 이력이 없습니다" />}
       </section>
     </div>
     {readiness && <ReadinessOverview data={readiness} />}
@@ -259,7 +268,7 @@ function ManualUpload({ onImported }: { onImported: () => void }) {
     finally { setBusy(false); }
   };
   return <section className="panel upload-panel" id="manual-upload"><div className="panel-title"><h3>수동 파일 업로드</h3></div><p className="panel-description">자동 접근이 어려운 공식 CSV, XLSX, GeoJSON, SHP ZIP을 먼저 분석한 뒤 열 매핑을 확인합니다.</p>
-    {!preview ? <form className="upload-start" onSubmit={makePreview}><select value={datasetType} onChange={(event) => setDatasetType(event.target.value)}><option value="building_register">건축물대장</option><option value="building_geometry">건물 공간정보</option><option value="zoning">용도지역</option><option value="population_grid">인구 통계격자</option><option value="energy">에너지</option></select><input type="file" accept=".csv,.xlsx,.geojson,.json,.zip" onChange={(event) => setFile(event.target.files?.[0] ?? null)} /><button className="button secondary" disabled={busy}><FileUp size={15} />{busy ? '분석 중…' : '파일 분석'}</button></form> : <div className="mapping-preview"><div className="detected-meta"><span>인코딩 <strong>{preview.encoding ?? '감지 안 됨'}</strong></span><span>좌표계 <strong>{preview.detected_crs ?? '감지 안 됨'}</strong></span><span>열 <strong>{preview.columns.length}개</strong></span></div>{preview.warnings?.map((warning) => <p className="form-error" key={warning}><AlertTriangle size={15} />{warning}</p>)}<div className="mapping-grid">{(preview.required_fields ?? Object.keys(preview.suggested_mapping ?? {})).map((field) => <label key={field}><span>{field}</span><select value={mapping[field] ?? ''} onChange={(event) => setMapping((old) => ({ ...old, [field]: event.target.value }))}><option value="">매핑 선택</option>{preview.columns.map((column) => <option key={column}>{column}</option>)}</select></label>)}</div><div className="mapping-grid metadata"><label><span>제공기관 *</span><input value={meta.provider} onChange={(event) => setMeta((old) => ({ ...old, provider: event.target.value }))} /></label><label><span>공식 URL</span><input value={meta.source_url} onChange={(event) => setMeta((old) => ({ ...old, source_url: event.target.value }))} /></label><label><span>기준기간 *</span><input placeholder="예: 2025" value={meta.reference_period} onChange={(event) => setMeta((old) => ({ ...old, reference_period: event.target.value }))} /></label><label><span>원본 좌표계</span><input placeholder="예: EPSG:5179" value={meta.source_crs} onChange={(event) => setMeta((old) => ({ ...old, source_crs: event.target.value }))} /></label></div><PreviewTable value={preview.rows} /><div className="form-actions"><button className="button ghost" onClick={() => setPreview(null)}>취소</button><button className="button primary" onClick={() => void importFile()} disabled={busy}>{busy ? '가져오는 중…' : '매핑 확인 및 가져오기'}</button></div></div>}
+    {!preview ? <form className="upload-start" onSubmit={makePreview}><select aria-label="업로드할 자료 종류" value={datasetType} onChange={(event) => setDatasetType(event.target.value)}><option value="building_register">건축물대장</option><option value="building_geometry">건물 공간정보</option><option value="zoning">용도지역</option><option value="population_grid">인구 통계격자</option><option value="energy">에너지</option></select><input type="file" aria-label="업로드할 파일" accept=".csv,.xlsx,.geojson,.json,.zip" onChange={(event) => setFile(event.target.files?.[0] ?? null)} /><button className="button secondary" disabled={busy}><FileUp size={15} />{busy ? '분석 중…' : '파일 분석'}</button></form> : <div className="mapping-preview"><div className="detected-meta"><span>인코딩 <strong>{preview.encoding ?? '감지 안 됨'}</strong></span><span>좌표계 <strong>{preview.detected_crs ?? '감지 안 됨'}</strong></span><span>열 <strong>{preview.columns.length}개</strong></span></div>{preview.warnings?.map((warning) => <p className="form-error" key={warning}><AlertTriangle size={15} />{warning}</p>)}<div className="mapping-grid">{(preview.required_fields ?? Object.keys(preview.suggested_mapping ?? {})).map((field) => <label key={field}><span>{field}</span><select value={mapping[field] ?? ''} onChange={(event) => setMapping((old) => ({ ...old, [field]: event.target.value }))}><option value="">매핑 선택</option>{preview.columns.map((column) => <option key={column}>{column}</option>)}</select></label>)}</div><div className="mapping-grid metadata"><label><span>제공기관 *</span><input value={meta.provider} onChange={(event) => setMeta((old) => ({ ...old, provider: event.target.value }))} /></label><label><span>공식 URL</span><input value={meta.source_url} onChange={(event) => setMeta((old) => ({ ...old, source_url: event.target.value }))} /></label><label><span>기준기간 *</span><input placeholder="예: 2025" value={meta.reference_period} onChange={(event) => setMeta((old) => ({ ...old, reference_period: event.target.value }))} /></label><label><span>원본 좌표계</span><input placeholder="예: EPSG:5179" value={meta.source_crs} onChange={(event) => setMeta((old) => ({ ...old, source_crs: event.target.value }))} /></label></div><PreviewTable value={preview.rows} /><div className="form-actions"><button className="button ghost" onClick={() => setPreview(null)}>취소</button><button className="button primary" onClick={() => void importFile()} disabled={busy}>{busy ? '가져오는 중…' : '매핑 확인 및 가져오기'}</button></div></div>}
     {message && <p className="upload-message">{message}</p>}
   </section>;
 }

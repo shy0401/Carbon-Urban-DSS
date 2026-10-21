@@ -5,6 +5,13 @@ import math
 import xml.etree.ElementTree as ET
 from collections import defaultdict
 
+# 수집 범위 이름(화면·출처 품질 문장): 개발 용어(smoke/limited/full) 대신 쓴다.
+SCOPE_LABEL = {"smoke": "첫 검증", "limited": "일부", "full": "전체"}
+
+
+def scope_label(scope):
+    return SCOPE_LABEL.get(str(scope or ""), str(scope or ""))
+
 def number(value):
     if value is None or str(value).strip() in ('','-','null','None'):
         return None

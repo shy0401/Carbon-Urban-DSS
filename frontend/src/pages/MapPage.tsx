@@ -7,6 +7,7 @@ import { DongPanel } from '../components/DongPanel';
 import { Grid100Panel } from '../components/Grid100Panel';
 import { Kcsm100Panel } from '../components/Kcsm100Panel';
 import { TeamModelPanel } from '../components/TeamModelPanel';
+import { REGISTER_USE_COLORS, REGISTER_USE_NAMES, knownUseShares } from '../lib/labels';
 import { kcsmClassify, kcsmClassLabel, kcsmColor, kcsmFromFeature, kcsmTooltip, kcsmUnavailable, KCSM_MIN_ZOOM, KCSM_ZERO_FILL, type KcsmResponse } from '../lib/kcsm100';
 import { LayerGroupTitle, LayerToggle } from '../components/LayerToggle';
 import { MetricCard } from '../components/MetricCard';
@@ -53,9 +54,19 @@ export function toggleLayer(visible: Record<LayerKey, boolean>, key: LayerKey, o
   return next;
 }
 const PROVINCE_KEY = 'carbon-map-province';
+const VIEW_KEY = 'carbon-map-view';
 type MapView = 'national' | 'province' | 'region';
-/** ?view= : 전국(기본) → 시·도 500m 격자 → 시·군·구·읍면동. */
-export function mapView(param: string | null): MapView { return param === 'region' ? 'region' : param === 'province' ? 'province' : 'national'; }
+const VIEWS: MapView[] = ['national', 'province', 'region'];
+/**
+ * ?view= : 전국 → 시·도 500m 격자 → 시·군·구·읍면동. 주소에 없으면 이 브라우저에서 마지막으로 본 보기,
+ * 그것도 없으면 머리에서 고른 시·군·구 지도(UX 검토 F13: 늘 '전국'으로 열려 지역을 다시 골라야 했음).
+ */
+export function mapView(param: string | null, stored: string | null = null): MapView {
+  for (const v of [param, stored]) if (VIEWS.includes(v as MapView)) return v as MapView;
+  return 'region';
+}
+function storedView(): string | null { try { return localStorage.getItem(VIEW_KEY); } catch { return null; } }
+function storeView(view: MapView) { try { localStorage.setItem(VIEW_KEY, view); } catch { /* Optional browser storage. */ } }
 
 /** 시·도 코드(법정 2자리): 주소의 sido → 이 브라우저에 기억한 값 → 분석 지역의 시·도. 제주(50)는 500m 격자 화면에서 제외. */
 export function pickProvince(param: string | null, stored: string | null, regionCode: string | null): string {
@@ -68,7 +79,8 @@ function storeProvince(code: string) { try { localStorage.setItem(PROVINCE_KEY, 
 /** 지도 분석: 1단계 전국(시·도 → 시·군·구 고르기) → 2단계 시·도 500m 격자(전국 공통 지표) → 3단계 시·군·구 상세·읍면동. */
 export function MapPage() {
   const [params, setParams] = useSearchParams();
-  const view = mapView(params.get('view'));
+  const view = mapView(params.get('view'), storedView());
+  useEffect(() => { storeView(view); }, [view]);
   const { region, setScope } = useAnalysisScope();
   const system = useSystemInfo();
   const defaultRegion = system?.default_region ?? '52110';
@@ -590,7 +602,9 @@ function GridDetail({ props: p, year, name, dongs, metric, classification, detai
     <section className="detail-section" aria-label="토지이용과 건물 용도">
       <h3>토지이용 (용도지역)</h3>
       {p.zone_shares && Object.keys(p.zone_shares).length ? <ShareBar shares={p.zone_shares} colors={ZONE_GROUP_COLOR} names={ZONE_NAME} rest="도시지역 외·미지정" /> : <MissingValue reason={p.zoning_status ? '조회했으나 이 격자에 도시지역 용도지역 도형이 없습니다.' : '용도지역 미수집 격자입니다.'} />}
-      {p.use_share_pct && Object.keys(p.use_share_pct).length > 0 && <><h3 className="sub">건축면적 기준 건물 용도</h3><ShareBar shares={p.use_share_pct} colors={Object.fromEntries(USE_COLORS)} names={USE_NAME} /></>}
+      {p.reg_use_gfa_pct && Object.keys(p.reg_use_gfa_pct).length > 0
+        ? <><h3 className="sub">연면적 기준 건물 용도 (건축물대장)</h3><ShareBar shares={p.reg_use_gfa_pct} colors={REGISTER_USE_COLORS} names={REGISTER_USE_NAMES} /></>
+        : knownUseShares(p.use_share_pct) && <><h3 className="sub">건축면적 기준 건물 용도</h3><ShareBar shares={p.use_share_pct as Record<string, number>} colors={Object.fromEntries(USE_COLORS)} names={USE_NAME} /></>}
       <h3 className="sub">건물 전체 에너지 (건축HUB 전 지번)</h3>
       {p.bldg_parcels ? <dl className="fact-list">
         <Fact label="계측 지번" value={p.bldg_parcels} unit="곳" why={p.bldg_electricity_complete ? `12개월 전력 ${p.bldg_electricity_complete}곳` : undefined} />
@@ -643,7 +657,7 @@ function SgisDetail({ p }: { p: GridProps }) {
 
 function Fact({ label, value, unit, digits = 0, why, missingText }: { label: ReactNode; value: number | null | undefined; unit: string; digits?: number; why?: string; missingText?: string }) {
   const missing = value === null || value === undefined || !Number.isFinite(value);
-  return <div className={`fact${missing ? ' missing' : ''}`}><dt>{label}</dt><dd>{missing ? <MissingValue inline reason={missingText} /> : <>{formatMetric(value, '', digits)}{unit && <span className="unit">{unit}</span>}</>}</dd>{why && !missing && <span className="why">{why}</span>}</div>;
+  return <div className={`fact${missing ? ' missing' : ''}`}><dt>{label}</dt><dd>{missing ? <MissingValue inline reason={missingText} /> : <>{formatMetric(value, '', digits, digits > 0)}{unit && <span className="unit">{unit}</span>}</>}</dd>{why && !missing && <span className="why">{why}</span>}</div>;
 }
 
 function MonthRow({ label, months }: { label: string; months: boolean[] }) {

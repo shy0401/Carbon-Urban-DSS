@@ -13,6 +13,7 @@ import { EmptyState, ErrorState, LoadingState } from '../components/Status';
 import { setAnalysisScope, useAnalysisScope } from '../hooks/useAnalysisScope';
 import { areaLink, parseAreaLink, type AreaLink } from '../lib/caseLink';
 import { useApi } from '../hooks/useApi';
+import { slowLoadText, useElapsed } from '../hooks/useElapsed';
 import { api } from '../lib/api';
 import { at, BASELINE_MODE_LABEL, buildSpec, EFFORT_BASIS_LABEL, effortHeadline, eventYears, measuresBody, MODE_LABEL, NO_MEASURES, planBody, plannedArea, pvNote, REPORT_MODE_LABEL, type AreaAnalysis, type AreaMode, type AreaOptions, type AreaReport, type AreaSpec, type BeforeAfter, type Benchmark, type EffortBasis, type EffortResult, type MeasuresState, type PlanState } from '../lib/area';
 import { formatDate, formatMetric } from '../lib/format';
@@ -55,6 +56,7 @@ export function AreaPage() {
   const [linkUrl, setLinkUrl] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<AreaAnalysis | null>(null);
   const [running, setRunning] = useState(false);
+  const elapsed = useElapsed(running);
   const [error, setError] = useState<string | null>(null);
   const [slider, setSlider] = useState(2025);
   const [playing, setPlaying] = useState(false);
@@ -90,7 +92,7 @@ export function AreaPage() {
   }, [fromYear, toYear, eventYear, windowSize, plan, target, pvYield, effortBasis, measures, region]);
   const runRef = useRef(run); runRef.current = run;
   // A link to another region switches the analysis scope first (once).
-  useEffect(() => { if (link && link.region !== undefined && link.region !== region) setAnalysisScope({ region: link.region }); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (link && link.region !== undefined && link.region !== region) setAnalysisScope({ region: link.region }, { fromLink: true }); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // Another region: its 행정동, zones and grids are different, so start over there.
   const shownRegion = useRef(link && link.region !== undefined ? link.region : region);
   useEffect(() => {
@@ -202,7 +204,7 @@ export function AreaPage() {
         {mode === 'grid' && <p className="area-hint">예비 선정 격자 <code>{o.default_grid}</code> (500m).</p>}
         <label className="area-select narrow"><span>시작 연도</span><select value={fromYear} onChange={(e) => setFromYear(Number(e.target.value))}>{YEARS.map((y) => <option key={y} value={y}>{y}</option>)}</select></label>
         <label className="area-select narrow"><span>끝 연도</span><select value={toYear} onChange={(e) => setToYear(Number(e.target.value))}>{YEARS.map((y) => <option key={y} value={y}>{y}</option>)}</select></label>
-        {running && <span className="area-running" role="status"><span className="spinner" aria-hidden="true" />계산 중</span>}
+        {running && <span className="area-running" role="status"><span className="spinner" aria-hidden="true" />계산 중{elapsed >= 8 ? ` ${elapsed}초` : ''}</span>}
         <button type="button" className="button ghost small area-link-button" onClick={copyLink} disabled={!analysis} title="이 구역·기간·계획·목표를 주소로 복사합니다"><Link2 size={14} />링크 복사</button>
       </div>
       {linkUrl && <label className="case-link"><span>이 조건의 링크 (다른 PC에서 열면 같은 구역·입력으로 시작)</span><input readOnly value={linkUrl} onFocus={(event) => event.currentTarget.select()} /></label>}
@@ -216,14 +218,14 @@ export function AreaPage() {
       <div className="area-map-stage">
         <AreaMap adminGeojson={o.admin_geojson} mode={mode} adminCode={adminCode} center={center} radius={radius} vertices={vertices} analysis={analysis} sliderYear={slider} eventYear={activeEvent} onPickAdmin={pickAdmin} onPickPoint={pickPoint} />
       </div>
-      {analysis ? <YearPanel analysis={analysis} year={slider} setYear={setSlider} playing={playing} setPlaying={setPlaying} eventYear={activeEvent} /> : <div className="panel"><EmptyState title={running ? '계산 중입니다' : '구역을 고르세요'} description="행정동을 고르거나 지도에서 위치를 누르면 계산합니다." /></div>}
+      {analysis ? <YearPanel analysis={analysis} year={slider} setYear={setSlider} playing={playing} setPlaying={setPlaying} eventYear={activeEvent} /> : <div className="panel"><EmptyState title={running ? '계산 중입니다' : '구역을 고르세요'} description={running ? slowLoadText(elapsed) : '행정동을 고르거나 지도에서 위치를 누르면 계산합니다.'} /></div>}
     </div>
 
     {analysis && <>
       <div className="section-label"><h2>과거와 현재</h2><span>{analysis.history.years[0]}~{analysis.history.years[analysis.history.years.length - 1]} · {analysis.history.area.label}</span></div>
       <div className="content-grid two-up area-charts">
-        <section className="panel"><div className="panel-title"><h3>연도별 전력 사용량</h3><div className="badge-row"><ProvenanceBadge kind="observed" detail="12개월 완전 지번" /><ProvenanceBadge kind="estimated" /></div></div><ElectricityChart history={analysis.history} eventYear={activeEvent} /><p className="muted">막대는 12개월이 모두 관측된 단지만 더한 값을 단지 준공 시기별로 나눈 것입니다. 점선은 그 해까지 준공된 단지 연면적 × {analysis.history.region_label ?? '전주'} 관측 원단위로 낸 추정입니다. 전력은 모든 연도를 K-apt 관리비 전력 한 출처로 셉니다(2024년부터 있는 건축HUB 계측값은 같은 단지에서 K-apt보다 커서, 섞으면 사용량이 늘어난 것처럼 보입니다). 건축HUB 값은 아래 '건물 전체 에너지'에 따로 둡니다.</p></section>
-        <section className="panel"><div className="panel-title"><h3>개발 이력 (사용승인 세대)</h3><ProvenanceBadge kind="computed" detail="K-apt 사용승인일" /></div><DevelopmentChart history={analysis.history} eventYear={activeEvent} /><p className="muted">호박색 막대가 전후 비교에 쓰는 개발 연도입니다. 막대에 마우스를 올리면 단지명이 보입니다.</p></section>
+        <section className="panel"><div className="panel-title"><h3>연도별 전력 사용량</h3><div className="badge-row"><ProvenanceBadge kind="observed" detail="12개월 완전 지번" /><ProvenanceBadge kind="estimated" /></div></div><ElectricityChart history={analysis.history} eventYear={activeEvent} /><p className="muted">막대는 12개월이 모두 관측된 단지만 더한 값을 단지 준공 시기별로 나눈 것입니다. 점선은 그 해까지 준공된 단지 연면적 × {analysis.history.region_label ?? '전주'} 관측 원단위로 낸 추정입니다. 전력은 모든 연도를 K-apt 관리비 전력 한 출처로 셉니다(건축HUB 계측값은 같은 단지에서 K-apt보다 커서, 섞으면 사용량이 늘어난 것처럼 보입니다). 건축HUB 값은 아래 '건물 전체 에너지'에 따로 둡니다.</p></section>
+        <section className="panel"><div className="panel-title"><h3>개발 이력 (사용승인 세대)</h3><ProvenanceBadge kind="computed" detail="K-apt 사용승인일" /></div><DevelopmentChart history={analysis.history} eventYear={activeEvent} /><p className="muted">호박색 막대가 전후 비교에 쓰는 개발 연도입니다. 막대를 누르거나 마우스를 올리면 단지명이 보입니다.</p></section>
         <section className="panel"><div className="panel-title"><h3>기상 (난방도일·냉방도일)</h3><ProvenanceBadge kind={region ? 'estimated' : 'observed'} detail={region ? 'ERA5-Land 재분석' : 'ASOS 전주'} /></div><WeatherYearsChart history={analysis.history} /><p className="muted">12개월이 모두 있는 해만 그립니다. 전후 사용량 차이의 일부는 기상 차이일 수 있습니다.</p></section>
         <PopulationPanel analysis={analysis} />
         <RegisterPanel analysis={analysis} eventYear={activeEvent} />
@@ -297,7 +299,7 @@ function YearPanel({ analysis, year, setYear, playing, setPlaying, eventYear }: 
       <MetricCard dense title="전력 관측" value={elec?.kwh} unit="kWh" provenance="observed" basis={elec?.kwh != null ? `12개월 관측 ${elec.complete_parcels}곳` : undefined} missingReason={collected ? '12개월이 모두 관측된 지번이 없습니다.' : '과거 전력을 아직 수집하지 않았습니다.'} />
       <MetricCard dense title="전력 추정" value={e?.estimated?.kwh} unit="kWh" provenance="estimated" basis={`연면적 × ${h.region_label ?? '전주'} 원단위`} missingReason="연면적이 확인된 단지가 없습니다." />
       <MetricCard dense title="전력 탄소 (관측)" value={e?.electricity_carbon_kgco2eq} unit="kgCO₂eq" provenance="computed" basis={h.factor.electricity ? `계수 ${h.factor.electricity}` : undefined} missingReason="관측 전력이 없어 계산하지 않았습니다." />
-      <MetricCard dense title="인구" value={pop?.population} unit="명" provenance="observed" basis={pop?.basis} missingReason={`${year}년 SGIS 인구를 아직 수집하지 않았습니다.`} />
+      <MetricCard dense title="인구" value={pop?.population} unit="명" provenance="observed" basis={pop?.basis} missingReason={`${year}년 SGIS 인구가 이 도구에 없습니다(제공기관 공표 전이거나 아직 받지 않음).`} />
     </div>
     <p className="muted">{h.factor_basis}</p>
   </section>;
@@ -381,9 +383,10 @@ function PopulationPanel({ analysis }: { analysis: AreaAnalysis }) {
 }
 
 /** 한 줄 수치. signed면 증감이라 양수에 +를 붙인다. 값이 없으면 0이 아니라 "자료 없음". */
-function Figure({ label, value, unit, digits = 0, note, signed = false }: { label: string; value: number | null | undefined; unit: string; digits?: number; note?: ReactNode; signed?: boolean }) {
+/** 숫자 한 칸. caution이면(관측 범위가 달라 비교할 수 없는 값) 흐리게 해치를 깔고 '비교 주의'를 붙인다(F12). */
+function Figure({ label, value, unit, digits = 0, note, signed = false, caution = false }: { label: string; value: number | null | undefined; unit: string; digits?: number; note?: ReactNode; signed?: boolean; caution?: boolean }) {
   const missing = value === null || value === undefined;
-  return <div className={missing ? 'is-missing' : undefined}><dt>{label}</dt><dd>{missing ? '자료 없음' : `${signed && value > 0 ? '+' : ''}${formatMetric(value, unit, digits)}`}{note && <small>{note}</small>}</dd></div>;
+  return <div className={missing ? 'is-missing' : caution ? 'is-caution' : undefined}><dt>{label}{caution && !missing && <em className="caution-tag">비교 주의</em>}</dt><dd>{missing ? '자료 없음' : `${signed && value > 0 ? '+' : ''}${formatMetric(value, unit, digits)}`}{note && <small>{note}</small>}</dd></div>;
 }
 
 function BeforeAfterPanel({ comparison, candidates, eventYear, setEventYear, windowSize, setWindowSize }: { comparison: BeforeAfter; candidates: number[]; eventYear: number | null; setEventYear: (y: number | null) => void; windowSize: number; setWindowSize: (w: number) => void }) {
@@ -401,7 +404,7 @@ function BeforeAfterPanel({ comparison, candidates, eventYear, setEventYear, win
           <h4 className="area-subhead">관측 <ProvenanceBadge kind="observed" /></h4>
           {comparison.coverage && comparison.coverage.comparable === false && <p className="area-fallback" role="note" data-testid="area-coverage-caution"><b>관측 범위 주의:</b> 개발 전 관측 단지가 평균 {formatMetric(comparison.coverage.before_parcels_mean, '곳', 1)}으로 개발 후 기존 단지 평균 {formatMetric(comparison.coverage.after_existing_parcels_mean, '곳', 1)}보다 적습니다. 지역 합계 변화에는 수집 범위 차이가 섞여 있습니다. {m?.electricity.existing_change_pct != null ? <>같은 단지끼리 비교한 <b>기존 단지만의 변화</b>를 보세요.</> : <>전후 모든 해에 관측된 같은 기존 단지가 없어 같은 단지 비교도 아직 할 수 없습니다(과거 연도 수집 뒤 다시 확인).</>}</p>}
           <dl className="area-figures">
-            <Figure label="전력 연평균 변화" value={m?.electricity.total_change_pct} unit="%" digits={1} signed note={comparison.coverage ? `관측 연도 ${comparison.coverage.observed_before_years.join('·') || '없음'} → ${comparison.coverage.observed_after_years.join('·') || '없음'}` : undefined} />
+            <Figure label="전력 연평균 변화" value={m?.electricity.total_change_pct} unit="%" digits={1} signed caution={comparison.coverage?.comparable === false} note={comparison.coverage ? `관측 연도 ${comparison.coverage.observed_before_years.join('·') || '없음'} → ${comparison.coverage.observed_after_years.join('·') || '없음'}` : undefined} />
             <Figure label="기존 단지만의 변화" value={m?.electricity.existing_change_pct} unit="%" digits={1} note={m?.electricity.existing_complexes ? `전후 모든 해에 보고한 같은 단지 ${m.electricity.existing_complexes}곳끼리` : '같은 단지끼리 비교'} signed />
             <Figure label="개발 후 신규 단지 비중" value={m?.electricity.new_share_pct} unit="%" digits={1} />
           </dl>

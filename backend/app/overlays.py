@@ -26,6 +26,43 @@ def _table_exists(db: Any, name: str) -> bool:
     return bool(db.execute(text("SELECT to_regclass(:name)"), {"name": name}).scalar())
 
 
+# 상위 도형: 세부 용도지역 위에 겹쳐 있는 '도시지역' 계열과 세분 전 '관리지역'. 세부 도형이 덮은 면적에서는 빼고,
+# 남은 면적만 '미세분'(OTHER)으로 센다(사용성 검토 F1, 2026-10-13: 군산 기타 100% + 주거 94.4% + 녹지 5.5% = 200%).
+UPPER_ZONES = ("도시지역", "관리지역")
+
+
+def is_upper_zone(zone_name: str | None) -> bool:
+    name = str(zone_name or "").replace(" ", "")
+    return name.startswith("도시지역") or name == "관리지역"
+
+
+def zoning_shares(entries: list[tuple[str | None, float]]) -> dict[str, float]:
+    """{category: share 0~1} of one grid from (zone_name, grid_area_ratio) intersections (pure).
+
+    세부 용도지역(주거·상업·공업·녹지, 계획·생산·보전관리, 농림, 자연환경보전)은 서로 겹치지 않는 것으로 보고 범주마다
+    더하고(범주당 1 이하, 합도 1 이하), 상위 도형은 세부 도형이 덮지 않은 나머지 면적까지만 OTHER로 더한다."""
+    from .vworld import zone_category
+
+    detail: dict[str, float] = {}
+    upper = 0.0
+    for zone_name, ratio in entries:
+        value = max(float(ratio or 0), 0.0)
+        if is_upper_zone(zone_name):
+            upper += value
+            continue
+        category = zone_category(zone_name)
+        detail[category] = detail.get(category, 0.0) + value
+    detail = {k: min(v, 1.0) for k, v in detail.items() if v > 0}
+    covered = sum(detail.values())
+    if covered > 1.0:  # rounding or a true overlap between detailed shapes: scale to the cell
+        detail = {k: v / covered for k, v in detail.items()}
+        covered = 1.0
+    rest = max(0.0, min(upper, 1.0) - covered)
+    if rest > 1e-9:
+        detail["OTHER"] = detail.get("OTHER", 0.0) + rest
+    return detail
+
+
 def summarize_zoning(coverage: list[tuple[str, str]], stats: list[tuple[str, str | None, float]]) -> dict[str, dict[str, Any]]:
     """Pure per-grid zoning shares (0–100 %).
 
@@ -33,17 +70,13 @@ def summarize_zoning(coverage: list[tuple[str, str]], stats: list[tuple[str, str
     ``stats``: (grid_id, zone_name, grid_area_ratio) intersections.
     Unrequested grids are absent (missing); a requested grid without features is 0 %.
     """
-    from .vworld import zone_category
-
     summary: dict[str, dict[str, Any]] = {grid_id: {"zoning_status": status, "shares": {}} for grid_id, status in coverage}
+    entries: dict[str, list[tuple[str | None, float]]] = {}
     for grid_id, zone_name, ratio in stats:
-        item = summary.get(grid_id)
-        if item is None:
-            continue
-        category = zone_category(zone_name)
-        item["shares"][category] = item["shares"].get(category, 0.0) + float(ratio or 0)
-    for item in summary.values():
-        shares = {key: min(value, 1.0) for key, value in item["shares"].items()}
+        if grid_id in summary:
+            entries.setdefault(grid_id, []).append((zone_name, ratio))
+    for grid_id, item in summary.items():
+        shares = zoning_shares(entries.get(grid_id, []))
         item["residential_zone_ratio"] = round(shares.get("RESIDENTIAL", 0.0) * 100, 2)
         item["urban_zone_ratio"] = round(min(sum(shares.values()), 1.0) * 100, 2)
         item["dominant_zone"] = max(shares, key=shares.get) if shares else None
@@ -234,17 +267,20 @@ def national_complex_features(db: Any, sc: Any) -> dict[str, Any]:
 
 def zoning_area_by_category(db: Any, grid_ids: Any = None) -> tuple[dict[str, float], int]:
     """Official zoning area inside the requested analysis grids (km², CALCULATED)."""
-    from .vworld import GridZoningStat, VworldGridCoverage, zone_category
+    from .vworld import GridZoningStat, VworldGridCoverage
 
     if not _table_exists(db, "vworld_grid_coverage"):
         return {}, 0
     covered = len([g for g in db.scalars(select(VworldGridCoverage.grid_id).where(VworldGridCoverage.dataset == "zoning")) if grid_ids is None or g in grid_ids])
-    totals: dict[str, float] = {}
+    per_grid: dict[str, list[tuple[str | None, float]]] = {}
     for row in db.scalars(select(GridZoningStat)):
         if grid_ids is not None and row.grid_id not in grid_ids:
             continue
-        category = zone_category(row.zone_name)
-        totals[category] = totals.get(category, 0.0) + float(row.intersection_area_m2 or 0)
+        per_grid.setdefault(row.grid_id, []).append((row.zone_name, float(row.grid_area_ratio or 0)))
+    totals: dict[str, float] = {}
+    for entries in per_grid.values():  # 상위 도형을 겹쳐 세지 않도록 칸마다 몫을 낸 뒤 칸 넓이(0.25 km²)를 곱한다
+        for category, share in zoning_shares(entries).items():
+            totals[category] = totals.get(category, 0.0) + share * 250_000
     return {key: round(value / 1_000_000, 3) for key, value in sorted(totals.items())}, covered
 
 
@@ -418,6 +454,16 @@ def grid_context(db: Any, grid_id: str | None) -> dict[str, Any]:
     buildings = grid_building_summary(db, [grid_id]).get(grid_id)
     if buildings:
         context["buildings"] = dict(buildings, source="VWorld LT_C_SPBD 도로명주소 건물")
+    # 건물 용도는 건축물대장 표제부 주용도로 센다: 도로명주소 건물 층은 용도코드가 모두 비어 있다(사용성 검토 F2)
+    try:
+        from .register_grid import grid_register_summary
+        reg = grid_register_summary(db, [grid_id]).get(grid_id)
+    except Exception:  # noqa: BLE001 - register not collected
+        db.rollback()
+        reg = None
+    if reg and reg.get("use_gfa_pct"):
+        context["register_use"] = {"use_gfa_pct": reg["use_gfa_pct"], "buildings": reg.get("buildings"), "gfa_m2": reg.get("gfa_m2"),
+                                   "dominant_use": reg.get("dominant_use"), "source": "건축HUB 건축물대장 표제부 주용도 (연면적 기준)"}
     from .kapt import ApartmentComplex
     complexes = list(db.scalars(select(ApartmentComplex).where(ApartmentComplex.grid_id == grid_id)))
     if complexes:

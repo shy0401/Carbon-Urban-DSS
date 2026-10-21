@@ -438,6 +438,21 @@ export function cohortSeries(history: AreaHistory, eventYear: number | null | un
   return { ...out, estimated };
 }
 
+/**
+ * 관측 단지가 적어 막대가 실제보다 낮게 보이는 해(F12): 12개월 완전 관측 단지 수 ÷ 그해 준공 단지 수(없으면 단지 수 그대로)가
+ * 가장 잘 관측된 해의 절반이 안 되는 해. 이런 해의 막대가 낮은 것은 사용량이 준 것이 아니라 받은 단지가 적은 것이다.
+ */
+export function partialYears(history: AreaHistory): number[] {
+  const rows = history.years.map((y) => {
+    const e = at(history.energy, y)?.electricity;
+    if (!e || e.kwh === null || e.kwh === undefined) return { y, r: null };
+    const stock = at(history.stock, y)?.complexes ?? 0;
+    return { y, r: stock > 0 ? e.complete_parcels / stock : e.complete_parcels };
+  });
+  const best = Math.max(0, ...rows.map((row) => row.r ?? 0));
+  return best > 0 ? rows.filter((row) => row.r !== null && row.r < best * 0.5).map((row) => row.y) : [];
+}
+
 /** Years that have an approval event (candidates for the before/after comparison). */
 export function eventYears(history: AreaHistory): number[] {
   return history.years.filter((y) => (at(history.events, y)?.households ?? 0) > 0 || (at(history.events, y)?.complexes ?? 0) > 0);

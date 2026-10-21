@@ -61,13 +61,14 @@ describe('MapPage views and layers', () => {
     expect(pickProvince('50', null, '41111')).toBe('41');
     expect(pickProvince('x', 'bad', null)).toBe('52');
   });
-  it('starts at 전국 unless the address names the 시·도 grid or the 시·군·구 map', async () => {
+  it('opens the address view, else the last view, else the chosen 시·군·구 map (F13)', async () => {
     const { mapView } = await import('./MapPage');
-    expect(mapView(null)).toBe('national');
-    expect(mapView('national')).toBe('national');
+    expect(mapView(null)).toBe('region');
+    expect(mapView(null, 'national')).toBe('national');
+    expect(mapView('national', 'region')).toBe('national');
     expect(mapView('province')).toBe('province');
     expect(mapView('region')).toBe('region');
-    expect(mapView('other')).toBe('national');
+    expect(mapView('other', 'junk')).toBe('region');
   });
   it('keeps one overlay at a time and leaves the grid and boundary alone', async () => {
     const { toggleLayer } = await import('./MapPage');

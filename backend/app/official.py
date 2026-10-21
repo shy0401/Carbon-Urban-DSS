@@ -7,7 +7,7 @@ from .db import Base
 from .models import DataSource,Region,WeatherMonthly,now
 from .collectors import client,RAW,record_asset,update_source
 from .cache import ExternalError,parse_cached_response
-from .domain import parse_energy,monthly_weather,number
+from .domain import parse_energy,monthly_weather,number,scope_label
 
 class BuildingRegister(Base):
     """건축물대장 표제부 한 동. ``parcel_code`` is the 19-digit PNU (land type 1=일반, 2=산).
@@ -184,7 +184,7 @@ def collect_register(db,scope='full',progress=None,regions=None,update=True):
     linked=link_register_grids(db)
     total_rows=db.query(BuildingRegister).count()
     status='COLLECTED' if scope=='full' and not failed else 'PARTIAL'
-    if update:update_source(db,sid,total_rows,status=status,quality=f'표제부 {total_rows:,}동 / 법정동 {len(regions)}곳({scope}) / 격자 연결 {linked:,}동 / 일시 오류 {len(failed)}건')
+    if update:update_source(db,sid,total_rows,status=status,quality=f'표제부 {total_rows:,}동 / 법정동 {len(regions)}곳({scope_label(scope)} 수집) / 격자 연결 {linked:,}동 / 일시 오류 {len(failed)}건')
     return {'rows':rows_saved,'regions':len(regions),'failed':len(failed),'linked':linked,'total':total_rows}
 
 def link_register_grids(db):

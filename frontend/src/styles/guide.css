@@ -9,6 +9,10 @@
 .guide-toc a::before { content: counter(toc); min-width: 14px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
 .guide-toc a:hover { background: var(--surface-sunk); }
 .guide-body { display: grid; gap: var(--sp-4); max-width: 920px; }
+/* 사용성 검토 F4: grid 자식의 min-width:auto 때문에 줄바꿈 없는 코드 블록이 본문을 1,907px로 늘렸다 */
+.guide-body > * { min-width: 0; }
+.guide-body table { max-width: 100%; }
+.guide-body .table-wrap, .guide-body pre { max-width: 100%; overflow-x: auto; }
 .guide-section { scroll-margin-top: var(--sp-4); padding: var(--sp-5) var(--sp-6); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-panel); }
 .guide-section h2 { font-size: var(--fs-title); line-height: 1.35; }
 .guide-section h3 { margin: var(--sp-5) 0 var(--sp-2); font-size: var(--fs-panel); }

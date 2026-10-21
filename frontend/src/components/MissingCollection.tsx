@@ -71,6 +71,9 @@ export function MissingCollection({ onChanged }: { onChanged?: () => void }) {
 
   const job = plan?.job;
   const waiting = String(job?.status ?? '').toUpperCase() === 'WAITING';
+  // 대기 중(QUEUED): 작업자가 아직 받지 않은 요청. 잠그지 않고 다시 보낼 수 있게 한다(UX 검토 F11).
+  const queued = String(job?.status ?? '').toUpperCase() === 'QUEUED';
+  const running = String(job?.status ?? '').toUpperCase() === 'RUNNING';
   const yearly = plan?.rows.filter((r) => r.yearly) ?? [];
   const once = plan?.rows.filter((r) => !r.yearly) ?? [];
   const blockedRows = plan?.rows.filter((r) => r.blocked && r.cells.some((c) => c.state === 'BLOCKED')) ?? [];
@@ -82,8 +85,8 @@ export function MissingCollection({ onChanged }: { onChanged?: () => void }) {
     <div className="missing-controls">
       <label><span>시작 연도</span><select value={from} onChange={(e) => setFrom(Number(e.target.value))} disabled={active}>{YEARS.map((y) => <option key={y} value={y}>{y}</option>)}</select></label>
       <label><span>끝 연도</span><select value={to} onChange={(e) => setTo(Number(e.target.value))} disabled={active}>{YEARS.map((y) => <option key={y} value={y}>{y}</option>)}</select></label>
-      <button className="button primary" onClick={() => void start()} disabled={busy || !plan || plan.offline || (active && !waiting) || (!plan.summary.todo && !waiting)} data-testid="collect-missing-start">
-        <CloudDownload size={16} />{busy ? '요청 중…' : waiting ? '지금 바로 다시 시도' : active ? '수집 중' : '빠진 자료 전부 수집 시작'}
+      <button className="button primary" onClick={() => void start()} disabled={busy || !plan || plan.offline || (running) || (!plan.summary.todo && !waiting && !queued)} data-testid="collect-missing-start">
+        <CloudDownload size={16} />{busy ? '요청 중…' : waiting ? '지금 바로 다시 시도' : queued ? '대기 중 — 다시 요청' : running ? '수집 중' : '빠진 자료 전부 수집 시작'}
       </button>
     </div>
     {plan && <p className="missing-sentence" role="status">{plan.offline ? '오프라인 모드라 외부 수집을 시작할 수 없습니다. 런처로 온라인 모드를 켜세요.' : planSentence(plan)}</p>}
@@ -91,7 +94,8 @@ export function MissingCollection({ onChanged }: { onChanged?: () => void }) {
 
     {job && <div className={`missing-job ${String(job.status).toLowerCase()}`} data-testid="collect-missing-job">
       <div><strong>{jobLabel(job.status)}</strong><small>시작 {formatDate(job.created_at)}{job.finished_at ? ` · 끝 ${formatDate(job.finished_at)}` : ''}</small></div>
-      {typeof job.progress === 'number' && !waiting && <div className="progress" aria-label={`진행률 ${Math.round(job.progress)}%`}><span style={{ width: `${Math.max(0, Math.min(100, job.progress))}%` }} /></div>}
+      {typeof job.progress === 'number' && running && <div className="progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(job.progress)} aria-label="빠진 자료 수집 진행률"><span style={{ width: `${Math.max(0, Math.min(100, job.progress))}%` }} /></div>}
+      {queued && <p className="muted">작업자가 이 요청을 아직 시작하지 않았습니다(앞선 작업이 끝나기를 기다리거나 요청이 전달되지 않음). 20분 넘게 그대로면 이 화면을 열 때 다시 보냅니다.</p>}
       {job.message && <p>{waiting && <Clock size={14} />}{job.message}</p>}
     </div>}
 

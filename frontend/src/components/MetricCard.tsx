@@ -21,7 +21,8 @@ export function MetricCard({ title, value, unit, digits, provenance, basis, miss
   dense?: boolean;
 }) {
   const missing = value === null || value === undefined || !Number.isFinite(value);
-  const text = formatMetric(value, '', digits ?? (unit === '%' ? 1 : 0));
+  // 소수 자리를 정해 준 카드는 늘 그 자리수로(39.0 · 48.5).
+  const text = formatMetric(value, '', digits ?? (unit === '%' ? 1 : 0), digits !== undefined);
   return <article className={`metric-card${dense ? ' dense' : ''}${missing ? ' is-missing' : ''}`}>
     <h3 className="metric-label">{title}</h3>
     <p className="metric-value">{missing ? <MissingValue reason={missingReason ?? '현재 조건에서 산출할 근거 자료가 없습니다.'} /> : <><span className="sr-only">{unit ? `${text} ${unit}` : text}</span><span aria-hidden="true">{text}</span>{unit && <span className="unit" aria-hidden="true">{unit}</span>}</>}</p>

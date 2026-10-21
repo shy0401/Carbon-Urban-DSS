@@ -102,6 +102,8 @@ export interface GridContext {
   admin: Array<{ adm_code: string; adm_name: string; reference_year: number; grid_share_pct: number; population: number | null; population_status: string; households: number | null }>;
   complexes: { count: number; households: number | null; gross_floor_area_m2: number | null; with_floor_area: number; floor_area_excluded?: string[]; names: string[]; source: string } | null;
   buildings: (GridBuildings & { source: string }) | null;
+  /** 건축물대장 표제부 주용도의 연면적 몫(%) — 도로명주소 건물 층은 용도코드가 비어 있어 이것으로 용도를 본다. */
+  register_use?: { use_gfa_pct: Record<string, number>; buildings: number | null; gfa_m2: number | null; dominant_use: string | null; source: string } | null;
   /** Parent SGIS 1km grid cell (official statistics with disclosure noise, never divided into 500m). */
   sgis_grid?: SgisGridCell | null;
 }
@@ -147,6 +149,7 @@ export interface GridBuildings {
   category_share_pct: Record<string, number>;
   category_count: Record<string, number>;
   dominant_use: string | null;
+  use_known_pct?: number | null;
 }
 
 /** Per-grid indicators served by /api/map (every ratio comes with its basis). */

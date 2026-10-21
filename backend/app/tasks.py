@@ -154,7 +154,13 @@ def queue_all_missing(db,from_year,to_year):
             existing.status='WAITING'  # restarted below like a waiting run
         if existing and existing.status=='WAITING' and existing.datasets==[ALL_MISSING]:
             # The user asked again: try now instead of waiting for the scheduled resume.
-            existing.status='QUEUED';existing.resume_at=None;existing.message='다시 시작 요청';db.commit()
+            existing.status='QUEUED';existing.resume_at=now();existing.message='다시 시작 요청';db.commit()
+            try: run_collection.delay(existing.id)
+            except Exception: pass
+            return existing
+        if existing and existing.status=='QUEUED' and existing.datasets==[ALL_MISSING]:
+            # Asked again while still queued: send it once more (a lost delivery would otherwise keep it queued).
+            existing.resume_at=now();existing.message='다시 요청: 작업자가 앞선 작업을 마치면 시작합니다';db.commit()
             try: run_collection.delay(existing.id)
             except Exception: pass
             return existing
@@ -166,15 +172,41 @@ def queue_all_missing(db,from_year,to_year):
             job.status='FAILED';job.message='수집 작업 큐 연결 실패';job.errors=[{'message':job.message}];db.commit()
         return job
 
+# A QUEUED 'collect everything missing' job not picked up for this long lost its delivery (Redis or the worker
+# restarted). Re-sending is harmless: a second delivery of a running or finished job does nothing.
+STALE_QUEUED_MINUTES=20
+
+def stale_queued(db):
+    """A QUEUED 'collect everything missing' job whose delivery was lost (UX 검토 F11: '대기 중'으로 며칠씩 남음).
+
+    ``resume_at`` of a QUEUED job is the time it was last sent to the worker (a run sets it back to None when it
+    starts); without one, ``created_at``. Only when Redis answers that no run is alive (never guess without Redis)."""
+    from datetime import timedelta,timezone
+    from .history import lock_held
+    job=db.scalar(select(CollectionJob).where(CollectionJob.status=='QUEUED'))
+    if not job or job.datasets!=[ALL_MISSING]: return None
+    sent=job.resume_at or job.created_at
+    if sent is None: return None
+    sent=sent if sent.tzinfo else sent.replace(tzinfo=timezone.utc)
+    if sent+timedelta(minutes=STALE_QUEUED_MINUTES)>now() or lock_held() is not False: return None
+    return job
+
 def resume_overdue(db):
-    """Re-queue a waiting run whose resume time has passed (e.g. the worker restarted and lost its timer)."""
+    """Re-queue a waiting run whose resume time has passed (e.g. the worker restarted and lost its timer),
+    a running one whose worker is gone, and a queued one whose delivery was lost."""
     from datetime import timedelta
     stale=stale_running(db)
     if stale:
-        stale.status='QUEUED';stale.message='작업자가 다시 시작되어 이어서 수집합니다';db.commit()
+        stale.status='QUEUED';stale.resume_at=now();stale.message='작업자가 다시 시작되어 이어서 수집합니다';db.commit()
         try: run_collection.delay(stale.id)
         except Exception: pass
         return stale
+    lost=stale_queued(db)
+    if lost:
+        lost.resume_at=now();lost.message='전달되지 않은 수집 요청을 작업자에게 다시 보냈습니다. 작업자가 앞선 작업을 마치면 시작합니다';db.commit()
+        try: run_collection.delay(lost.id)
+        except Exception: pass
+        return lost
     job=db.scalar(select(CollectionJob).where(CollectionJob.status=='WAITING'))
     if not job or not job.resume_at:
         return job
@@ -183,7 +215,8 @@ def resume_overdue(db):
     if resume+timedelta(minutes=10)<now():
         # QUEUED (not a later resume_at): a later resume_at made the worker take this delivery for an
         # outdated timer and skip it, so a job whose timer was lost never started again.
-        job.status='QUEUED';job.resume_at=None;job.message='예약 시각이 지나(PC·작업자가 꺼져 있었음) 이어서 수집합니다';db.commit()
+        # resume_at of a QUEUED job is when it was sent (stale_queued); _outdated_trigger reads it only while WAITING.
+        job.status='QUEUED';job.resume_at=now();job.message='예약 시각이 지나(PC·작업자가 꺼져 있었음) 이어서 수집합니다';db.commit()
         try: run_collection.delay(job.id)
         except Exception:
             job.status='WAITING';job.resume_at=now();db.commit()

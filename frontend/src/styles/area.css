@@ -60,6 +60,10 @@
 .area-figures dd { margin: 0; font-size: var(--fs-label); font-weight: 600; text-align: right; }
 .area-figures dd small { display: block; font-weight: 400; color: var(--ink-3); font-size: var(--fs-caption); }
 .area-figures > div.is-missing dd { color: var(--ink-2); font-weight: 500; }
+/* 비교할 수 없는 값(관측 범위 차이): 큰 굵은 숫자로 읽히지 않게 흐리고 해치를 깐다 (UX 검토 F12) */
+.area-figures > div.is-caution { background-image: var(--hatch-image); }
+.area-figures > div.is-caution dd { color: var(--ink-2); font-weight: 500; }
+.area-figures .caution-tag { margin-left: 6px; font-style: normal; font-size: 12px; color: var(--warning); background: var(--warning-bg); border: 1px solid currentColor; border-radius: 3px; padding: 0 4px; }
 .area-figures.cols { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: var(--sp-5); margin: var(--sp-3) 0; }
 .area-gaps { margin: var(--sp-3) 0 0; padding: var(--sp-2) var(--sp-3) var(--sp-2) 28px; border: 1px solid var(--hatch); border-radius: var(--r-map); background: var(--prov-missing-bg); color: var(--ink-2); font-size: var(--fs-caption); line-height: 1.6; }
 
@@ -125,7 +129,7 @@
 .area-collect-item em.st-not_published { color: var(--ink-3); }
 
 /* 결과 요약 막대 (2026-10): 단계 이동 + 핵심 지표. 긴 화면을 내려가도 위에 붙어 있다. */
-.area-summary { position: sticky; top: 0; z-index: 6; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--sp-2) var(--sp-4); align-items: center; margin-top: var(--sp-3); padding: var(--sp-2) var(--sp-4); background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-panel); box-shadow: var(--shadow-popover); }
+.area-summary { position: sticky; top: var(--shell-header-h, 0px); z-index: 6; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--sp-2) var(--sp-4); align-items: center; margin-top: var(--sp-3); padding: var(--sp-2) var(--sp-4); background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-panel); box-shadow: var(--shadow-popover); }
 .area-steps { grid-column: 1 / -1; }
 .area-steps ol { display: flex; flex-wrap: wrap; gap: var(--sp-1) var(--sp-2); margin: 0; padding: 0; list-style: none; }
 .area-steps a { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px 2px 2px; border: 1px solid var(--line); border-radius: 999px; color: var(--ink-2); font-size: var(--fs-caption); font-weight: 600; text-decoration: none; }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { groupRegions, provinceOptions } from './AnalysisScopeBar';
+import { groupRegions, provinceOptions, yearOptions } from './AnalysisScopeBar';
 
 describe('analysis region selector', () => {
   it('lists regions with their own detail data first and national-only maps apart', () => {
@@ -19,5 +19,12 @@ describe('analysis region selector', () => {
   it('lists 시·도 once each, 도 first', () => {
     const out = provinceOptions([{ code: '52110', sido_name: '전북특별자치도' }, { code: '11110', sido_name: '서울특별시' }, { code: '52710', sido_name: '전북특별자치도' }, { code: '41110', sido_name: '경기도' }, { code: '12110', sido_name: '전남광주통합특별시' }]);
     expect(out.map((p) => [p.code, p.kind])).toEqual([['12', 'PROVINCE'], ['41', 'PROVINCE'], ['52', 'PROVINCE'], ['11', 'METRO']]);
+  });
+
+  it('offers years only up to the last year with data (F8), keeping a later year from an old link at the top', () => {
+    expect(yearOptions(2025, 2025)[0]).toBe(2025);
+    expect(yearOptions(2025, 2025)).not.toContain(2026);
+    expect(yearOptions(2025, 2025).at(-1)).toBe(2015);
+    expect(yearOptions(2025, 2026).slice(0, 2)).toEqual([2026, 2025]);
   });
 });

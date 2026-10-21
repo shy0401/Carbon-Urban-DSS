@@ -97,6 +97,8 @@
 .map-stage .maplibregl-ctrl-group button + button { border-top: 1px solid var(--line); }
 .map-stage .maplibregl-ctrl-scale { border: 1px solid var(--ink); border-top: 0; background: var(--surface); color: var(--ink); font-size: var(--fs-caption); line-height: 1.3; padding: 0 4px; }
 .map-stage .maplibregl-ctrl-attrib { font-size: 10px; background: var(--surface); }
+/* 격자 말풍선이 왼쪽 패널(z 3)·도구(z 4) 뒤에 가려지지 않게 (UX 검토 F13) */
+.maplibregl-popup { z-index: 5; }
 .maplibregl-popup-content { padding: var(--sp-2) var(--sp-3) !important; border: 1px solid var(--line-strong); border-radius: var(--r-map) !important; background: var(--surface) !important; box-shadow: var(--shadow-popover) !important; font-family: var(--font); color: var(--ink); }
 .maplibregl-popup-anchor-bottom .maplibregl-popup-tip { border-top-color: var(--line-strong) !important; }
 .maplibregl-popup-anchor-top .maplibregl-popup-tip { border-bottom-color: var(--line-strong) !important; }
@@ -365,3 +367,7 @@ small.resolution-tag { margin: 0 0 0 var(--sp-1); }
 .team-model-warnings { margin: var(--sp-2) 0 0; padding-left: 1.1em; font-size: var(--fs-caption); color: var(--ink-2); line-height: 1.5; }
 .team-model-result details, .team-model-accuracy { margin-top: var(--sp-2); font-size: var(--fs-caption); }
 .team-model-accuracy table { width: 100%; }
+
+/* MapLibre 저작권 표기 대비(2.02:1 → 본문 보조색) (UX 검토 접근성) */
+.maplibregl-ctrl-attrib, .maplibregl-ctrl-attrib a { color: var(--ink-2) !important; }
+.maplibregl-ctrl-attrib.maplibregl-compact, .maplibregl-ctrl.maplibregl-ctrl-attrib { background: color-mix(in srgb, var(--surface) 92%, transparent) !important; }

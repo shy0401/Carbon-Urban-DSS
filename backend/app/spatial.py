@@ -382,7 +382,7 @@ def build_spatial(
         else:
             reason = (
                 f"OSM 아파트 건물 {grid['building_count']}개, "
-                f"알려진 층수 기반 추정 연면적 {known_floor_area:g}m²"
+                f"알려진 층수 기반 추정 연면적 {known_floor_area:,.0f}m²"
             )
         road_address = _candidate_road_address(
             grid["residential_matches"], grid["building_tags"]

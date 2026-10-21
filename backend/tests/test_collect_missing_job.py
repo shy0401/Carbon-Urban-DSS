@@ -132,3 +132,34 @@ def test_overdue_waiting_job_actually_starts_when_resumed(monkeypatch):
     tasks.run_collection('j1')
     assert started == ['j1']
     assert tasks.resume_overdue(db) is None or sent == ['j1']  # not queued a second time
+
+
+def test_queued_job_whose_delivery_was_lost_is_sent_again_once(monkeypatch):
+    # UX 검토 F11: a job queued days ago stayed '대기 중' with the button locked; the worker never got it.
+    from datetime import datetime, timedelta, timezone
+    db, job = make_job()
+    job.created_at = datetime.now(timezone.utc) - timedelta(days=2)
+    job.progress = 100.0
+    db.commit()
+    sent = []
+    monkeypatch.setattr(history, 'lock_held', lambda *a, **k: False)
+    monkeypatch.setattr('time.sleep', lambda s: None)
+    monkeypatch.setattr(tasks.run_collection, 'delay', lambda job_id: sent.append(job_id))
+    assert tasks.resume_overdue(db) is not None and sent == ['j1']
+    job = db.get(CollectionJob, 'j1')
+    assert job.status == 'QUEUED' and job.resume_at is not None and '다시 보냈습니다' in job.message
+    tasks.resume_overdue(db)
+    assert sent == ['j1']  # sent just now: not again on the next read
+
+
+def test_queued_job_is_left_alone_while_fresh_or_without_redis(monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    db, job = make_job()
+    monkeypatch.setattr(history, 'lock_held', lambda *a, **k: False)
+    assert tasks.stale_queued(db) is None  # queued just now
+    job.created_at = datetime.now(timezone.utc) - timedelta(hours=3)
+    db.commit()
+    monkeypatch.setattr(history, 'lock_held', lambda *a, **k: None)  # no Redis: never guess
+    assert tasks.stale_queued(db) is None
+    monkeypatch.setattr(history, 'lock_held', lambda *a, **k: True)  # a run is alive
+    assert tasks.stale_queued(db) is None

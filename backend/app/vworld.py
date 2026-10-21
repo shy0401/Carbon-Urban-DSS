@@ -492,7 +492,7 @@ def collect_vworld(db: Any, dataset: str, scope: str = "smoke", *, client: Cache
     if dataset == "cadastral" and scope == "full" and os.getenv("VWORLD_CADASTRAL_FULL", "").lower() not in {"1", "true", "yes"}:
         raise ValueError("연속지적 전체 수집은 필지 수가 많아 VWORLD_CADASTRAL_FULL=true 설정 시에만 실행합니다")
     if scope == "full" and not db.scalar(select(RawDataAsset.id).where(RawDataAsset.source_id == source.id, RawDataAsset.collection_status.in_(["SUCCESS", "EMPTY_VALID", "COLLECTED"])).limit(1)):
-        raise ValueError("VWorld full 수집 전에 smoke 성공이 필요합니다")
+        raise ValueError("VWorld 전체 수집 전에 첫 검증(smoke) 수집이 성공해야 합니다")
     layer=load_layer_config()[dataset];grids=_grid_shapes(db,scope)
     if not grids:raise ValueError("프로젝트 분석격자가 없습니다")
     root=Path(data_dir or os.getenv("DATA_DIR","data"));raw_root=root/"raw"/"vworld"/dataset;raw_root.mkdir(parents=True,exist_ok=True)

@@ -28,6 +28,24 @@ def test_zoning_summary_separates_missing_empty_and_caps_overlaps():
     assert summary['g3']['residential_zone_ratio'] == 100.0
 
 
+def test_upper_zone_shapes_count_only_the_area_no_detailed_zone_covers():
+    """사용성 검토 F1: 군산 칸은 '도시지역' 상위 도형 100% 위에 주거 94.4%·녹지 5.5%가 겹쳐 합이 200%였다."""
+    from app.overlays import zoning_area_by_category, zoning_shares
+    coverage = [('gunsan', 'SUCCESS'), ('partly', 'SUCCESS'), ('upper-only', 'SUCCESS'), ('rural', 'SUCCESS')]
+    stats = [('gunsan', '도시지역', 1.0), ('gunsan', '도시지역기타', 0.6), ('gunsan', '제2종일반주거지역', 0.944), ('gunsan', '자연녹지지역', 0.055),
+             ('partly', '도시지역', 0.9), ('partly', '일반상업지역', 0.5),
+             ('upper-only', '도시지역미지정', 0.7),
+             ('rural', '관리지역', 0.6), ('rural', '계획관리지역', 0.6), ('rural', '농림지역', 0.3)]
+    s = summarize_zoning(coverage, stats)
+    assert s['gunsan']['shares'] == {'RESIDENTIAL': 94.4, 'GREEN': 5.5, 'OTHER': 0.1}
+    assert s['gunsan']['urban_zone_ratio'] == 100.0 and s['gunsan']['dominant_zone'] == 'RESIDENTIAL'
+    assert s['partly']['shares'] == {'COMMERCIAL': 50.0, 'OTHER': 40.0}           # 상위 도형 90% 중 세부가 덮지 않은 40%만 미세분
+    assert s['upper-only']['shares'] == {'OTHER': 70.0}
+    assert s['rural']['shares'] == {'OTHER': 90.0}                                  # 계획관리 60% + 농림 30%, 세분 전 관리지역은 겹쳐 세지 않음
+    assert sum(zoning_shares([('제1종일반주거지역', 0.7), ('일반상업지역', 0.6)]).values()) == 1.0  # 세부끼리 넘치면 칸에 맞춤
+    assert callable(zoning_area_by_category)
+
+
 def test_context_facts_keep_admin_totals_separate_from_grid_values():
     from app.overlays import context_facts
     facts = {f['id']: f['text'] for f in context_facts({

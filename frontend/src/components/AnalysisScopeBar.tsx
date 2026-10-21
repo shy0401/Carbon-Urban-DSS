@@ -24,6 +24,13 @@ export function groupRegions(options: RegionOption[]): Array<[string, RegionOpti
     .filter(([label, items]) => items.length > 0 || label !== GROUP_LABEL.NONE);
 }
 
+/** 분석연도 선택지: 자료가 있는 마지막 해부터 2015년까지(최근 해 먼저). 지금 고른 해가 범위 밖이면 맨 앞이나 맨 뒤에 덧붙인다. */
+export function yearOptions(lastYear: number, current: number): number[] {
+  const years = Array.from({ length: Math.max(lastYear - FIRST_YEAR + 1, 1) }, (_, i) => lastYear - i);
+  if (!years.includes(current)) { if (current > lastYear) years.unshift(current); else years.push(current); }
+  return years;
+}
+
 /** 시·도 목록 (법정 2자리): 도 먼저, 특별시·광역시 다음. */
 export function provinceOptions(entries: Array<Pick<RegionCatalogEntry, 'code' | 'sido_name'>>): Array<{ code: string; name: string; kind: 'PROVINCE' | 'METRO' }> {
   const seen = new Map<string, string>();
@@ -55,9 +62,9 @@ export function AnalysisScopeBar() {
   const navigate = useNavigate();
   const entries = useRegionCatalog();
   const [sidoPick, setSidoPick] = useState<string | null>(null);
-  const lastYear = Math.max(new Date().getFullYear(), year);
-  const years = Array.from({ length: lastYear - FIRST_YEAR + 1 }, (_, i) => lastYear - i);
-  if (!years.includes(year)) years.push(year);
+  // 선택지는 자료가 있는 마지막 해(서버 기준연도)까지만. 예전 주소로 들어온 그 뒤 해는 '자료 없음'을 붙여 남긴다.
+  const lastYear = system?.baseline_year ?? new Date().getFullYear() - 1;
+  const years = yearOptions(lastYear, year);
   const defaultRegion = system?.default_region ?? '52110';
   const prepared = system?.regions ?? [];
   const current = region ?? defaultRegion;
@@ -98,7 +105,7 @@ export function AnalysisScopeBar() {
       </select><ChevronDown size={15} aria-hidden="true" /></span>
     </label>
     <label className="scope-field"><span>분석연도</span>
-      <span className="select-wrap"><select aria-label="분석연도" value={year} onChange={(e) => setScope({ year: Number(e.target.value) })}>{years.map((y) => <option key={y} value={y}>{y}년</option>)}</select><ChevronDown size={15} aria-hidden="true" /></span>
+      <span className="select-wrap"><select aria-label="분석연도" value={year} onChange={(e) => setScope({ year: Number(e.target.value) })}>{years.map((y) => <option key={y} value={y}>{y > lastYear ? `${y}년 (자료 없음)` : `${y}년`}</option>)}</select><ChevronDown size={15} aria-hidden="true" /></span>
     </label>
     {gridId && <button type="button" className="button secondary small" onClick={() => setScope({ gridId: null })}>기본 대상지로</button>}
     <Link className="button ghost small scope-national" to="/regions" title="전국 시·군·구 개요와 지역 준비"><Globe2 size={15} aria-hidden="true" /><span>전국</span></Link>

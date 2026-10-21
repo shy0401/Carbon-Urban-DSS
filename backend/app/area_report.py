@@ -416,7 +416,9 @@ def area_html(s: dict[str, Any]) -> str:
                       f"<tr><td>신축 건물 전력 절감</td><td class=num>{m['new_efficiency_pct']:,.1f}%</td><td class=num>{num(m['new_kwh'])}</td></tr>"
                       f"<tr><td>기존 건물 전력 절감</td><td class=num>{m['existing_efficiency_pct']:,.1f}%</td><td class=num>{num(m['existing_kwh'])}</td></tr>"
                       f"<tr><td>태양광</td><td class=num>{m['pv_kw']:,.1f} kW</td><td class=num>{num(m['pv_kwh']) if m['pv_counted'] else '발전량 근거 없음'}</td></tr>"
-                      f"<tr><th>합계 (kgCO2eq)</th><td></td><td class=num>{num(m['total_kgco2eq'])}</td></tr></tbody></table>"
+                      # 합계 kWh는 kWh 열에, 탄소 환산은 단위를 적은 별도 행에 (UX 검토 F18: kWh 열에 kgCO2eq가 섞여 있었음)
+                      f"<tr><th>합계</th><td></td><td class=num>{num(m['total_kwh'])}</td></tr>"
+                      f"<tr><th>탄소 환산 합계</th><td colspan=2 class=num>{num(m['total_kgco2eq'])} kgCO2eq</td></tr></tbody></table>"
                       f"<p class=note>{escape(m['basis'])}</p>")
         if texts or extra:
             parts.append(f"<h2>{escape(title)}</h2>" + ("<ul>" + "".join(f"<li>{escape(t)}</li>" for t in texts) + "</ul>" if texts else "") + extra)

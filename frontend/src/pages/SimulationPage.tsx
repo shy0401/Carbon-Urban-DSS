@@ -20,7 +20,8 @@ import { useSystemInfo } from '../hooks/useSystemInfo';
 import type { ScenarioInput, ScenarioResult, ZoningCheck } from '../types';
 import { zoningTone } from '../lib/zoning';
 
-const initial: ScenarioInput = { site_area: 10000, building_count: 4, footprint_per_building: 700, floors: 12, households: 240, population: 560, efficiency_factor: 0.85, pv_ratio: 0.2, green_ratio: 0.25, average_household_area: 84 };
+// 기본 입력은 용적률 280%(4동 × 700m² × 10층 ÷ 1만m²)로 흔한 조례 상한 300% 안에 둔다(UX 검토 F14: 12층 336%는 첫 화면부터 상한 초과 경고).
+const initial: ScenarioInput = { site_area: 10000, building_count: 4, footprint_per_building: 700, floors: 10, households: 200, population: 467, efficiency_factor: 0.85, pv_ratio: 0.2, green_ratio: 0.25, average_household_area: 84 };
 const fields: Array<{ key: keyof ScenarioInput; label: string; unit: string; step?: number; min?: number; max?: number }> = [
   { key: 'site_area', label: '대지면적', unit: 'm²', min: 1 }, { key: 'building_count', label: '건물 수', unit: '동', min: 1 },
   { key: 'footprint_per_building', label: '동별 건축면적', unit: 'm²', min: 0 }, { key: 'floors', label: '층수', unit: '층', min: 3, max: 40 },
@@ -62,7 +63,7 @@ export function SimulationPage() {
     if (l.region !== undefined && l.region !== region) next.region = l.region;
     if (l.grid && l.grid !== gridId) next.gridId = l.grid;
     if (l.year && l.year !== year) next.year = l.year;
-    if (Object.keys(next).length) setAnalysisScope(next);
+    if (Object.keys(next).length) setAnalysisScope(next, { fromLink: true });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // The linked site is placed once the linked grid is the selected one (choosing a grid clears the site above).
   const pendingSite = useRef(linked.current?.site ?? null);

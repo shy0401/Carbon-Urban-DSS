@@ -33,6 +33,15 @@ describe('App', () => {
     expect(screen.getByText('987,654 kWh')).toBeInTheDocument();
   });
 
+  it('없는 주소에서는 대시보드 대신 없는 화면 안내를 보여 준다 (F15)', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(() => Promise.resolve(new Response(JSON.stringify(dashboard), { status: 200 })));
+    window.history.pushState({}, '', '/does-not-exist');
+    render(<App />);
+    expect(await screen.findByText('없는 화면입니다')).toBeInTheDocument();
+    expect(screen.getByText(/does-not-exist/)).toBeInTheDocument();
+    window.history.pushState({}, '', '/');
+  });
+
   it('서버 오류를 빈 값으로 숨기지 않고 재시도 가능한 상태로 표시한다', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(() => Promise.resolve(new Response('failed', { status: 503 })));
     render(<App />);

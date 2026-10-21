@@ -1,7 +1,7 @@
 import type { EChartsOption } from 'echarts';
 import { useMemo } from 'react';
-import { at, COHORT_COLOR, COHORT_LABEL, cohortSeries, REGISTER_GROUPS, type AreaHistory, type BeforeAfter, type Cohort, type EffortResult } from '../../lib/area';
-import { baseChart, compactAxis, lineSeries, missingBands } from '../../lib/chartTheme';
+import { at, COHORT_COLOR, COHORT_LABEL, cohortSeries, partialYears, REGISTER_GROUPS, type AreaHistory, type BeforeAfter, type Cohort, type EffortResult } from '../../lib/area';
+import { baseChart, compactAxis, hatchBands, lineSeries, missingBands, missingRuns } from '../../lib/chartTheme';
 import { formatMetric } from '../../lib/format';
 import { TOKENS } from '../../theme/palette';
 import { Chart } from '../Chart';
@@ -15,10 +15,12 @@ function axis(base: EChartsOption, categories: string[], unit: string, extra: Re
   };
 }
 
-/** 관측이 없는 해: 해치 띠 + "관측 없음"(추정선은 그 위에 따로 그린다). */
-function observedGaps(years: string[], observed: Array<number | null>) {
-  const band = missingBands(years, [observed]);
-  return band ? { ...band, label: { ...band.label, formatter: '관측 없음' } } : undefined;
+/** 관측이 없는 해와 관측 단지가 적은 해: 해치 띠 + "관측 없음"·"일부 단지"(추정선은 그 위에 따로 그린다). */
+function observedGaps(years: string[], observed: Array<number | null>, partial: number[] = []) {
+  return hatchBands([
+    ...missingRuns([observed], years.length).map(([a, b]): [string, string, string] => [years[a], years[b], '관측 없음']),
+    ...partial.filter((y) => years.includes(String(y))).map((y): [string, string, string] => [String(y), String(y), '일부 단지']),
+  ]);
 }
 
 function eventLine(eventYear: number | null | undefined) {
@@ -33,14 +35,16 @@ export function ElectricityChart({ history, eventYear }: { history: AreaHistory;
     const s = cohortSeries(history, eventYear);
     const base = baseChart();
     const observed = COHORTS.filter((c) => s[c].some((v) => (v ?? 0) > 0));
+    const partial = partialYears(history);
+    // 관측 단지가 적은 해의 막대는 흐리게(사용량이 준 것처럼 읽히지 않게), 띠에 '일부 단지'.
     const bars = observed.map((c, i) => ({
       name: `관측 · ${COHORT_LABEL[c]}`, type: 'bar' as const, stack: 'observed', barMaxWidth: 28,
-      data: s[c].map((v) => (v === null ? null : v)),
+      data: s[c].map((v, k) => (v === null ? null : partial.includes(history.years[k]) ? { value: v, itemStyle: { opacity: 0.4 } } : v)),
       itemStyle: { color: COHORT_COLOR[c], borderColor: TOKENS.surface, borderWidth: 1, borderRadius: i === observed.length - 1 ? [4, 4, 0, 0] : 0 },
-      ...(i === 0 ? { markArea: observedGaps(years, s.before), markLine: eventLine(eventYear) } : {}),
+      ...(i === 0 ? { markArea: observedGaps(years, s.before, partial), markLine: eventLine(eventYear) } : {}),
     }));
     const est = lineSeries(`추정 (연면적 × ${history.region_label ?? '전주'} 원단위)`, s.estimated, TOKENS['prov-estimated'], 'estimated');
-    const seriesList: unknown[] = [...bars, bars.length ? est : { ...est, markArea: observedGaps(years, s.before), markLine: eventLine(eventYear) }];
+    const seriesList: unknown[] = [...bars, bars.length ? est : { ...est, markArea: observedGaps(years, s.before, partial), markLine: eventLine(eventYear) }];
     return baseChart({
       grid: { left: 64, right: 20, top: 48, bottom: 30 },
       legend: { ...(base.legend as object), itemWidth: 12, itemHeight: 8 },

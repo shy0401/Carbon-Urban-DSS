@@ -33,17 +33,17 @@ describe('palette.ts ↔ tokens.css', () => {
     }
   });
 
-  it('글자 대비 4.5:1 — 캡션(--ink-3)은 흰 바탕 전용, 도면지·표 머리 위에는 --ink-2 이상', () => {
+  it('글자 대비 4.5:1 — 캡션(--ink-3)도 도면지·표 머리·결측 바탕 위에서 4.5:1 이상', () => {
     for (const ink of [TOKENS.ink, TOKENS['ink-2'], TOKENS['ink-3']]) expect(contrast(ink, TOKENS.surface)).toBeGreaterThanOrEqual(4.5);
     for (const bg of [TOKENS.canvas, TOKENS['surface-sunk'], TOKENS['prov-missing-bg']]) {
       expect(contrast(TOKENS['ink-2'], bg)).toBeGreaterThanOrEqual(4.5);
-      // DESIGN.md 8: --ink-3 on these backgrounds is below 4.5:1, so the CSS never puts captions there.
-      expect(contrast(TOKENS['ink-3'], bg)).toBeLessThan(4.5);
+      // DESIGN.md 8 (2026-10-21): --ink-3 #5E6761 — 사용성 검토에서 이 바탕 위 캡션(4.04~4.34)이 걸려 어둡게 조정했다.
+      expect(contrast(TOKENS['ink-3'], bg)).toBeGreaterThanOrEqual(4.5);
     }
     for (const kind of ['observed', 'computed', 'estimated', 'scenario'] as const) {
       expect(contrast(TOKENS[`prov-${kind}`], TOKENS[`prov-${kind}-bg`])).toBeGreaterThanOrEqual(4.5);
     }
-    // 결측 배지 글자는 --prov-missing(4.2:1) 대신 --ink-2를 쓴다.
+    // 결측 배지 글자는 --ink-2를 쓴다(--prov-missing도 2026-10-21부터 4.5:1 이상).
     expect(contrast(TOKENS['ink-2'], TOKENS['prov-missing-bg'])).toBeGreaterThanOrEqual(4.5);
     for (const [fg, bg] of [['danger', 'danger-bg'], ['warning', 'warning-bg'], ['success', 'success-bg'], ['info', 'info-bg']] as const) {
       expect(contrast(TOKENS[fg], TOKENS[bg])).toBeGreaterThanOrEqual(4.5);

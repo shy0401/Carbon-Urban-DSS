@@ -10,7 +10,7 @@ from pyproj import Transformer
 from geoalchemy2.shape import from_shape
 from .models import *
 from .cache import CachedClient,ExternalError,parse_cached_response
-from .domain import parse_energy,monthly_weather,month_range
+from .domain import parse_energy,monthly_weather,month_range,scope_label
 
 DATA=Path(os.getenv('DATA_DIR','data'));RAW=DATA/'raw';RAW.mkdir(parents=True,exist_ok=True)
 client=CachedClient(DATA/'cache')
@@ -205,5 +205,5 @@ def collect_energy(db,start='2025-01',end='2025-12',progress=None,scope='limited
     null_count=db.scalar(select(func.count()).select_from(EnergyMonthly).where(EnergyMonthly.usage_kwh.is_(None)))
     parcels=db.scalar(select(func.count(func.distinct(EnergyMonthly.sigungu_code+EnergyMonthly.bjdong_code+EnergyMonthly.bun+EnergyMonthly.ji))).where(EnergyMonthly.source=='국토교통부 건축HUB')) or 0
     status='COLLECTED' if scope=='full' and not failed else ('PARTIAL' if count else 'CONNECTED')
-    update_source(db,'energy',count,status=status,quality=f'{count} 관측 / 건축HUB 지번 {parcels}곳 / 요청 지번 {len(candidates)}곳({scope}) / 일시 오류 {failed}건',missing=null_count)
+    update_source(db,'energy',count,status=status,quality=f'{count} 관측 / 건축HUB 지번 {parcels}곳 / 요청 지번 {len(candidates)}곳({scope_label(scope)} 수집) / 일시 오류 {failed}건',missing=null_count)
     return errors
