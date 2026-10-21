@@ -345,7 +345,7 @@ def case_scores(root: Path) -> dict[tuple[str, str, int, int], dict[str, Any]]:
     """{(dataset, grid, before, after): model score} from the 7차 score files (pure reading).
 
     학습 42곳 사례는 교차검증 예측(그 칸을 빼고 학습한 모델)과 도시 보류 예측(그 지역을 빼고 학습)을, 시험 10곳 사례는
-    7차 모델을 그대로 적용한 예측을 담는다. 어느 쪽도 그 사례를 보고 학습한 값이 아니다."""
+    7차 모델을 그대로 적용한 예측을 담는다. 어느 쪽도 그 사례를 보고 학습한 값이 아니다. ``row``는 점수 파일의 그 줄."""
     out: dict[tuple[str, str, int, int], dict[str, Any]] = {}
     cv = newest_file(root, CASES_CV)
     if cv:
@@ -357,7 +357,7 @@ def case_scores(root: Path) -> dict[tuple[str, str, int, int], dict[str, Any]]:
                 "set": "train_cv", "actual_tco2e": num(r.get("actual_change_tco2e")),
                 "pred_tco2e": num(r.get("pred_change_model_all_regions_cv_tco2e")),
                 "pred_other_regions_tco2e": num(r.get("pred_change_model_other_regions_tco2e")),
-                "years_from": r.get("years_from") or None, "model": MODEL_NAME}
+                "years_from": r.get("years_from") or None, "model": MODEL_NAME, "row": r}
     test = newest_file(root, CASES_TEST)
     if test:
         for r in _rows(test):
@@ -366,27 +366,66 @@ def case_scores(root: Path) -> dict[tuple[str, str, int, int], dict[str, Any]]:
                 continue
             out[(r.get("region") or "", (r.get("grid_id_500m") or "").strip(), int(b), int(a))] = {
                 "set": "test", "actual_tco2e": num(r.get("actual_change_tco2e")), "pred_tco2e": num(r.get("pred_change_model_frozen")),
-                "years_from": r.get("years_from") or None, "model": MODEL_NAME}
+                "years_from": r.get("years_from") or None, "model": MODEL_NAME, "row": r}
     return out
 
 
+SCORE_ONLY = "|score|"  # id mark of a case whose chosen years are not one of the cell's listed pairs
+
+
 def apply_case_scores(db: Any, scores: dict[tuple[str, str, int, int], dict[str, Any]]) -> int:
-    """Put each score on its development pair row (``data["model"]``); returns how many rows got one."""
+    """Put each score on its development pair row (``data["model"]``); returns how many cases got one.
+
+    팀은 사례마다 착공·승인일로 전후 해를 고르므로(ADR 0026 보완) 그 해 쌍이 ``developments.csv``의 쌍에 없을 수 있다.
+    그런 사례는 같은 칸의 좌표로 점수 파일의 줄을 한 줄 더한다(id에 ``|score|``). 지어낸 값은 없다."""
     if not scores:
         return 0
     datasets = sorted({k[0] for k in scores})
     hit = 0
+    cells: dict[tuple[str, str], tuple[int, int, str]] = {}
+    seen: set[tuple[str, str, int, int]] = set()
     for row in db.scalars(select(TeamDevelopment).where(TeamDevelopment.dataset.in_(datasets))):
-        score = scores.get((row.dataset, row.grid_code, row.before_year, row.after_year))
+        key = (row.dataset, row.grid_code, row.before_year, row.after_year)
+        cells[(row.dataset, row.grid_code)] = (row.x, row.y, row.region_code)
+        if SCORE_ONLY in row.id:
+            if key not in scores:
+                db.delete(row)
+            continue
+        score = scores.get(key)
         data = dict(row.data or {})
         if score is None and "model" not in data:
             continue
         if score is None:
             data.pop("model", None)
         else:
-            data["model"] = score
+            data["model"] = {k: v for k, v in score.items() if k != "row"}
+            seen.add(key)
             hit += 1
         row.data = data
+    db.flush()
+    existing = {r for r in db.scalars(select(TeamDevelopment.id).where(TeamDevelopment.id.contains(SCORE_ONLY)))}
+    for key, score in scores.items():
+        if key in seen:
+            continue
+        dataset, grid, b, a = key
+        raw = score.get("row") or {}
+        x, y = num(raw.get("x_min_m")), num(raw.get("y_min_m"))
+        region = dataset_region(dataset) or ""
+        if (x is None or y is None) and (dataset, grid) in cells:
+            x, y, region = cells[(dataset, grid)]
+        if x is None or y is None:
+            continue
+        values = {k: (num(v) if num(v) is not None else (v or None)) for k, v in raw.items() if k != "region"}
+        values.setdefault("pair_usable", True)
+        values["model"] = {k: v for k, v in score.items() if k != "row"}
+        values["source"] = "팀 모델 점수 파일(사례마다 고른 전후 해)"
+        rid = f"{dataset}{SCORE_ONLY}{grid}|{b}-{a}"
+        if rid in existing:
+            db.get(TeamDevelopment, rid).data = values
+        else:
+            db.add(TeamDevelopment(id=rid, dataset=dataset, region_code=region, grid_code=grid, x=int(x), y=int(y),
+                                   before_year=b, after_year=a, data=values))
+        hit += 1
     return hit
 
 

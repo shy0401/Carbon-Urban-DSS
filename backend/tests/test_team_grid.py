@@ -183,6 +183,11 @@ def _seven(tmp_path: Path, elec_2024: str = "60") -> None:
     (cv / "development_cases.csv").write_text("region,grid_id_500m,before_year,after_year,years_from,actual_change_tco2e,"
                                               "pred_change_model_all_regions_cv_tco2e,pred_change_model_other_regions_tco2e\n"
                                               "52110_전주시,다마71b61b,2016,2024,dated,1200,1500,900\n", encoding="utf-8")
+    test = tmp_path / "2026-10-20" / "code" / "docs" / "results" / "data" / "r011-split-a"
+    test.mkdir(parents=True)
+    (test / "holdout_cases_join7_42_w10.csv").write_text("region,grid_id_500m,before_year,after_year,site_kind,use_kind,years_from,"
+                                                         "actual_change_tco2e,pred_change_model_frozen\n"
+                                                         "52110_전주시,다마71b61b,2018,2024,built_up,residential,dated,-400,-100\n", encoding="utf-8")
 
 
 def test_seventh_bundle_replaces_years_keeps_months_and_100m(tmp_path: Path):
@@ -208,17 +213,21 @@ def test_seventh_bundle_replaces_years_keeps_months_and_100m(tmp_path: Path):
     assert rows[2024].flags["train_issues"] == "suspect_region_drop" and rows[2024].flags["train_usable"] is False
     assert db.query(TeamGrid100).count() == 2  # 100m stays from the 10-01 bundle (the 7차 bundle has none)
     devs = developments(db, "52110")
-    assert {(d["before_year"], d["after_year"]) for d in devs} == {(2014, 2024), (2016, 2024)}  # 10-01 cases replaced, no double
+    assert {(d["before_year"], d["after_year"]) for d in devs} == {(2014, 2024), (2016, 2024), (2018, 2024)}  # 10-01 cases replaced, no double
     scored = developments(db, "52110", scored_only=True)
-    assert len(scored) == 1 and scored[0]["model"]["pred_tco2e"] == 1500 and scored[0]["model"]["set"] == "train_cv"
+    assert [(d["before_year"], d["model"]["set"], d["model"]["pred_tco2e"]) for d in scored] == [(2016, "train_cv", 1500), (2018, "test", -100)]
+    # 2018 → 2024 is not a listed pair of the cell: the score line becomes its own row at the cell's corner (not dropped)
+    assert scored[1]["grid_id"] == "cell_971500_1761500" and scored[1]["pair_usable"] is True
     summary = development_summary(db, "52110")
-    assert summary["cases"] == 1 and summary["pairs"] == 2 and summary["scored"] == 1
-    assert summary["model"]["all"]["median_relative_error"] == 0.25 and summary["model"]["all"]["sum_ratio"] == 1.25
+    assert summary["cases"] == 1 and summary["pairs"] == 3 and summary["scored"] == 2 and summary["model"]["set"] == "mixed"
+    assert summary["model"]["all"]["median_relative_error"] == 0.5 and summary["model"]["all"]["sum_ratio"] == round(1400 / 800, 3)
     props = map_properties(db, "52110", 2025, ["cell_971500_1761500"])["cell_971500_1761500"]
     assert props["cm_year"] == 2024 and props["cm_change_base_year"] == 2014
     again = import_team_grid(db, tmp_path, log=lambda m: None)
     assert again["grid500"] == 0 and again["scored_cases"] is None
     assert db.query(TeamGrid500).count() == 3
+    forced = import_team_grid(db, tmp_path, force=True, log=lambda m: None)
+    assert forced["scored_cases"] == 2 and len(developments(db, "52110")) == 3  # no second score-only row
 
 
 def test_seventh_bundle_drops_months_when_totals_differ(tmp_path: Path):
