@@ -84,12 +84,23 @@ export function DataPage() {
       return retained.length === old.datasets.length ? old : { ...old, datasets: retained };
     });
   }, [readiness]);
+  // 작업이 돌아가는 동안은 작업 이력만 5초마다 다시 읽고(네 가지 모두 3초마다 읽으면 서버가 쉬지 못함), 모두 끝나면 한 번 전체를 다시 읽는다.
+  const active = jobs.some((job) => ['PENDING', 'QUEUED', 'RUNNING', 'STARTED'].includes(job.status.toUpperCase()));
+  const wasActive = useRef(false);
   useEffect(() => {
-    const active = jobs.some((job) => ['PENDING', 'QUEUED', 'RUNNING', 'STARTED'].includes(job.status.toUpperCase()));
+    if (wasActive.current && !active) void load(true);
+    wasActive.current = active;
+  }, [active, load]);
+  useEffect(() => {
     if (!active) return;
-    const timer = window.setInterval(() => void load(true), 3000);
-    return () => window.clearInterval(timer);
-  }, [jobs, load]);
+    let alive = true;
+    const refreshJobs = async () => {
+      try { const response = await api<ListResponse<CollectionJob>>('/collections'); if (alive) setJobs(listFrom(response, 'jobs')); }
+      catch { /* 다음 번에 다시 */ }
+    };
+    const timer = window.setInterval(() => void refreshJobs(), 5000);
+    return () => { alive = false; window.clearInterval(timer); };
+  }, [active]);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault(); setFormError(null);

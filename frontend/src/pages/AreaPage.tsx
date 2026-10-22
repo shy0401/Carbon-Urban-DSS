@@ -20,9 +20,10 @@ import { at, BASELINE_MODE_LABEL, buildSpec, EFFORT_BASIS_LABEL, effortHeadline,
 import { formatDate, formatMetric } from '../lib/format';
 
 /** 연도 선택지: 2010년부터 자료가 있는 마지막 해(건축HUB 전력 연도·시스템 기준 연도 중 늦은 쪽)까지. 아직 오지 않은 해는 보이지 않는다. */
-function yearChoices(energyYears: number[] | undefined, baselineYear: number | undefined): number[] {
-  const last = Math.max(energyYears?.length ? energyYears[energyYears.length - 1] : 0, baselineYear ?? 0, 2025);
-  return Array.from({ length: last - 2010 + 1 }, (_, i) => 2010 + i);
+function yearChoices(energyYears: number[] | undefined, baselineYear: number | undefined, chosen: number[] = []): number[] {
+  const last = Math.max(energyYears?.length ? energyYears[energyYears.length - 1] : 0, baselineYear ?? 0, 2025, ...chosen.filter((y) => y <= 2100));
+  const first = Math.min(2010, ...chosen.filter((y) => y >= 1990));
+  return Array.from({ length: last - first + 1 }, (_, i) => first + i);
 }
 /** 예시값(실제 계획이 아님): 화면을 처음 열었을 때 계산이 돌아가도록 채워 둔다. */
 const DEFAULT_PLAN: PlanState = { method: 'area', added_floor_area_m2: 50000, floors: 20, building_count: 5, footprint_per_building: 800, removed_floor_area_m2: 0 };
@@ -39,10 +40,6 @@ export function AreaPage() {
   if (linked.current === undefined) linked.current = parseAreaLink(typeof window === 'undefined' ? '' : window.location.search);
   const link = linked.current;
   const options = useApi<AreaOptions>(`/areas/options${regionQuery.replace('&', '?')}`);
-  const system = useSystemInfo();
-  const yearChoiceList = useMemo(() => yearChoices(options.data?.energy_years, system?.baseline_year), [options.data?.energy_years, system?.baseline_year]);
-  const energyYears = options.data?.energy_years ?? [];
-  const yearOption = (y: number) => <option key={y} value={y}>{energyYears.length && !energyYears.includes(y) ? `${y} (건축HUB 전력 없음)` : y}</option>;
   const collection = useApi<CollectionStatus>('/areas/collection');
   const [mode, setMode] = useState<AreaMode>(link?.mode ?? 'admin');
   const [adminCode, setAdminCode] = useState(link?.spec?.type === 'admin' ? link.spec.code ?? '' : '');
@@ -52,6 +49,11 @@ export function AreaPage() {
   const [vertices, setVertices] = useState<Array<[number, number]>>([]);
   const [fromYear, setFromYear] = useState(link?.from ?? 2015);
   const [toYear, setToYear] = useState(link?.to ?? 2025);
+  const system = useSystemInfo();
+  // 링크로 받은 연도가 범위 밖이어도(예전 링크) 선택 상자에서 사라지지 않게 함께 넣는다
+  const yearChoiceList = useMemo(() => yearChoices(options.data?.energy_years, system?.baseline_year, [fromYear, toYear]), [options.data?.energy_years, system?.baseline_year, fromYear, toYear]);
+  const energyYears = options.data?.energy_years ?? [];
+  const yearOption = (y: number) => <option key={y} value={y}>{energyYears.length && !energyYears.includes(y) ? `${y} (건축HUB 전력 없음)` : y}</option>;
   const [eventYear, setEventYear] = useState<number | null>(link?.event ?? null);
   const [windowSize, setWindowSize] = useState(link?.window ?? 3);
   const [plan, setPlan] = useState<PlanState>({ ...DEFAULT_PLAN, ...(link?.plan ?? {}) });

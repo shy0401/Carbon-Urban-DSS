@@ -14,7 +14,7 @@
 .scenario-picker b { margin-left: auto; font-size: var(--fs-label); font-weight: 500; white-space: nowrap; }
 .plan-chip { padding: 0 6px; border: 1px dotted var(--prov-scenario); border-radius: var(--r-map); background: var(--prov-scenario-bg); color: var(--prov-scenario); font-size: var(--fs-caption); font-style: normal; font-weight: 500; white-space: nowrap; }
 .report-actions { display: flex; justify-content: space-between; align-items: center; gap: var(--sp-4); flex-wrap: wrap; margin: var(--sp-3) 0 var(--sp-2); }
-.ai-option { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: var(--fs-label); }
+.ai-option { display: flex; align-items: center; min-height: 24px; gap: 6px; flex-wrap: wrap; font-size: var(--fs-label); }
 .ai-option input { accent-color: var(--primary); }
 .ai-option small { color: var(--ink-3); }
 .report-history { margin: var(--sp-4) 0; min-width: 0; }

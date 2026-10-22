@@ -84,8 +84,8 @@
 
 .area-report-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--sp-3) var(--sp-5); }
 .area-report-form .area-select { flex: 1 1 280px; }
-.area-check { display: flex; gap: var(--sp-2); align-items: flex-start; max-width: 420px; font-size: var(--fs-label); font-weight: 500; }
-.area-check input { margin-top: 3px; accent-color: var(--primary); }
+.area-check { display: flex; gap: var(--sp-2); align-items: flex-start; min-height: 24px; max-width: 420px; font-size: var(--fs-label); font-weight: 500; }
+.area-check input { accent-color: var(--primary); }
 .area-check small { display: block; font-weight: 400; color: var(--ink-3); line-height: 1.5; }
 .area-report-body { margin-top: var(--sp-4); padding: var(--sp-4) var(--sp-5); border: 1px solid var(--line-strong); border-radius: var(--r-map); }
 .area-report-body header { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--sp-2); margin-bottom: var(--sp-3); }

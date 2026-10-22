@@ -24,7 +24,7 @@
 .regional-totals dt { font-size: var(--fs-caption); color: var(--ink-3); }
 .regional-totals dd { margin: 0; font-size: var(--fs-body); font-weight: 600; }
 .scope-notice { display: flex; justify-content: space-between; align-items: baseline; gap: var(--sp-3); flex-wrap: wrap; margin: var(--sp-4) 0 var(--sp-3); color: var(--ink-2); font-size: var(--fs-label); }
-.scope-notice a { font-weight: 500; }
+.scope-notice a { display: inline-flex; align-items: center; min-height: 24px; font-weight: 500; }
 .dashboard-grid { grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr); }
 .coverage-figure { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 var(--sp-2); margin-bottom: var(--sp-3); font-size: var(--fs-figure); font-weight: 600; line-height: 1.2; }
 .coverage-figure small { width: 100%; font-size: var(--fs-caption); font-weight: 400; color: var(--ink-3); }
@@ -459,7 +459,7 @@
 .missing-manual li { display: grid; gap: 2px; padding: var(--sp-2) var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-map); font-size: var(--fs-label); }
 .missing-manual li span { color: var(--ink-2); }
 .missing-manual li small { color: var(--ink-3); font-size: var(--fs-caption); }
-.missing-manual li a { display: inline-flex; align-items: center; gap: 2px; }
+.missing-manual li a { display: inline-flex; align-items: center; min-height: 24px; gap: 2px; }
 @media (max-width: 1100px) { .missing-once { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 560px) { .missing-once { grid-template-columns: 1fr; } }
 
@@ -475,7 +475,7 @@
 .tool-group button:disabled { opacity: .45; cursor: not-allowed; }
 .tool-group button:focus-visible, .tool-field select:focus-visible, .tool-field input:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 .tool-group.checks { gap: var(--sp-2); padding: 2px 10px 2px 2px; }
-.tool-group.checks label { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-label); cursor: pointer; }
+.tool-group.checks label { display: inline-flex; align-items: center; min-height: 24px; gap: 4px; font-size: var(--fs-label); cursor: pointer; }
 .tool-field { display: inline-flex; align-items: center; gap: var(--sp-2); }
 .tool-field span { font-size: var(--fs-caption); font-weight: 600; color: var(--ink-3); white-space: nowrap; }
 .tool-field select { min-height: 32px; padding: 0 var(--sp-2); border: 1px solid var(--line-strong); border-radius: var(--r-control); background: var(--surface); color: var(--ink); font-size: var(--fs-label); }
@@ -507,7 +507,7 @@
 .massing-hint { position: absolute; top: var(--sp-3); left: 50%; transform: translateX(-50%); padding: 6px 12px; border-radius: 999px; background: var(--primary); color: var(--on-primary); font-size: var(--fs-label); pointer-events: none; }
 .massing-zoning { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-3); padding: var(--sp-2) var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-map); background: var(--surface-sunk); font-size: var(--fs-label); color: var(--ink-2); }
 .massing-zoning > strong { color: var(--ink); }
-.massing-zoning a { margin-left: auto; font-size: var(--fs-caption); }
+.massing-zoning a { display: inline-flex; align-items: center; min-height: 24px; margin-left: auto; font-size: var(--fs-caption); }
 .massing-note { color: var(--ink-3); font-size: var(--fs-caption); line-height: 1.6; }
 .zoning-summary { margin-top: var(--sp-4); padding-top: var(--sp-3); border-top: 1px solid var(--line); }
 .zoning-summary-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin-bottom: var(--sp-2); }

@@ -46,3 +46,8 @@ button, a, input, select { touch-action: manipulation; -webkit-tap-highlight-col
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
 }
+
+/* 누름 영역(모바일 전수 측정 10/23): 슬라이더·체크박스·라디오는 24px 높이, 지도 축척 글자는 12px */
+input[type='range'] { height: 24px; margin: 0; }
+.tool-group.checks input, .ai-option input, .area-check input { width: 16px; height: 16px; margin: 4px; }
+.maplibregl-ctrl-scale { font-size: var(--fs-caption) !important; }

@@ -181,7 +181,7 @@ docker compose -p carbon-urban-dss -f compose.yaml -f compose.demo.yaml exec -T 
 docker compose -p carbon-urban-dss -f compose.yaml -f compose.demo.yaml exec -T api python -m app.cli check-standard --csv /data/raw/<폴더>/<파일>.csv
 ```
 
-`check-standard`는 DB와 파일이 이 문서를 지키는지 셉니다: 음수 사용량, K-apt 미보고 달에 남은 양, 전력 계수 표(5.4)와 등록 계수, 냉난방도일 기준온도(5.10), 원본 파일의 해시, 칸 ID 형식, CSV의 인코딩·빈칸 표기·키 중복·단위 없는 숫자 열. 결과는 `data/ops/standard-check.json`에도 남고, 앱 **사용 방법 → 데이터 기준**에서 볼 수 있습니다. "확인 필요"가 나온 항목은 고치거나, 고칠 수 없는 이유를 작업 기록에 적습니다.
+`check-standard`는 DB와 파일이 이 문서를 지키는지 셉니다: 음수 사용량, K-apt 미보고 달에 남은 양, K-apt 세대당 전기 범위(20~2,000 kWh/월) 밖인데 SUCCESS인 달, 격자 밖인데 MATCHED인 단지, 일사량 표의 빈 자리 행, 전력 계수 표(5.4)와 등록 계수, 냉난방도일 기준온도(5.10), 원본 파일의 해시, 칸 ID 형식, CSV의 인코딩·빈칸 표기·키 중복·단위 없는 숫자 열. 앞의 세 가지는 `apply-standard`가 고칩니다(저장된 달 상태 재판정, OUTSIDE_GRID 표시, 빈 자리 행 삭제). 결과는 `data/ops/standard-check.json`에도 남고, 앱 **사용 방법 → 데이터 기준**에서 볼 수 있습니다. "확인 필요"가 나온 항목은 고치거나, 고칠 수 없는 이유를 작업 기록에 적습니다.
 
 ## 9. 이 기준을 바꿀 때
 
