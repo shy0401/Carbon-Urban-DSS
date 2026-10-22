@@ -415,6 +415,6 @@ if __name__ == "__main__":
                 f.write(f"{k}\n{srt_time(a)} --> {srt_time(b)}\n{s['sub']}\n\n"); k += 1
     json.dump([{k2: v for k2, v in s.items() if k2 not in ("card",)} for s in segs], open(os.path.join(out, "timeline.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-f", "concat", "-safe", "0", "-i", os.path.join(out, "concat.txt"), "-i", os.path.join(out, "mix.wav"),
-                    "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-af", "loudnorm=I=-16:TP=-1.5:LRA=11", "-shortest", "-movflags", "+faststart",
+                    "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-af", "loudnorm=I=-16:TP=-1.5:LRA=11", "-ar", "48000", "-shortest", "-movflags", "+faststart",
                     os.path.join(out, "video.mp4")], check=True)
     print("done", os.path.join(out, "video.mp4"))
