@@ -1,8 +1,9 @@
 """The shared data standard (docs/DATA_STANDARD.md) made checkable and applicable.
 
 ``apply_standard`` brings stored values that an earlier rule produced in line with the current one (version
-``VERSION``): degree days (HDD 18 °C · CDD 24 °C, from the daily data that is kept), and the stored K-apt
-electricity carbon (the year's GIR factor). It never touches raw files and never turns a missing value into 0;
+``VERSION``): degree days (HDD 18 °C · CDD 24 °C, from the daily data that is kept), the K-apt month status
+(plausibility band per household, 4절) and the stored K-apt electricity carbon (the year's GIR factor). It never
+touches raw files and never turns a missing value into 0;
 a value that cannot be recomputed under the new rule (no daily data left) is set to NULL, not kept under the
 old rule.
 
@@ -21,11 +22,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
-from sqlalchemy import func, select, text
+from sqlalchemy import select, text
 
 from .degree_days import CDD_BASE_C, HDD_BASE_C, RULE, RULE_ID, degree_days
 
-VERSION = "1.0"
+VERSION = "1.1"  # 1.1 (2026-10-23): K-apt 세대당 전기 상한(2,000 kWh/월) SUSPECT 규칙을 저장된 달에도 적용
 ELECTRICITY_UNDERREPORT_KWH_PER_HOUSEHOLD = 2000.0  # urban-carbon config/rules.yaml electricity_underreport (ADR 0012)
 DOC = "docs/DATA_STANDARD.md"
 Log = Callable[[str], None]
@@ -138,6 +139,38 @@ def recompute_degree_days(db: Any, data_dir: str | Path | None = None, *, log: L
     return stats
 
 
+RETIRED_SOLAR_PROVIDER = "Open-Meteo / ERA5-Land"  # 2026-10-08까지의 첫 판이 남긴 빈 자리 행(값 전부 NULL); 일사량은 ERA5에서 받는다 (solar.py)
+
+
+def drop_solar_placeholders(db: Any, *, log: Log = print) -> dict[str, int]:
+    """Remove the all-NULL ``solar_monthly`` rows the retired ERA5-Land request left (132 per region). Rows with a value
+    are never touched; the ERA5 rows that replaced them carry the irradiation (DATA_STANDARD 5.13)."""
+    result = db.execute(text("DELETE FROM solar_monthly WHERE provider = :p AND irradiation_mj_m2 IS NULL"), {"p": RETIRED_SOLAR_PROVIDER})
+    db.commit()
+    log(f"일사량 빈 자리 행 정리: {result.rowcount or 0:,}행 ({RETIRED_SOLAR_PROVIDER}, 값 없음)")
+    return {"solar_placeholder_rows": result.rowcount or 0}
+
+
+def mark_complexes_outside_grid(db: Any, *, log: Log = print) -> dict[str, int]:
+    """A complex whose cell id is not an analysis grid of any region (its coordinates fall outside every prepared
+    region's grid) is marked ``OUTSIDE_GRID`` instead of ``MATCHED``; its months stay stored and are simply not in
+    any cell's sum (3절 경계 칸·격자 밖)."""
+    result = db.execute(text(
+        "UPDATE complex_grid_mapping m SET match_status = 'OUTSIDE_GRID' WHERE m.grid_id IS NOT NULL AND m.match_status = 'MATCHED' "
+        "AND NOT EXISTS (SELECT 1 FROM grid_500m g WHERE g.id = m.grid_id)"))
+    db.commit()
+    log(f"격자 밖 단지 표시: {result.rowcount or 0:,}곳 → OUTSIDE_GRID")
+    return {"outside_grid": result.rowcount or 0}
+
+
+def reclassify_kapt_months(db: Any, *, log: Log = print) -> dict[str, int]:
+    """Re-apply the K-apt month rules (4절: NOT_REPORTED, per-household plausibility band) to stored months."""
+    from .kapt_energy import reclassify_existing
+    counts = reclassify_existing(db)
+    log("K-apt 달 상태 다시 판정: " + (", ".join(f"{k} {v:,}" for k, v in sorted(counts.items())) or "행 없음"))
+    return counts
+
+
 def recompute_kapt_carbon(db: Any, *, log: Log = print) -> dict[str, int]:
     """Stored K-apt electricity carbon = quantity × the year's GIR factor (NULL before 2019 or when not SUCCESS)."""
     from .emissions import electricity_factor_for_year
@@ -165,6 +198,9 @@ def apply_standard(db: Any, data_dir: str | Path | None = None, *, log: Log = pr
         db.rollback()
         result["factors_error"] = f"{type(exc).__name__}: {exc}"
     result["degree_days"] = recompute_degree_days(db, data_dir, log=log, fetch=fetch)
+    result["solar"] = drop_solar_placeholders(db, log=log)
+    result["complex_mapping"] = mark_complexes_outside_grid(db, log=log)
+    result["kapt_status"] = reclassify_kapt_months(db, log=log)
     result["kapt"] = recompute_kapt_carbon(db, log=log)
     path = marker_path(data_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -210,6 +246,17 @@ def check_database(db: Any, data_dir: str | Path | None = None, *, raw_sample: i
     items.append(_item("kapt_carbon", "K-apt 전력 탄소 = 사용량 × 그해 계수 (5.4절)", "OK" if not bad_carbon else "WARN",
                        "모두 그해 계수" if not bad_carbon else f"{bad_carbon:,}행이 다른 계수 → apply-standard", bad_carbon))
 
+    from .kapt_energy import MAX_PLAUSIBLE_KWH_PER_HOUSEHOLD, MIN_PLAUSIBLE_KWH_PER_HOUSEHOLD
+    implausible = db.execute(text(
+        "SELECT count(*), count(DISTINCT e.complex_code) FROM apartment_energy_monthly e JOIN apartment_complexes c ON c.kapt_code = e.complex_code "
+        "WHERE e.quality_status = 'SUCCESS' AND e.electricity_quantity IS NOT NULL AND c.households > 0 "
+        "AND (e.electricity_quantity / c.households < :lo OR e.electricity_quantity / c.households > :hi)"),
+        {"lo": MIN_PLAUSIBLE_KWH_PER_HOUSEHOLD, "hi": MAX_PLAUSIBLE_KWH_PER_HOUSEHOLD}).one()
+    items.append(_item("kapt_plausible", f"K-apt 세대당 전기 {MIN_PLAUSIBLE_KWH_PER_HOUSEHOLD:.0f}~{MAX_PLAUSIBLE_KWH_PER_HOUSEHOLD:,.0f} kWh/월 밖은 SUSPECT (4절)",
+                       "OK" if not implausible[0] else "WARN",
+                       "SUCCESS로 남은 범위 밖 달 없음" if not implausible[0]
+                       else f"범위 밖인데 SUCCESS인 달 {implausible[0]:,}개({implausible[1]:,}개 단지) → apply-standard", implausible[0]))
+
     low = db.execute(text(
         "SELECT count(*), count(DISTINCT e.complex_code) FROM (SELECT complex_code, left(year_month,4) y, sum(electricity_quantity) kwh, count(*) n "
         "FROM apartment_energy_monthly WHERE quality_status = 'SUCCESS' AND electricity_quantity IS NOT NULL GROUP BY complex_code, left(year_month,4), source) e "
@@ -217,6 +264,15 @@ def check_database(db: Any, data_dir: str | Path | None = None, *, raw_sample: i
         {"limit": ELECTRICITY_UNDERREPORT_KWH_PER_HOUSEHOLD}).one()
     items.append(_item("kapt_underreport", f"단지 세대당 전기 {ELECTRICITY_UNDERREPORT_KWH_PER_HOUSEHOLD:,.0f} kWh/년 미만은 누락 의심으로 표시 (4절, 팀 기준)", "INFO",
                        f"12개월 단지-연도 중 {low[0]:,}건({low[1]:,}개 단지): 값은 그대로 두고 해석 때 주의", low[0]))
+
+    outside = db.scalar(text("SELECT count(*) FROM complex_grid_mapping m WHERE m.grid_id IS NOT NULL AND m.match_status = 'MATCHED' "
+                             "AND NOT EXISTS (SELECT 1 FROM grid_500m g WHERE g.id = m.grid_id)")) or 0
+    items.append(_item("complex_grid", "단지의 칸은 분석 격자 안 (3절; 밖이면 OUTSIDE_GRID)", "OK" if not outside else "WARN",
+                       "격자 밖인데 MATCHED인 단지 없음" if not outside else f"격자 밖인데 MATCHED인 단지 {outside:,}곳 → apply-standard", outside))
+
+    placeholders = db.scalar(text("SELECT count(*) FROM solar_monthly WHERE provider = :p AND irradiation_mj_m2 IS NULL"), {"p": RETIRED_SOLAR_PROVIDER}) or 0
+    items.append(_item("solar_placeholders", "일사량 표에 값 없는 빈 자리 행 없음 (5.13절)", "OK" if not placeholders else "WARN",
+                       "없음" if not placeholders else f"{placeholders:,}행 ({RETIRED_SOLAR_PROVIDER}) → apply-standard", placeholders))
 
     mismatched = []
     for year in range(2015, datetime.now().year + 1):

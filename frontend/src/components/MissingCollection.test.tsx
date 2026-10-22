@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { MemoryRouter } from 'react-router-dom';
 import { MissingCollection, planSentence, type MissingPlan } from './MissingCollection';
 
 const plan = (over: Partial<MissingPlan> = {}): MissingPlan => ({
@@ -33,7 +34,7 @@ describe('MissingCollection', () => {
       if (init?.method === 'POST') { posts.push(JSON.parse(String(init.body))); return new Response(JSON.stringify({ id: 'j1', status: 'QUEUED' }), { status: 202 }); }
       return new Response(JSON.stringify(plan()));
     });
-    render(<MissingCollection />);
+    render(<MemoryRouter><MissingCollection /></MemoryRouter>);
     expect(await screen.findByText(/수집할 항목 3개/)).toBeInTheDocument();
     expect(screen.getAllByText('다시 시도').length).toBeGreaterThan(0);
     expect(screen.getAllByText('현재 공공데이터포털 키가 공급자에게 거절되었습니다.').length).toBeGreaterThan(0);
@@ -44,7 +45,7 @@ describe('MissingCollection', () => {
 
   it('한도 대기 중이면 자동 재개 안내와 지금 다시 시도 버튼을 보여 준다', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify(plan({ job: { id: 'j1', status: 'WAITING', progress: 100, message: '09월 27일 00:20(한국 시간)에 자동으로 이어서 수집합니다.' } }))));
-    render(<MissingCollection />);
+    render(<MemoryRouter><MissingCollection /></MemoryRouter>);
     expect(await screen.findByText('한도 초과 — 자동 재개 대기')).toBeInTheDocument();
     expect(screen.getByText(/자동으로 이어서 수집합니다/)).toBeInTheDocument();
     expect(screen.getByTestId('collect-missing-start')).toHaveTextContent('지금 바로 다시 시도');
@@ -53,7 +54,7 @@ describe('MissingCollection', () => {
 
   it('대기 중(QUEUED) 작업은 진행 막대 없이 안내하고 다시 요청할 수 있다 (F11)', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify(plan({ job: { id: 'j1', status: 'QUEUED', progress: 100, message: '예약 시각이 지나 이어서 수집합니다' } }))));
-    render(<MissingCollection />);
+    render(<MemoryRouter><MissingCollection /></MemoryRouter>);
     expect(await screen.findByText('대기 중')).toBeInTheDocument();
     expect(screen.queryByRole('progressbar')).toBeNull();
     expect(screen.getByTestId('collect-missing-start')).toHaveTextContent('대기 중 — 다시 요청');

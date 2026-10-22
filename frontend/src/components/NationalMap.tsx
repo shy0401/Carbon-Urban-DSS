@@ -299,10 +299,10 @@ function MissingBlocks({ data }: { data: NationalData | null }) {
 
 function MetricFacts({ metrics, notes, excluded }: { metrics: NationalMetrics; notes: Record<string, string>; excluded?: string | null }) {
   return <dl className="fact-list">{NATIONAL_METRICS.map((m) => { const v = metricValue(metrics, m.key); return <div className={`fact${v === null ? ' missing' : ''}`} key={m.key}><dt>{m.label}</dt>
-    <dd>{v === null ? <span className="muted">없음</span> : <>{formatMetric(v, '', m.digits)}<span className="unit">{m.unit}</span></>}</dd>
+    <dd>{v === null ? <span className="muted">없음</span> : <>{formatMetric(v, '', m.digits)}<span className="unit">{m.unit}</span></>}
     {v === null && <span className="why">{missingReason(m, notes, excluded)}</span>}
     {m.key === 'pop_change_pct' && v !== null && metrics.pop500_base !== null && metrics.pop500 !== null && <span className="why">{formatMetric(metrics.pop500_base, '명')} → {formatMetric(metrics.pop500, '명')} (500m 격자 합)</span>}
-    {v !== null && notes[m.key] && <span className="why">{notes[m.key]}</span>}
+    {v !== null && notes[m.key] && <span className="why">{notes[m.key]}</span>}</dd>
   </div>; })}</dl>;
 }
 

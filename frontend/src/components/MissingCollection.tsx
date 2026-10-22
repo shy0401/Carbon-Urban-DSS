@@ -1,4 +1,5 @@
 import { AlertTriangle, CheckCircle2, Clock, CloudDownload, ExternalLink, FileUp, KeyRound, RefreshCw } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api';
 import { formatDate } from '../lib/format';
@@ -109,7 +110,7 @@ export function MissingCollection({ onChanged }: { onChanged?: () => void }) {
       </div>
       <div className="missing-once">{once.map((row) => { const c = row.cells[0]; return <article key={row.dataset}><span className={`cell ${c.state.toLowerCase()}`}>{CELL_LABEL[c.state]}</span><strong>{row.label}</strong><small>{c.reason ?? '현재 시점 자료 (연도 없음)'}</small></article>; })}</div>
 
-      {blockedRows.length > 0 && <div className="missing-blocked"><h4><KeyRound size={15} />키·승인이 필요한 자료</h4><ul>{blockedRows.map((row) => <li key={row.dataset}><b>{row.label}</b>{row.blocked}</li>)}</ul><p className="muted">키는 PC의 <code>.env</code>에 넣고 런처를 다시 실행합니다. 공공데이터포털 키는 서비스마다 활용신청 승인이 따로 필요합니다(K-apt 에너지 15012964 · ASOS 15059093 · 건축HUB 에너지 15135963 · 건축물대장 15134735). 자세한 순서는 <a href="/guide#keys">사용 방법 → 키 설정</a>에 있습니다.</p></div>}
+      {blockedRows.length > 0 && <div className="missing-blocked"><h4><KeyRound size={15} />키·승인이 필요한 자료</h4><ul>{blockedRows.map((row) => <li key={row.dataset}><b>{row.label}</b>{row.blocked}</li>)}</ul><p className="muted">키는 PC의 <code>.env</code>에 넣고 런처를 다시 실행합니다. 공공데이터포털 키는 서비스마다 활용신청 승인이 따로 필요합니다(K-apt 에너지 15012964 · ASOS 15059093 · 건축HUB 에너지 15135963 · 건축물대장 15134735). 자세한 순서는 <Link to="/guide#keys">사용 방법 → 키 설정</Link>에 있습니다.</p></div>}
 
       <div className="missing-manual"><h4><FileUp size={15} />API로 받을 수 없는 자료 ({plan.manual.length}개)</h4><p className="muted">제공기관에 신청해 파일로 받아야 합니다. 받은 파일은 아래 <a href="#manual-upload">수동 파일 업로드</a>로 가져옵니다.</p>
         <ul>{plan.manual.map((m) => <li key={m.id}><strong>{m.label}</strong><span>{m.why}</span><small>{m.how}{m.link && <> · <a href={m.link} target="_blank" rel="noopener noreferrer">제공기관 <ExternalLink size={11} /></a></>}</small></li>)}</ul>

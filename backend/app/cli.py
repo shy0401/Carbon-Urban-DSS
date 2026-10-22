@@ -24,7 +24,7 @@ def init_tables():
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('command',choices=['demo','online','status','enrich','collect','collect-history','collect-missing','validate-models','snapshot','llm-dataset','llm-eval','import-sgis-grid','import-sgis-grid500','import-regional-stats','import-team-grid','import-kcsm100',
         'national-admin','national-sgis','national-complexes','national-grid500','national-ordinances','national-all','prepare-region','regions',
-        'check-standard','apply-standard','backfill-solar','region-energy-history','region-kapt-history','verify-cases','place-parcels']);parser.add_argument('--year',type=int,default=DEFAULT_YEAR)
+        'check-standard','apply-standard','backfill-solar','region-energy-history','region-kapt-history','region-sgis-history','verify-cases','place-parcels']);parser.add_argument('--year',type=int,default=DEFAULT_YEAR)
     parser.add_argument('--from',dest='from_year',type=int,default=2015);parser.add_argument('--to',dest='to_year',type=int,default=DEFAULT_YEAR)
     parser.add_argument('--datasets',default='',help='comma-separated: sgis,kma_asos,kapt_energy,energy,vworld_zoning,vworld_buildings,vworld_cadastral,building_register');parser.add_argument('--force',action='store_true')
     parser.add_argument('--source',choices=['energy','weather','kapt-energy','kma','sgis','vworld-zoning','vworld-cadastral'])
@@ -33,7 +33,7 @@ def main():
     parser.add_argument('--steps',default='',help='prepare-region: comma-separated steps (default: all)')
     parser.add_argument('--no-emd',action='store_true',help='national-sgis: 시군구만 (행정동 생략)')
     parser.add_argument('--model',default=None,help='llm-eval: Ollama model name (default OLLAMA_NARRATIVE_MODEL, then OLLAMA_MODEL)');parser.add_argument('--limit',type=int,default=None);parser.add_argument('--file',default=None)
-    parser.add_argument('--years',default=None,help='region-energy-history / region-kapt-history: comma-separated years (default 2020 / 2021 .. analysis year-1)')
+    parser.add_argument('--years',default=None,help='region-energy-history / region-kapt-history / region-sgis-history: comma-separated years (default 2020 / 2021 / 2015 .. analysis year-1)')
     parser.add_argument('--regions',default=None,help='llm-dataset: comma-separated study regions, first one sampled most (e.g. 52110,52710,11740)')
     parser.add_argument('--csv',action='append',default=[],help='check-standard: a CSV table to check before importing (repeatable)')
     parser.add_argument('--cases',default=None,help='verify-cases: cases file (default backend/cases/simulation_cases.json)')
@@ -162,6 +162,12 @@ def main():
                 print(json.dumps(result,ensure_ascii=False,default=str),flush=True)
                 if result.get('stopped') in ('WAITING','BLOCKED','OUTAGE'):
                     break
+        elif args.command=='region-sgis-history':
+            # 준비한 지역의 SGIS 행정동 인구·가구·경계 과거 연도 (지역 준비의 sgis_admin 단계는 최신 공표 연도만). --region 41110,36110 --years 2015,2016
+            from .region_prepare import collect_sgis_years
+            years=[int(y) for y in (args.years or '').split(',') if y.strip()] or list(range(2015,DEFAULT_YEAR))
+            for code in [r.strip() for r in (args.region or '').split(',') if r.strip()]:
+                print(json.dumps(collect_sgis_years(db,code,years,log=lambda m:print(m,flush=True)),ensure_ascii=False,default=str),flush=True)
         elif args.command=='place-parcels':
             # 지적도에 없는 건축HUB 계량 지번을 격자에 넣기: 같은 본번 → (그래도 없으면) VWorld 주소 좌표. --region 52110,41110 (없으면 모든 지역)
             from .energy_parcels import place_by_address,place_missing_parcels

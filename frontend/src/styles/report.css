@@ -83,7 +83,7 @@
 /* 보고서 목록·3D 그림 (2026-09-27) */
 .report-list { margin: 0; padding-left: 1.2em; }
 .report-list li + li { margin-top: var(--sp-1); }
-.report-list code { font-family: var(--mono); font-size: 0.95em; }
+.report-list code { font-family: var(--mono); font-size: max(0.95em, var(--fs-caption)); }
 .report-figures { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: var(--sp-3); margin-top: var(--sp-3); }
 .report-figures figure { margin: 0; border: 1px solid var(--line); border-top: 3px solid var(--line-strong); border-radius: var(--r-map); overflow: hidden; background: var(--surface); }
 .report-figures figure.plan-a { border-top-color: var(--plan-a); }

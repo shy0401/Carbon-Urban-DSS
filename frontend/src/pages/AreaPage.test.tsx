@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { MemoryRouter } from 'react-router-dom';
 import { AreaPage } from './AreaPage';
 
 vi.mock('../components/Chart', () => ({ Chart: ({ ariaLabel }: { ariaLabel: string }) => <div role="img" aria-label={ariaLabel} /> }));
@@ -38,7 +39,7 @@ describe('AreaPage', () => {
       if (url.endsWith('/api/area-reports')) return new Response(JSON.stringify([]));
       return new Response('{}', { status: 404 });
     });
-    render(<AreaPage />);
+    render(<MemoryRouter><AreaPage /></MemoryRouter>);
     expect(await screen.findByRole('heading', { name: '덕진구 송천1동 (행정동)' })).toBeInTheDocument();
     await waitFor(() => expect(bodies.length).toBeGreaterThan(0));
     expect(bodies[0]).toMatchObject({ area: { type: 'admin', code: '35012650' }, from_year: 2015, to_year: 2025, target_pct: 40, plan: { added_floor_area_m2: 50000 } });
@@ -66,7 +67,7 @@ describe('AreaPage', () => {
       if (url.endsWith('/api/area-reports')) return new Response(JSON.stringify([]));
       return new Response('{}', { status: 404 });
     });
-    render(<AreaPage />);
+    render(<MemoryRouter><AreaPage /></MemoryRouter>);
     await waitFor(() => expect(bodies.length).toBeGreaterThan(0));
     expect(bodies[0]).toMatchObject({ effort_basis: 'apartments' });
     (await screen.findByRole('tab', { name: '건물 전체 (건축HUB)' })).click();
@@ -89,7 +90,7 @@ describe('AreaPage', () => {
       if (url.endsWith('/api/area-reports')) return new Response(JSON.stringify([]));
       return new Response('{}', { status: 404 });
     });
-    render(<AreaPage />);
+    render(<MemoryRouter><AreaPage /></MemoryRouter>);
     expect(await screen.findByText('지역 특성 (SGIS 1km 격자 2024년)')).toBeInTheDocument();
     expect(screen.getByText('34,609 명')).toBeInTheDocument();
     expect(screen.getByText('구역 인구 (면적 비례 추정)')).toBeInTheDocument();
@@ -116,7 +117,7 @@ describe('AreaPage', () => {
       if (url.endsWith('/api/area-reports')) return new Response(JSON.stringify([]));
       return new Response('{}', { status: 404 });
     });
-    render(<AreaPage />);
+    render(<MemoryRouter><AreaPage /></MemoryRouter>);
     expect(await screen.findByText(/기준 자동 전환:/)).toBeInTheDocument();
     const summary = screen.getByTestId('area-summary');
     expect(within(summary).getByText('1,153.2 t')).toBeInTheDocument();   // 필요 감축량 kg → t
@@ -144,7 +145,7 @@ describe('AreaPage', () => {
       return new Response('{}', { status: 404 });
     });
     try {
-      render(<AreaPage />);
+      render(<MemoryRouter><AreaPage /></MemoryRouter>);
       await waitFor(() => expect(bodies.length).toBeGreaterThan(0));
       expect(bodies[0]).toMatchObject({ area: { type: 'zone', category: 'COMMERCIAL' }, from_year: 2016, to_year: 2025, plan: { added_floor_area_m2: 75000 }, target_pct: 20, pv_yield_kwh_per_kw: 1200, effort_basis: 'buildings' });
       (await screen.findByRole('button', { name: /링크 복사/ })).click();

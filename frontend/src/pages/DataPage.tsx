@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowRight, CheckCircle2, ChevronRight, CloudDownload, ExternalLink, FileUp, Globe2, KeyRound, RefreshCw, X, BrainCircuit, Calculator, FileArchive, FileText } from 'lucide-react';
+import { AlertTriangle, ArrowRight, CheckCircle2, ChevronRight, CloudDownload, FileUp, Globe2, KeyRound, RefreshCw, BrainCircuit, Calculator, FileArchive, FileText } from 'lucide-react';
 import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { lastCompletedMonth, MonthRangePicker, rangeProblem } from '../components/MonthRangePicker';
@@ -6,13 +6,14 @@ import { MissingCollection } from '../components/MissingCollection';
 import { MissingValue } from '../components/MissingValue';
 import { RegionYearProgress } from '../components/RegionYearProgress';
 import { PageHeader } from '../components/PageHeader';
+import { SectionNav } from '../components/SectionNav';
 import { QualityBadge } from '../components/QualityBadge';
 import { EmptyState, ErrorState, LoadingState } from '../components/Status';
 import { useAnalysisScope } from '../hooks/useAnalysisScope';
 import { useSystemInfo } from '../hooks/useSystemInfo';
 import { api } from '../lib/api';
 import { asRows, formatDate, formatMetric, qualityTone } from '../lib/format';
-import type { CollectionJob, DataSource, LocalEngineStatus, ReadinessData, ReadinessSource, SourceDetail } from '../types';
+import type { CollectionJob, DataSource, LocalEngineStatus, ReadinessData, ReadinessSource } from '../types';
 
 type ListResponse<T> = T[] | { items?: T[]; data?: T[]; jobs?: T[]; sources?: T[] };
 const collectionDatasets = [
@@ -43,7 +44,6 @@ export function DataPage() {
   const [engine, setEngine] = useState<LocalEngineStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<string | number | null>(null);
   const [form, setForm] = useState({ datasets: [] as string[], start_month: '2025-01', end_month: '2025-12', scope: 'smoke' });
   const selectionInitialized = useRef(false);
   const maxMonth = lastCompletedMonth();
@@ -110,14 +110,15 @@ export function DataPage() {
   const readinessByDataset = new globalThis.Map(readiness?.sources.filter((source) => source.collection_dataset).map((source) => [source.collection_dataset as string, source]));
   return <div className="page">
     <PageHeader title="수집 데이터" description="공식·대체 출처의 수집 범위와 원본에서 정규화까지의 이력을 확인합니다." action={<button className="button secondary" onClick={() => void load()}><RefreshCw size={15} />새로고침</button>} />
-    <p className="panel-description"><b>수집 전에 <a href="/guide#standard">공통 데이터 기준</a>을 확인하세요</b> (결측·단위·격자·계수·공식) · <a href="/guide#collect">이 화면 사용 방법</a> · <a href="https://github.com/shy0401/Carbon-Urban-DSS/blob/main/docs/DATA_SETUP_GUIDE.md" target="_blank" rel="noopener noreferrer">자료별 인증키 신청 · 다운로드 · 필드 매핑 안내</a></p>
+    <SectionNav items={[...(headerRegion ? [{ id: 'region-years', label: '연도별 진행' }] : []), { id: 'collect-missing', label: '빠진 자료 수집' }, { id: 'summary', label: '출처 요약' }, { id: 'collect', label: '수집 요청' }, { id: 'jobs', label: '작업 이력' }, { id: 'readiness', label: '수집 준비 상태' }, { id: 'sources', label: '데이터 출처' }, { id: 'manual-upload', label: '수동 업로드' }]} />
+    <p className="panel-description"><b>수집 전에 <Link to="/guide#standard">공통 데이터 기준</Link>을 확인하세요</b> (결측·단위·격자·계수·공식) · <Link to="/guide#collect">이 화면 사용 방법</Link> · <a href="https://github.com/shy0401/Carbon-Urban-DSS/blob/main/docs/DATA_SETUP_GUIDE.md" target="_blank" rel="noopener noreferrer">자료별 인증키 신청 · 다운로드 · 필드 매핑 안내</a></p>
     <p className="data-scope-note" data-testid="data-scope-note"><Globe2 size={15} aria-hidden="true" />{headerRegion
       ? <span>머리의 분석 지역은 <b>{headerName}</b>입니다. 아래 표가 이 지역의 연도별 수집 진행이고, 이 지역 자료는 <Link to={`/regions?select=${headerRegion}`}>전국 지역</Link>에서 받습니다. 그 아래 '빠진 자료 전부 수집'과 수동 수집은 최초 연구 지역(전주시) 범위입니다.</span>
       : <span>이 화면의 '빠진 자료 전부 수집'과 수동 수집은 최초 연구 지역(전주시) 범위입니다. 다른 시·군·구는 <Link to="/regions">전국 지역</Link>에서 지역을 골라 준비하면 그 지역 자료를 받습니다.</span>}</p>
     {headerRegion && headerName && <RegionYearProgress code={headerRegion} name={headerName} lastYear={system?.baseline_year ?? year} />}
     <MissingCollection onChanged={() => void load(true)} />
-    <section className="data-summary">{sourceSummary.map(([label, value, tone]) => <article className={tone} key={label}><span>{label}</span><strong>{value}</strong></article>)}<article><span>마지막 수집</span><strong>{latestCollection(sources)}</strong></article></section>
-    <div className="data-layout">
+    <section className="data-summary" id="summary">{sourceSummary.map(([label, value, tone]) => <article className={tone} key={label}><span>{label}</span><strong>{value}</strong></article>)}<article><span>마지막 수집</span><strong>{latestCollection(sources)}</strong></article></section>
+    <div className="data-layout" id="collect">
       <form className="panel collection-form" onSubmit={submit}>
         <div className="panel-title"><h3>데이터 수집 요청</h3></div>
         <div className="form-step"><header><b>1</b><strong>데이터셋</strong><small>{form.datasets.length}개 선택</small></header>
@@ -134,17 +135,16 @@ export function DataPage() {
         <button className="button primary full" disabled={submitting}><CloudDownload size={17} />{submitting ? '요청 중…' : '수집 작업 시작'}</button>
         <p className="form-caption">수집은 백그라운드에서 실행되고 진행률이 오른쪽 작업 이력에 표시됩니다. '전체'는 같은 출처의 '첫 검증'이 성공한 뒤에만 시작되며, 성공한 응답은 캐시되어 다시 요청하지 않습니다.</p>
       </form>
-      <section className="panel jobs-panel"><div className="panel-title"><h3>작업 이력</h3></div>
+      <section className="panel jobs-panel" id="jobs"><div className="panel-title"><h3>작업 이력</h3></div>
         {jobs.length ? <div className="job-list" tabIndex={0} role="region" aria-label="수집 작업 이력">{jobs.map((job) => <article key={job.id}><div className={`job-state ${job.resolved ? 'good' : qualityTone(job.status)}`}><span>{statusLabel(job.status)}</span>{job.resolved && <b className="resolved-badge">이후 해결</b>}<small title={String(job.id)}>작업 {String(job.id).slice(0, 8)}</small></div><div className="job-body"><strong>{datasetLabel(job.dataset) ?? job.datasets?.map((d) => datasetLabel(d)).join(', ') ?? '데이터 수집'}</strong><small>{formatDate(job.updated_at ?? job.created_at)}</small>{job.message && <p>{job.message}</p>}{job.error && <p className="error-text">{job.error}</p>}{job.resolved_datasets?.length ? <p className="resolved-text">이후 작업에서 수집 성공: {job.resolved_datasets.join(', ')}</p> : null}{job.errors?.map((item, index) => <p className={typeof item !== 'string' && item.dataset && job.resolved_datasets?.includes(item.dataset) ? 'error-text resolved' : 'error-text'} key={`${typeof item === 'string' ? 'error' : item.dataset ?? 'error'}-${index}`}><b>{typeof item !== 'string' && item.dataset ? `${item.dataset}: ` : ''}</b>{typeof item === 'string' ? item : item.message ?? '수집 오류'}</p>)}{typeof job.progress === 'number' && ['RUNNING', 'STARTED'].includes(String(job.status).toUpperCase()) && <div className="progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(job.progress)} aria-label="수집 진행률"><span style={{ width: `${Math.max(0, Math.min(100, job.progress))}%` }} /></div>}</div></article>)}</div> : <EmptyState title="수집 작업 이력이 없습니다" />}
       </section>
     </div>
     {readiness && <ReadinessOverview data={readiness} />}
     {engine && <LocalAiFlow engine={engine} />}
-    <section className="panel source-catalog"><div className="panel-title"><h3>연결된 데이터 출처</h3></div>
+    <section className="panel source-catalog" id="sources"><div className="panel-title"><h3>연결된 데이터 출처</h3></div>
       {sources.length ? <div className="source-cards">{sources.map((source) => <button className="source-card" key={source.id} onClick={() => navigate(`/data/sources/${source.id}`)}><div className="source-card-head"><span>{source.category}</span><QualityBadge value={source.quality} /></div><h4>{source.name}</h4><p>{source.organization ?? '기관 정보 없음'}</p><dl><div><dt>수집 상태</dt><dd>{statusLabel(source.status)}</dd></div><div><dt>정규화</dt><dd>{formatMetric(source.normalized_row_count, '행')}</dd></div><div><dt>기준 기간</dt><dd>{source.reference_period ?? '기록 없음'}</dd></div><div><dt>종합 품질</dt><dd>{score(source.quality_scores?.overall)}</dd></div></dl>{source.limitation && <small className="limitation"><AlertTriangle size={13} />{source.limitation}</small>}<span className="card-action">상세 보기 <ChevronRight size={15} /></span></button>)}</div> : <EmptyState title="연결된 데이터 출처가 없습니다" description="위 수집 양식으로 실제 자료 수집을 요청해 주세요." />}
     </section>
     <ManualUpload onImported={() => void load(true)} />
-    {selected !== null && <SourceModal sourceId={selected} onClose={() => setSelected(null)} />}
   </div>;
 }
 
@@ -163,7 +163,7 @@ function ReadinessOverview({ data }: { data: ReadinessData }) {
     ['공식 파일 직접 필요', data.summary.states.MANUAL_REQUIRED ?? 0, 'manual'],
   ] as const;
   return <>
-    <section className="panel readiness-panel">
+    <section className="panel readiness-panel" id="readiness">
       <div className="panel-title"><h3>현재 수집 가능성과 차단 요인</h3></div>
       <div className="readiness-summary">{summary.map(([label, value, tone]) => <article className={tone} key={label}><strong>{value}</strong><span>{label}</span></article>)}</div>
       <div className="truth-rules">{data.truth_rules.map((rule) => <span key={rule}><CheckCircle2 size={14} />{rule}</span>)}</div>
@@ -205,30 +205,11 @@ function LocalAiFlow({ engine }: { engine: LocalEngineStatus }) {
   </section>;
 }
 
-function SourceModal({ sourceId, onClose }: { sourceId: string | number; onClose: () => void }) {
-  const [detail, setDetail] = useState<SourceDetail | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<'raw' | 'normalized' | 'history'>('raw');
-  useEffect(() => { api<SourceDetail>(`/sources/${encodeURIComponent(String(sourceId))}`).then(setDetail).catch((reason) => setError(reason instanceof Error ? reason.message : '상세 정보를 불러오지 못했습니다.')); }, [sourceId]);
-  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><section className="modal" role="dialog" aria-modal="true" aria-label="데이터 출처 상세">
-    <header><div><h2>{detail?.source.name ?? '출처 상세'}</h2><p>{detail?.source.organization ?? '출처 정보를 불러오는 중입니다.'}</p></div><button aria-label="닫기" onClick={onClose}><X /></button></header>
-    {!detail && !error && <LoadingState />}{error && <ErrorState message={error} onRetry={() => window.location.reload()} />}
-    {detail && <><div className="source-meta"><QualityBadge value={detail.source.quality} /><span>{detail.source.reference_period ?? '기간 기록 없음'}</span><span>{detail.source.geographic_coverage ?? '범위 기록 없음'}</span>{detail.source.source_url && <a href={detail.source.source_url} target="_blank" rel="noreferrer">원문 <ExternalLink size={14} /></a>}</div>
-      <div className="tabs" role="tablist"><button role="tab" aria-selected={tab === 'raw'} onClick={() => setTab('raw')}>원본 미리보기</button><button role="tab" aria-selected={tab === 'normalized'} onClick={() => setTab('normalized')}>정규화 미리보기</button><button role="tab" aria-selected={tab === 'history'} onClick={() => setTab('history')}>수집 이력</button></div>
-      <div className="modal-content">{tab === 'history' ? <History detail={detail} /> : <PreviewTable value={tab === 'raw' ? detail.raw_preview : detail.normalized_preview} />}</div>
-      {detail.source.limitation && <div className="modal-limitation"><AlertTriangle size={17} /><div><strong>자료 제한사항</strong><p>{detail.source.limitation}</p></div></div>}</>}
-  </section></div>;
-}
-
 function PreviewTable({ value }: { value: unknown }) {
   const rows = asRows(value);
   if (!rows.length) return <EmptyState title="미리보기 자료가 없습니다" />;
   const columns = Array.from(new Set(rows.flatMap((row) => Object.keys(row)))).slice(0, 10);
   return <div className="table-wrap"><table><thead><tr>{columns.map((column) => <th key={column}>{column}</th>)}</tr></thead><tbody>{rows.slice(0, 20).map((row, index) => <tr key={index}>{columns.map((column) => <td key={column}>{row[column] === null || row[column] === undefined ? <MissingValue inline /> : renderCell(row[column])}</td>)}</tr>)}</tbody></table></div>;
-}
-
-function History({ detail }: { detail: SourceDetail }) {
-  return <div className="history-list">{detail.jobs?.length ? detail.jobs.map((job) => <article key={job.id}><span className={`history-icon ${qualityTone(job.status)}`}><CheckCircle2 size={17} /></span><div><strong>{statusLabel(job.status)}</strong><p>{job.message ?? job.error ?? '추가 메시지 없음'}</p><small>{formatDate(job.updated_at ?? job.created_at)}</small></div></article>) : <EmptyState title="수집 이력이 없습니다" />}{asRows(detail.errors).map((item, index) => <article key={`error-${index}`}><span className="history-icon bad"><AlertTriangle size={17} /></span><div><strong>수집 오류</strong><p>{renderCell(item.message ?? item.error ?? item)}</p></div></article>)}</div>;
 }
 
 function datasetLabel(value: string | undefined): string | undefined { if (!value) return undefined; if (value === 'all_missing') return '빠진 자료 전부 수집'; return collectionDatasets.find(([key]) => key === value)?.[1] ?? value; }

@@ -61,6 +61,28 @@ describe('SimulationPage', () => {
     expect(screen.getByRole('button', { name: '3D 장면 저장 중…' })).toBeDisabled();
   });
 
+  it('계산 뒤 입력을 바꾸면 결과를 지우지 않고 ‘이전 입력의 결과’로 표시하며, 다시 계산하면 표시가 풀린다', async () => {
+    let calls = 0;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      if (!url.includes('/scenarios')) return new Response('{}', { status: 200 });
+      calls += 1;
+      return new Response(JSON.stringify({ id: `plan-${calls}`, far: 200, bcr: 20, total_footprint: 5000, gross_floor_area: 80000, carbon_per_person: 800, carbon_per_household: 2000, monthly: [],
+        annual: { current: { carbon_kg: 1000 }, scenario: { carbon_kg: 2000 }, reference: { carbon_kg: 2500 }, difference: { carbon_kg: 1000 } }, savings_pct: { carbon_kg: 20 } }), { status: 200 });
+    });
+    page();
+    await userEvent.click(screen.getByRole('button', { name: '시나리오 계산' }));
+    await screen.findByTestId('plan-hero');
+    expect(screen.queryByTestId('scenario-stale')).not.toBeInTheDocument();
+    const floors = screen.getByRole('spinbutton', { name: /층수/ });
+    await userEvent.clear(floors); await userEvent.type(floors, '12');
+    expect(screen.getByTestId('plan-hero')).toBeInTheDocument();           // the last result stays on screen
+    expect(screen.getByTestId('scenario-stale')).toHaveTextContent('이전 입력의 결과');
+    await userEvent.click(screen.getByRole('button', { name: '시나리오 계산' }));
+    await waitFor(() => expect(screen.queryByTestId('scenario-stale')).not.toBeInTheDocument());
+    expect(calls).toBe(2);
+  });
+
   it('용도지역 조례 상한 확인과 최적안 후보를 한국어 단위로 보여 주고 후보를 입력에 적용한다', async () => {
     const zoning = { status: 'OK', zones: [{ zone: '제2종일반주거지역', share: 100, bcr_limit: 60, far_limit: 250, applied_far_limit: 250 }], covered_share: 100, bcr_limit: 60, far_limit: 250, mixed: false,
       check: { label: '조례 기본 상한 초과', bcr: 'WITHIN', far: 'OVER', district_plan: true, notes: ['지구단위계획 수립 대상 규모입니다.'] },

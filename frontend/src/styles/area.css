@@ -114,7 +114,7 @@
 .area-sgis { margin-top: var(--sp-4); }
 .area-building-energy { margin-top: var(--sp-4); }
 .area-building-energy td small { color: var(--ink-3); }
-.area-building-trend { margin: var(--sp-3) 0 0; font-size: 0.92em; }
+.area-building-trend { margin: var(--sp-3) 0 0; font-size: max(0.92em, var(--fs-caption)); }
 .area-kcsm { margin-top: var(--sp-4); }
 .area-kcsm td small { color: var(--ink-3); }
 .area-kcsm .muted { margin-top: var(--sp-2); }
@@ -135,7 +135,7 @@
 .area-steps a { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px 2px 2px; border: 1px solid var(--line); border-radius: 999px; color: var(--ink-2); font-size: var(--fs-caption); font-weight: 600; text-decoration: none; }
 .area-steps a:hover { border-color: var(--primary); color: var(--primary); }
 .area-steps a:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-.area-steps b { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--primary); color: var(--on-primary); font-size: 11px; }
+.area-steps b { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--primary); color: var(--on-primary); font-size: var(--fs-caption); }
 .area-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: var(--sp-2) var(--sp-3); margin: 0; }
 .area-kpis > div { min-width: 0; padding-left: var(--sp-2); border-left: 3px solid var(--line); }
 .area-kpis > div:first-child dd { font-size: var(--fs-body); }
@@ -168,7 +168,7 @@
 .area-benchmark-strip .median { stroke: var(--ink-2); stroke-width: 1.5; }
 .area-benchmark-strip .peer { fill: var(--seq-3); stroke: var(--surface); stroke-width: 1.5; }
 .area-benchmark-strip .mine { fill: var(--plan-b); stroke: var(--select-line); stroke-width: 2; }
-.area-benchmark-strip text { font-size: 11px; fill: var(--ink-2); }
+.area-benchmark-strip text { font-size: var(--fs-caption); fill: var(--ink-2); }
 .area-benchmark-strip .mine-label { font-weight: 700; fill: var(--ink); }
 .area-benchmark-text { margin: var(--sp-2) 0 var(--sp-1); font-size: var(--fs-label); }
 

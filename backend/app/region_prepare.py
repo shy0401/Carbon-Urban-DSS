@@ -558,6 +558,96 @@ def collect_kapt_years(db: Any, code: str, years: list[int], *, log: Log = print
     return {"region": code, "done": done, "left": sorted(left), "stopped": stopped}
 
 
+def collect_sgis_years(db: Any, code: str, years: list[int], *, log: Log = print, fetch: Callable[..., dict[str, Any]] | None = None) -> dict[str, Any]:
+    """SGIS 행정동 인구·가구·경계 of a prepared region for past years (지역 준비의 sgis_admin 단계는 최신 공표 연도만 받는다).
+
+    Year by year (newest first): the 시·도 list of that year names the region's SGIS 시군구 codes (codes change between
+    years, e.g. 전라북도 → 전북특별자치도), then population, households and 행정동 boundaries are stored under that year.
+    ``study_regions.datasets.sgis_years[year]``: DONE, NOT_PUBLISHED (SGIS has no statistics for that year) or FAILED.
+    Nothing is estimated: a year SGIS does not publish stays absent. ``fetch(name, path, params, parser)`` is for tests."""
+    from .national import _Sgis
+    from .regions import match_sgis, sido_keys, split_name
+    from .sgis import (SgisHouseholdAdmin, SgisPopulationAdmin, _store_boundaries, _store_statistics, parse_sgis_boundary,
+                       parse_sgis_statistics)
+    region = db.get(StudyRegion, code)
+    if region is None:
+        raise ValueError(f"준비한 지역이 아닙니다: {code}")
+    done: dict[int, Any] = {}
+    left: list[int] = []
+    keys = set(sido_keys(region.sido_name or split_name(region.name)[0]))
+    for year in sorted(set(years), reverse=True):
+        state = ((region.datasets or {}).get("sgis_years") or {}).get(str(year))
+        if state in ("DONE", "NOT_PUBLISHED"):
+            log(f"{code} SGIS {year}: 이미 {state}")
+            continue
+        sgis = _Sgis(db, year, log) if fetch is None else None
+        get = fetch or sgis.get  # type: ignore[union-attr]
+        try:
+            national = get(f"population-{year}-sido", "stats/searchpopulation.json", {"year": year}, lambda b: parse_sgis_statistics(b, "population"))
+            if national["status"] != "SUCCESS" or not national["rows"]:
+                status, message = "NOT_PUBLISHED", f"SGIS {year}년 통계 미공표"
+            else:
+                rows: list[dict[str, Any]] = []
+                hh_rows: dict[str, dict[str, Any]] = {}
+                for sido in national["rows"]:
+                    if not (keys & set(sido_keys(sido.get("adm_name") or ""))):
+                        continue
+                    districts = get(f"population-{year}-{sido['adm_code']}", "stats/searchpopulation.json",
+                                    {"year": year, "adm_cd": sido["adm_code"], "low_search": 1}, lambda b: parse_sgis_statistics(b, "population"))
+                    for r in districts["rows"]:
+                        name = str(r.get("adm_name") or "")
+                        rows.append(dict(r, adm_name=name if name.startswith(str(sido.get("adm_name"))) else f"{sido.get('adm_name')} {name}"))
+                    hh_districts = get(f"household-{year}-{sido['adm_code']}", "stats/household.json",
+                                       {"year": year, "adm_cd": sido["adm_code"], "low_search": 1}, lambda b: parse_sgis_statistics(b, "household"))
+                    hh_rows.update({r["adm_code"]: r for r in hh_districts["rows"]})
+                codes = match_sgis(region.name, rows)
+                if not codes:
+                    raise ExternalError(f"SGIS {year}년 시군구 코드를 찾지 못했습니다: {region.name}")
+                counts = {"dongs": 0, "boundaries": 0, "suppressed": 0}
+                by_code = {r["adm_code"]: r for r in rows}
+                for sg in codes:
+                    pop = get(f"population-{year}-{sg}", "stats/searchpopulation.json", {"year": year, "adm_cd": sg, "low_search": 1}, lambda b: parse_sgis_statistics(b, "population"))
+                    households = get(f"household-{year}-{sg}", "stats/household.json", {"year": year, "adm_cd": sg, "low_search": 1}, lambda b: parse_sgis_statistics(b, "household"))
+                    boundary = get(f"boundary-{year}-{sg}", "boundary/hadmarea.geojson", {"year": year, "adm_cd": sg, "low_search": 1}, parse_sgis_boundary)
+                    stored = _store_statistics(db, "population", year, pop["rows"], f"sgis-{year}-{sg}")
+                    _store_statistics(db, "household", year, households["rows"], f"sgis-{year}-{sg}")
+                    boundary["raw_source_id"] = boundary.get("raw_source_id") or f"sgis-{year}-{sg}"
+                    counts["boundaries"] += _store_boundaries(db, year, sg, boundary)
+                    counts["dongs"] += stored["rows"]
+                    counts["suppressed"] += stored["suppressed"]
+                    unit = by_code.get(sg)   # the 시군구 row itself, as the sgis_admin step keeps it
+                    if unit is not None:
+                        key = f"{year}:{sg}"
+                        row = db.get(SgisPopulationAdmin, key) or SgisPopulationAdmin(id=key, reference_year=year, adm_code=sg, source="SGIS")
+                        row.adm_name, row.population_count, row.value_status = unit["adm_name"], unit["value"], unit["value_status"]
+                        row.raw_record = {"from": f"sgis sido low_search {year}"}
+                        db.add(row)
+                        hh = db.get(SgisHouseholdAdmin, key) or SgisHouseholdAdmin(id=key, reference_year=year, adm_code=sg, source="SGIS")
+                        hunit = hh_rows.get(sg)
+                        hh.adm_name = unit["adm_name"]
+                        hh.household_count = hunit["value"] if hunit else None
+                        hh.value_status = hunit["value_status"] if hunit else "NOT_AVAILABLE"
+                        hh.raw_record = {"from": f"sgis sido low_search {year}"}
+                        db.add(hh)
+                    db.commit()
+                status = "DONE"
+                message = f"SGIS {year} 행정동 {counts['dongs']}곳 (경계 {counts['boundaries']}개, 비공개 {counts['suppressed']}곳)"
+                done[year] = counts
+        except ExternalError as exc:
+            db.rollback()
+            status, message = "FAILED", str(exc)[:200]
+            left.append(year)
+            if "인증" in message:
+                log(f"{code} SGIS {year}: {status} {message}")
+                region = db.get(StudyRegion, code)
+                _mark_year(db, region, "sgis_years", year, status)
+                break
+        log(f"{code} SGIS {year}: {status} {message}")
+        region = db.get(StudyRegion, code)
+        _mark_year(db, region, "sgis_years", year, status)
+    return {"region": code, "done": done, "left": sorted(left)}
+
+
 def _kapt_failed_months(db: Any, legal: list[str], year: int) -> int:
     from .kapt import ApartmentComplex
     from .kapt_energy import ApartmentEnergyMonthly

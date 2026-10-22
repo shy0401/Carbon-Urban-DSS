@@ -657,7 +657,7 @@ function SgisDetail({ p }: { p: GridProps }) {
 
 function Fact({ label, value, unit, digits = 0, why, missingText }: { label: ReactNode; value: number | null | undefined; unit: string; digits?: number; why?: string; missingText?: string }) {
   const missing = value === null || value === undefined || !Number.isFinite(value);
-  return <div className={`fact${missing ? ' missing' : ''}`}><dt>{label}</dt><dd>{missing ? <MissingValue inline reason={missingText} /> : <>{formatMetric(value, '', digits, digits > 0)}{unit && <span className="unit">{unit}</span>}</>}</dd>{why && !missing && <span className="why">{why}</span>}</div>;
+  return <div className={`fact${missing ? ' missing' : ''}`}><dt>{label}</dt><dd>{missing ? <MissingValue inline reason={missingText} /> : <>{formatMetric(value, '', digits, digits > 0)}{unit && <span className="unit">{unit}</span>}</>}{why && !missing && <span className="why">{why}</span>}</dd></div>;
 }
 
 function MonthRow({ label, months }: { label: string; months: boolean[] }) {

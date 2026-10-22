@@ -70,5 +70,5 @@ export function Sgis500Detail({ p }: { p: GridProps }) {
 
 function Sgis500Fact({ label, value, unit, digits = 0, why, missing = '통계 없음 (0 아님)' }: { label: string; value: number | null | undefined; unit: string; digits?: number; why?: string; missing?: string }) {
   const empty = value === null || value === undefined || !Number.isFinite(value);
-  return <div className={`fact${empty ? ' missing' : ''}`}><dt>{label}</dt><dd>{empty ? <MissingValue inline reason={missing} /> : <>{formatMetric(value, '', digits)}<span className="unit">{unit}</span></>}</dd>{why && !empty && <span className="why">{why}</span>}</div>;
+  return <div className={`fact${empty ? ' missing' : ''}`}><dt>{label}</dt><dd>{empty ? <MissingValue inline reason={missing} /> : <>{formatMetric(value, '', digits)}<span className="unit">{unit}</span></>}{why && !empty && <span className="why">{why}</span>}</dd></div>;
 }

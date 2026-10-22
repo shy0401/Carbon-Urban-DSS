@@ -2,7 +2,7 @@
 
 > **자료를 모으기 전에 이 문서부터 읽습니다.** 팀원 누구나, 어느 지역이든, 사람이 하든 AI 도구로 하든 같은 기준으로 모으고 같은 공식으로 계산해야 결과를 합치고 비교할 수 있습니다. 이 문서가 그 기준의 **유일한 원본**입니다. 코드의 상수·규칙이 이 문서와 다르면 둘 중 하나가 틀린 것이니, 같은 커밋에서 함께 고칩니다(9절).
 
-- 판: 1.2 (2026-10-21) · 근거: [팀 데이터 비교](TEAM_DATA_COMPARISON.md), [탄소 계산](CARBON_METHOD.md), [정확도 점검](ACCURACY.md), 팀 데이터셋 urban-carbon의 `config/rules.yaml`·ADR
+- 판: 1.3 (2026-10-23) · 근거: [팀 데이터 비교](TEAM_DATA_COMPARISON.md), [탄소 계산](CARBON_METHOD.md), [정확도 점검](ACCURACY.md), 팀 데이터셋 urban-carbon의 `config/rules.yaml`·ADR
 - 점검 명령: `docker compose exec api python -m app.cli check-standard` (8절)
 
 ## 0. 작업 전 확인 (매번)
@@ -70,6 +70,9 @@
 | K-apt 항목이 0 또는 공란 | NULL (K-apt는 미입력을 0으로 줌) | — |
 | K-apt 모든 항목 0·공란 | 그 달 `NOT_REPORTED`, 모든 양 NULL | "미보고" |
 | K-apt 세대당 전기 < 20 kWh/월 | `SUSPECT` (값은 둠, 집계에서 뺌) | "이상값" |
+| K-apt 세대당 전기 > 2,000 kWh/월 | `SUSPECT` (값은 둠, 집계에서 뺌). 2026-10-23 전수 점검 근거: 9개 지역 SUCCESS 월 가운데 319개월이 이 선을 넘었고(최대 102,201), 그 단지의 다른 달 중앙값의 83배였다. 세대당 50~638 kWh가 정상 범위(p50 286, p99 638) | "이상값(입력·단위 오류 의심)" |
+| K-apt 단지 좌표가 어느 지역의 분석 격자에도 없음 | 달 값은 그대로 저장, 어느 칸 합계에도 넣지 않음. 매핑 `OUTSIDE_GRID` (`apply-standard`가 표시) | "격자 밖" |
+| 일사량 표의 빈 자리 행(첫 판 ERA5-Land, 값 전부 NULL) | 지움(`apply-standard`). 값 있는 행은 손대지 않음 | — |
 | 건축HUB 음수 | NULL, 원값은 `raw_record`에 남김 | — |
 | 건축HUB 2020년 9·10월 | 쓰되 다른 해와 비교하지 않음 | "일부 결측·비교 제외" |
 | 한 해에만 계측된 지번 | 같은 지번 비교에서 따로 적음(신축·계량 변경·기록 이동) | "2025년 N곳(…kWh)" / "없음" |
@@ -187,6 +190,7 @@ docker compose -p carbon-urban-dss -f compose.yaml -f compose.demo.yaml exec -T 
 
 | 판 | 날짜 | 바뀐 것 |
 |---|---|---|
+| 1.3 | 2026-10-23 | 전수 점검(9개 지역 DB) 결과: K-apt 세대당 전기 **상한 2,000 kWh/월** SUSPECT 규칙(4절, `kapt_energy.MAX_PLAUSIBLE_KWH_PER_HOUSEHOLD`), 격자 밖 단지는 `OUTSIDE_GRID`로 표시, 첫 판이 남긴 일사량 빈 자리 행(ERA5-Land, 값 전부 NULL) 정리. 저장된 달의 상태를 다시 판정하므로 `apply-standard` 판 **1.1** (`check-standard`가 1.0이면 WARN) |
 | 1.2 | 2026-10-21 | 팀 데이터셋 7차 인계(53개 지역 × 7개 해 500m, 개발 사례·모델 점수)와 팀 변화 모델(추정) 추가: 출처 표, 5.8·5.11. `apply-standard` 판은 1.0 그대로 |
 | 1.1 | 2026-10-17 | 선도소프트 탄소공간지도 100m 건물 전기(전주 2023·2024) 출처 추가, 100m의 0·급감 처리, 지역 시뮬레이션 비교·감축 기준 규칙(5.12). 저장된 값을 다시 계산할 일은 없어 `apply-standard` 판(standard.py `VERSION`)은 1.0 그대로 |
 | 1.0 | 2026-10-08 | 첫 판. 냉방도일 기준 18→24°C(팀 기준과 맞춤), 2025년 전력 계수 0.4541→0.4330(그해 말까지 공표된 최신 승인 계수 규칙), 팀 자료 표시 규칙 통합 |

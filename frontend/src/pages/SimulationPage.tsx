@@ -46,6 +46,8 @@ export function SimulationPage() {
   const [input, setInput] = useState<ScenarioInput>(() => ({ ...initial, ...(linked.current?.input ?? {}) }));
   const [errors, setErrors] = useState<ScenarioErrors>({});
   const [result, setResult] = useState<ScenarioResult | null>(null);
+  // 입력을 바꾸면 지난 결과를 지우지 않고 '이전 입력의 결과'로 표시해 둔다(값을 바꿔 가며 견주어 볼 수 있게). 다시 계산하면 풀린다.
+  const [stale, setStale] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const navigate = useNavigate();
   const [requestError, setRequestError] = useState<string | null>(null);
@@ -55,7 +57,7 @@ export function SimulationPage() {
   const [site, setSite] = useState<SitePlacement | null>(null);
   const [liveZoning, setLiveZoning] = useState<ZoningCheck | null>(null);
   const system = useSystemInfo();
-  useEffect(()=>{revision.current++;setResult(null);setOptimization(null);setRequestError(null);},[input,year,gridId,site,region]);
+  useEffect(()=>{revision.current++;setStale(true);setOptimization(null);setRequestError(null);},[input,year,gridId,site,region]);
   useEffect(()=>{setSite(null);},[gridId]);
   useEffect(() => {
     const l = linked.current; if (!l) return;
@@ -90,7 +92,7 @@ export function SimulationPage() {
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length) return;
     setSubmitting(true); setRequestError(null);const current=revision.current;
-    try { const next=await api<ScenarioResult>('/scenarios', { method: 'POST', body: JSON.stringify({...input,...sitePayload,year,grid_id:gridId,region}) });if(current===revision.current)setResult(next); }
+    try { const next=await api<ScenarioResult>('/scenarios', { method: 'POST', body: JSON.stringify({...input,...sitePayload,year,grid_id:gridId,region}) });if(current===revision.current){setResult(next);setStale(false);} }
     catch (reason) { setRequestError(reason instanceof Error ? reason.message : '시나리오 계산에 실패했습니다.'); }
     finally { setSubmitting(false); }
   };
@@ -134,16 +136,16 @@ export function SimulationPage() {
         <div className="floor-presets"><span>층수·수용량 빠른 설정</span><div>{[5, 10, 20, 30, 40].map((floors) => <button type="button" className={input.floors === floors ? 'active' : ''} key={floors} onClick={() => preset(floors)}>{floors}층</button>)}</div><small>연면적과 평균 세대면적으로 세대수를 다시 계산하고 현재 가구당 인구비를 적용합니다.</small></div>
         {fieldGroups.map((group) => <fieldset className="field-group" key={group.title}><legend>{group.title}</legend><div className="field-grid">{group.keys.map((key) => { const field = fields.find((f) => f.key === key)!; return <label className={errors[field.key] ? 'field error' : 'field'} key={field.key}><span>{field.label}</span><div><input type="number" value={input[field.key]} step={field.step ?? 1} min={field.min} max={field.max} onChange={(event) => setInput((old) => ({ ...old, [field.key]: Number(event.target.value) }))} /><em>{field.unit}</em></div>{errors[field.key] && <small>{errors[field.key]}</small>}</label>; })}</div></fieldset>)}
         <div className="derived-strip"><div><span>예상 연면적</span><strong>{formatMetric(input.building_count * input.footprint_per_building * input.floors, 'm²')}</strong></div><div><span>계획 용적률</span><strong>{formatMetric((input.building_count * input.footprint_per_building * input.floors / input.site_area) * 100, '%', 1)}</strong></div><div><span>계획 건폐율</span><strong>{formatMetric((input.building_count * input.footprint_per_building / input.site_area) * 100, '%', 1)}</strong></div></div>
-        <div className="form-actions"><button type="button" className="button ghost" onClick={() => { setInput(initial); setErrors({}); setResult(null); setSite(null); }}><RotateCcw size={15} />초기화</button><button type="button" className="button ghost" onClick={copyLink} title="이 지역·격자·대지 위치·입력값을 주소로 복사합니다"><Link2 size={15} />링크 복사</button><button className="button primary" disabled={submitting}><Play size={15} />{submitting ? '계산 중…' : '시나리오 계산'}</button></div>
+        <div className="form-actions"><button type="button" className="button ghost" onClick={() => { setInput(initial); setErrors({}); setResult(null); setStale(false); setSite(null); }}><RotateCcw size={15} />초기화</button><button type="button" className="button ghost" onClick={copyLink} title="이 지역·격자·대지 위치·입력값을 주소로 복사합니다"><Link2 size={15} />링크 복사</button><button className="button primary" disabled={submitting}><Play size={15} />{submitting ? '계산 중…' : '시나리오 계산'}</button></div>
         {linkUrl && <label className="case-link"><span>이 조건의 링크 (다른 PC에서 열면 같은 입력으로 시작)</span><input readOnly value={linkUrl} onFocus={(event) => event.currentTarget.select()} /></label>}
       </form>
       <div className="simulation-main">
-        <section className="panel massing-panel"><div className="panel-title"><h3>3D 배치·일조</h3><span className="status-tag neutral">규모 비교용 개념 배치</span></div><Massing3D gridId={massingGrid} region={region} input={input} site={site} onSiteChange={setSite} onZoning={setLiveZoning} onCapture={result?.id ? saveScene : undefined} captureKey={result?.id ?? null} captureRequest={captureRequest} captureLabel="보고서용 장면 저장" /></section>
+        <section className="panel massing-panel"><div className="panel-title"><h3>3D 배치·일조</h3><span className="status-tag neutral">규모 비교용 개념 배치</span></div><Massing3D gridId={massingGrid} region={region} input={input} site={site} onSiteChange={setSite} onZoning={setLiveZoning} onCapture={result?.id && !stale ? saveScene : undefined} captureKey={result?.id ?? null} captureRequest={captureRequest} captureLabel="보고서용 장면 저장" /></section>
         <section className="panel scenario-result">
-          <div className="panel-title"><h3>계획안 결과</h3>{result && <div className="badge-row">{provenanceFromCode(result.data_class) && <ProvenanceBadge kind={provenanceFromCode(result.data_class)!} />}{result.quality && <QualityBadge value={result.quality} />}</div>}</div>
+          <div className="panel-title"><h3>계획안 결과</h3>{result && <div className="badge-row">{stale && <span className="status-tag warn" data-testid="scenario-stale">이전 입력의 결과 · 다시 계산 필요</span>}{provenanceFromCode(result.data_class) && <ProvenanceBadge kind={provenanceFromCode(result.data_class)!} />}{result.quality && <QualityBadge value={result.quality} />}</div>}</div>
           {requestError && <ErrorState message={requestError} onRetry={() => void submit()} />}
           {!requestError && !result && <div className="scenario-empty"><h3>조건을 정하고 ‘시나리오 계산’을 누르세요</h3><p>이 격자의 관측 원단위로 계획안의 연간 에너지·탄소를 계산합니다. 근거 자료가 없으면 임의의 결과를 만들지 않습니다. 3D 배치와 용도지역 확인은 계산 전에도 바로 바뀝니다.</p></div>}
-          {result && <PlanResult result={result} chart={chart} reporting={reporting} sceneSaved={sceneSaved === result.id} onReport={openReport} />}
+          {result && <div className={stale ? 'scenario-stale' : undefined}><PlanResult result={result} chart={chart} reporting={reporting} sceneSaved={sceneSaved === result.id} onReport={openReport} /></div>}
           {zoning && <ZoningSummary zoning={zoning} saved={!!result?.zoning_check} />}
         </section>
       </div>

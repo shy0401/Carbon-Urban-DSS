@@ -77,6 +77,7 @@
 .content-grid { display: grid; gap: var(--sp-4); }
 .muted { color: var(--ink-3); font-size: var(--fs-caption); line-height: 1.6; }
 
+.table-wrap td a, .table-wrap th a { display: inline-block; padding: 2px 0; }
 .table-wrap { overflow-x: auto; margin-top: var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-panel); background: var(--surface); }
 .table-wrap table { width: 100%; border-collapse: collapse; font-size: var(--fs-label); }
 .table-wrap th { position: sticky; top: 0; padding: var(--sp-2) var(--sp-3); background: var(--surface-sunk); color: var(--ink-2); font-size: var(--fs-label); font-weight: 500; text-align: left; white-space: nowrap; border-bottom: 1px solid var(--line); }
@@ -116,7 +117,7 @@
 .month-strip-row + .month-strip-row { margin-top: var(--sp-1); }
 .month-strip-row b { text-align: right; font-weight: 500; color: var(--ink); }
 .month-strip { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 2px; }
-.month-strip span { display: grid; place-items: center; height: 20px; border: 1px solid var(--hatch); border-radius: var(--r-map); font-size: 11px; color: var(--ink-2); print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+.month-strip span { display: grid; place-items: center; height: 20px; border: 1px solid var(--hatch); border-radius: var(--r-map); font-size: var(--fs-caption); color: var(--ink-2); print-color-adjust: exact; -webkit-print-color-adjust: exact; }
 .month-strip span.on { border-color: var(--prov-observed); background: var(--prov-observed-bg); color: var(--prov-observed); font-weight: 500; }
 .month-strip span.is-missing { background-color: var(--prov-missing-bg); background-image: var(--hatch-image); }
 
@@ -161,3 +162,4 @@
 .case-link input { width: 100%; min-width: 0; font: inherit; font-size: 12px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-sunk); color: var(--ink); }
 .area-link-button { align-self: end; margin-left: auto; }
 .not-found-links { display: grid; gap: var(--sp-2); padding-left: 1.2em; }
+.not-found-links a { display: inline-block; padding: 3px 0; }

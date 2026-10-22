@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 
 type YearStates = Record<string, string>;
@@ -20,7 +21,7 @@ export function RegionYearProgress({ code, name, lastYear }: { code: string; nam
     return () => { alive = false; };
   }, [code]);
   const years = Array.from({ length: Math.max(lastYear - FIRST_YEAR + 1, 1) }, (_, i) => FIRST_YEAR + i);
-  return <section className="panel region-year-progress" aria-label={`${name} 연도별 수집 진행`} data-testid="region-year-progress">
+  return <section className="panel region-year-progress" id="region-years" aria-label={`${name} 연도별 수집 진행`} data-testid="region-year-progress">
     <div className="panel-title"><h3>{name} 연도별 수집 진행</h3></div>
     {failed ? <p className="muted" role="alert">지역 진행 기록을 읽지 못했습니다.</p>
       : !datasets ? <p className="muted" role="status">지역 진행 기록을 읽는 중입니다…</p>
@@ -36,7 +37,7 @@ export function RegionYearProgress({ code, name, lastYear }: { code: string; nam
               })}</tr>;
             })}</tbody>
           </table></div>
-          <p className="muted">'—'는 이 지역 준비에서 그 해를 받은 기록이 없다는 뜻입니다(사용량 0이 아님). 이 지역 자료는 <a href={`/regions?select=${code}`}>전국 지역</a>에서 받습니다.</p>
+          <p className="muted">'—'는 이 지역 준비에서 그 해를 받은 기록이 없다는 뜻입니다(사용량 0이 아님). 이 지역 자료는 <Link to={`/regions?select=${code}`}>전국 지역</Link>에서 받습니다.</p>
         </>}
   </section>;
 }

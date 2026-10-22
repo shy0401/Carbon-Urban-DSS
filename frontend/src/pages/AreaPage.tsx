@@ -1,5 +1,5 @@
 import { Download, FileText, Info, Link2, Pause, Play, Printer, RotateCcw, Undo2 } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { AreaMap } from '../components/area/AreaMap';
 import { AreaSummaryBar, benchmarkText, BenchmarkPanel, FallbackNotice, MeasuresPanel, ScenarioComparePanel } from '../components/area/AreaWorkflow';
@@ -13,12 +13,17 @@ import { EmptyState, ErrorState, LoadingState } from '../components/Status';
 import { setAnalysisScope, useAnalysisScope } from '../hooks/useAnalysisScope';
 import { areaLink, parseAreaLink, type AreaLink } from '../lib/caseLink';
 import { useApi } from '../hooks/useApi';
+import { useSystemInfo } from '../hooks/useSystemInfo';
 import { slowLoadText, useElapsed } from '../hooks/useElapsed';
 import { api } from '../lib/api';
 import { at, BASELINE_MODE_LABEL, buildSpec, EFFORT_BASIS_LABEL, effortHeadline, eventYears, measuresBody, MODE_LABEL, NO_MEASURES, planBody, plannedArea, pvNote, REPORT_MODE_LABEL, type AreaAnalysis, type AreaMode, type AreaOptions, type AreaReport, type AreaSpec, type BeforeAfter, type Benchmark, type EffortBasis, type EffortResult, type MeasuresState, type PlanState } from '../lib/area';
 import { formatDate, formatMetric } from '../lib/format';
 
-const YEARS = Array.from({ length: 17 }, (_, i) => 2010 + i);
+/** 연도 선택지: 2010년부터 자료가 있는 마지막 해(건축HUB 전력 연도·시스템 기준 연도 중 늦은 쪽)까지. 아직 오지 않은 해는 보이지 않는다. */
+function yearChoices(energyYears: number[] | undefined, baselineYear: number | undefined): number[] {
+  const last = Math.max(energyYears?.length ? energyYears[energyYears.length - 1] : 0, baselineYear ?? 0, 2025);
+  return Array.from({ length: last - 2010 + 1 }, (_, i) => 2010 + i);
+}
 /** 예시값(실제 계획이 아님): 화면을 처음 열었을 때 계산이 돌아가도록 채워 둔다. */
 const DEFAULT_PLAN: PlanState = { method: 'area', added_floor_area_m2: 50000, floors: 20, building_count: 5, footprint_per_building: 800, removed_floor_area_m2: 0 };
 const DEFAULT_TARGET = 40;
@@ -34,6 +39,10 @@ export function AreaPage() {
   if (linked.current === undefined) linked.current = parseAreaLink(typeof window === 'undefined' ? '' : window.location.search);
   const link = linked.current;
   const options = useApi<AreaOptions>(`/areas/options${regionQuery.replace('&', '?')}`);
+  const system = useSystemInfo();
+  const yearChoiceList = useMemo(() => yearChoices(options.data?.energy_years, system?.baseline_year), [options.data?.energy_years, system?.baseline_year]);
+  const energyYears = options.data?.energy_years ?? [];
+  const yearOption = (y: number) => <option key={y} value={y}>{energyYears.length && !energyYears.includes(y) ? `${y} (건축HUB 전력 없음)` : y}</option>;
   const collection = useApi<CollectionStatus>('/areas/collection');
   const [mode, setMode] = useState<AreaMode>(link?.mode ?? 'admin');
   const [adminCode, setAdminCode] = useState(link?.spec?.type === 'admin' ? link.spec.code ?? '' : '');
@@ -190,7 +199,7 @@ export function AreaPage() {
   const o = options.data;
 
   return <div className="page area-page" data-testid="area-page">
-    <PageHeader title="지역 개발 시뮬레이션" description="행정동·반경·직접 그린 구역·용도지역 어디든 골라 과거와 현재를 비교하고, 개발 전후 영향과 앞으로 필요한 감축 노력을 계산합니다." action={<div className="badge-row"><span className="badge warn"><Info size={13} />운영 단계 1차 추정</span><a className="button ghost small" href="/guide#area">사용 방법</a></div>} />
+    <PageHeader title="지역 개발 시뮬레이션" description="행정동·반경·직접 그린 구역·용도지역 어디든 골라 과거와 현재를 비교하고, 개발 전후 영향과 앞으로 필요한 감축 노력을 계산합니다." action={<div className="badge-row"><span className="badge warn"><Info size={13} />운영 단계 1차 추정</span><Link className="button ghost small" to="/guide#area">사용 방법</Link></div>} />
 
     <section className="panel area-controls" aria-label="분석 구역 선택" id="area-step-area">
       <div className="area-modes" role="tablist" aria-label="구역 선택 방식">
@@ -202,8 +211,8 @@ export function AreaPage() {
         {mode === 'circle' && <><label className="area-select narrow"><span>반경</span><div className="with-unit"><input type="number" min={100} max={5000} step={100} value={radius} onChange={(e) => setRadius(Number(e.target.value))} /><em>m</em></div></label><p className="area-hint">{center ? `중심 ${center[1].toFixed(4)}, ${center[0].toFixed(4)} — 지도를 다시 누르면 옮깁니다.` : '지도에서 개발 예정지 중심을 누르세요.'}</p></>}
         {mode === 'polygon' && <><p className="area-hint">지도를 눌러 꼭짓점을 찍습니다 ({vertices.length}개).</p><button className="button small" onClick={() => setVertices((v) => v.slice(0, -1))} disabled={!vertices.length}><Undo2 size={14} />마지막 점 취소</button><button className="button small" onClick={() => setVertices([])} disabled={!vertices.length}><RotateCcw size={14} />지우기</button><button className="button small primary" onClick={() => void run(specFor('polygon'))} disabled={vertices.length < 3}>구역 확정·분석</button></>}
         {mode === 'grid' && <p className="area-hint">예비 선정 격자 <code>{o.default_grid}</code> (500m).</p>}
-        <label className="area-select narrow"><span>시작 연도</span><select value={fromYear} onChange={(e) => setFromYear(Number(e.target.value))}>{YEARS.map((y) => <option key={y} value={y}>{y}</option>)}</select></label>
-        <label className="area-select narrow"><span>끝 연도</span><select value={toYear} onChange={(e) => setToYear(Number(e.target.value))}>{YEARS.map((y) => <option key={y} value={y}>{y}</option>)}</select></label>
+        <label className="area-select narrow"><span>시작 연도</span><select value={fromYear} onChange={(e) => setFromYear(Number(e.target.value))}>{yearChoiceList.map(yearOption)}</select></label>
+        <label className="area-select narrow"><span>끝 연도</span><select value={toYear} onChange={(e) => setToYear(Number(e.target.value))}>{yearChoiceList.map(yearOption)}</select></label>
         {running && <span className="area-running" role="status"><span className="spinner" aria-hidden="true" />계산 중{elapsed >= 8 ? ` ${elapsed}초` : ''}</span>}
         <button type="button" className="button ghost small area-link-button" onClick={copyLink} disabled={!analysis} title="이 구역·기간·계획·목표를 주소로 복사합니다"><Link2 size={14} />링크 복사</button>
       </div>
@@ -272,7 +281,7 @@ function CoverageStrip({ analysis, collection, regionName }: { analysis: AreaAna
       ? <>이 지역({regionName})에서 이 구역에 실제로 있는 연도는 왼쪽과 같습니다. 없는 연도는 0이 아니라 아직 수집하지 않았거나 제공되지 않은 자료입니다. 지역별 수집 단계는 <Link to="/regions">전국 지역</Link>에서 봅니다.</>
       : datasets.length
       ? <><span className="area-collect-title">과거 수집 진행 (연도·항목 수)</span><span className="area-collect-list">{datasets.map((d) => <span key={d} className="area-collect-item"><b>{DATASET_LABEL[d] ?? d}</b>{Object.entries(summary[d]).map(([st, n]) => <em key={st} className={`st-${st.toLowerCase()}`}>{statusLabel(st)} {n}</em>)}</span>)}</span></>
-      : <>과거 연도 자료는 아직 수집하지 않았습니다. <a href="/data#collect-missing">수집 데이터 → 빠진 자료 전부 수집</a> 버튼을 누르거나 PC에서 <code>scripts\dss.cmd CollectAll</code>을 실행하면 채워집니다 (일일 한도에 걸리면 다음 날 자동으로 이어서).</>}</p>
+      : <>과거 연도 자료는 아직 수집하지 않았습니다. <Link to="/data#collect-missing">수집 데이터 → 빠진 자료 전부 수집</Link> 버튼을 누르거나 PC에서 <code>scripts\dss.cmd CollectAll</code>을 실행하면 채워집니다 (일일 한도에 걸리면 다음 날 자동으로 이어서).</>}</p>
   </div>;
 }
 

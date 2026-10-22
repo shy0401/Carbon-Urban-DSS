@@ -7,6 +7,8 @@
 # 쉬게 하기: data\deployment\demo-watch.paused 파일이 있으면 아무것도 하지 않습니다. 바탕화면 [Carbon DSS 끄기](scripts\dss-power.ps1 -Mode Off)·
 #   scripts\prototype.ps1 Stop이 만들고 [Carbon DSS 켜기]·prototype.ps1 Start가 지웁니다.
 #   같은 로그온 동안 켜져 있던 Docker Desktop을 사람이 직접 끄면(작업 표시줄 Quit) 그 뜻으로 보고 스스로 쉽니다. 재부팅·새 로그온 뒤에는 다시 켭니다.
+# - Claude 작업 실행기(data\ops\claude-runner\runner.ps1)가 멈춰 있으면(heartbeat.txt가 3분 넘게 그대로) 최소화 창으로 다시 켭니다.
+#   쉬기(paused)와 무관하게 봅니다. 끄려면 data\ops\claude-runner\autostart.off 파일을 두거나 stop.flag로 멈춥니다.
 param(
     [string]$Root = (Split-Path -Parent $PSScriptRoot),
     [switch]$Publish,
@@ -212,6 +214,22 @@ function Publish-Pages([string]$Url) {
     return $true
 }
 
+function Start-Runner {
+    # Claude 작업 실행기가 죽어 있으면(창을 닫음·재부팅·8일 만료) 다시 켠다. 사람이 autostart.off를 두면 하지 않는다.
+    $runnerDir = Join-Path $Root 'data\ops\claude-runner'
+    $script = Join-Path $runnerDir 'runner.ps1'
+    if (-not (Test-Path -LiteralPath $script)) { return }
+    if (Test-Path -LiteralPath (Join-Path $runnerDir 'autostart.off')) { return }
+    if (Test-Path -LiteralPath (Join-Path $runnerDir 'stop.flag')) { return }
+    $beat = Join-Path $runnerDir 'heartbeat.txt'
+    $age = if (Test-Path -LiteralPath $beat) { (Get-Date) - (Get-Item -LiteralPath $beat).LastWriteTime } else { [TimeSpan]::FromDays(1) }
+    if ($age.TotalMinutes -lt 3) { return }
+    try {
+        Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $script) -WorkingDirectory $runnerDir -WindowStyle Minimized | Out-Null
+        Write-Log ('runner restarted (heartbeat was ' + [int]$age.TotalMinutes + ' min old)')
+    } catch { Write-Log "runner restart failed: $($_.Exception.Message)" }
+}
+
 function Get-SessionMark {
     # 이번 Windows 로그온을 가리키는 값: 가장 먼저 뜬 explorer.exe의 시작 시각(재부팅·로그오프 뒤 바뀜).
     $first = Get-Process -Name explorer -ErrorAction SilentlyContinue | Where-Object { $_.StartTime } | Sort-Object StartTime | Select-Object -First 1
@@ -220,6 +238,7 @@ function Get-SessionMark {
 }
 
 function Invoke-Watch {
+    Start-Runner
     if (Test-Path -LiteralPath $PauseFile) {
         if ($Publish) { Write-Log 'paused (data\deployment\demo-watch.paused exists): nothing done' }
         return 0

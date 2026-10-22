@@ -241,3 +241,75 @@ def test_collect_kapt_years_needs_the_region_complexes_first():
 
     result = region_prepare.collect_kapt_years(Db(), "41820", [2024], log=lambda m: None)
     assert result["stopped"] == "NO_COMPLEXES" and result["left"] == [2024]
+
+
+def test_collect_sgis_years_resolves_each_years_codes_by_name_and_marks_unpublished_years(monkeypatch):
+    """SGIS 행정동 history of a prepared region: the 시·도 list of each year names that year's 시군구 codes (they change,
+    e.g. 전라북도 → 전북특별자치도), 2016 is not published (errCd -100 → no rows) and stays absent, never 0."""
+    from app import region_prepare
+
+    class Region:
+        code = "52130"
+        name = "전북특별자치도 군산시"
+        sido_name = "전북특별자치도"
+        datasets = {"sgis_years": {"2024": "DONE"}}
+
+    region = Region()
+    store: dict[str, object] = {}
+
+    class Db:
+        def get(self, model, key):
+            if model is region_prepare.StudyRegion:
+                return region
+            return store.get(f"{model.__name__}:{key}")
+
+        def add(self, obj):
+            store[f"{type(obj).__name__}:{obj.id}"] = obj
+
+        def rollback(self):
+            pass
+
+        def refresh(self, obj, **kw):
+            pass
+
+        def commit(self):
+            pass
+
+    calls = []
+
+    def fetch(name, path, params, parser):
+        calls.append(name)
+        year = params["year"]
+        if name.endswith("-sido"):
+            if year == 2016:
+                return {"status": "EMPTY_VALID", "rows": []}
+            sido_code = "35" if year < 2024 else "52"
+            sido_name = "전라북도" if year < 2024 else "전북특별자치도"
+            return {"status": "SUCCESS", "rows": [{"adm_code": "31", "adm_name": "경기도", "value": 1, "value_status": "OBSERVED"},
+                                                  {"adm_code": sido_code, "adm_name": sido_name, "value": 2, "value_status": "OBSERVED"}]}
+        if path == "stats/searchpopulation.json" and params["adm_cd"] in ("31", "35", "52"):
+            return {"status": "SUCCESS", "rows": [{"adm_code": params["adm_cd"] + "010", "adm_name": "전주시", "value": 10, "value_status": "OBSERVED"},
+                                                  {"adm_code": params["adm_cd"] + "020", "adm_name": "군산시", "value": 20, "value_status": "OBSERVED"}]}
+        if path == "stats/household.json" and params["adm_cd"] in ("31", "35", "52"):
+            return {"status": "SUCCESS", "rows": [{"adm_code": params["adm_cd"] + "020", "adm_name": "군산시", "value": 9, "value_status": "OBSERVED",
+                                                  "family_member_count": None, "average_family_member_count": None}]}
+        if path == "stats/searchpopulation.json":
+            return {"status": "SUCCESS", "rows": [{"adm_code": params["adm_cd"] + "01", "adm_name": "군산시 해신동", "value": 5, "value_status": "OBSERVED", "raw_record": {}}]}
+        if path == "stats/household.json":
+            return {"status": "SUCCESS", "rows": [{"adm_code": params["adm_cd"] + "01", "adm_name": "군산시 해신동", "value": 3, "value_status": "OBSERVED",
+                                                  "family_member_count": None, "average_family_member_count": None, "raw_record": {}}]}
+        return {"features": [], "raw_source_id": None}
+
+    stored_boundaries = []
+    monkeypatch.setattr(region_prepare, "_mark_year", lambda db, r, field, year, status: r.datasets.setdefault(field, {}).__setitem__(str(year), status))
+    from app import sgis
+    monkeypatch.setattr(sgis, "_store_boundaries", lambda db, year, code, parsed: stored_boundaries.append((year, code)) or 0)
+    result = region_prepare.collect_sgis_years(Db(), "52130", [2016, 2023, 2024, 2025], log=lambda m: None, fetch=fetch)
+    assert region.datasets["sgis_years"] == {"2024": "DONE", "2025": "DONE", "2023": "DONE", "2016": "NOT_PUBLISHED"}
+    assert result["left"] == []
+    # 2025 used the new 시·도 code 52, 2023 the old one 35: the 군산시 code of each year was asked, 전주시 was not
+    assert "population-2025-52020" in calls and "population-2023-35020" in calls and "population-2023-35010" not in calls
+    assert (2025, "52020") in stored_boundaries and (2023, "35020") in stored_boundaries
+    assert store["SgisPopulationAdmin:2023:3502001"].population_count == 5
+    assert store["SgisPopulationAdmin:2023:35020"].population_count == 20 and store["SgisHouseholdAdmin:2023:35020"].household_count == 9
+    assert "SgisPopulationAdmin:2016:3502001" not in store

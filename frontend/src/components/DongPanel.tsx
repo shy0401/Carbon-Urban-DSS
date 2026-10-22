@@ -74,7 +74,7 @@ export function DongPanel({ data, index, grids, complexes, metric, regionName, o
         <dl className="fact-list">
           {KEY_FACTS.map((key) => METRICS.find((m) => m.key === key)).filter((m): m is MetricDef => !!m).map((m) => {
             const result = aggregateMetric(m, grids, shares);
-            return <div className={`fact${result.value === null ? ' missing' : ''}`} key={m.key}><dt>{m.label}</dt><dd><Value result={result} metric={m} /></dd>{result.value !== null && <span className="why">{coverageText(result, m.key)}</span>}</div>;
+            return <div className={`fact${result.value === null ? ' missing' : ''}`} key={m.key}><dt>{m.label}</dt><dd><Value result={result} metric={m} />{result.value !== null && <span className="why">{coverageText(result, m.key)}</span>}</dd></div>;
           })}
         </dl>
       </section>

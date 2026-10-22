@@ -169,6 +169,35 @@ def test_implausibly_small_electricity_is_suspect_and_excluded(tmp_path):
     assert db.scalar(select(func.count()).select_from(EnergyMonthly)) == 0
 
 
+def test_implausibly_large_electricity_is_suspect_and_excluded(tmp_path):
+    """2,000 kWh per household in one month is an entry or unit error (the PC's 319 such months were a median 83× the
+    same complex's other months): kept for audit as SUSPECT, excluded from every sum, never corrected or scaled."""
+    db = make_db()
+    add_complex(db, households=160)
+    item = {'kaptCode': 'A1', 'reqDate': '202501', 'helect': '400000', 'hgas': '1'}   # 2,500 kWh per household
+    stats = collect_kapt_energy(db, 2025, 'smoke', client=StubClient(response(item)), service_key='valid-test-key', data_dir=tmp_path)
+    row = db.scalar(select(ApartmentEnergyMonthly))
+    assert stats['suspect'] == 1 and stats['normalized'] == 0
+    assert row.quality_status == 'SUSPECT' and '단위 오류' in row.raw_record['quality_reason']
+    assert row.electricity_quantity == 400000.0 and row.electricity_carbon_kg is None
+    assert db.scalar(select(func.count()).select_from(EnergyMonthly)) == 0
+
+
+def test_reclassify_existing_applies_the_upper_rule_to_rows_stored_before_it(tmp_path):
+    """Rows collected before the upper rule existed are SUCCESS at 2,500 kWh/household: the idempotent
+    reclassification (run at the start of every collection and by apply-standard) turns them into SUSPECT."""
+    from app.kapt_energy import reclassify_existing
+    db = make_db()
+    add_complex(db, households=160)
+    item = {'kaptCode': 'A1', 'reqDate': '202501', 'helect': '400000', 'hgas': '1'}
+    collect_kapt_energy(db, 2025, 'smoke', client=StubClient(response(item)), service_key='valid-test-key', data_dir=tmp_path)
+    row = db.scalar(select(ApartmentEnergyMonthly))
+    row.quality_status = 'SUCCESS'; row.electricity_carbon_kg = 1.0; db.commit()   # as an older version stored it
+    counts = reclassify_existing(db)
+    row = db.scalar(select(ApartmentEnergyMonthly))
+    assert counts.get('SUSPECT') == 1 and row.quality_status == 'SUSPECT' and row.electricity_carbon_kg is None
+
+
 class SequenceClient(StubClient):
     """Returns the given bodies in order and records forgotten (retried) cache entries."""
     def __init__(self, bodies):

@@ -32,6 +32,11 @@ ANSWERED = {"SUCCESS", "EMPTY_VALID", "NOT_REPORTED", "SUSPECT"}
 # "not reported", not zero use. A reported electricity value below this monthly amount per
 # household is physically implausible for an occupied complex and is kept only for audit.
 MIN_PLAUSIBLE_KWH_PER_HOUSEHOLD = 20.0
+# ... and above this amount per household the value is an entry or unit error, not use: on 2026-10-23 the PC held 319
+# such months (0.35% of 91,034 reported months) at a median 83× the same complex's other months (p50 286, p99 638,
+# p99.9 14,849 kWh/household). A complex-wide monthly average over 2,000 kWh per household does not occur; one such
+# month would otherwise outweigh years of that complex's real use in every sum. Kept for audit, excluded like the low rule.
+MAX_PLAUSIBLE_KWH_PER_HOUSEHOLD = 2000.0
 
 
 class TransientProviderError(ExternalError):
@@ -169,14 +174,18 @@ def classify_month(values: dict[str, float | None], households: int | None) -> t
 
     * every quantity 0/None -> NOT_REPORTED (all quantities null; not zero use)
     * individual 0 -> null (K-apt uses 0 for an item that was not entered)
-    * electricity below MIN_PLAUSIBLE_KWH_PER_HOUSEHOLD per household -> SUSPECT
+    * electricity below MIN_PLAUSIBLE_KWH_PER_HOUSEHOLD or above MAX_PLAUSIBLE_KWH_PER_HOUSEHOLD per household -> SUSPECT
     """
     cleaned = {field: (None if values.get(field) in (None, 0, 0.0) else values.get(field)) for field in QUANTITY_FIELDS}
     if all(value is None for value in cleaned.values()):
         return "NOT_REPORTED", {field: None for field in QUANTITY_FIELDS}, "모든 사용량 항목이 0 또는 공란(미보고)"
     electricity = cleaned["electricity_quantity"]
-    if electricity is not None and households and households > 0 and electricity / households < MIN_PLAUSIBLE_KWH_PER_HOUSEHOLD:
-        return "SUSPECT", cleaned, f"세대당 전기 {electricity / households:.2f}kWh/월 < {MIN_PLAUSIBLE_KWH_PER_HOUSEHOLD:.0f}kWh (비현실적 값)"
+    if electricity is not None and households and households > 0:
+        per_household = electricity / households
+        if per_household < MIN_PLAUSIBLE_KWH_PER_HOUSEHOLD:
+            return "SUSPECT", cleaned, f"세대당 전기 {per_household:.2f}kWh/월 < {MIN_PLAUSIBLE_KWH_PER_HOUSEHOLD:.0f}kWh (비현실적 값)"
+        if per_household > MAX_PLAUSIBLE_KWH_PER_HOUSEHOLD:
+            return "SUSPECT", cleaned, f"세대당 전기 {per_household:,.0f}kWh/월 > {MAX_PLAUSIBLE_KWH_PER_HOUSEHOLD:,.0f}kWh (입력·단위 오류 의심)"
     return "SUCCESS", cleaned, None
 
 
@@ -455,11 +464,26 @@ def collect_kapt_energy(
     return _finish(db, source, year, scope, stats)
 
 
+def _known_cells(db: Any, grid_ids: list[str]) -> set[str]:
+    """The analysis cells among ``grid_ids`` (a point-projected id may name a cell the region does not have)."""
+    if not grid_ids:
+        return set()
+    try:
+        from .models import Grid
+        return set(db.scalars(select(Grid.id).where(Grid.id.in_(sorted(set(grid_ids))))).all())
+    except Exception:  # noqa: BLE001 - tests without a grid table keep the old behaviour
+        db.rollback()
+        return set(grid_ids)
+
+
 def _collect_pass(db: Any, source: Any, session: Any, url: str, key: str, raw_root: Path, targets: list[Any], months: list[str], history: bool,
                   stats: dict[str, int], progress: Any, after_request: Any, only: dict[str, set[str]] | None, label: str) -> None:
     """One pass over the targets. ``only``: {kapt_code: months} to re-request (retry round)."""
     if only is not None:
         targets = [row for row in targets if row.kapt_code in only]
+    # A complex whose coordinates fall in a 500m cell the region does not have (sea reclamation, outside the official
+    # cells) is placed by its point but takes part in no grid aggregation: say so instead of "MATCHED".
+    known_cells = _known_cells(db, [row.grid_id for row in targets if row.grid_id])
     for index, complex_row in enumerate(targets):
         if progress:
             progress(index / max(1, len(targets)), f"{label}단지 {index + 1}/{len(targets)} {complex_row.name or complex_row.kapt_code}")
@@ -467,7 +491,7 @@ def _collect_pass(db: Any, source: Any, session: Any, url: str, key: str, raw_ro
         mapping.grid_id = complex_row.grid_id
         mapping.method = "KAPT_POINT_PROJECT_GRID" if complex_row.grid_id else "UNMATCHED"
         mapping.confidence = 1.0 if complex_row.grid_id else None
-        mapping.match_status = "MATCHED" if complex_row.grid_id else "UNMATCHED"
+        mapping.match_status = "MATCHED" if complex_row.grid_id in known_cells else ("OUTSIDE_GRID" if complex_row.grid_id else "UNMATCHED")
         mapping.matched_at = datetime.now(timezone.utc)
         db.add(mapping)
         built = approval_month(complex_row) if history else None

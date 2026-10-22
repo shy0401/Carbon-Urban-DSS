@@ -1,7 +1,7 @@
 /* 사용 방법 (/guide): 왼쪽 고정 목차 + 본문. 도면 톤: 흰 바탕, 1px 선, 반경 2~8px, 그림자 없음. */
 
 .guide-layout { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: var(--sp-5); align-items: start; }
-.guide-toc { position: sticky; top: var(--sp-4); padding: var(--sp-3); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-panel); }
+.guide-toc { position: sticky; top: calc(var(--shell-header-h, 0px) + var(--sp-4)); max-height: calc(100vh - var(--shell-header-h, 0px) - var(--sp-6)); overflow: auto; padding: var(--sp-3); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-panel); }
 .guide-toc strong { display: block; margin-bottom: var(--sp-2); font-size: var(--fs-caption); color: var(--ink-3); }
 .guide-toc ol { margin: 0; padding: 0; list-style: none; counter-reset: toc; }
 .guide-toc li { counter-increment: toc; }
@@ -13,12 +13,12 @@
 .guide-body > * { min-width: 0; }
 .guide-body table { max-width: 100%; }
 .guide-body .table-wrap, .guide-body pre { max-width: 100%; overflow-x: auto; }
-.guide-section { scroll-margin-top: var(--sp-4); padding: var(--sp-5) var(--sp-6); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-panel); }
+.guide-section { scroll-margin-top: calc(var(--shell-header-h, 120px) + var(--sp-3)); padding: var(--sp-5) var(--sp-6); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-panel); }
 .guide-section h2 { font-size: var(--fs-title); line-height: 1.35; }
 .guide-section h3 { margin: var(--sp-5) 0 var(--sp-2); font-size: var(--fs-panel); }
 .guide-lead { margin: var(--sp-2) 0 0; color: var(--ink-2); font-size: var(--fs-body); line-height: 1.7; }
 .guide-p { margin: var(--sp-2) 0; color: var(--ink); font-size: var(--fs-body); line-height: 1.75; }
-.guide-section code, .guide-code { font-family: var(--mono); font-size: 0.92em; }
+.guide-section code, .guide-code { font-family: var(--mono); font-size: max(0.92em, var(--fs-caption)); }
 .guide-section code { padding: 1px 5px; border-radius: var(--r-map); background: var(--surface-sunk); }
 .guide-code { margin: var(--sp-2) 0; padding: var(--sp-3) var(--sp-4); overflow-x: auto; border: 1px solid var(--line-strong); border-radius: var(--r-map); background: var(--canvas); color: var(--ink); white-space: pre; }
 
@@ -39,7 +39,7 @@
 .guide-flow article > span { font-size: var(--fs-caption); font-weight: 600; color: var(--primary); }
 .guide-flow strong { font-size: var(--fs-panel); }
 .guide-flow p { margin: 0; color: var(--ink-2); font-size: var(--fs-label); line-height: 1.6; }
-.guide-go { display: inline-flex; align-items: center; gap: 2px; margin-top: var(--sp-2); font-size: var(--fs-label); font-weight: 600; color: var(--primary); text-decoration: none; }
+.guide-go { display: inline-flex; align-items: center; gap: 2px; min-height: 24px; margin-top: var(--sp-2); font-size: var(--fs-label); font-weight: 600; color: var(--primary); text-decoration: none; }
 .guide-go:hover { text-decoration: underline; }
 
 .guide-callout-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-3); margin-top: var(--sp-3); }
