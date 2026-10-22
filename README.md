@@ -2,7 +2,8 @@
 
 > **시연 주소(고정): https://shy0401.github.io/Carbon-Urban-DSS/** — 연구실 PC가 켜져 있으면 지금의 시연 서버로 옮겨 갑니다(시연 계정 로그인 필요). PC가 주소를 스스로 고칩니다: [GitHub Pages 고정 안내 주소](docs/DEPLOYMENT.md#github-pages-고정-안내-주소) · 바탕화면 **Carbon DSS 켜기/끄기** 버튼으로 Docker까지 켜고 끕니다([켜기·끄기 버튼](docs/DEPLOYMENT.md#바탕화면-켜기끄기-버튼))
 >
-> **사용자 매뉴얼: [docs/USER_MANUAL.md](docs/USER_MANUAL.md)** ([PDF](docs/manual/Carbon-Urban-DSS-사용자-매뉴얼.pdf)) — 지역을 골라 입력값을 넣으면 어떤 결과가 나오는지 사례 25개(전주·수원·서울 강동·부산 강서), 3D·보고서, 다른 PC에서 같은 결과 확인(`scripts\dss.cmd VerifyCases`).
+> **사용자 매뉴얼 2.0: [docs/USER_MANUAL.md](docs/USER_MANUAL.md)** ([PDF](docs/manual/Carbon-Urban-DSS-사용자-매뉴얼.pdf)) — 모든 화면·기능(4절), 켜기·끄기 버튼과 안내 주소, 사례 25개(전주·수원·서울 강동·부산 강서), 다른 PC에서 같은 결과 확인(`scripts\dss.cmd VerifyCases`). 사용 영상 만드는 법: [scripts/video](scripts/video/README.md)
+> **자료 범위와 완성도: [docs/DATA_COVERAGE.md](docs/DATA_COVERAGE.md)** — 지역·출처별 받은 기간과 빈 곳(2026-10-22 PC DB 집계), 진행 중인 대량 수집.
 > **팀원 과제: [docs/TEAM_TASKS_2026-10.md](docs/TEAM_TASKS_2026-10.md)** ([PPT](docs/presentation/Carbon-Urban-DSS-팀원-작업지시서.pptx) · [PDF](docs/presentation/Carbon-Urban-DSS-팀원-작업지시서.pdf)) · 발표: [기능과 시뮬레이션 사례 18장](docs/presentation/Carbon-Urban-DSS-기능과-시뮬레이션-사례.pptx) ([PDF](docs/presentation/Carbon-Urban-DSS-기능과-시뮬레이션-사례.pdf))
 >
 > **팀 데이터셋 7차 인계(2026-10-20) 적용**: 53개 지역 × 7개 해 탄소공간지도 500m·개발 사례, 팀 변화 모델(개발 계획 → 배출 변화 추정)을 지도 격자 상세에서 씁니다(이 PC만). [팀 데이터셋 7절](docs/TEAM_DATASET.md#7-7차-인계-묶음-2026-10-20-2026-10-21-적용)

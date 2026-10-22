@@ -36,3 +36,6 @@ urban-carbon_공유_*
 팀원전달_*/
 팀원전달_*.zip
 데이터수집_*/
+
+# 사용 영상 파일(크기가 커서 Git 밖에 둠, 만드는 법: scripts/video/README.md)
+docs/video/
