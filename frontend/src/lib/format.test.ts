@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatMetric, qualityLabel, withTo } from './format';
+import { areaWithCommas, formatMetric, qualityLabel, withTo } from './format';
 
 describe('formatMetric', () => {
   it('결측 관측값을 0이 아니라 자료 없음으로 표시한다', () => {
@@ -34,5 +34,12 @@ describe('withTo', () => {
     expect(withTo('전주시')).toBe('전주시로');
     expect(withTo('수원시 팔달구')).toBe('수원시 팔달구로');
     expect(withTo('52710')).toBe('52710(으)로');
+  });
+});
+
+describe('areaWithCommas', () => {
+  it('면적에만 쉼표를 넣고 연도·격자 ID는 그대로 둔다', () => {
+    expect(areaWithCommas('추정 연면적 318619m² / 2025년 cell_968500_1762000')).toBe('추정 연면적 318,619m² / 2025년 cell_968500_1762000');
+    expect(areaWithCommas('연면적 300m²')).toBe('연면적 300m²');
   });
 });

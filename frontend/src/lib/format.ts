@@ -91,6 +91,11 @@ export function share(part: number | null | undefined, total: number | null | un
 }
 
 /** 이름 뒤 보조사: 받침이 있으면 '은', 없으면 '는' ("완주군은", "수원시는"). */
+/** 저장된 문장 속 면적(예: '318619m²')에 천 단위 쉼표를 넣는다. 연도·격자 ID 같은 다른 숫자는 그대로 둔다 (UX 검토 F18). */
+export function areaWithCommas(text: string): string {
+  return text.replace(/(\d{4,})(?=\s?m²)/g, (n) => Number(n).toLocaleString('ko-KR'));
+}
+
 /** 방향 조사 '(으)로': 받침이 없거나 ㄹ 받침이면 '로', 그 밖의 받침이면 '으로'. */
 export function withTo(name: string): string {
   const code = name.trim().slice(-1).charCodeAt(0) - 0xac00;

@@ -14,7 +14,7 @@ import { WeatherChart } from '../components/WeatherChart';
 import { useAnalysisScope } from '../hooks/useAnalysisScope';
 import { useApi } from '../hooks/useApi';
 import { baseChart, compactAxis, lineSeries, missingBands, MONTH_LABELS, monthsOf, SERIES } from '../lib/chartTheme';
-import { formatMetric } from '../lib/format';
+import { areaWithCommas, formatMetric } from '../lib/format';
 import { USE_COLORS, USE_NAME, ZONE_NAME, REGISTER_USE_COLORS, REGISTER_USE_NAMES, knownUseShares } from '../lib/labels';
 import { PROVENANCE, provenanceFromCode, provenanceFromWeatherSource } from '../lib/provenance';
 import { ZONE_GROUP_COLOR } from '../theme/palette';
@@ -60,7 +60,7 @@ export function DashboardPage() {
     <PageHeader title="도시 탄소 대시보드" description="선택 격자의 관측 에너지와 전력 탄소, 도시 형태를 값마다 산식과 근거 범위를 붙여 보여줍니다." action={<div className="header-actions"><span className="status-tag">{year}년 1–12월 공동주택 관측 범위</span><QualityBadge value={data.quality} /></div>} />
 
     <section className="panel site-summary" aria-label="현재 분석 대상지">
-      <div className="site-name"><h2>{sector?.name ?? '선정된 섹터 없음'}</h2><p>{sector?.reason ?? '섹터 선정에 필요한 공간 자료가 없습니다.'}</p></div>
+      <div className="site-name"><h2>{sector?.name ?? '선정된 섹터 없음'}</h2><p>{sector?.reason ? areaWithCommas(sector.reason) : '섹터 선정에 필요한 공간 자료가 없습니다.'}</p></div>
       <dl className="site-facts">
         <div><dt>격자 ID</dt><dd><code>{sector?.grid_id ?? '—'}</code></dd></div>
         <div><dt>면적</dt><dd>{formatMetric(sector?.area_m2, 'm²')}</dd></div>
