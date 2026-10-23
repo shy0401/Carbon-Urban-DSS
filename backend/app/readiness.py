@@ -13,6 +13,21 @@ from .settings import offline_mode
 from .collection_preflight import collection_blockers, credential_format_problem
 from .catalog import REPLACED_BY
 
+# The pipeline card counts rows of big tables (energy_monthly has millions of rows: a plain count took
+# 5~20 s while the bulk collection was writing). The exact counts are kept for 10 minutes per process.
+_COUNT_TTL_S = 600
+_COUNTS: dict[str, tuple[float, int]] = {}
+
+
+def _cached_count(db: Any, name: str, model: Any) -> int:
+    import time
+    hit = _COUNTS.get(name)
+    if hit and time.monotonic() - hit[0] < _COUNT_TTL_S:
+        return hit[1]
+    value = db.scalar(select(func.count()).select_from(model)) or 0
+    _COUNTS[name] = (time.monotonic(), int(value))
+    return int(value)
+
 
 REGISTRY: dict[str, dict[str, Any]] = {
     "kapt_energy": dict(label="K-apt 월별 에너지", acquisition="API_KEY", collection_dataset="kapt_energy", credentials=["DATA_GO_KR_SERVICE_KEY"], scopes={"smoke": "1단지 × 1개월", "limited": "3단지 × 12개월", "full": "전체 단지 × 12개월"}, products=["단지·월 에너지", "전기 탄소"], uses=["월별 에너지 관측", "운영탄소", "실데이터 모델 학습"]),
@@ -112,10 +127,10 @@ def build_readiness(db: Any) -> dict[str, Any]:
             "blocker": blocker,
         })
     counts = Counter(row["state"] for row in rows)
-    raw_assets = db.scalar(select(func.count()).select_from(RawDataAsset)) or 0
+    raw_assets = _cached_count(db, "raw_data_assets", RawDataAsset)
     normalized = sum(int(row["normalized_rows"] or 0) for row in rows)
-    grids = db.scalar(select(func.count()).select_from(Grid)) or 0
-    observations = db.scalar(select(func.count()).select_from(EnergyMonthly)) or 0
+    grids = _cached_count(db, "grid_500m", Grid)
+    observations = _cached_count(db, "energy_monthly", EnergyMonthly)
     pipeline = [
         {"id": "acquire", "label": "수집", "value": len(rows), "detail": "공식 API·공개자료·수동 원본"},
         {"id": "raw", "label": "원본 보존", "value": raw_assets, "detail": "응답·파일·출처·시각"},

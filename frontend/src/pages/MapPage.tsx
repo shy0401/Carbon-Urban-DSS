@@ -1,6 +1,6 @@
 import * as maplibregl from 'maplibre-gl';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
-import { ChevronDown, Layers3, LocateFixed, RefreshCw, X } from 'lucide-react';
+import { ChevronDown, Layers3, LocateFixed, PanelLeftClose, PanelLeftOpen, RefreshCw, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { DongPanel } from '../components/DongPanel';
@@ -150,6 +150,14 @@ function RegionDetailMap({ offline }: { offline: boolean | null }) {
   const [mapError, setMapError] = useState<string | null>(null);
   const [basemapEnabled, setBasemapEnabled] = useState(true);
   const [legendOpen, setLegendOpen] = useState(() => typeof window === 'undefined' || window.innerWidth > 720);
+  // 왼쪽 패널(지표·읍면동·범례) 전체를 접어 지도를 넓게 본다(사용성 검토 F13: 패널이 지도 폭의 40%). 선택은 기억하고,
+  // 761~1100px(상세가 지도 아래로 가는 폭)에서는 처음에 접어 둔다. 760px 이하는 패널이 지도 아래에 쌓이므로 펼침.
+  const [railOpen, setRailOpen] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    try { const saved = window.localStorage.getItem('carbon-map-rail'); if (saved === 'open') return true; if (saved === 'closed') return false; } catch { /* 저장소 없음 */ }
+    return !(window.innerWidth > 760 && window.innerWidth <= 1100);
+  });
+  const toggleRail = () => setRailOpen((open) => { const next = !open; try { window.localStorage.setItem('carbon-map-rail', next ? 'open' : 'closed'); } catch { /* 저장소 없음 */ } return next; });
   const [basemapFailed, setBasemapFailed] = useState(false);
   const [metricKey, setMetricKey] = useState<string | null>(null);
   const [visible, setVisible] = useState<Record<LayerKey, boolean>>(DEFAULT_VISIBLE);
@@ -438,7 +446,11 @@ function RegionDetailMap({ offline }: { offline: boolean | null }) {
       <div className="map-stage">
         <div ref={container} className={`map-canvas${showBasemap ? '' : ' no-basemap'}`} aria-label={`${regionName} 탄소 공간 지도`} />
         {loading && <div className="map-busy" role="status" data-testid="map-busy">{year}년 자료를 불러오는 중입니다</div>}
-        <div className="map-rail">
+        <div className={`map-rail${railOpen ? '' : ' collapsed'}`}>
+          <button type="button" className="tool-button rail-toggle" aria-expanded={railOpen} aria-controls="map-rail-body" onClick={toggleRail} title={railOpen ? '지표·범례 패널을 접어 지도를 넓게 봅니다' : '지표·범례 패널을 펼칩니다'}>
+            {railOpen ? <><PanelLeftClose size={15} aria-hidden="true" />패널 접기</> : <><PanelLeftOpen size={15} aria-hidden="true" /><span className="rail-toggle-label">{metric.label}</span></>}
+          </button>
+          <div id="map-rail-body" className="map-rail-body" hidden={!railOpen}>
           {level === 'BASIC' && data.region?.code && <BasicRegionNote code={data.region.code} name={regionName} />}
           <div className="metric-picker">
             <button className="metric-trigger" aria-haspopup="listbox" aria-expanded={pickerOpen} onClick={() => setPickerOpen(!pickerOpen)}>
@@ -474,6 +486,7 @@ function RegionDetailMap({ offline }: { offline: boolean | null }) {
               <small>선도소프트가 준 탄소공간지도 100m 건물 전기 배출입니다(산정 계수 확인 필요). 0은 제공값이고 건물이 없는 칸인지 확인이 필요합니다. 급감은 앞 해 100 t 이상이던 칸이 절반 아래로 줄어든 칸입니다. {kcsmYear && kcsmYear !== year ? `${year}년 자료가 없어 ${kcsmYear}년 값을 씁니다. ` : ''}{k100.fc?.meta.truncated ? '칸이 많아 일부만 그렸습니다. 더 확대하세요. ' : ''}이용 조건 확인 전이라 이 PC 화면에서만 보입니다.</small></div>}
             {visible.buildings && <div className="overlay-legend" aria-label="건물 용도 범례"><div className="overlay-head"><strong>건물 용도</strong>{buildingQuality && <ProvenanceBadge kind={buildingQuality} />}</div><ul className="use-legend">{USE_COLORS.map(([key, color]) => <li key={key}><i className={color ? undefined : 'is-missing'} style={{ background: color ?? undefined }} />{USE_NAME[key]}{viewport && !viewport.needZoom && <b>{(viewport.counts[key] ?? 0).toLocaleString('ko-KR')}</b>}</li>)}</ul><small>{data.buildings_source}{data.buildings_mode === 'viewport' ? `. 확대 ${BUILDING_MIN_ZOOM} 이상에서 표시` : ''}{viewport && !viewport.needZoom && viewport.shown > 0 && (viewport.counts.UNKNOWN ?? 0) === viewport.shown ? '. 이 레이어에는 용도코드가 없어 모두 용도 미상으로 칠합니다. 용도는 격자 상세의 건축물대장 항목에서 봅니다.' : ''}</small></div>}
           </section>
+          </div>
         </div>
         <div className="map-tools">
           <div className="map-tool-row">

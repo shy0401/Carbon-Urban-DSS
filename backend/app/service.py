@@ -113,6 +113,21 @@ def region_sector(db,sc):
     return TestbedSector(id=f'region:{sc.code}',grid_id=sc.default_grid_id,name=f'{sc.short} 기본 대상지',area_m2=250000,
                          reason='지역 준비 때 K-apt 세대수가 가장 많은 격자(없으면 지역 중심 격자)로 정한 기본 대상지',candidates=[],metadata_json={})
 
+def sources_for(db,year=2025):
+    """The data-source rows the dashboard and /api/sources show (catalogue + quality for ``year``).
+
+    Kept apart from ``dashboard`` so that the title block, which asks for the sources on every screen,
+    does not make the server compute the whole dashboard (monthly energy, baselines, weather) each time."""
+    rows=[]
+    for r in db.scalars(select(DataSource).where(DataSource.status!='REPLACED')):
+        s=serialize(r)
+        try:
+            from .quality import dataset_quality
+            s['quality_scores']=dataset_quality(db,r.id,year)
+        except ImportError:pass
+        rows.append(s)
+    return rows
+
 def dashboard(db,grid_id=None,year=2025,region=None):
     from .regions import scope,weather_rows
     sc=scope(db,region) if region is not None else None
@@ -160,14 +175,7 @@ def dashboard(db,grid_id=None,year=2025,region=None):
     base_totals={k:nullable_sum(r[k] for r in baseline_monthly) for k in ['electricity_kwh','gas_kwh','carbon_kg']} if base else {'electricity_kwh':None,'gas_kwh':None,'carbon_kg':None}
     estimate=baseline_estimate(db,year,sc,factors,selected_grid) if not base and selected_grid else None
     population=meta.get('population');households=meta.get('households')
-    source_rows=[]
-    for r in db.scalars(select(DataSource).where(DataSource.status!='REPLACED')):
-        s=serialize(r)
-        try:
-            from .quality import dataset_quality
-            s['quality_scores']=dataset_quality(db,r.id,year)
-        except ImportError:pass
-        source_rows.append(s)
+    source_rows=sources_for(db,year)
     quality_score={'coverage_score':(coverage['electricity_months']+coverage['gas_months'])/24,'completeness_score':(coverage['electricity_months']+coverage['gas_months'])/24,'temporal_score':(coverage['electricity_months']+coverage['gas_months'])/24,'spatial_match_score':matched/count if count else None}
     known=[v for v in quality_score.values() if v is not None];quality_score['overall']=sum(known)/len(known) if known else None
     return dict(selected_sector=selected,year=year,**totals,current_far=meta.get('observed_current_far'),current_bcr=meta.get('observed_current_bcr'),households=households,population=population,gross_floor_area_m2=area,developable_site_area_m2=meta.get('site_area_m2'),legal_far_limit=None,legal_bcr_limit=None,legal_status='법적 상한 미확정',quality='에너지 실측 확보·공간매칭 필요' if count==0 else '공간매칭된 관측 / 표본 범위 확인',quality_scores=quality_score,monthly=monthly,weather=[serialize(r) for r in weather_rows(db,sc.code if sc else None,f'{year}01',f'{year}12')],region={'code':sc.code,'name':sc.name,'short_name':sc.short} if sc else None,sources=source_rows,coverage=dict(**coverage,total_months=12,energy_records=count,matched_records=matched),regional_monthly=regional,regional_totals={k:nullable_sum(r[k] for r in regional) for k in totals},carbon_status='공식 배출계수 확인 필요' if not factors else '전력 GIR 승인 계수 · 가스 가정 계수(IPCC 2006)' if (factors.get('GAS') or {}).get('id','').startswith('rule-') else '검증된 계수 적용 / 미확보 에너지원은 제외',electricity_carbon_kg=nullable_sum(r.get('electricity_carbon_kg') for r in monthly),gas_carbon_kg=nullable_sum(r.get('gas_carbon_kg') for r in monthly),baseline_floor_area_m2=area,baseline_monthly=baseline_monthly,baseline_scope={k:base[k] for k in ['parcels','parcel_names','energy_types','excluded_parcels','excluded_names','area_m2']} if base else None,baseline_basis='GRID_OBSERVED' if base else estimate['basis'] if estimate else None,baseline_estimate=estimate,carbon_factors={k:{'factor':v['factor'],'unit':v['factor_unit'],'source':v['source'],'notes':v['notes'],'assumed':v['id'].startswith('rule-')} for k,v in factors.items()},floor_area_issues=grid_area_issues,baseline_totals=base_totals,normalized={'energy_kwh_per_m2':(base_totals['electricity_kwh']+base_totals['gas_kwh'])/area if base and area and base_totals['electricity_kwh'] is not None and base_totals['gas_kwh'] is not None else None,'energy_kwh_per_person':(base_totals['electricity_kwh']+base_totals['gas_kwh'])/population if base and population and base_totals['electricity_kwh'] is not None and base_totals['gas_kwh'] is not None else None,'co2eq_kg_per_m2':base_totals['carbon_kg']/area if base and area and base_totals['carbon_kg'] is not None else None,'co2eq_kg_per_person':base_totals['carbon_kg']/population if base and population and base_totals['carbon_kg'] is not None else None,'electricity_kwh_per_m2':e_int.get('kwh_per_m2'),'electricity_matched_floor_area_m2':e_int.get('area_m2'),'electricity_kwh_per_household':e_int.get('kwh_per_household'),'electricity_households':e_int.get('households'),'electricity_complete_parcels':e_int.get('complete_parcels') or 0,'electricity_area_parcels':e_int.get('area_parcels') or 0,'electricity_household_parcels':e_int.get('household_parcels') or 0,'electricity_observed_parcels':e_int.get('observed_parcels') or 0,'electricity_suspect_parcels':e_int.get('suspect_parcels') or 0,'electricity_carbon_kg_per_m2':carbon_kg(e_int.get('kwh_per_m2'),factors.get('ELECTRICITY'))},annual_complete={'electricity':coverage['electricity_months']==12,'gas':coverage['gas_months']==12},scope='격자에 좌표 매칭된 관측 지번 합계. 격자 전체 건물의 총소비를 의미하지 않습니다.',observations_label='OBSERVED',metadata_label='CALCULATED')

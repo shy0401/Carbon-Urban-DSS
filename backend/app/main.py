@@ -195,7 +195,8 @@ def get_dashboard(year:int=Query(DEFAULT_YEAR,ge=2000,le=2100),grid_id:str|None=
 
 @app.get('/api/sources')
 def sources(year:int=Query(DEFAULT_YEAR,ge=2000,le=2100)):
-    with Session() as db:return dashboard(db,year=year)['sources']
+    from .service import sources_for
+    with Session() as db:return sources_for(db,year)
 
 @app.get('/api/readiness')
 def readiness():
