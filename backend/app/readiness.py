@@ -66,11 +66,12 @@ def _state(source: DataSource | None, meta: dict[str, Any], credentials: list[di
     rows = source.normalized_row_count if source else 0
     if status == "REPLACED":
         return "REPLACED"
-    if rows and status in {"COLLECTED", "SUCCESS", "COMPLETED"}:
-        return "COLLECTED"
-    # A missing or malformed key blocks further collection even when earlier rows exist.
+    # A missing or malformed key blocks further collection even when earlier rows exist (checked before the
+    # "collected" shortcut: the screen must say the key is needed, whatever the source status says).
     if credentials and not all(item["configured"] and item.get("format_ok", True) for item in credentials):
         return "CREDENTIAL_REQUIRED"
+    if rows and status in {"COLLECTED", "SUCCESS", "COMPLETED"}:
+        return "COLLECTED"
     if rows or status in {"PARTIAL", "FALLBACK"}:
         return "PARTIAL"
     if meta["acquisition"] == "MANUAL_DOWNLOAD" or status == "MANUAL_DOWNLOAD_REQUIRED":
