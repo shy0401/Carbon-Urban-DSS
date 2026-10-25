@@ -174,11 +174,15 @@ def classify_month(values: dict[str, float | None], households: int | None) -> t
 
     * every quantity 0/None -> NOT_REPORTED (all quantities null; not zero use)
     * individual 0 -> null (K-apt uses 0 for an item that was not entered)
+    * a negative quantity -> null as well (a use cannot be negative; the raw value stays in raw_record, like the
+      건축HUB rule in DATA_STANDARD 4절). The month is still judged on what is left.
     * electricity below MIN_PLAUSIBLE_KWH_PER_HOUSEHOLD or above MAX_PLAUSIBLE_KWH_PER_HOUSEHOLD per household -> SUSPECT
     """
-    cleaned = {field: (None if values.get(field) in (None, 0, 0.0) else values.get(field)) for field in QUANTITY_FIELDS}
+    cleaned = {field: (None if values.get(field) in (None, 0, 0.0) or (values.get(field) or 0) < 0 else values.get(field)) for field in QUANTITY_FIELDS}
+    negatives = [field for field in QUANTITY_FIELDS if (values.get(field) or 0) < 0]
     if all(value is None for value in cleaned.values()):
-        return "NOT_REPORTED", {field: None for field in QUANTITY_FIELDS}, "모든 사용량 항목이 0 또는 공란(미보고)"
+        reason = "모든 사용량 항목이 0 또는 공란(미보고)" + (f"; 음수 {len(negatives)}개 항목은 NULL" if negatives else "")
+        return "NOT_REPORTED", {field: None for field in QUANTITY_FIELDS}, reason
     electricity = cleaned["electricity_quantity"]
     if electricity is not None and households and households > 0:
         per_household = electricity / households
@@ -186,7 +190,7 @@ def classify_month(values: dict[str, float | None], households: int | None) -> t
             return "SUSPECT", cleaned, f"세대당 전기 {per_household:.2f}kWh/월 < {MIN_PLAUSIBLE_KWH_PER_HOUSEHOLD:.0f}kWh (비현실적 값)"
         if per_household > MAX_PLAUSIBLE_KWH_PER_HOUSEHOLD:
             return "SUSPECT", cleaned, f"세대당 전기 {per_household:,.0f}kWh/월 > {MAX_PLAUSIBLE_KWH_PER_HOUSEHOLD:,.0f}kWh (입력·단위 오류 의심)"
-    return "SUCCESS", cleaned, None
+    return "SUCCESS", cleaned, (f"음수 항목 NULL: {', '.join(negatives)}" if negatives else None)
 
 
 def _is_transient(message: str) -> bool:

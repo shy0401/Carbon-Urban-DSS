@@ -183,6 +183,22 @@ def test_implausibly_large_electricity_is_suspect_and_excluded(tmp_path):
     assert db.scalar(select(func.count()).select_from(EnergyMonthly)) == 0
 
 
+def test_negative_quantities_become_null_and_the_month_is_judged_on_the_rest(tmp_path):
+    """The PC held 14 SUCCESS months with a negative heating value and 3 with negative electricity: a use cannot be
+    negative, so the item is NULL (raw value kept in raw_record) and the month is classified on what remains."""
+    from app.kapt_energy import classify_month
+    db = make_db()
+    add_complex(db, households=160)
+    item = {'kaptCode': 'A1', 'reqDate': '202501', 'helect': '48000', 'hheat': '-250'}   # 300 kWh per household, heating negative
+    stats = collect_kapt_energy(db, 2025, 'smoke', client=StubClient(response(item)), service_key='valid-test-key', data_dir=tmp_path)
+    row = db.scalar(select(ApartmentEnergyMonthly))
+    assert stats['normalized'] == 1
+    assert row.quality_status == 'SUCCESS' and row.heating_quantity is None and row.electricity_quantity == 48000.0
+    assert row.raw_record['hheat'] == '-250' and '음수 항목 NULL' in row.raw_record['quality_reason']
+    status, cleaned, reason = classify_month({'electricity_quantity': -3580.9, 'gas_quantity': None, 'heating_quantity': None, 'hot_water_quantity': None, 'water_quantity': None}, 160)
+    assert status == 'NOT_REPORTED' and cleaned['electricity_quantity'] is None and '음수' in reason
+
+
 def test_reclassify_existing_applies_the_upper_rule_to_rows_stored_before_it(tmp_path):
     """Rows collected before the upper rule existed are SUCCESS at 2,500 kWh/household: the idempotent
     reclassification (run at the start of every collection and by apply-standard) turns them into SUSPECT."""

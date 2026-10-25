@@ -26,7 +26,7 @@ from sqlalchemy import select, text
 
 from .degree_days import CDD_BASE_C, HDD_BASE_C, RULE, RULE_ID, degree_days
 
-VERSION = "1.1"  # 1.1 (2026-10-23): K-apt 세대당 전기 상한(2,000 kWh/월) SUSPECT 규칙을 저장된 달에도 적용
+VERSION = "1.2"  # 1.1 (10-23): K-apt 세대당 전기 상한 SUSPECT 규칙; 1.2 (10-26): K-apt 음수 항목은 NULL(원값은 raw_record) — 둘 다 저장된 달에 다시 적용
 ELECTRICITY_UNDERREPORT_KWH_PER_HOUSEHOLD = 2000.0  # urban-carbon config/rules.yaml electricity_underreport (ADR 0012)
 DOC = "docs/DATA_STANDARD.md"
 Log = Callable[[str], None]
@@ -264,6 +264,11 @@ def check_database(db: Any, data_dir: str | Path | None = None, *, raw_sample: i
         {"limit": ELECTRICITY_UNDERREPORT_KWH_PER_HOUSEHOLD}).one()
     items.append(_item("kapt_underreport", f"단지 세대당 전기 {ELECTRICITY_UNDERREPORT_KWH_PER_HOUSEHOLD:,.0f} kWh/년 미만은 누락 의심으로 표시 (4절, 팀 기준)", "INFO",
                        f"12개월 단지-연도 중 {low[0]:,}건({low[1]:,}개 단지): 값은 그대로 두고 해석 때 주의", low[0]))
+
+    negative = db.scalar(text("SELECT count(*) FROM apartment_energy_monthly WHERE electricity_quantity < 0 OR gas_quantity < 0 OR heating_quantity < 0 "
+                              "OR hot_water_quantity < 0 OR water_quantity < 0")) or 0
+    items.append(_item("kapt_negative", "K-apt 음수 사용량 항목은 NULL (4절; 원값은 raw_record)", "OK" if not negative else "WARN",
+                       "음수 항목 없음" if not negative else f"음수 항목이 남은 달 {negative:,}개 → apply-standard", negative))
 
     outside = db.scalar(text("SELECT count(*) FROM complex_grid_mapping m WHERE m.grid_id IS NOT NULL AND m.match_status = 'MATCHED' "
                              "AND NOT EXISTS (SELECT 1 FROM grid_500m g WHERE g.id = m.grid_id)")) or 0
