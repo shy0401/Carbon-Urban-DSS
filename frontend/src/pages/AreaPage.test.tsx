@@ -172,3 +172,44 @@ describe('KcsmPanel (탄소공간지도 100m, 선도소프트)', () => {
     expect(table.textContent).toContain('1칸');
   });
 });
+
+describe('EstimatesPanel·IndustryPanel (추정은 관측과 따로, 업계 기준은 참고 위치)', () => {
+  it('shows backcast years, observed and estimated side by side, the collecting tag and when the estimate was computed', async () => {
+    const { EstimatesPanel } = await import('./AreaPage');
+    const { render: r, screen: sc } = await import('@testing-library/react');
+    const analysis = { history: { estimates: { available: true, rule_version: 'est-1.0', created_at: '2026-10-27T09:30:00+00:00',
+      buildings: {
+        2019: { year: 2019, backcast: true, electricity_kwh: 800000, gas_kwh: 500000, electricity_observed_kwh: null, same_index: 0.98, exist_share: 0.9 },
+        2025: { year: 2025, backcast: false, complete: false, electricity_kwh: 1000000, gas_kwh: null, electricity_observed_kwh: 900000, electricity_filled_kwh: 60000, electricity_filled_months: 2 } },
+      apartments: { 2025: { year: 2025, observed_kwh: 500, observed_complexes: 1, estimated_kwh: 300, estimated_complexes: 1, total_kwh: 800, peer_median_complexes: 0 } },
+      population: {} } } } as never;
+    r(<EstimatesPanel analysis={analysis} />);
+    const panel = sc.getByTestId('area-estimates');
+    expect(panel.textContent).toContain('되돌림 추정');
+    expect(panel.textContent).toContain('수집 중');
+    expect(panel.textContent).toContain('빈 달 2개월 채움');
+    expect(panel.querySelector('tr.is-estimated-row')).not.toBeNull();
+    expect(sc.getByTestId('area-estimates-asof').textContent).toContain('2026-10-27');
+    expect(sc.getByTestId('area-estimates-asof').textContent).toContain('est-1.0');
+  });
+
+  it('renders nothing when no estimate was computed for the region', async () => {
+    const { EstimatesPanel, IndustryPanel } = await import('./AreaPage');
+    const { render: r } = await import('@testing-library/react');
+    const { container } = r(<><EstimatesPanel analysis={{ history: { estimates: { available: false } } } as never} /><IndustryPanel analysis={{ history: {} } as never} /></>);
+    expect(container.innerHTML).toBe('');
+  });
+
+  it('lists the industry reference rows and notes without judging a grade', async () => {
+    const { IndustryPanel } = await import('./AreaPage');
+    const { render: r, screen: sc } = await import('@testing-library/react');
+    const analysis = { history: { industry: { available: true, zone: '중부', table: [
+      { label: '1차에너지 원단위 (전력×2.75 + 가스×1.1)', value: '186.0 kWh/m²·년', reference: '주거 2등급 구간 수준(참고)', source: '한국에너지공단' }],
+      notes: ['인증은 설계 평가이고 이 값은 실사용 계량값이라 판정이 아닙니다.'] } } } as never;
+    r(<IndustryPanel analysis={analysis} />);
+    const panel = sc.getByTestId('area-industry');
+    expect(panel.textContent).toContain('186.0 kWh/m²·년');
+    expect(panel.textContent).toContain('참고');
+    expect(panel.textContent).toContain('판정이 아닙니다');
+  });
+});
