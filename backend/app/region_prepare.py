@@ -413,7 +413,7 @@ def _vworld_step(dataset: str) -> Callable[[Any, StudyRegion, Log], dict[str, An
         stats = collect_vworld_cells(db, dataset, todo, progress=lambda f, m: log(m) if int(f * 100) % 10 == 0 else None)
         if dataset == "cadastral":
             from .energy_parcels import build_parcel_grid
-            stats["parcel_grid"] = build_parcel_grid(db)
+            stats["parcel_grid"] = build_parcel_grid(db, region.legal_codes)
         extra = f", 필지-격자 {stats['parcel_grid']:,}건" if "parcel_grid" in stats else ""
         return {"rows": stats["features"], "message": f"{stats['tiles']:,}개 1km 타일, 요청 {stats['requests']:,}회, 도형 {stats['features']:,}개{extra}"}
     return run
@@ -462,7 +462,7 @@ def step_building_energy(db: Any, region: StudyRegion, log: Log) -> dict[str, An
         raise ValueError("이 지역의 법정동·리 코드가 없습니다")
     year = analysis_year()
     stats = collect_energy_all(db, year, lambda f, m: log(m) if int(f * 100) % 5 == 0 else None, regions=leaves)
-    build_parcel_grid(db)
+    build_parcel_grid(db, region.legal_codes)
     return {"rows": stats["inserted"] + stats["updated"], "message": f"{year}년 법정동·리 {len(leaves)}곳, 요청 {stats['requests']:,}회, 새 행 {stats['inserted']:,}", "year": year}
 
 
@@ -498,7 +498,7 @@ def collect_energy_years(db: Any, code: str, years: list[int], *, log: Log = pri
             _mark_energy_year(db, region, year, status)  # a year stopped half way stays 잠정값 (energy_parcels.region_year_complete)
             quota = status == "WAITING"  # daily quota: stop here; other errors: try the next year
     if done:
-        build_parcel_grid(db)
+        build_parcel_grid(db, region.legal_codes)
     return {"region": code, "done": done, "left": sorted(left), "years_before_hub": sorted(y for y in years if y < HUB_FIRST_YEAR)}
 
 

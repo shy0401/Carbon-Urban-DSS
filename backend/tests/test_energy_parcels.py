@@ -254,3 +254,11 @@ def test_a_parcel_placed_later_reaches_the_map_without_a_restart(monkeypatch):
     db.add(ParcelGrid(pnu='5211311600100120000', grid_id='g1', method='VWORLD_ROAD_ADDRESS'))
     db.commit()
     assert grid_building_energy(db, 2025, {'g1'})['g1']['electricity_kwh'] == 1212.0
+
+
+def test_with_old_sigungu_adds_the_pre_rename_jeonbuk_code():
+    """A region's parcel_grid rebuild covers PNUs stored with the 전북 code before 2024 (45xxx) as well."""
+    from app.energy_parcels import with_old_sigungu
+    assert with_old_sigungu(['52111', '52113']) == ['45111', '45113', '52111', '52113']
+    assert with_old_sigungu(['41110']) == ['41110']
+    assert with_old_sigungu([]) == []

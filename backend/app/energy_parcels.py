@@ -62,23 +62,47 @@ def parcel_pnu(sigungu: str, bjdong: str, lot_type: str | None, bun: str, ji: st
 ADDRESS_METHODS = ("VWORLD_PARCEL_ADDRESS", "VWORLD_ROAD_ADDRESS")
 
 
-def build_parcel_grid(db: Any) -> int:
-    """(Re)build parcel_grid from cadastral_parcels with PostGIS. Returns the row count (0 without PostGIS)."""
+def with_old_sigungu(codes: Any) -> list[str]:
+    """5-digit 시·군·구 codes plus their pre-rename codes (전북 52xxx → 45xxx): PNUs of older rows keep the old code."""
+    out: set[str] = set()
+    for code in codes or ():
+        code = str(code)[:5]
+        out.add(code)
+        rule = OLD_SIGUNGU.get(code[:2])
+        if rule:
+            out.add(rule[0] + code[2:])
+    return sorted(out)
+
+
+def build_parcel_grid(db: Any, sigungu_codes: Any = None) -> int:
+    """(Re)build parcel_grid from cadastral_parcels with PostGIS. Returns the row count (0 without PostGIS).
+
+    ``sigungu_codes`` limits the rebuild to the parcels of those 시·군·구 (a prepared region). Without it the whole
+    table is rebuilt: with the nationwide cadastral layer that took over 6 minutes of disk reads (2026-10-27), so the
+    region steps pass their own codes."""
+    scope = with_old_sigungu(sigungu_codes) if sigungu_codes else None
+    only = " AND left({col}, 5) IN :codes" if scope else ""
+    params: dict[str, Any] = {"codes": scope} if scope else {}
+
+    def stmt(sql: str) -> Any:
+        t = text(sql)
+        return t.bindparams(bindparam("codes", expanding=True)) if scope else t
     try:
         ParcelGrid.__table__.create(db.get_bind(), checkfirst=True)
         with db.begin_nested():
-            db.execute(text("DELETE FROM parcel_grid WHERE method NOT IN :kept").bindparams(bindparam("kept", expanding=True)), {"kept": list(ADDRESS_METHODS)})
-            db.execute(text("DELETE FROM parcel_grid p USING cadastral_parcels c WHERE p.pnu = c.pnu"))
-            db.execute(text(
+            db.execute(stmt("DELETE FROM parcel_grid WHERE method NOT IN :kept" + only.format(col="pnu")).bindparams(bindparam("kept", expanding=True)),
+                       {"kept": list(ADDRESS_METHODS), **params})
+            db.execute(stmt("DELETE FROM parcel_grid p USING cadastral_parcels c WHERE p.pnu = c.pnu" + only.format(col="c.pnu")), params)
+            db.execute(stmt(
                 "INSERT INTO parcel_grid (pnu, grid_id, method) "
                 "SELECT DISTINCT ON (c.pnu) c.pnu, g.id, 'CADASTRAL_POINT_ON_SURFACE' "
                 "FROM cadastral_parcels c JOIN grid_500m g ON ST_Contains(g.geom, ST_PointOnSurface(c.geom)) "
-                "WHERE c.pnu IS NOT NULL ORDER BY c.pnu"))
+                "WHERE c.pnu IS NOT NULL" + only.format(col="c.pnu") + " ORDER BY c.pnu"), params)
         db.commit()
     except Exception:  # noqa: BLE001 - no PostGIS (tests) or no cadastral layer yet
         db.rollback()
         return 0
-    place_missing_parcels(db)
+    place_missing_parcels(db, scope)
     _GRID_CACHE.clear()
     return db.scalar(select(func.count()).select_from(ParcelGrid)) or 0
 

@@ -60,7 +60,7 @@ def test_collect_energy_years_runs_newest_first_and_stops_at_the_daily_quota(mon
 
     monkeypatch.setattr(region_prepare, "legal_leaves", lambda db, codes: [{"sigunguCd": "11740", "bjdongCd": "10100"}])
     monkeypatch.setattr(energy_parcels, "collect_energy_all", collect)
-    monkeypatch.setattr(energy_parcels, "build_parcel_grid", lambda db: 0)
+    monkeypatch.setattr(energy_parcels, "build_parcel_grid", lambda db, codes=None: 0)
     result = region_prepare.collect_energy_years(Db(), "11740", [2019, 2022, 2024, 2023, 2021], log=lambda m: None)
     assert calls == [2024, 2023, 2022]                      # newest first; 2021 not asked after the quota answer
     assert sorted(result["done"]) == [2023, 2024] and result["left"] == [2021, 2022]
