@@ -45,6 +45,7 @@ SLOTS: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
     (("latest_carbon",), ("",)),
     (("building_energy",), ("", "건물 전체로 보면 ")),
     (("building_energy_trend",), ("",)),
+    (("estimate_buildings_backcast",), ("",)),
     (("event",), ("", "개발 이력을 보면 ")),
     (("change", "estimated_change"), ("", "개발 전후로 ")),  # a before/after difference, not a measured cause ('그 결과')
     (("new_share",), ("",)),
@@ -53,9 +54,10 @@ SLOTS: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
     (("effort_target",), ("", "앞으로의 개발에 대해서는 ")),
     (("effort_met", "effort_all"), ("", "이때 ")),
     (("effort_offset",), ("",)),
+    (("bench_zeb",), ("", "참고로 ")),
 )
 # Sentences that do not follow from the one before: no connective ('그 결과 관측이 부족해 …' read as a cause).
-NO_CONNECTIVE = frozenset({"estimated_change", "effort_basis", "effort_fallback", "building_energy_trend"})
+NO_CONNECTIVE = frozenset({"estimated_change", "effort_basis", "effort_fallback", "building_energy_trend", "estimate_buildings_backcast"})
 EFFORT_BASES = ("apartments", "apartments", "buildings")
 
 

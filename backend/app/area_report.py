@@ -143,6 +143,9 @@ NARRATIVE_FACTS = frozenset({
     "scope", "coverage", "development", "register", "building_energy", "building_energy_trend",
     "latest_energy", "latest_carbon", "latest_intensity", "event", "before_after", "change", "new_share",
     "estimated_change", "effort_fallback", "effort_basis", "effort_target", "effort_met", "effort_new", "effort_all", "effort_offset",
+    # v4 (2026-10-27): the 2015~2019 back-cast (DATA_STANDARD 4.1) and the ZEB reference (5.14); the other estimate_*/bench_*
+    # sentences stay in the report body only (prompt length)
+    "estimate_buildings_backcast", "bench_zeb",
 })
 
 

@@ -8,8 +8,9 @@
 1. 건축HUB 빠진 달 (2020~): 같은 지번의 앞뒤 해 같은 달 × (두 해 공통 관측 달 합의 비) — 공통 달이 6개월 이상인 참고 해
    최대 2개의 평균. 참고 해가 없으면 그해 도시 월별 비중으로 나눈다. 채우는 달은 그 지번의 첫 관측과 마지막 관측 **사이**에서
    연속 3개월 이하로 빈 달뿐이다(신축 전·철거 후·긴 공백은 채우지 않는다). 여름 가스 두 달 묶음 청구는 빈 달이 아니다.
-2. 건축HUB 2015~2019 (제공기관 미제공): 그해 있던 지번(건축물대장 사용승인 연도 기준)만 남기고, 전력은 기준 해(2021~2023)
-   지번 연평균 × 같은 지역 K-apt '같은 단지끼리' 지수(그해 ÷ 기준 해), 가스는 칸별 월 가스 = a + b·난방도일 회귀(기준 해)로 낸다.
+2. 건축HUB 2015~2019 (제공기관 미제공): 2021년에 계측된 지번 중 그해 있던 지번(건축물대장 사용승인 연도 기준)만 남기고, 전력은
+   기준 해(2021~2023) 지번 연평균 × 같은 지역 K-apt '같은 단지끼리' 지수(그해 ÷ 기준 해), 가스는 칸별 월 가스 = a + b·난방도일
+   회귀(기준 해)로 낸다. 2022년 이후 처음 계측된 지번은 넣지 않는다(제공 범위가 넓어진 몫이 과거 사용량처럼 보이지 않게).
    한전 판매량 지수로 되돌리면 도시 성장(새 건물)이 기존 건물 사용량 감소처럼 들어가 2015년 공동주택 지번이 15% 작게 나와
    (K-apt와 이어진 지번 201곳 검증) 쓰지 않고, 한전 판매량은 시 전체 비율 점검에만 쓴다.
 3. K-apt 단지-해: 6개월 이상 관측 → 빠진 달을 1번 방법으로, 6개월 미만 → 가장 가까운 12개월 해 × 전주 같은 단지 지수,
@@ -349,10 +350,13 @@ def hub_backcast(series: dict[str, dict[int, float]], fills: dict[str, dict[int,
                  same_index: dict[int, tuple[float, int]] | None = None,
                  base_years: tuple[int, ...] = BACKCAST_BASE_YEARS) -> dict[tuple[str, int], dict[str, Any]]:
     """(grid, year) → back-cast annual kWh for years before 건축HUB (see module doc, method 2)."""
-    # parcel × month base = mean over the base years of observed-or-filled values
+    # parcel × month base = mean over the base years of observed-or-filled values, for the parcels metered in the first base
+    # year: the back-cast then continues the observed series of the same parcels (a parcel first metered in 2022~2023 widens
+    # the provider's coverage, not the use of 2015~2019 — 2026-10-27, 건축HUB/한전 비율 2021 0.71 → 2025 0.80)
+    anchor = range(month_index(base_years[0], 1, first_year), month_index(base_years[0], 12, first_year) + 1)
     base: dict[str, dict[int, float]] = {}
     for pnu, s in series.items():
-        if pnu not in grid_of:
+        if pnu not in grid_of or not any(t in s for t in anchor):
             continue
         f = fills.get(pnu, {})
         months: dict[int, list[float]] = defaultdict(list)
