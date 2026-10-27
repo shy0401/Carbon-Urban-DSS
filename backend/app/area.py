@@ -1282,15 +1282,20 @@ def load_inputs(db: Any, years: list[int], region: str | None = None) -> dict[st
     lo, hi = f"{years[0]}01", f"{years[-1]}12"
     energy = []
     # Rows without a grid (city-wide 건축HUB parcels that are not K-apt complexes) never belong to an area here.
-    energy_query = select(EnergyMonthly).where(EnergyMonthly.use_ym.between(lo, hi), EnergyMonthly.usage_kwh.is_not(None), EnergyMonthly.grid_id.is_not(None))
+    # Only 건축HUB *gas* is read from this table: the area's electricity series is K-apt (consistent_energy) and the building-wide
+    # electricity comes from grid_building_energy. Reading the electricity rows too (2/3 of the table, 1.1M rows for 전주) as ORM
+    # objects with their raw JSON took several GB per load and, with two loads at once, filled the PC's Docker memory (2026-10-27).
+    energy_query = (select(EnergyMonthly.use_ym, EnergyMonthly.energy_type, EnergyMonthly.usage_kwh, EnergyMonthly.grid_id, EnergyMonthly.sigungu_code,
+                           EnergyMonthly.bjdong_code, EnergyMonthly.lot_type, EnergyMonthly.bun, EnergyMonthly.ji,
+                           EnergyMonthly.raw_record["kapt_code"].as_string())
+                    .where(EnergyMonthly.use_ym.between(lo, hi), EnergyMonthly.usage_kwh.is_not(None), EnergyMonthly.grid_id.is_not(None),
+                           EnergyMonthly.energy_type == "GAS", EnergyMonthly.source != "K-apt"))
     clause = sc.legal_clause(EnergyMonthly.sigungu_code)
     if clause is not None:
         energy_query = energy_query.where(clause)
-    for r in db.scalars(energy_query):
-        if r.source == "K-apt":
-            continue  # the same K-apt months are read below from apartment_energy_monthly (every year, one parcel key)
-        energy.append({"use_ym": r.use_ym, "energy_type": r.energy_type, "usage_kwh": r.usage_kwh, "grid_id": r.grid_id, "source": "HUB",
-                       "kapt_code": (r.raw_record or {}).get("kapt_code"), "parcel": f"{r.sigungu_code}{r.bjdong_code}-{r.lot_type}-{r.bun}-{r.ji}"})
+    for ym, etype, kwh, grid_id, sg, bd, lot, bun, ji, kapt_code in db.execute(energy_query).yield_per(20000):
+        energy.append({"use_ym": ym, "energy_type": etype, "usage_kwh": kwh, "grid_id": grid_id, "source": "HUB",
+                       "kapt_code": kapt_code or None, "parcel": f"{sg}{bd}-{lot}-{bun}-{ji}"})
     try:
         from .kapt_energy import ApartmentEnergyMonthly
         kapt_query = select(ApartmentEnergyMonthly.complex_code, ApartmentEnergyMonthly.year_month, ApartmentEnergyMonthly.electricity_quantity).where(
@@ -1381,6 +1386,14 @@ def forget_inputs() -> None:
     _INPUTS.clear()
 
 
+_LOADING: dict[tuple[Any, ...], Any] = {}
+
+
+def _load_lock(key: tuple[Any, ...]) -> Any:
+    import threading
+    return _LOADING.setdefault(key, threading.Lock())
+
+
 def cached_inputs(db: Any, years: list[int], region: str | None = None) -> dict[str, Any]:
     """DB inputs for ``years`` of one region reused for a few minutes (changing the target or the plan re-analyses often).
 
@@ -1403,8 +1416,14 @@ def cached_inputs(db: Any, years: list[int], region: str | None = None) -> dict[
         inputs = subset_inputs(db, _INPUTS[wider][1], years)
         _store_inputs(key, inputs)
         return inputs
-    inputs = prepare_inputs(db, years, region)
-    _store_inputs(key, inputs)
+    # one load per key at a time: a request that arrives while the start-up warm-up (or another request) is loading the
+    # same years waits for it instead of loading a second copy (2026-10-27: two concurrent loads filled the PC's memory)
+    with _load_lock(key):
+        hit = _INPUTS.get(key)
+        if hit:
+            return hit[1]
+        inputs = prepare_inputs(db, years, region)
+        _store_inputs(key, inputs)
     return inputs
 
 
@@ -1459,13 +1478,10 @@ def _refresh_in_background(key: tuple[Any, ...]) -> None:
 
 
 def warm_inputs(from_year: int = 2015, to_year: int = 2025) -> None:
-    """Load the default year range once (called from the API start-up warm-up)."""
+    """Load the default year range once (called from the API start-up warm-up), through the same single-flight lock."""
     from .db import Session
     with Session() as session:
-        years = list(range(from_year, to_year + 1))
-        key = _key(years, None)
-        if key not in _INPUTS:
-            _store_inputs(key, prepare_inputs(session, years))
+        cached_inputs(session, list(range(from_year, to_year + 1)))
 
 
 def prepare_inputs(db: Any, years: list[int], region: str | None = None) -> dict[str, Any]:
