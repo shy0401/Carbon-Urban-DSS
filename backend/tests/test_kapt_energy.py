@@ -271,6 +271,29 @@ def test_rows_stored_by_older_versions_are_reclassified(tmp_path):
     assert db.scalar(select(func.count()).select_from(EnergyMonthly)) == 0
 
 
+
+def test_reclassify_can_be_limited_to_the_complexes_and_year_of_a_run(tmp_path, monkeypatch):
+    """A collection run re-judges only its own complexes and year (the nationwide pass is apply-standard's job),
+    pages through the months, and leaves the caller's objects attached to the session."""
+    from app import kapt_energy
+    from app.kapt_energy import reclassify_existing
+    monkeypatch.setattr(kapt_energy, 'RECLASSIFY_PAGE', 1)   # one row per page: the paging loop runs
+    db = make_db()
+    add_complex(db, 'A1', households=300)
+    add_complex(db, 'B1', households=300)
+    for code, ym in (('A1', '202501'), ('A1', '202502'), ('A1', '202401'), ('B1', '202501')):
+        db.add(ApartmentEnergyMonthly(id=f'{code}:{ym}:K-apt', complex_code=code, year_month=ym, source='K-apt', electricity_quantity=0.0,
+                                      quality_status='SUCCESS', units={}, raw_record={'kaptCode': code, 'helect': 0, 'hgas': 0}))
+    held = DataSource(id='kapt_energy', category='건물 에너지', name='K-apt', organization='o', source_url='u', source_type='OFFICIAL', status='READY')
+    db.add(held)
+    db.commit()
+    assert reclassify_existing(db, ['A1'], 2025) == {'NOT_REPORTED': 2}
+    assert db.get(ApartmentEnergyMonthly, 'A1:202401:K-apt').quality_status == 'SUCCESS'   # other year untouched
+    assert db.get(ApartmentEnergyMonthly, 'B1:202501:K-apt').quality_status == 'SUCCESS'   # other complex untouched
+    assert held.status == 'READY'                                                          # still attached, refreshes fine
+    assert reclassify_existing(db, [], 2025) == {}
+    assert reclassify_existing(db) == {'NOT_REPORTED': 4}                                   # the full pass re-judges every month
+
 def test_history_mode_skips_months_before_the_complex_existed(tmp_path):
     from app.kapt_energy import approval_month
     db = make_db()

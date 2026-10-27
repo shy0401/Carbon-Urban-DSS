@@ -286,15 +286,29 @@ def _apply_month(db: Any, complex_row: Any, row: "ApartmentEnergyMonthly", row_d
 RECLASSIFY_PAGE = 5000
 
 
-def reclassify_existing(db: Any) -> dict[str, int]:
-    """Re-apply the no-report/plausibility rules to rows stored by earlier versions (idempotent)."""
+def reclassify_existing(db: Any, complex_codes: Any = None, year: int | None = None) -> dict[str, int]:
+    """Re-apply the no-report/plausibility rules to rows stored by earlier versions (idempotent).
+
+    ``complex_codes``/``year`` limit the pass to the months a collection run is about to touch; without them every
+    K-apt month is re-judged (apply-standard). Pages by id and commits each page: the nationwide months do not fit
+    in one session (2026-10-27). Objects of the caller stay attached (no expunge); commits only expire them."""
     from .kapt import ApartmentComplex
-    complexes = {row.kapt_code: row for row in db.scalars(select(ApartmentComplex))}
+    codes = sorted({str(c) for c in complex_codes}) if complex_codes is not None else None
+    if codes is not None and not codes:
+        return {}
+    query = select(ApartmentComplex)
+    if codes is not None:
+        query = query.where(ApartmentComplex.kapt_code.in_(codes))
+    complexes = {row.kapt_code: row for row in db.scalars(query)}
     counts: dict[str, int] = {}
     last = ""
-    while True:  # pages by id and commits each page: the nationwide months do not fit in one session (2026-10-27)
-        page = list(db.scalars(select(ApartmentEnergyMonthly).where(ApartmentEnergyMonthly.source == "K-apt", ApartmentEnergyMonthly.id > last)
-                               .order_by(ApartmentEnergyMonthly.id).limit(RECLASSIFY_PAGE)))
+    while True:
+        page_query = select(ApartmentEnergyMonthly).where(ApartmentEnergyMonthly.source == "K-apt", ApartmentEnergyMonthly.id > last)
+        if codes is not None:
+            page_query = page_query.where(ApartmentEnergyMonthly.complex_code.in_(codes))
+        if year is not None:
+            page_query = page_query.where(ApartmentEnergyMonthly.year_month.like(f"{int(year)}%"))
+        page = list(db.scalars(page_query.order_by(ApartmentEnergyMonthly.id).limit(RECLASSIFY_PAGE)))
         if not page:
             break
         last = page[-1].id
@@ -309,8 +323,8 @@ def reclassify_existing(db: Any) -> dict[str, int]:
             status = _apply_month(db, complex_row, row, data)
             counts[status] = counts.get(status, 0) + 1
         db.commit()
-        db.expunge_all()
-        complexes = {row.kapt_code: row for row in db.scalars(select(ApartmentComplex))} if len(page) == RECLASSIFY_PAGE else complexes
+        if len(page) < RECLASSIFY_PAGE:
+            break
     return counts
 
 
@@ -412,7 +426,6 @@ def collect_kapt_energy(
     if not key:
         raise ExternalError("K-apt API 인증 실패: DATA_GO_KR_SERVICE_KEY 미설정")
     source = _source(db)
-    reclassify_existing(db)
     if scope == "full":
         smoke = db.scalar(select(ApartmentEnergyMonthly.id).where(
             ApartmentEnergyMonthly.year_month == f"{year}01",
@@ -423,6 +436,8 @@ def collect_kapt_energy(
     targets = _targets(db, scope, region)
     if not targets:
         raise ValueError("K-apt 단지 기본정보가 없습니다")
+    # months stored by an older rule version are re-judged before this run reads them (only this run's complexes and year)
+    reclassify_existing(db, [t.kapt_code for t in targets], year)
     months = [f"{year}01"] if scope == "smoke" else [f"{year}{month:02d}" for month in range(1, 13)]
     root = Path(data_dir or os.getenv("DATA_DIR", "data"))
     raw_root = root / "raw" / "kapt-energy" / str(year)
