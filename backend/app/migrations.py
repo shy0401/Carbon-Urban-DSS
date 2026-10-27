@@ -21,6 +21,12 @@ MIGRATIONS: list[tuple[str, list[str]]] = [
         "CREATE INDEX IF NOT EXISTS ix_building_register_grid ON building_register (grid_id)",
         "CREATE INDEX IF NOT EXISTS ix_building_register_pnu ON building_register (parcel_code)",
     ]),
+    # 2026-10-27: energy_monthly reached 10M rows (전국 건축HUB). The per-year count and sum by 시·군·구 (grid_building_energy,
+    # estimates) went through the 7-column unique key and took about a minute each; this index answers them by range.
+    # On a large table this runs once at start-up for a few minutes (the PC built it CONCURRENTLY beforehand).
+    ("2026102701_energy_sigungu_month_index", [
+        "CREATE INDEX IF NOT EXISTS ix_energy_monthly_sgg_ym ON energy_monthly (sigungu_code, use_ym)",
+    ]),
 ]
 
 

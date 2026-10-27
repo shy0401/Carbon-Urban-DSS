@@ -362,7 +362,7 @@ export function EstimatesPanel({ analysis }: { analysis: AreaAnalysis }) {
       <tbody>{buildings.map((v) => <tr key={v.year} className={v.backcast ? 'is-estimated-row' : undefined}><td>{v.year}{v.provider_gap && <small className="status-tag warn">일부 결측</small>}</td>
         <td className="num">{formatMetric(v.electricity_observed_kwh)}</td><td className="num">{formatMetric(v.electricity_kwh)}</td>
         <td className="num">{v.backcast ? formatMetric(v.electricity_kwh) : formatMetric(v.electricity_filled_kwh ?? null)}</td><td className="num">{formatMetric(v.gas_kwh)}</td>
-        <td>{v.backcast ? '되돌림 추정 (그해 있던 지번 × 같은 단지 지수)' : v.electricity_filled_months ? `빈 달 ${formatMetric(v.electricity_filled_months)}개월 채움` : '계측 달 합'}</td></tr>)}</tbody>
+        <td>{v.backcast ? '되돌림 추정 (2021년 지번 사용량 × 같은 단지 지수)' : v.electricity_filled_months ? `빈 달 ${formatMetric(v.electricity_filled_months)}개월 채움` : '계측 달 합'}</td></tr>)}</tbody>
     </table></div>}
     {apartments.length > 0 && <div className="table-wrap"><table>
       <caption>공동주택 전력 (K-apt)</caption>
@@ -370,7 +370,7 @@ export function EstimatesPanel({ analysis }: { analysis: AreaAnalysis }) {
       <tbody>{apartments.map((v) => <tr key={v.year}><td>{v.year}</td><td className="num">{formatMetric(v.observed_kwh)}<small> ({formatMetric(v.observed_complexes)}곳)</small></td><td className="num">{formatMetric(v.estimated_complexes)}{v.peer_median_complexes > 0 && <small> (미보고 {v.peer_median_complexes})</small>}</td><td className="num">{formatMetric(v.estimated_kwh)}</td><td className="num">{formatMetric(v.total_kwh)}</td></tr>)}</tbody>
     </table></div>}
     {population.length > 0 && <p className="area-estimate-note">{population.map((v) => `${v.year}년 행정동 인구 추정 ${formatMetric(v.population, '명')}${v.households !== null ? `, 가구 ${formatMetric(v.households)}` : ''}${v.trend_years?.length ? ` (${v.trend_years[0]}~${v.trend_years[v.trend_years.length - 1]}년 추세)` : ''}`).join(' · ')}</p>}
-    <p className="muted">추정값은 관측 합계에 더하지 않고 나란히 둡니다. 2015~2019년 건물 전체 전력은 건축HUB가 제공하지 않아, 그해 있던 지번(건축물대장 사용승인)의 2021~2023년 평균에 공동주택 같은 단지끼리의 사용량 지수를 곱해 되돌렸습니다(관측 해 시험 오차: 칸별 오차 합 15~23%). 2020년 이후는 첫·마지막 계측 사이 3개월 이하로 빈 달만 같은 지번의 앞뒤 해로 채웠습니다. 방법과 시험 결과는 사용 방법 → 데이터 기준 4.1절에 있습니다.</p>
+    <p className="muted">추정값은 관측 합계에 더하지 않고 나란히 둡니다. 2015~2019년 건물 전체 전력은 건축HUB가 제공하지 않아, 2021년에 계측된 지번 중 그해 있던 건물(건축물대장 사용승인)의 2021년 사용량에 공동주택 같은 단지끼리의 사용량 지수를 곱해 되돌렸습니다(관측 해 시험: 1년 떨어진 해 칸별 오차 합 7%, 3년 21%, 더 먼 해는 더 클 수 있음). 2020년 이후는 첫·마지막 계측 사이 3개월 이하로 빈 달만 같은 지번의 앞뒤 해로 채웠습니다. 방법과 시험 결과는 사용 방법 → 데이터 기준 4.1절에 있습니다.</p>
   </section>;
 }
 

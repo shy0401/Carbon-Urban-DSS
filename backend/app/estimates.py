@@ -9,8 +9,9 @@
    최대 2개의 평균. 참고 해가 없으면 그해 도시 월별 비중으로 나눈다. 채우는 달은 그 지번의 첫 관측과 마지막 관측 **사이**에서
    연속 3개월 이하로 빈 달뿐이다(신축 전·철거 후·긴 공백은 채우지 않는다). 여름 가스 두 달 묶음 청구는 빈 달이 아니다.
 2. 건축HUB 2015~2019 (제공기관 미제공): 2021년에 계측된 지번 중 그해 있던 지번(건축물대장 사용승인 연도 기준)만 남기고, 전력은
-   기준 해(2021~2023) 지번 연평균 × 같은 지역 K-apt '같은 단지끼리' 지수(그해 ÷ 기준 해), 가스는 칸별 월 가스 = a + b·난방도일
-   회귀(기준 해)로 낸다. 2022년 이후 처음 계측된 지번은 넣지 않는다(제공 범위가 넓어진 몫이 과거 사용량처럼 보이지 않게).
+   2021년 지번 사용량(12개월, 빈 달 채움 포함) × 같은 지역 K-apt '같은 단지끼리' 지수(그해 ÷ 2021년), 가스는 칸별 월 가스 =
+   a + b·난방도일 회귀(2021~2023)로 낸다. 2022년 이후 처음 계측된 지번은 넣지 않는다(제공 범위가 넓어진 몫이 과거 사용량처럼
+   보이지 않게).
    한전 판매량 지수로 되돌리면 도시 성장(새 건물)이 기존 건물 사용량 감소처럼 들어가 2015년 공동주택 지번이 15% 작게 나와
    (K-apt와 이어진 지번 201곳 검증) 쓰지 않고, 한전 판매량은 시 전체 비율 점검에만 쓴다.
 3. K-apt 단지-해: 6개월 이상 관측 → 빠진 달을 1번 방법으로, 6개월 미만 → 가장 가까운 12개월 해 × 전주 같은 단지 지수,
@@ -49,7 +50,7 @@ KEPCO_BUILDING_USES = ("주택용", "일반용", "교육용")
 METHOD_LABELS = {
     "FILL_SAME_ENTITY_NEIGHBOR_YEAR": "같은 지번(단지)의 앞뒤 해 같은 달 × 공통 관측 달 비",
     "FILL_CITY_MONTH_PROFILE": "그해 도시 월별 비중",
-    "BACKCAST_SAME_BUILDING": "그해 있던 지번(건축물대장 사용승인)의 기준 해(2021~2023) 연평균 × 같은 지역 K-apt 같은 단지끼리 지수",
+    "BACKCAST_SAME_BUILDING": "그해 있던 지번(건축물대장 사용승인)의 2021년 사용량 × 같은 지역 K-apt 같은 단지끼리 지수(그해 ÷ 2021년)",
     "BACKCAST_HDD_REGRESSION": "칸별 월 가스 = a + b·난방도일(기준 해 회귀), 건축물대장 사용승인으로 없던 지번 제외",
     "KAPT_NEIGHBOR_YEAR_CITY_INDEX": "같은 단지 가장 가까운 12개월 해 × 같은 단지끼리의 도시 지수",
     "KAPT_PEER_MEDIAN_PER_HOUSEHOLD": "그해 12개월 관측 단지의 세대당 전력 중앙값 × 세대수",
@@ -62,10 +63,11 @@ BACKTEST = {
     "date": "2026-10-27",
     "hub_month_fill_electricity": {"tested": 1550, "wape": 0.0989, "mdape": 0.1063, "bias_pct": 1.45},
     "hub_month_fill_gas": {"tested": 1532, "wape": 0.1357, "mdape": 0.1693, "bias_pct": -3.76},
-    # 칸별: 기준 2022~2025 중 2~3해 → 2021·2022를 같은 방식(있던 지번 × 지수)으로 낸 오차(칸 605~624). 시 합계 차이(+11~15%)에는
-    # 건축HUB가 나중 해에 더 많은 지번을 계측한 몫이 섞여 있다. 공동주택 지번 검증(K-apt 실측 2015~2020, 201곳): 같은 건물
-    # 사용량은 기준 해의 97~102%, 한전 지수로 되돌리면 2015년 −15%.
-    "hub_backcast_electricity": {"grid_wape": (0.149, 0.226), "grid_mdape_gt100mwh": (0.089, 0.122), "apartment_same_building_pct": (97.0, 101.7),
+    # 칸별(전력, 12개월 지번, 칸 588~592): 기준 한 해에서 1년 떨어진 해 6.7%(중앙 4.3%, 시 합계 +5.2%), 2년 10~16%, 3년 17~21%
+    # (est_calib4). 시 합계가 크게 나오는 몫에는 나중 해에 계측이 늘어난 지번(제공 범위)이 섞여 있다. 공동주택 지번 검증(K-apt 실측
+    # 2015~2020, 201곳): 같은 건물 사용량은 기준 해의 97~102%, 한전 지수로 되돌리면 2015년 −15%.
+    "hub_backcast_electricity": {"grid_wape_1y": 0.067, "grid_wape_2y": (0.102, 0.161), "grid_wape_3y": (0.171, 0.210),
+                                 "grid_mdape_1y": 0.043, "city_err_1y_pct": 5.2, "apartment_same_building_pct": (97.0, 101.7),
                                  "kepco_index_apartment_err_2015_pct": -15.0},
     "hub_backcast_gas": {"grid_wape": (0.10, 0.16), "grid_mdape_gt100mwh": (0.079, 0.103), "city_err_pct": (-1.0, 2.9)},
     "kapt_month_fill": {"tested": 1948, "wape": 0.0587, "mdape": 0.0346},
@@ -383,23 +385,35 @@ def hub_backcast(series: dict[str, dict[int, float]], fills: dict[str, dict[int,
     if energy_type == "ELECTRICITY":
         # Same buildings, same use: the 2015~2020 K-apt series of the apartment parcels metered by 건축HUB stays within ±3% of
         # 2021~2023 (est_calib3: 201 parcels), while the 한전 판매량 index falls to 0.85 in 2015 because the city added
-        # buildings. So each parcel that existed keeps its base use × the region's same-complex K-apt index (weather, habits);
-        # parcels not yet built (건축물대장 사용승인) are left out. Without a K-apt index the base is kept as is (1.0).
+        # buildings. So each parcel that existed keeps its anchor-year use × the region's same-complex K-apt index (weather,
+        # habits); parcels not yet built (건축물대장 사용승인) are left out. The anchor is one year, the first base year (2021):
+        # the error grows with the distance from the anchor and a three-year mean reaches further (est_calib4: anchor 1 year
+        # away 6.7% of the grid totals, 2 years 10~16%, 3 years 17~21%; 2022~2024 mean → 2021 10.8%). Only parcels with all 12
+        # months of the anchor year (observed or filled) count. Without a K-apt index the anchor is kept as is (1.0).
+        anchor_year = base_years[0]
+        anchor_annual: dict[str, float] = {}
+        for p in base:
+            s, f = series[p], fills.get(p, {})
+            months = [s.get(month_index(anchor_year, m, first_year), f[month_index(anchor_year, m, first_year)][0]
+                            if month_index(anchor_year, m, first_year) in f else None) for m in range(1, 13)]
+            if all(v is not None for v in months):
+                anchor_annual[p] = sum(months)
+        total_anchor = sum(anchor_annual.values())
         for year in target_years:
             idx, peers = (same_index or {}).get(year, (1.0, 0))
             per_grid: dict[str, float] = defaultdict(float)
             parcels: dict[str, int] = defaultdict(int)
             alive_kwh = 0.0
-            for p in base:
+            for p, kwh in anchor_annual.items():
                 if exists(p, year):
-                    per_grid[grid_of[p]] += annual_base[p] * idx
+                    per_grid[grid_of[p]] += kwh * idx
                     parcels[grid_of[p]] += 1
-                    alive_kwh += annual_base[p]
-            share = alive_kwh / total_base if total_base else None
+                    alive_kwh += kwh
+            share = alive_kwh / total_anchor if total_anchor else None
             kepco_year = sum(kepco[(year, m)] for m in range(1, 13)) if all((year, m) in kepco for m in range(1, 13)) else None
             for grid, kwh in per_grid.items():
                 out[(grid, year)] = {"value": kwh, "parcels": parcels[grid], "same_index": round(idx, 4), "index_peers": peers,
-                                     "exist_share": round(share, 4) if share else None, "base_years": list(base_years),
+                                     "exist_share": round(share, 4) if share else None, "anchor_year": anchor_year,
                                      "kepco_kwh": round(kepco_year, 1) if kepco_year else None}
         return out
     # GAS: grid monthly regression on heating degree days over the base years
@@ -595,7 +609,7 @@ def estimate_region(db: Any, region: str | None = None, last_year: int | None = 
                 ym = str(ym).replace("-", "")
                 monthly[code].setdefault(month_index(int(ym[:4]), int(ym[4:6]), first), float(kwh))
         kapt_years = list(range(first, last_year + 1))
-        same_index = same_complex_index(monthly, first, kapt_years)
+        same_index = same_complex_index(monthly, first, kapt_years, base_years=BACKCAST_BASE_YEARS[:1])  # relative to the anchor year (2021)
         kest = kapt_estimates(monthly, info, first, kapt_years)
         for (code, year), v in kest.items():
             rows.append(_row("kapt_complex_year", sc.code, code, "ELECTRICITY", year, v.pop("value"), "kWh", v.pop("method"), v))
@@ -772,10 +786,6 @@ def area_block(history: dict[str, Any], est: dict[str, Any] | None) -> dict[str,
             "methods": METHOD_LABELS, "backtest": BACKTEST, "data_class": "ESTIMATED"}
 
 
-def _pct(pair: tuple[float, float]) -> str:
-    return f"{pair[0] * 100:,.0f}~{pair[1] * 100:,.0f}%"
-
-
 def estimate_facts(history: dict[str, Any], add: Callable[..., None]) -> None:
     """Sentences for the estimated series (each says 추정 and how it was made)."""
     e = history.get("estimates") or {}
@@ -787,11 +797,11 @@ def estimate_facts(history: dict[str, Any], add: Callable[..., None]) -> None:
         first, last = back[0], back[-1]
         bt = BACKTEST["hub_backcast_electricity"]
         add("estimate_buildings_backcast",
-            f"건축HUB가 제공하지 않는 {first}~{last}년 건물 전체 전력은 그해 있던 지번(건축물대장 사용승인 기준)의 2021~2023년 평균에 "
-            f"같은 지역 공동주택(K-apt) 같은 단지끼리의 사용량 지수를 곱해 추정했습니다: {first}년 {b[first]['electricity_kwh']:,.0f} kWh, "
-            f"{last}년 {b[last]['electricity_kwh']:,.0f} kWh(추정값). 관측 해에 같은 방식으로 시험한 칸별 오차 합은 관측의 {_pct(bt['grid_wape'])}입니다.",
-            first, b[first]["electricity_kwh"], last, b[last]["electricity_kwh"], 2021, 2023,
-            round(bt["grid_wape"][0] * 100), round(bt["grid_wape"][1] * 100))
+            f"건축HUB가 제공하지 않는 {first}~{last}년 건물 전체 전력은 2021년에 계측된 지번 중 그해 있던 건물(건축물대장 사용승인 기준)의 "
+            f"2021년 사용량에 같은 지역 공동주택(K-apt) 같은 단지끼리의 사용량 지수를 곱해 추정했습니다: {first}년 {b[first]['electricity_kwh']:,.0f} kWh, "
+            f"{last}년 {b[last]['electricity_kwh']:,.0f} kWh(추정값). 관측 해에 같은 방식으로 시험한 칸별 오차 합은 1년 떨어진 해 {bt['grid_wape_1y'] * 100:,.0f}%, "
+            f"3년 떨어진 해 {bt['grid_wape_3y'][1] * 100:,.0f}%였고 더 먼 해는 더 클 수 있습니다.",
+            first, b[first]["electricity_kwh"], last, b[last]["electricity_kwh"], 2021, round(bt["grid_wape_1y"] * 100), round(bt["grid_wape_3y"][1] * 100), 1, 3)
     filled = sorted(y for y, v in b.items() if not v.get("backcast") and v.get("electricity_kwh") is not None)
     if filled:
         y = filled[-1]
@@ -809,11 +819,12 @@ def estimate_facts(history: dict[str, Any], add: Callable[..., None]) -> None:
     if a:
         y = max(a)
         v = a[y]
-        peer = f", 그중 보고가 없는 단지 {v['peer_median_complexes']}곳은 세대당 중앙값으로 추정" if v.get("peer_median_complexes") else ""
+        peer = (f" 그중 한 번도 보고하지 않은 단지 {v['peer_median_complexes']}곳은 그해 세대당 전력 중앙값으로 추정했습니다."
+                if v.get("peer_median_complexes") else "")
         obs_text = f"관측 {v['observed_complexes']}곳 {v['observed_kwh']:,.0f} kWh + " if v.get("observed_kwh") is not None else ""
         add("estimate_apartments",
             f"{y}년 공동주택 전력에서 12개월이 다 관측되지 않은 단지 {v['estimated_complexes']}곳을 같은 단지의 다른 해·달로 채우면 "
-            f"{obs_text}추정 {v['estimated_kwh']:,.0f} kWh = {v['total_kwh']:,.0f} kWh입니다{peer}(추정값).",
+            f"{obs_text}추정 {v['estimated_kwh']:,.0f} kWh = {v['total_kwh']:,.0f} kWh입니다(추정값).{peer}",
             y, v["estimated_complexes"], v.get("observed_complexes"), v.get("observed_kwh"), v["estimated_kwh"], v["total_kwh"], v.get("peer_median_complexes") or None)
     p = e.get("population") or {}
     for y in sorted(p):
