@@ -152,3 +152,21 @@ def test_collection_progress_is_part_of_the_data_fingerprint(tmp_path, monkeypat
     report = cases.verify(FakeDb(), {"cases": [spec]}, log=lines.append)
     assert report["results"][0]["diffs"][0]["label"] == "건축HUB 2025년 수집 완료 표시"
     assert any("history-progress.json" in line for line in lines)
+
+
+def test_cached_area_inputs_are_dropped_when_the_cases_move_to_another_region(monkeypatch):
+    """Four regions in one verify-cases process filled the PC's memory (2026-10-27): the cache is emptied per region."""
+    from app import area
+    calls = []
+    monkeypatch.setattr(area, "forget_inputs", lambda: calls.append(1))
+    monkeypatch.setattr(cases, "RUNNERS", {"scenario": lambda db, spec: ({"far": 1.0}, [])})
+    doc = {"recorded_on": "2026-10-27", "cases": [{"id": i, "kind": "scenario", "title": i, "input": {"region": r}}
+                                                  for i, r in (("A", "52110"), ("B", "52110"), ("C", "41110"))]}
+
+    class Db:
+        def rollback(self):
+            pass
+    recorded = cases.record(Db(), doc, log=lambda m: None)
+    assert len(calls) == 2           # first region, then 41110 — not again for the second 52110 case
+    cases.verify(Db(), recorded, log=lambda m: None)
+    assert len(calls) == 4

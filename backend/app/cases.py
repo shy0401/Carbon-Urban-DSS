@@ -328,11 +328,24 @@ def compare(spec: dict[str, Any], got: dict[str, Any], fact_rules: int = FACT_RU
     return {"status": status, "diffs": diffs, "text_diffs": text_diffs, "rules_changed": rules_changed, "checked": len(keys), "facts": len(got["facts"])}
 
 
+def _next_region(region: Any, last: list[Any]) -> None:
+    """Drop the cached area inputs when the cases move to another region: the cache keeps up to three region/year
+    ranges, and four regions in one process filled the PC's memory (2026-10-27, verify-cases killed after D04)."""
+    if region != last[0]:
+        import gc
+        from .area import forget_inputs
+        forget_inputs()
+        gc.collect()
+        last[0] = region
+
+
 def verify(db: Any, cases: dict[str, Any], only: set[str] | None = None, log: Callable[[str], None] = print) -> dict[str, Any]:
     results = []
+    last_region: list[Any] = [object()]
     for spec in cases["cases"]:
         if only and spec["id"] not in only:
             continue
+        _next_region((spec.get("input") or {}).get("region"), last_region)
         got = run_one(db, spec)
         verdict = compare(spec, got, int(cases.get("fact_rules", 1)))
         results.append({"id": spec["id"], "title": spec.get("title"), "kind": spec["kind"], **verdict, "got": got})
@@ -368,7 +381,9 @@ def verify(db: Any, cases: dict[str, Any], only: set[str] | None = None, log: Ca
 def record(db: Any, cases: dict[str, Any], note: str | None = None, log: Callable[[str], None] = print) -> dict[str, Any]:
     """Run every case and store what this PC computed as the expected values (the reference PC does this once per data bundle)."""
     out = json.loads(json.dumps(cases))
+    last_region: list[Any] = [object()]
     for spec in out["cases"]:
+        _next_region((spec.get("input") or {}).get("region"), last_region)
         got = run_one(db, spec)
         if "error" in got:
             log(f"[오류] {spec['id']}: {got['error']}")
