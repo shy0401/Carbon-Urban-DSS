@@ -104,6 +104,52 @@ export interface AreaHistory {
   building_energy?: AreaBuildingEnergy;
   /** 선도소프트 탄소공간지도 100m 건물 전기 배출 (받은 지역·연도만, 공개 주소에서는 빠짐). */
   kcsm?: AreaKcsm | null;
+  /** 빈 자료 보정·추정 (DATA_STANDARD 4.1): 관측과 따로, 더하지 않는다. */
+  estimates?: AreaEstimates | null;
+  /** 업계·정부 기준과 대조 (참고 위치, 판정 아님). */
+  industry?: AreaIndustry | null;
+}
+
+export interface AreaEstimateBuildingYear {
+  year: number;
+  /** true: 건축HUB 미제공 연도(2015~2019) 되돌림 추정, false: 계측 달 + 빈 달 채움 */
+  backcast: boolean;
+  electricity_kwh: number | null;
+  gas_kwh: number | null;
+  electricity_observed_kwh: number | null;
+  electricity_filled_kwh?: number;
+  electricity_filled_months?: number;
+  electricity_filled_parcels?: number;
+  provider_gap?: boolean;
+  same_index?: number | null;
+  exist_share?: number | null;
+}
+
+export interface AreaEstimateApartmentYear {
+  year: number;
+  observed_kwh: number | null;
+  observed_complexes: number;
+  estimated_kwh: number;
+  estimated_complexes: number;
+  total_kwh: number;
+  peer_median_complexes: number;
+}
+
+export interface AreaEstimates {
+  available: boolean;
+  rule_version?: string | null;
+  created_at?: string | null;
+  buildings?: YearTable<AreaEstimateBuildingYear>;
+  apartments?: YearTable<AreaEstimateApartmentYear>;
+  population?: YearTable<{ year: number; population: number; households: number | null; adm_codes: number; trend_years?: number[] }>;
+  methods?: Record<string, string>;
+}
+
+export interface AreaIndustry {
+  available: boolean;
+  zone: string;
+  table: Array<{ label: string; value: string; reference: string; source: string }>;
+  notes: string[];
 }
 
 export interface AreaKcsmYear {

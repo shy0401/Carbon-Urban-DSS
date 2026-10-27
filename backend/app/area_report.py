@@ -313,6 +313,8 @@ HTML_SECTIONS = (
     ("1. 검토 대상과 방법", ("scope", "coverage", "rules")),
     ("2. 온실가스 배출 현황 (관측)", ("latest_energy", "latest_carbon", "latest_intensity", "building_energy", "building_energy_trend", "building_energy_gap", "benchmark")),
     ("2-1. 탄소공간지도 100m 전력 배출 (선도소프트 제공)", ("kcsm_",)),
+    ("2-2. 빈 자료 보정·추정 (추정값, 관측과 따로)", ("estimate_",)),
+    ("2-3. 업계·정부 기준과 대조 (참고)", ("bench_",)),
     ("3. 개발 이력과 전후 영향", ("development", "register", "event", "before_after", "change", "new_share", "estimated_change", "gap_")),
     ("4. 감축 목표와 필요 감축량", ("effort_fallback", "effort_basis", "effort_target", "effort_met")),
     ("5. 감축 방안", ("effort_new", "effort_all", "effort_offset", "effort_pv", "effort_mix", "effort_mix_gap")),
@@ -410,6 +412,35 @@ def area_html(s: dict[str, Any]) -> str:
                                     f"<td class=num>{be[y].get('electricity_complete', 0):,}</td><td class=num>{num(be[y].get('kwh_per_m2'), 1)}</td><td class=num>{num(be[y].get('electricity_carbon_kgco2eq'))}</td></tr>"
                                     for y in sorted(be, key=lambda v: int(v)))
                           + "</tbody></table>")
+        if title.startswith("2-2."):
+            est = h.get("estimates") or {}
+            eb = est.get("buildings") or {}
+            if eb:
+                def method_label(v: dict[str, Any]) -> str:
+                    if v.get("backcast"):
+                        return "되돌림 추정(지번 존재 × K-apt 같은 단지 지수)"
+                    return f"계측 달 + 빈 달 {v.get('electricity_filled_months', 0):,}개월 채움" if v.get("electricity_filled_months") else "계측 달 합(채운 달 없음)"
+                extra += ("<table><thead><tr><th>연도</th><th>관측 kWh (12개월 계측 지번)</th><th>보정·추정 합계 kWh</th><th>그중 추정분 kWh</th><th>가스 보정·추정 kWh</th><th>방법</th></tr></thead><tbody>"
+                          + "".join(f"<tr><td>{y}{' (일부 결측)' if v.get('provider_gap') else ''}</td><td class=num>{num(v.get('electricity_observed_kwh'))}</td>"
+                                    f"<td class=num>{num(v.get('electricity_kwh'))}</td>"
+                                    f"<td class=num>{num(v.get('electricity_kwh')) if v.get('backcast') else num(v.get('electricity_filled_kwh'))}</td>"
+                                    f"<td class=num>{num(v.get('gas_kwh'))}</td><td>{escape(method_label(v))}</td></tr>"
+                                    for y, v in sorted(eb.items(), key=lambda kv: int(kv[0])))
+                          + "</tbody></table><p class=note>건물 전체 = 건축HUB 계측 지번(단독주택·200세대 미만 공동주택 제외). 보정·추정 합계는 관측 합계와 더하지 않고 나란히 둡니다.</p>")
+            ea = est.get("apartments") or {}
+            if ea:
+                extra += ("<table><thead><tr><th>연도</th><th>공동주택 관측 kWh (12개월 단지)</th><th>추정 단지</th><th>추정 kWh</th><th>보정 합계 kWh</th></tr></thead><tbody>"
+                          + "".join(f"<tr><td>{y}</td><td class=num>{num(v.get('observed_kwh'))} ({v.get('observed_complexes', 0)}곳)</td><td class=num>{v.get('estimated_complexes', 0)}</td>"
+                                    f"<td class=num>{num(v.get('estimated_kwh'))}</td><td class=num>{num(v.get('total_kwh'))}</td></tr>"
+                                    for y, v in sorted(ea.items(), key=lambda kv: int(kv[0])))
+                          + "</tbody></table>")
+        if title.startswith("2-3."):
+            bench = h.get("industry") or {}
+            rows = bench.get("table") or []
+            if rows:
+                extra += ("<table><thead><tr><th>항목</th><th>이 구역</th><th>기준</th><th>출처</th></tr></thead><tbody>"
+                          + "".join(f"<tr><td>{escape(r['label'])}</td><td class=num>{escape(r['value'])}</td><td>{escape(r['reference'])}</td><td>{escape(r['source'])}</td></tr>" for r in rows)
+                          + "</tbody></table>" + "".join(f"<p class=note>{escape(n)}</p>" for n in bench.get("notes") or []))
         if title.startswith("5.") and (s.get("effort") or {}).get("mix"):
             m = s["effort"]["mix"]
             extra += ("<table><thead><tr><th>감축 수단</th><th>입력</th><th>연간 감축 kWh</th></tr></thead><tbody>"
@@ -468,6 +499,26 @@ def area_markdown(s: dict[str, Any]) -> str:
         lines += ["## 건물 전체 에너지 (건축HUB 전 지번)", "\n".join(rows),
                   "상가·업무·학교·대형 공동주택 등 건축HUB가 계측하는 모든 지번의 합계입니다. 단독주택, 200세대 미만 공동주택, 산업·수송용은 제공 범위 밖입니다. 원단위는 같은 필지의 건축물대장 연면적 기준입니다."
                   + "".join(f" {year}년: {be[year]['provider_gap']}." for year in sorted(be, key=lambda y: int(y)) if be[year].get("provider_gap"))]
+    est = h.get("estimates") or {}
+    if est.get("available"):
+        rows = ["| 연도 | 관측 kWh (12개월 계측 지번) | 보정·추정 합계 kWh | 그중 추정분 kWh | 가스 보정·추정 kWh | 방법 |", "| --- | --- | --- | --- | --- | --- |"]
+        for year, v in sorted((est.get("buildings") or {}).items(), key=lambda kv: int(kv[0])):
+            how = "되돌림 추정" if v.get("backcast") else (f"빈 달 {v.get('electricity_filled_months', 0):,}개월 채움" if v.get("electricity_filled_months") else "계측 달 합")
+            part = v.get("electricity_kwh") if v.get("backcast") else v.get("electricity_filled_kwh")
+            rows.append(f"| {year} | {fmt(v.get('electricity_observed_kwh'))} | {fmt(v.get('electricity_kwh'))} | {fmt(part)} | {fmt(v.get('gas_kwh'))} | {how} |")
+        lines += ["## 빈 자료 보정·추정 (추정값, 관측과 따로)", "\n".join(rows)]
+        apts = est.get("apartments") or {}
+        if apts:
+            arow = ["| 연도 | 공동주택 관측 kWh (12개월 단지) | 추정 단지 | 추정 kWh | 보정 합계 kWh |", "| --- | --- | --- | --- | --- |"]
+            for year, v in sorted(apts.items(), key=lambda kv: int(kv[0])):
+                arow.append(f"| {year} | {fmt(v.get('observed_kwh'))} ({v.get('observed_complexes', 0)}곳) | {v.get('estimated_complexes', 0)} | {fmt(v.get('estimated_kwh'))} | {fmt(v.get('total_kwh'))} |")
+            lines.append("\n".join(arow))
+        lines.append("추정값은 관측 합계에 더하지 않습니다. 방법과 시험 결과: docs/DATA_STANDARD.md 4.1절.")
+    ind = h.get("industry") or {}
+    if ind.get("available") and ind.get("table"):
+        lines += ["## 업계·정부 기준과 대조 (참고)", "\n".join(["| 항목 | 이 구역 | 기준 | 출처 |", "| --- | --- | --- | --- |"]
+                                                         + [f"| {r['label']} | {r['value']} | {r['reference']} | {r['source']} |" for r in ind["table"]])]
+        lines += [f"- {n}" for n in ind.get("notes") or []]
     sg = h.get("sgis_grid") or {}
     if sg.get("overlap"):
         o = sg["overlap"]

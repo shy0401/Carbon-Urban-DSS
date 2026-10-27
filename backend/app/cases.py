@@ -301,7 +301,9 @@ def run_one(db: Any, spec: dict[str, Any]) -> dict[str, Any]:
 #   3: 2026-10-14 — grid report sentences name the place (전주시 송천1동 일대) instead of the cell id, call the plans
 #      계획안 A·B·C, compare each plan with its reference plan (same floor area at the observed intensity) in tCO2eq,
 #      and come right after the scope sentence; the markdown has the same seven sections under new headings
-FACT_RULES = 3
+#   4: 2026-10-27 — area sentences for the estimate layer (estimate_*: 2015~2019 back-cast, filled months, K-apt
+#      complex-years, SGIS trend; DATA_STANDARD 4.1) and the industry reference (bench_*: 1차에너지, 표준지표, ZEB; 5.14)
+FACT_RULES = 4
 
 
 def compare(spec: dict[str, Any], got: dict[str, Any], fact_rules: int = FACT_RULES) -> dict[str, Any]:

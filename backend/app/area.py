@@ -927,12 +927,15 @@ def building_energy_block(grid_ids: list[str], by_year: dict[int, dict[str, dict
         gas = [g["gas_kwh"] for g in inside if g["gas_kwh"] is not None]
         area_m2 = sum(g["area_m2"] or 0 for g in inside if g["area_parcels"])
         area_kwh = sum((g["kwh_per_m2"] or 0) * (g["area_m2"] or 0) for g in inside if g["area_parcels"])
+        area_gas = sum(g.get("area_gas_kwh") or 0 for g in inside if g["area_parcels"])
         electricity = round(sum(kwh), 1) if kwh else None
         years[year] = {
             "year": year, "parcels": sum(g["parcels"] for g in inside),
             "electricity_complete": sum(g["electricity_complete"] for g in inside), "electricity_kwh": electricity,
             "gas_complete": sum(g["gas_complete"] for g in inside), "gas_kwh": round(sum(gas), 1) if gas else None,
             "area_m2": round(area_m2, 1) if area_m2 else None, "kwh_per_m2": round(area_kwh / area_m2, 2) if area_m2 else None,
+            # gas of the same floor-area parcels (12-month gas meters only; a parcel without a 건축HUB gas meter adds none)
+            "gas_kwh_per_m2": round(area_gas / area_m2, 2) if area_m2 and area_gas else None,
             "electricity_carbon_kgco2eq": round(electricity * factor, 1) if electricity is not None and factor else None,
             # the region's own collection state when given (energy_parcels.region_year_complete), else the city-wide file
             "complete": bool(complete.get(year)) if complete is not None else year_complete(year),
@@ -1042,6 +1045,8 @@ def build_history(area: dict[str, Any], years: list[int], inputs: dict[str, Any]
         "grid_count": len(area["grid_ids"]), "complex_count": len(area["complex_codes"]),
         "register_buildings": history["register"]["linked_in_area"],
     }
+    from .estimates import area_block as estimate_block
+    history["estimates"] = estimate_block(history, inputs.get("estimates"))
     return history
 
 
@@ -1136,6 +1141,8 @@ def area_facts(history: dict[str, Any], comparison: dict[str, Any] | None = None
         for y in gaps:
             add("building_energy_gap", f"{y}년 건축HUB 값은 쓰되 비교하지 않습니다: {be[y]['provider_gap']}.", y)
     kcsm_facts(history, add)
+    from .estimates import estimate_facts
+    estimate_facts(history, add)
     sg = history.get("sgis_grid") or {}
     if sg.get("overlap"):
         o = sg["overlap"]
@@ -1247,6 +1254,8 @@ def area_facts(history: dict[str, Any], comparison: dict[str, Any] | None = None
             else:
                 add("effort_mix_gap", f"필요 감축량 {mix['required_kgco2eq']:,.0f} kgCO2eq의 {mix['share_pct']:,.1f}%로, 목표까지 연간 {mix['gap_kgco2eq']:,.0f} kgCO2eq가 남습니다.",
                     mix["required_kgco2eq"], mix["share_pct"], mix["gap_kgco2eq"])
+    from .benchmarks import industry_facts
+    industry_facts(history.get("industry") or {}, add)
     add("rules", "관측이 없는 연도는 0이 아니라 자료 없음으로 두었고, 행정동 통계는 격자에 배분하지 않았습니다.", 0)
     return facts
 
@@ -1348,7 +1357,9 @@ def load_inputs(db: Any, years: list[int], region: str | None = None) -> dict[st
     except Exception:  # noqa: BLE001 - table not created (never imported)
         db.rollback()
         kcsm = None
-    return {"kcsm": kcsm, "building_energy": building_energy, "building_energy_complete": building_energy_complete, "sgis_grid": grid_values(db, codes=parents(ids)), "register": register, "complexes": complexes, "energy": energy, "weather": weather, "population": population, "households": households,
+    from .estimates import area_inputs as estimate_inputs
+    estimates = estimate_inputs(db, sc.code, years)  # 추정 계층 (DATA_STANDARD 4.1): 관측과 따로, 'estimate-gaps'가 미리 계산
+    return {"kcsm": kcsm, "estimates": estimates, "building_energy": building_energy, "building_energy_complete": building_energy_complete, "sgis_grid": grid_values(db, codes=parents(ids)), "register": register, "complexes": complexes, "energy": energy, "weather": weather, "population": population, "households": households,
             "factor": factors, "grids": grids, "admin": admin.get("features", []), "admin_year": admin_year, "zoning": zoning,
             "region": {"code": sc.code, "name": sc.name, "short_name": sc.short, "is_default": sc.is_default}}
 
@@ -1411,6 +1422,9 @@ def subset_inputs(db: Any, wide: dict[str, Any], years: list[int]) -> dict[str, 
     wanted = set(years)
     out["building_energy"] = {y: v for y, v in (wide.get("building_energy") or {}).items() if y in wanted}
     out["building_energy_complete"] = {y: v for y, v in (wide.get("building_energy_complete") or {}).items() if y in wanted}
+    est = wide.get("estimates")
+    if est:
+        out["estimates"] = dict(est, **{k: {y: v for y, v in (est.get(k) or {}).items() if y in wanted} for k in ("hub", "kapt", "population", "households")})
     out["city_intensity"] = city_intensity(out["energy"], out["complexes"], years)
     if years[-1] != wide["years"][-1]:
         from .solar import regional_pv_yield
@@ -1483,6 +1497,8 @@ def analyze(db: Any, spec: dict[str, Any], from_year: int, to_year: int, event_y
     history = build_history(area, years, inputs, include_kcsm=not public)
     comparison = before_after(history, event_year, window)
     effort_result = effort(history, plan or {}, target_pct, pv_yield, effort_basis, measures) if target_pct is not None else None
+    from .benchmarks import industry_block
+    history["industry"] = industry_block(history, effort_result, (inputs.get("region") or {}).get("code"))
     members = set(area["grid_ids"])
     grid_features = {"type": "FeatureCollection", "features": [
         {"type": "Feature", "id": g["id"], "geometry": g["geometry"], "properties": {"id": g["id"]}}

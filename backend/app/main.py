@@ -149,6 +149,7 @@ from . import regional_stats  # noqa: F401 - registers gir_regional_ghg, citygas
 from . import team_grid  # noqa: F401 - registers team_grid500/100, team_developments before create_all
 from . import kcsm100  # noqa: F401 - registers kcsm_grid100 (선도소프트 탄소공간지도 100m 전력) before create_all
 from . import solar  # noqa: F401 - registers solar_monthly before create_all
+from . import estimates  # noqa: F401 - registers estimated_values (추정 계층, DATA_STANDARD 4.1) before create_all
 app.include_router(sgis_grid500_router)
 from .national_map import router as national_map_router
 app.include_router(national_map_router)

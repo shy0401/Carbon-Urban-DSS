@@ -242,6 +242,8 @@ export function AreaPage() {
         <RegisterPanel analysis={analysis} eventYear={activeEvent} />
       </div>
       <BuildingEnergyPanel analysis={analysis} />
+      <EstimatesPanel analysis={analysis} />
+      <IndustryPanel analysis={analysis} />
       <KcsmPanel analysis={analysis} />
       <SgisAreaPanel analysis={analysis} />
 
@@ -342,6 +344,47 @@ function BuildingEnergyPanel({ analysis }: { analysis: AreaAnalysis }) {
     {be?.trend && be.trend.same_change_pct !== null && <p className="area-building-trend"><b>같은 지번 비교 ({be.trend.from}→{be.trend.to}):</b> 두 해 모두 12개월 계측된 지번 {formatMetric(be.trend.same_parcels)}곳의 전력 {formatMetric(be.trend.same_from_kwh, 'kWh')} → {formatMetric(be.trend.same_to_kwh, 'kWh')} ({be.trend.same_change_pct > 0 ? '+' : ''}{be.trend.same_change_pct.toFixed(1)}%). 한 해에만 계측된 지번: {onlyIn(be.trend.to, be.trend.new_parcels, be.trend.new_kwh)}, {onlyIn(be.trend.from, be.trend.gone_parcels, be.trend.gone_kwh)} (신축·계량 변경·다른 지번으로의 기록 이동이 섞일 수 있음).</p>}
     <p className="muted">상가·업무·학교·대형 공동주택 등 건축HUB가 계측하는 모든 지번의 합계입니다(연속지적 대표점으로 격자 배치). 단독주택, 200세대 미만 공동주택, 산업·수송용은 제공 범위 밖이라 빠집니다. 건축HUB는 2020년 1월분부터 있습니다(전주 2020~, 수원·완주 2024~). {years.filter((v) => v.provider_gap).map((v) => `${v.year}년: ${v.provider_gap}. `).join('')}원단위는 같은 필지의 건축물대장 연면적 기준입니다.</p></>
       : <EmptyState title="이 구역의 건물 전체 에너지가 아직 없습니다" description="건축HUB 전 지번 수집(2020년~)이 끝나면 채워집니다. 구역 격자 안에 계측 지번이 없을 수도 있습니다(단독주택 위주)." />}
+  </section>;
+}
+
+/** 빈 자료 보정·추정 (DATA_STANDARD 4.1): 관측 표 옆에 따로 둔다. 2015~2019 건물 전체는 되돌림 추정, 2020~는 계측 달 + 빈 달 채움. */
+export function EstimatesPanel({ analysis }: { analysis: AreaAnalysis }) {
+  const est = analysis.history.estimates;
+  if (!est?.available) return null;
+  const buildings = Object.values(est.buildings ?? {}).sort((a, b) => a.year - b.year);
+  const apartments = Object.values(est.apartments ?? {}).sort((a, b) => a.year - b.year);
+  const population = Object.values(est.population ?? {}).sort((a, b) => a.year - b.year);
+  return <section className="panel area-estimates" aria-label="빈 자료 보정·추정" data-testid="area-estimates">
+    <div className="panel-title"><h3>빈 자료 보정·추정</h3><ProvenanceBadge kind="estimated" detail="관측과 따로, 더하지 않음" /></div>
+    {buildings.length > 0 && <div className="table-wrap"><table>
+      <caption>건물 전체 전력 (건축HUB 계측 지번)</caption>
+      <thead><tr><th>연도</th><th className="num">관측 kWh (12개월 지번)</th><th className="num">보정·추정 합계 kWh</th><th className="num">그중 추정분 kWh</th><th className="num">가스 보정·추정 kWh</th><th>방법</th></tr></thead>
+      <tbody>{buildings.map((v) => <tr key={v.year} className={v.backcast ? 'is-estimated-row' : undefined}><td>{v.year}{v.provider_gap && <small className="status-tag warn">일부 결측</small>}</td>
+        <td className="num">{formatMetric(v.electricity_observed_kwh)}</td><td className="num">{formatMetric(v.electricity_kwh)}</td>
+        <td className="num">{v.backcast ? formatMetric(v.electricity_kwh) : formatMetric(v.electricity_filled_kwh ?? null)}</td><td className="num">{formatMetric(v.gas_kwh)}</td>
+        <td>{v.backcast ? '되돌림 추정 (그해 있던 지번 × 같은 단지 지수)' : v.electricity_filled_months ? `빈 달 ${formatMetric(v.electricity_filled_months)}개월 채움` : '계측 달 합'}</td></tr>)}</tbody>
+    </table></div>}
+    {apartments.length > 0 && <div className="table-wrap"><table>
+      <caption>공동주택 전력 (K-apt)</caption>
+      <thead><tr><th>연도</th><th className="num">관측 kWh (12개월 단지)</th><th className="num">추정 단지</th><th className="num">추정 kWh</th><th className="num">보정 합계 kWh</th></tr></thead>
+      <tbody>{apartments.map((v) => <tr key={v.year}><td>{v.year}</td><td className="num">{formatMetric(v.observed_kwh)}<small> ({formatMetric(v.observed_complexes)}곳)</small></td><td className="num">{formatMetric(v.estimated_complexes)}{v.peer_median_complexes > 0 && <small> (미보고 {v.peer_median_complexes})</small>}</td><td className="num">{formatMetric(v.estimated_kwh)}</td><td className="num">{formatMetric(v.total_kwh)}</td></tr>)}</tbody>
+    </table></div>}
+    {population.length > 0 && <p className="area-estimate-note">{population.map((v) => `${v.year}년 행정동 인구 추정 ${formatMetric(v.population, '명')}${v.households !== null ? `, 가구 ${formatMetric(v.households)}` : ''}${v.trend_years?.length ? ` (${v.trend_years[0]}~${v.trend_years[v.trend_years.length - 1]}년 추세)` : ''}`).join(' · ')}</p>}
+    <p className="muted">추정값은 관측 합계에 더하지 않고 나란히 둡니다. 2015~2019년 건물 전체 전력은 건축HUB가 제공하지 않아, 그해 있던 지번(건축물대장 사용승인)의 2021~2023년 평균에 공동주택 같은 단지끼리의 사용량 지수를 곱해 되돌렸습니다(관측 해 시험 오차: 칸별 오차 합 15~23%). 2020년 이후는 첫·마지막 계측 사이 3개월 이하로 빈 달만 같은 지번의 앞뒤 해로 채웠습니다. 방법과 시험 결과는 사용 방법 → 데이터 기준 4.1절에 있습니다.</p>
+  </section>;
+}
+
+/** 업계·정부 기준(1차에너지 환산, 효율등급 구간, 표준지표, ZEB 자립률) 위에 이 구역 값을 놓는다. 판정이 아니라 참고 위치. */
+export function IndustryPanel({ analysis }: { analysis: AreaAnalysis }) {
+  const ind = analysis.history.industry;
+  if (!ind?.available || !ind.table.length) return null;
+  return <section className="panel area-industry" aria-label="업계·정부 기준과 대조" data-testid="area-industry">
+    <div className="panel-title"><h3>업계·정부 기준과 대조</h3><ProvenanceBadge kind="computed" detail="참고 위치, 판정 아님" /></div>
+    <div className="table-wrap"><table>
+      <thead><tr><th>항목</th><th className="num">이 구역</th><th>기준</th><th>출처</th></tr></thead>
+      <tbody>{ind.table.map((r) => <tr key={r.label}><td>{r.label}</td><td className="num">{r.value}</td><td>{r.reference}</td><td><small>{r.source}</small></td></tr>)}</tbody>
+    </table></div>
+    <ul className="area-industry-notes">{ind.notes.map((n) => <li key={n}>{n}</li>)}</ul>
   </section>;
 }
 

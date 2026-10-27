@@ -8,7 +8,7 @@ from .catalog import seed_sources
 from .settings import DATA_DIR,DEFAULT_YEAR
 
 def init_tables():
-    from . import official,kapt,kapt_energy,kma_asos,sgis,sgis_grid,vworld,energy_parcels,sgis_grid_official,regions,national,ordinances,sgis_grid500,regional_stats,team_grid,kcsm100,solar
+    from . import official,kapt,kapt_energy,kma_asos,sgis,sgis_grid,vworld,energy_parcels,sgis_grid_official,regions,national,ordinances,sgis_grid500,regional_stats,team_grid,kcsm100,solar,estimates
     try:from . import imports
     except ImportError:pass
     with engine.begin() as c:c.execute(text('CREATE EXTENSION IF NOT EXISTS postgis'))
@@ -24,7 +24,7 @@ def init_tables():
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('command',choices=['demo','online','status','enrich','collect','collect-history','collect-missing','validate-models','snapshot','llm-dataset','llm-eval','import-sgis-grid','import-sgis-grid500','import-regional-stats','import-team-grid','import-kcsm100',
         'national-admin','national-sgis','national-complexes','national-grid500','national-ordinances','national-all','prepare-region','regions',
-        'check-standard','apply-standard','backfill-solar','region-energy-history','region-kapt-history','region-sgis-history','verify-cases','place-parcels']);parser.add_argument('--year',type=int,default=DEFAULT_YEAR)
+        'check-standard','apply-standard','backfill-solar','region-energy-history','region-kapt-history','region-sgis-history','verify-cases','place-parcels','estimate-gaps']);parser.add_argument('--year',type=int,default=DEFAULT_YEAR)
     parser.add_argument('--from',dest='from_year',type=int,default=2015);parser.add_argument('--to',dest='to_year',type=int,default=DEFAULT_YEAR)
     parser.add_argument('--datasets',default='',help='comma-separated: sgis,kma_asos,kapt_energy,energy,vworld_zoning,vworld_buildings,vworld_cadastral,building_register');parser.add_argument('--force',action='store_true')
     parser.add_argument('--source',choices=['energy','weather','kapt-energy','kma','sgis','vworld-zoning','vworld-cadastral'])
@@ -183,6 +183,13 @@ def main():
             from .solar import backfill
             regions=[r.strip() for r in (args.region or '').split(',') if r.strip()] or None
             print(json.dumps(backfill(db,regions=regions,log=lambda m:print(m,flush=True)),ensure_ascii=False,indent=1,default=str))
+        elif args.command=='estimate-gaps':
+            # docs/DATA_STANDARD.md 4.1: 관측 표는 그대로 두고 빈 자리 추정만 estimated_values에 다시 쓴다
+            from .estimates import estimate_region
+            from .area import forget_inputs
+            for code in [c.strip() for c in (args.region or '').split(',') if c.strip()] or [None]:
+                print(json.dumps(estimate_region(db,code,args.to_year,log=lambda m:print(m,flush=True)),ensure_ascii=False,indent=1,default=str),flush=True)
+            forget_inputs()
         elif args.command in ('check-standard','apply-standard'):
             # docs/DATA_STANDARD.md: apply brings stored values to the current rule, check counts what does not follow it.
             from .standard import apply_standard,check_standard

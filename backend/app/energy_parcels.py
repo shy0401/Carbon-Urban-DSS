@@ -485,7 +485,8 @@ def summarize_parcels(parcels: list[dict[str, Any]], grid_of: dict[str, str], ar
         if not grid_id:
             continue
         item = out.setdefault(grid_id, {"parcels": set(), "ELECTRICITY": {"complete": 0, "kwh": 0.0}, "GAS": {"complete": 0, "kwh": 0.0},
-                                        "area_parcels": 0, "area_m2": 0.0, "area_kwh": 0.0, "suspect": 0, "by_parcel": {}})
+                                        "area_parcels": 0, "area_m2": 0.0, "area_kwh": 0.0, "suspect": 0, "by_parcel": {},
+                                        "area_pnus": set(), "gas_by_parcel": {}})
         item["parcels"].add(p["pnu"])
         target = item[p["energy_type"]]
         month_list = p.get("month_list")
@@ -496,6 +497,8 @@ def summarize_parcels(parcels: list[dict[str, Any]], grid_of: dict[str, str], ar
         if month_list is not None and bimonthly_only(p["energy_type"], month_list):
             item["bimonthly"] = item.get("bimonthly", 0) + 1
         target["kwh"] += p["kwh"]
+        if p["energy_type"] == "GAS":
+            item["gas_by_parcel"][p["pnu"]] = p["kwh"]
         if p["energy_type"] == "ELECTRICITY":
             item["by_parcel"][p["pnu"]] = p["kwh"]
             area = area_of.get(p["pnu"])
@@ -505,6 +508,7 @@ def summarize_parcels(parcels: list[dict[str, Any]], grid_of: dict[str, str], ar
                     item["area_parcels"] += 1
                     item["area_m2"] += area
                     item["area_kwh"] += p["kwh"]
+                    item["area_pnus"].add(p["pnu"])
                 else:
                     item["suspect"] += 1
     result: dict[str, dict[str, Any]] = {}
@@ -517,6 +521,7 @@ def summarize_parcels(parcels: list[dict[str, Any]], grid_of: dict[str, str], ar
             "gas_bimonthly": item.get("bimonthly", 0),
             "area_parcels": item["area_parcels"], "area_m2": round(item["area_m2"], 1) if item["area_parcels"] else None,
             "kwh_per_m2": round(item["area_kwh"] / item["area_m2"], 2) if item["area_parcels"] else None,
+            "area_gas_kwh": round(sum(item["gas_by_parcel"].get(p, 0.0) for p in item["area_pnus"]), 1),
             "suspect": item["suspect"],
             # 12-month electricity per parcel: lets an area compare the same parcels across years (not serialised by map_properties)
             "electricity_by_parcel": item["by_parcel"],

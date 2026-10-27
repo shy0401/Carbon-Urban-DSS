@@ -191,3 +191,9 @@
   .area-summary { position: static; box-shadow: none; }
   .area-steps, .area-summary-actions, .area-measures-actions { display: none; }
 }
+
+/* 빈 자료 보정·추정 (DATA_STANDARD 4.1): 되돌림 추정 연도는 빗금으로 관측 행과 구분 */
+.area-estimates caption, .area-industry caption { caption-side: top; text-align: left; font-weight: 600; color: var(--ink-2); padding: var(--sp-2) 0; }
+.area-estimates tr.is-estimated-row td { background-image: var(--hatch-image); print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+.area-estimate-note { margin: var(--sp-2) 0 0; color: var(--ink-2); }
+.area-industry-notes { margin: var(--sp-2) 0 0; padding-left: 20px; color: var(--ink-2); font-size: var(--fs-caption); line-height: 1.6; }
