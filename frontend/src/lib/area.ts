@@ -114,6 +114,8 @@ export interface AreaEstimateBuildingYear {
   year: number;
   /** true: 건축HUB 미제공 연도(2015~2019) 되돌림 추정, false: 계측 달 + 빈 달 채움 */
   backcast: boolean;
+  /** false: 그해 건축HUB를 아직 다 받지 않음(보정 합계도 잠정) */
+  complete?: boolean;
   electricity_kwh: number | null;
   gas_kwh: number | null;
   electricity_observed_kwh: number | null;

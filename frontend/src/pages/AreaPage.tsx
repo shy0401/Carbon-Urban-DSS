@@ -359,7 +359,7 @@ export function EstimatesPanel({ analysis }: { analysis: AreaAnalysis }) {
     {buildings.length > 0 && <div className="table-wrap"><table>
       <caption>건물 전체 전력 (건축HUB 계측 지번)</caption>
       <thead><tr><th>연도</th><th className="num">관측 kWh (12개월 지번)</th><th className="num">보정·추정 합계 kWh</th><th className="num">그중 추정분 kWh</th><th className="num">가스 보정·추정 kWh</th><th>방법</th></tr></thead>
-      <tbody>{buildings.map((v) => <tr key={v.year} className={v.backcast ? 'is-estimated-row' : undefined}><td>{v.year}{v.provider_gap && <small className="status-tag warn">일부 결측</small>}</td>
+      <tbody>{buildings.map((v) => <tr key={v.year} className={v.backcast ? 'is-estimated-row' : undefined}><td>{v.year}{v.complete === false && <small className="status-tag warn">수집 중</small>}{v.provider_gap && <small className="status-tag warn">일부 결측</small>}</td>
         <td className="num">{formatMetric(v.electricity_observed_kwh)}</td><td className="num">{formatMetric(v.electricity_kwh)}</td>
         <td className="num">{v.backcast ? formatMetric(v.electricity_kwh) : formatMetric(v.electricity_filled_kwh ?? null)}</td><td className="num">{formatMetric(v.gas_kwh)}</td>
         <td>{v.backcast ? '되돌림 추정 (2021년 지번 사용량 × 같은 단지 지수)' : v.electricity_filled_months ? `빈 달 ${formatMetric(v.electricity_filled_months)}개월 채움` : '계측 달 합'}</td></tr>)}</tbody>

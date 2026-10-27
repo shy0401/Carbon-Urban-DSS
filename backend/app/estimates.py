@@ -581,7 +581,7 @@ def _row(dataset: str, region: str, key: str, energy_type: str | None, year: int
 
 def estimate_region(db: Any, region: str | None = None, last_year: int | None = None, log: Callable[[str], None] = print) -> dict[str, Any]:
     """Recompute every estimate of one study region and replace its rows in ``estimated_values``."""
-    from .energy_parcels import _parcel_grid
+    from .energy_parcels import _parcel_grid, region_year_complete
     from .kapt import ApartmentComplex
     from .regions import scope
     from .settings import DEFAULT_YEAR
@@ -633,14 +633,18 @@ def estimate_region(db: Any, region: str | None = None, last_year: int | None = 
             continue
         fills, _ = hub_fill(series, energy_type, HUB_FIRST_YEAR, hub_years)
         grid_years = hub_grid_years(series, fills, grid_of, energy_type, HUB_FIRST_YEAR, hub_years)
+        collected = {y: region_year_complete(db, sc.code, y) for y in hub_years}  # a year still being collected is marked, not hidden
         for (grid, year), v in grid_years.items():
             total = v["observed_all_kwh"] + v["filled_kwh"]
             method = "FILL_SAME_ENTITY_NEIGHBOR_YEAR" if v["filled_months"] > v["profile_months"] else ("FILL_CITY_MONTH_PROFILE" if v["filled_months"] else "OBSERVED_ALL_MONTHS")
             rows.append(_row("hub_grid_year", sc.code, grid, energy_type, year, total, "kWh", method,
-                             {k: (round(x, 1) if isinstance(x, float) else x) for k, x in v.items()}))
+                             dict({k: (round(x, 1) if isinstance(x, float) else x) for k, x in v.items()}, year_complete=collected[year])))
         before = list(range(BACKCAST_FIRST_YEAR, HUB_FIRST_YEAR))
+        # back-cast only from fully collected base years: a region whose 2021 is still being collected would carry its
+        # missing parcels back into 2015~2019 (other regions' 건축HUB history is collected after their analysis year)
+        base_ready = all(region_year_complete(db, sc.code, y) for y in (BACKCAST_BASE_YEARS[:1] if energy_type == "ELECTRICITY" else BACKCAST_BASE_YEARS))
         back = hub_backcast(series, fills, grid_of, energy_type, HUB_FIRST_YEAR, before, first_built=first_built, unknown_year=unknown_year,
-                            kepco=kepco, hdd=hdd, same_index=same_index)
+                            kepco=kepco, hdd=hdd, same_index=same_index) if base_ready else {}
         method = "BACKCAST_SAME_BUILDING" if energy_type == "ELECTRICITY" else "BACKCAST_HDD_REGRESSION"
         for (grid, year), v in back.items():
             rows.append(_row("hub_grid_year", sc.code, grid, energy_type, year, v.pop("value"), "kWh", method, v))
@@ -648,7 +652,8 @@ def estimate_region(db: Any, region: str | None = None, last_year: int | None = 
                 for y in range(BACKCAST_FIRST_YEAR, last_year + 1)}
         summary[f"hub_{energy_type.lower()}"] = {
             "parcels": len(series), "filled_parcels": sum(1 for f in fills.values() if f), "filled_months": sum(len(f) for f in fills.values()),
-            "grid_years": len(grid_years), "backcast_grid_years": len(back), "backcast_years": sorted({y for _, y in back}), "region_gwh": city}
+            "grid_years": len(grid_years), "backcast_grid_years": len(back), "backcast_years": sorted({y for _, y in back}), "region_gwh": city,
+            "backcast_base_complete": base_ready}
         if energy_type == "ELECTRICITY" and kepco:
             summary["hub_electricity"]["share_of_kepco_buildings"] = {
                 y: round(city[y] * 1e6 / sum(kepco[(y, m)] for m in range(1, 13)), 4)
@@ -728,7 +733,8 @@ def area_block(history: dict[str, Any], est: dict[str, Any] | None) -> dict[str,
         inside = [v for g, v in by_grid.items() if g in grids]
         if not inside:
             continue
-        entry: dict[str, Any] = {"year": year, "backcast": year < HUB_FIRST_YEAR}
+        entry: dict[str, Any] = {"year": year, "backcast": year < HUB_FIRST_YEAR,
+                                 "complete": all(bool((v.get(t) or {}).get("basis", {}).get("year_complete", True)) for v in inside for t in v)}
         for etype, key in (("ELECTRICITY", "electricity"), ("GAS", "gas")):
             items = [v[etype] for v in inside if etype in v and v[etype]["value"] is not None]
             if not items:
@@ -802,7 +808,7 @@ def estimate_facts(history: dict[str, Any], add: Callable[..., None]) -> None:
             f"{last}년 {b[last]['electricity_kwh']:,.0f} kWh(추정값). 관측 해에 같은 방식으로 시험한 칸별 오차 합은 1년 떨어진 해 {bt['grid_wape_1y'] * 100:,.0f}%, "
             f"3년 떨어진 해 {bt['grid_wape_3y'][1] * 100:,.0f}%였고 더 먼 해는 더 클 수 있습니다.",
             first, b[first]["electricity_kwh"], last, b[last]["electricity_kwh"], 2021, round(bt["grid_wape_1y"] * 100), round(bt["grid_wape_3y"][1] * 100), 1, 3)
-    filled = sorted(y for y, v in b.items() if not v.get("backcast") and v.get("electricity_kwh") is not None)
+    filled = sorted(y for y, v in b.items() if not v.get("backcast") and v.get("complete", True) and v.get("electricity_kwh") is not None)
     if filled:
         y = filled[-1]
         v = b[y]

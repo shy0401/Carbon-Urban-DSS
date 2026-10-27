@@ -424,7 +424,7 @@ def area_html(s: dict[str, Any]) -> str:
                         return "되돌림 추정(2021년 지번 사용량 × K-apt 같은 단지 지수, 그해 있던 건물만)"
                     return f"계측 달 + 빈 달 {v.get('electricity_filled_months', 0):,}개월 채움" if v.get("electricity_filled_months") else "계측 달 합(채운 달 없음)"
                 extra += ("<table><thead><tr><th>연도</th><th>관측 kWh (12개월 계측 지번)</th><th>보정·추정 합계 kWh</th><th>그중 추정분 kWh</th><th>가스 보정·추정 kWh</th><th>방법</th></tr></thead><tbody>"
-                          + "".join(f"<tr><td>{y}{' (일부 결측)' if v.get('provider_gap') else ''}</td><td class=num>{num(v.get('electricity_observed_kwh'))}</td>"
+                          + "".join(f"<tr><td>{y}{' (수집 중)' if v.get('complete') is False else ''}{' (일부 결측)' if v.get('provider_gap') else ''}</td><td class=num>{num(v.get('electricity_observed_kwh'))}</td>"
                                     f"<td class=num>{num(v.get('electricity_kwh'))}</td>"
                                     f"<td class=num>{num(v.get('electricity_kwh')) if v.get('backcast') else num(v.get('electricity_filled_kwh'))}</td>"
                                     f"<td class=num>{num(v.get('gas_kwh'))}</td><td>{escape(method_label(v))}</td></tr>"
