@@ -283,22 +283,34 @@ def _apply_month(db: Any, complex_row: Any, row: "ApartmentEnergyMonthly", row_d
     return row.quality_status
 
 
+RECLASSIFY_PAGE = 5000
+
+
 def reclassify_existing(db: Any) -> dict[str, int]:
     """Re-apply the no-report/plausibility rules to rows stored by earlier versions (idempotent)."""
     from .kapt import ApartmentComplex
     complexes = {row.kapt_code: row for row in db.scalars(select(ApartmentComplex))}
     counts: dict[str, int] = {}
-    for row in db.scalars(select(ApartmentEnergyMonthly).where(ApartmentEnergyMonthly.source == "K-apt")):
-        complex_row = complexes.get(row.complex_code)
-        if complex_row is None or row.quality_status not in {"SUCCESS", "SUSPECT", "NOT_REPORTED"} or not row.raw_record:
-            continue
-        raw = {key: value for key, value in row.raw_record.items() if key != "quality_reason"}
-        data = {"raw_record": raw, "units": row.units}
-        for upstream, normalized in FIELD_MAP.items():
-            data[normalized] = _number(raw.get(upstream))
-        status = _apply_month(db, complex_row, row, data)
-        counts[status] = counts.get(status, 0) + 1
-    db.commit()
+    last = ""
+    while True:  # pages by id and commits each page: the nationwide months do not fit in one session (2026-10-27)
+        page = list(db.scalars(select(ApartmentEnergyMonthly).where(ApartmentEnergyMonthly.source == "K-apt", ApartmentEnergyMonthly.id > last)
+                               .order_by(ApartmentEnergyMonthly.id).limit(RECLASSIFY_PAGE)))
+        if not page:
+            break
+        last = page[-1].id
+        for row in page:
+            complex_row = complexes.get(row.complex_code)
+            if complex_row is None or row.quality_status not in {"SUCCESS", "SUSPECT", "NOT_REPORTED"} or not row.raw_record:
+                continue
+            raw = {key: value for key, value in row.raw_record.items() if key != "quality_reason"}
+            data = {"raw_record": raw, "units": row.units}
+            for upstream, normalized in FIELD_MAP.items():
+                data[normalized] = _number(raw.get(upstream))
+            status = _apply_month(db, complex_row, row, data)
+            counts[status] = counts.get(status, 0) + 1
+        db.commit()
+        db.expunge_all()
+        complexes = {row.kapt_code: row for row in db.scalars(select(ApartmentComplex))} if len(page) == RECLASSIFY_PAGE else complexes
     return counts
 
 

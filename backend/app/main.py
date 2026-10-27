@@ -34,9 +34,9 @@ async def lifespan(app):
             ensure_gas_factor(db)
         except Exception:db.rollback()
         kma_asos.backfill_weather_observations(db)
-        # K-apt rows stored before the no-report rule (all-zero months) must not stay as 0 kWh.
-        try:kapt_energy.reclassify_existing(db)
-        except Exception:db.rollback()
+        # K-apt rows stored before a rule change are re-judged by apply-standard when standard.VERSION changes (in the
+        # background warm-up below), not here: with the nationwide K-apt months this pass took minutes at start-up and
+        # the health check failed (2026-10-27). New months are judged as they are stored.
         # Import durable real raw assets on first startup; subsequent boots reuse normalized data.
         for source,model,collector in [('regions',Region,collect_regions),('buildings',Building,collect_spatial),('weather',WeatherMonthly,collect_weather)]:
             if db.scalar(select(func.count()).select_from(model))==0:
