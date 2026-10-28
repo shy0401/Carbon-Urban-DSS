@@ -290,3 +290,46 @@ def test_a_city_with_districts_reads_its_district_tables_and_adds_a_shared_cell(
     assert totals[2024]["total_t"] == 450.0 and totals[2024]["cells"] == 2  # the shared cell counted once
     one = {"year": 2024, "total_t": 1.0, "flags": {}, "ngii": {}, "register": {}, "partial": True}
     assert combine_parts([one]) is one
+
+
+def test_repository_copy_adds_same_bundle_months_held_years_and_100m(tmp_path: Path):
+    """2026-10-29 팀 저장소 사본: 7차와 같은 training.csv에 그해 grid_500m.csv의 월별을(연간 합계가 같을 때만) 붙이고,
+    학습에서 뺀 해(_held_year_2020)도 그 도시의 해로 넣는다. 100m는 가장 새 묶음의 해마다 표."""
+    from sqlalchemy import create_engine, select
+    from sqlalchemy.orm import sessionmaker
+
+    from app.team_grid import TeamGrid100, TeamGrid500, dataset_dirs, import_team_grid
+    db = sessionmaker(create_engine("sqlite+pysqlite:///:memory:"))()
+    head = TRAIN_HEAD
+    train = [head, "다마71b61b,2016,971500,1761500,False,120,20000,60,40,0,100,positive,,True,none",
+             "다마71b61b,2024,971500,1761500,False,120,20000,60,40,0,100,positive,,True,none"]
+    month_head = "grid_id_500m,x_min_m,y_min_m,elec_tco2e_m01,elec_tco2e_m02,gas_tco2e_m01,elec_tco2e_total,gas_tco2e_total,heat_tco2e_total,buildings_tco2e_total"
+    g100 = ("grid_id_100m,grid_id_500m,x_min_m,y_min_m,population_total_persons,population_total_persons_status,building_count,reg_floor_area_m2\n"
+            "다마715615,다마71b61b,971500,1761500,40,observed,3,900\n")
+    for snap in ("2026-10-20", "2026-10-29"):
+        city = tmp_path / snap / "code" / "data" / "processed" / "52110_전주시"
+        city.mkdir(parents=True)
+        (city / "training.csv").write_text("\n".join(train), encoding="utf-8")
+    new = tmp_path / "2026-10-29" / "code" / "data" / "processed"
+    (new / "52110_전주시" / "2016").mkdir()
+    (new / "52110_전주시" / "2016" / "grid_500m.csv").write_text(month_head + "\n다마71b61b,971500,1761500,5,4,3,60,40,0,100\n", encoding="utf-8")
+    (new / "52110_전주시" / "2016" / "grid_100m.csv").write_text(g100, encoding="utf-8")
+    (new / "52110_전주시" / "2024").mkdir()
+    (new / "52110_전주시" / "2024" / "grid_500m.csv").write_text(month_head + "\n다마71b61b,971500,1761500,5,4,3,70,40,0,110\n", encoding="utf-8")
+    held = new / "_held_year_2020" / "52110_전주시" / "2020"
+    held.mkdir(parents=True)
+    (held / "grid_500m.csv").write_text(month_head + "\n다마71b61b,971500,1761500,6,5,4,65,45,0,110\n", encoding="utf-8")
+    (held / "grid_100m.csv").write_text(g100, encoding="utf-8")
+    assert "_held_year_" not in str(dataset_dirs(tmp_path)[0]) and "2026-10-29" in str(dataset_dirs(tmp_path)[0])
+    stats = import_team_grid(db, tmp_path, log=lambda m: None)
+    assert stats["datasets"] == ["52110_전주시"] and stats["grid500"] == 3 and stats["grid100"] == 2
+    assert stats["months_same_bundle"] == 1 and stats["months_same_bundle_dropped"] == 1
+    rows = {r.year: r for r in db.scalars(select(TeamGrid500))}
+    assert sorted(rows) == [2016, 2020, 2024]
+    assert rows[2016].monthly["elec"][:2] == [5.0, 4.0] and rows[2016].flags["monthly_from"] == "2026-10-29 2016/grid_500m.csv"
+    assert rows[2016].flags["train_issues"] == "none" and "2026-10-29" in rows[2016].source_file   # the training table stays the base
+    assert rows[2024].monthly == {}                                    # totals differ (60 vs 70): no months, not a guess
+    assert "_held_year_2020" in rows[2020].source_file and rows[2020].monthly["gas"][0] == 4.0 and rows[2020].total_t == 110.0
+    assert sorted(r.year for r in db.scalars(select(TeamGrid100))) == [2016, 2020]
+    again = import_team_grid(db, tmp_path, log=lambda m: None)
+    assert again["grid500"] == 0 and again["grid100"] == 0

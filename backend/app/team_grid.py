@@ -6,9 +6,12 @@
 * 2026-10-20 인계 묶음(7차): ``code/data/processed/<도시>/training.csv``(500m 칸 × 7개 해, 월별·100m 없음),
   ``developments.csv``, 그리고 모델 점수 ``00_합본_7차/baseline/development_cases.csv``(학습 42곳 교차검증)와
   ``code/docs/results/data/r011-split-a/holdout_cases_join7_42_w10.csv``(시험 10곳) — 53개 지역
+* 2026-10-29 팀 저장소 사본: 7차와 같은 ``training.csv``·``developments.csv``에 더해 도시마다 해마다
+  ``<도시>/<연도>/grid_500m.csv``(월별 열 있음)·``grid_100m.csv``, 그리고 학습에서 뺀 해 ``_held_year_2020``·``_held_year_2023``
+  (15개 지역의 2020·2023년 500m·100m)
 
 같은 도시·같은 해는 가장 새 묶음 한 곳에서만 읽는다(500m는 해마다, 100m는 해마다, 개발 사례는 도시마다). 새 묶음에
-월별 값이 없으면 앞 묶음의 월별 값을 연간 합계가 같을 때만 남긴다. 100m는 7차 묶음에 없어 2026-10-01 값을 그대로 쓴다.
+월별 값은 같은 묶음의 그해 ``grid_500m.csv``에서, 그것도 없으면 앞 묶음의 월별 값을 연간 합계가 같을 때만 붙인다.
 
 넣는 것 (이 도구에 없던 출처):
 
@@ -39,10 +42,11 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from .db import Base
 
-SNAPSHOT = "2026-10-20"
-SOURCE_CARBONMAP = "국토교통부 탄소공간지도 500m 건물 배출 (팀 수집: 윤영준, 7차 인계 2026-10-20)"
+SNAPSHOT = "2026-10-29"
+SOURCE_CARBONMAP = "국토교통부 탄소공간지도 500m 건물 배출 (팀 수집: 윤영준, 7차 인계 2026-10-20 표 + 2026-10-29 팀 저장소의 월별·보류 해)"
 SOURCE_NGII = "국토지리정보원 국토통계지도 100m (팀 수집, 국외 반출 금지)"
-YEARS = (2014, 2016, 2018, 2019, 2021, 2022, 2024)
+YEARS = (2014, 2016, 2018, 2019, 2020, 2021, 2022, 2023, 2024)  # 2020·2023은 학습에서 뺀 해(_held_year_*, 15개 지역)
+HELD_PREFIX = "_held_year_"
 TRAINING_FILE = "training.csv"  # 7차 인계: 한 도시의 모든 해 500m 칸
 # 모델 점수 파일(7차): 학습 42곳 사례의 교차검증 예측과 시험 10곳 사례의 예측(학습에 없던 지역)
 CASES_CV = ("code", "data", "processed", "00_합본_7차", "baseline", "development_cases.csv")
@@ -220,9 +224,15 @@ def snapshot_dirs(root: Path) -> list[Path]:
 
 
 def city_dirs(snap: Path) -> list[Path]:
-    """City folders of one snapshot: ``<snap>/<도시>`` (10-01 공유) and ``<snap>/code/data/processed/<도시>`` (10-20 인계)."""
+    """City folders of one snapshot: ``<snap>/<도시>`` (10-01 공유), ``<snap>/code/data/processed/<도시>`` (10-20 인계·10-29 저장소)
+    and the held-out years of the repository copy ``processed/_held_year_<연도>/<도시>/<연도>`` (2020·2023).
+
+    A held-out folder comes before the city's main folder, so the main folder is the one that speaks for the city when
+    both are listed (its years and its developments.csv; the held years are not in it)."""
+    processed = snap / "code" / "data" / "processed"
+    held = sorted(d for d in processed.glob(f"{HELD_PREFIX}*") if d.is_dir()) if processed.is_dir() else []
     out: list[Path] = []
-    for base in (snap, snap / "code" / "data" / "processed"):
+    for base in (*held, snap, processed):
         if base.is_dir():
             out += [d for d in sorted(base.iterdir()) if d.is_dir() and dataset_region(d.name)]
     return out
@@ -266,15 +276,22 @@ def file_years(path: Path) -> list[int]:
 
 
 def plan_sources(folders: list[Path]) -> dict[str, Any]:
-    """Which file gives each kind of a dataset: the newest folder that has it (500m and 100m per year)."""
+    """Which file gives each kind of a dataset: the newest folder that has it (500m and 100m per year).
+
+    ``months``: for a year taken from a training table, that same folder's ``<연도>/grid_500m.csv`` (it has the monthly
+    columns the training table lacks — the 10-29 repository copy)."""
     g500: dict[int, tuple[Path, str]] = {}
     g100: dict[int, Path] = {}
+    months: dict[int, Path] = {}
     dev: Path | None = None
     for folder in folders:  # newest first
         training = folder / TRAINING_FILE
         if training.exists():
             for year in file_years(training):
-                g500.setdefault(year, (training, "training"))
+                if year not in g500:
+                    g500[year] = (training, "training")
+                    if (folder / str(year) / "grid_500m.csv").exists():
+                        months[year] = folder / str(year) / "grid_500m.csv"
         for year_dir in sorted(p for p in folder.glob("*") if p.is_dir() and p.name.isdigit()):
             year = int(year_dir.name)
             if (year_dir / "grid_500m.csv").exists():
@@ -283,7 +300,40 @@ def plan_sources(folders: list[Path]) -> dict[str, Any]:
                 g100.setdefault(year, year_dir / "grid_100m.csv")
         if dev is None and (folder / "developments.csv").exists():
             dev = folder / "developments.csv"
-    return {"g500": g500, "g100": g100, "dev": dev}
+    return {"g500": g500, "g100": g100, "dev": dev, "months": months}
+
+
+def same_bundle_months(path: Path) -> dict[str, tuple[dict[str, list[float | None]], tuple[Any, ...]]]:
+    """{grid: (monthly, (total, elec, gas, heat))} of one per-year ``grid_500m.csv`` (pure reading)."""
+    out: dict[str, tuple[dict[str, list[float | None]], tuple[Any, ...]]] = {}
+    for r in _rows(path):
+        grid = (r.get("grid_id_500m") or "").strip()
+        monthly = {}
+        for e in ("elec", "gas", "heat"):
+            values = [num(r.get(f"{e}_tco2e_m{m:02d}")) for m in range(1, 13)]
+            if any(v is not None for v in values):
+                monthly[e] = values
+        if grid and monthly:
+            out[grid] = (monthly, (num(r.get("buildings_tco2e_total")), num(r.get("elec_tco2e_total")),
+                                   num(r.get("gas_tco2e_total")), num(r.get("heat_tco2e_total"))))
+    return out
+
+
+def attach_months(rows: list[dict[str, Any]], months: dict[str, tuple[dict[str, Any], tuple[Any, ...]]], label: str) -> tuple[int, int]:
+    """Give training rows the months of the same bundle's grid table when the annual totals agree (else none). → (kept, dropped)"""
+    kept = dropped = 0
+    for r in rows:
+        hit = months.get(r["grid_code"])
+        if r["monthly"] or hit is None:
+            continue
+        monthly, (t, e, g, h) = hit
+        if all(_close(a, b) for a, b in ((r["total_t"], t), (r["elec_t"], e), (r["gas_t"], g), (r["heat_t"], h))):
+            r["monthly"] = monthly
+            r["flags"] = dict(r["flags"], monthly_from=label)
+            kept += 1
+        else:
+            dropped += 1
+    return kept, dropped
 
 
 def _close(a: float | None, b: float | None) -> bool:
@@ -434,7 +484,7 @@ def import_team_grid(db: Any, root: Path | None = None, force: bool = False, log
     for model in (TeamGrid500, TeamGrid100, TeamDevelopment, TeamImport):
         model.__table__.create(db.get_bind(), checkfirst=True)
     stats: dict[str, Any] = {"datasets": [], "grid500": 0, "grid100": 0, "developments": 0, "skipped_files": 0,
-                             "months_kept": 0, "months_dropped": 0, "scored_cases": None}
+                             "months_kept": 0, "months_dropped": 0, "months_same_bundle": 0, "months_same_bundle_dropped": 0, "scored_cases": None}
     dev_changed = False
     for name, folders in dataset_snapshots(root).items():
         stats["datasets"].append(name)
@@ -445,7 +495,8 @@ def import_team_grid(db: Any, root: Path | None = None, force: bool = False, log
             by_file.setdefault(path, []).append(year)
         for path, years in by_file.items():
             rel = str(path.relative_to(root))
-            sha = _sha(path)
+            month_files = [plan["months"][y] for y in years if y in plan["months"]] if path.name == TRAINING_FILE else []
+            sha = _sha(path) if not month_files else hashlib.sha256("".join([_sha(path), *(_sha(m) for m in month_files)]).encode()).hexdigest()
             skip, done = _done(db, rel, sha, force)
             if skip:
                 stats["skipped_files"] += 1
@@ -463,6 +514,11 @@ def import_team_grid(db: Any, root: Path | None = None, force: bool = False, log
             total = 0
             for year, rows in rows_by_year.items():
                 rows = list({r["id"]: r for r in rows}.values())  # the same key twice in one file: the last row (no double count)
+                if year in plan["months"] and path.name == TRAINING_FILE:
+                    label = f"{path.relative_to(root).parts[0]} {year}/grid_500m.csv"
+                    k, d = attach_months(rows, same_bundle_months(plan["months"][year]), label)
+                    stats["months_same_bundle"] += k
+                    stats["months_same_bundle_dropped"] += d
                 kept = _write_g500(db, name, year, rows)
                 stats["months_kept"] += kept["months_kept"]
                 stats["months_dropped"] += kept["months_dropped"]
