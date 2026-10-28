@@ -848,15 +848,29 @@ GRID100_LIMIT = 12000
 _GRID100: dict[tuple[str, int], tuple[int, list[tuple[Any, ...]]]] = {}
 
 
+def _grid100_filter(db: Any, region_code: str) -> Any:
+    """Which 100m rows belong to a study region: its own team table (전주 52110), else its 일반구 tables (수원 41110 → 41113·41117,
+    the same choice as the 500m map, ``region_datasets``); the region code alone when no 500m table says otherwise (tests)."""
+    datasets = region_datasets(db, region_code)
+    return TeamGrid100.dataset.in_(datasets) if datasets else TeamGrid100.region_code == region_code
+
+
 def _grid100_rows(db: Any, region_code: str, year: int) -> tuple[int, list[tuple[Any, ...]]]:
-    """All 100m rows of a region-year, kept in memory and checked against the row count (a re-import replaces them)."""
-    count = db.scalar(select(func.count()).select_from(TeamGrid100).where(TeamGrid100.region_code == region_code, TeamGrid100.year == year)) or 0
+    """All 100m rows of a region-year, kept in memory and checked against the row count (a re-import replaces them).
+
+    A 100m cell on the border of two 구 tables is in both with the same values (국토통계지도 values are per cell): kept once."""
+    where = _grid100_filter(db, region_code)
+    count = db.scalar(select(func.count()).select_from(TeamGrid100).where(where, TeamGrid100.year == year)) or 0
     hit = _GRID100.get((region_code, year))
     if hit is None or hit[0] != count:
         cols = (TeamGrid100.grid_code, TeamGrid100.x, TeamGrid100.y, TeamGrid100.population, TeamGrid100.population_status,
                 TeamGrid100.building_count, TeamGrid100.floor_area_est, TeamGrid100.approval_year, TeamGrid100.zone_class)
-        rows = list(db.execute(select(*cols).where(TeamGrid100.region_code == region_code, TeamGrid100.year == year)
-                               .order_by(TeamGrid100.y, TeamGrid100.x)).tuples())
+        seen: set[str] = set()
+        rows = []
+        for r in db.execute(select(*cols).where(where, TeamGrid100.year == year).order_by(TeamGrid100.y, TeamGrid100.x)).tuples():
+            if r[0] not in seen:
+                seen.add(r[0])
+                rows.append(r)
         if len(_GRID100) >= 8:
             _GRID100.pop(next(iter(_GRID100)))
         _GRID100[(region_code, year)] = (count, rows)
@@ -877,21 +891,21 @@ def grid100_features(db: Any, region_code: str | None, year: int, bbox: tuple[fl
         meta["reason"] = "지역을 고르지 않았습니다."
         return empty
     try:
-        meta["years"] = sorted({int(y) for (y,) in db.execute(select(TeamGrid100.year).where(TeamGrid100.region_code == region_code).distinct())})
+        meta["years"] = sorted({int(y) for (y,) in db.execute(select(TeamGrid100.year).where(_grid100_filter(db, region_code)).distinct())})
     except Exception:  # noqa: BLE001 - table missing (team dataset never imported)
         db.rollback()
         meta["reason"] = "100m 격자 자료(국토통계지도)를 아직 가져오지 않았습니다."
         return empty
     if not meta["years"]:
-        meta["reason"] = "이 지역에는 100m 격자 자료(국토통계지도)가 없습니다. 팀 100m 자료는 전주·세종·부산 강서·서울 강동만 있습니다(7차 인계 묶음에는 100m 없음)."
+        meta["reason"] = "이 지역에는 100m 격자 자료(국토통계지도)가 없습니다. 팀 100m 자료는 팀 데이터셋 53개 지역만 있습니다(2026-10-29 팀 저장소 사본)."
         return empty
     chosen = year_for(meta["years"], year)
     if chosen is None:
         meta["reason"] = f"{year}년 이전의 100m 자료가 없습니다. 가장 이른 자료는 {meta['years'][0]}년입니다."
         return empty
     meta["year"] = chosen
-    count, rows = _grid100_rows(db, region_code, chosen)
-    meta["cells"] = count
+    _count, rows = _grid100_rows(db, region_code, chosen)
+    meta["cells"] = len(rows)
     if meta_only:
         return empty
     if grid500:

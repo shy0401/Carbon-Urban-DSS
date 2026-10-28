@@ -333,3 +333,32 @@ def test_repository_copy_adds_same_bundle_months_held_years_and_100m(tmp_path: P
     assert sorted(r.year for r in db.scalars(select(TeamGrid100))) == [2016, 2020]
     again = import_team_grid(db, tmp_path, log=lambda m: None)
     assert again["grid500"] == 0 and again["grid100"] == 0
+
+
+def test_grid100_of_a_city_with_districts_reads_its_district_tables_once():
+    """수원시(41110)는 팀 100m 표가 구(권선·영통)마다 있다: 두 구 표를 함께 읽고, 두 표에 다 있는 경계 칸은 한 번만."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from app.regions import StudyRegion
+    from app.team_grid import _DATASETS, _GRID100, TeamGrid100, TeamGrid500, grid100_features
+    _DATASETS.clear()
+    _GRID100.clear()
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    for t in (TeamGrid500.__table__, TeamGrid100.__table__, StudyRegion.__table__):
+        t.create(engine)
+    db = sessionmaker(engine)()
+    db.add(StudyRegion(code="41110", name="경기도 수원시", sido_name="경기도", legal_codes=["41111", "41113", "41115", "41117"]))
+    for ds in ("41113_경기도_수원시_권선구", "41117_경기도_수원시_영통구"):
+        db.add(TeamGrid500(id=f"{ds}|g|2024", dataset=ds, region_code=ds[:5], grid_code="g", x=0, y=0, year=2024, monthly={}, ngii={},
+                           register={}, flags={}, source_file="t"))
+    def cell(ds, x, pop):
+        return TeamGrid100(id=f"{ds}|c{x}|2024", dataset=ds, region_code=ds[:5], grid_code=f"c{x}", grid500_code="g", x=x, y=1761500,
+                           year=2024, population=pop, population_status="observed", building_count=1.0)
+    db.add_all([cell("41113_경기도_수원시_권선구", 971500, 10.0), cell("41113_경기도_수원시_권선구", 971600, 20.0),
+                cell("41117_경기도_수원시_영통구", 971600, 20.0), cell("41117_경기도_수원시_영통구", 971700, 30.0)])
+    db.commit()
+    out = grid100_features(db, "41110", 2025, grid500="cell_971500_1761500")
+    assert out["meta"]["years"] == [2024] and out["meta"]["cells"] == 3
+    assert sorted(f["properties"]["x"] for f in out["features"]) == [971500, 971600, 971700]
+    assert out["summary"]["population_sum"] == 60.0   # the border cell (20) is not counted twice

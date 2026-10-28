@@ -2,7 +2,7 @@
 
 > **자료를 모으기 전에 이 문서부터 읽습니다.** 팀원 누구나, 어느 지역이든, 사람이 하든 AI 도구로 하든 같은 기준으로 모으고 같은 공식으로 계산해야 결과를 합치고 비교할 수 있습니다. 이 문서가 그 기준의 **유일한 원본**입니다. 코드의 상수·규칙이 이 문서와 다르면 둘 중 하나가 틀린 것이니, 같은 커밋에서 함께 고칩니다(9절).
 
-- 판: 1.5 (2026-10-27) · 근거: [팀 데이터 비교](TEAM_DATA_COMPARISON.md), [탄소 계산](CARBON_METHOD.md), [정확도 점검](ACCURACY.md), 팀 데이터셋 urban-carbon의 `config/rules.yaml`·ADR
+- 판: 1.6 (2026-10-29) · 근거: [팀 데이터 비교](TEAM_DATA_COMPARISON.md), [탄소 계산](CARBON_METHOD.md), [정확도 점검](ACCURACY.md), 팀 데이터셋 urban-carbon의 `config/rules.yaml`·ADR
 - 점검 명령: `docker compose exec api python -m app.cli check-standard` (8절)
 
 ## 0. 작업 전 확인 (매번)
@@ -40,8 +40,8 @@
 | 전력 배출계수 | [온실가스종합정보센터 승인 배출계수](https://www.gir.go.kr/home/index.do?menuId=36) | 소비단 CO2eq tCO2eq/MWh | 공표일 | 원문 PDF를 `data/raw/research/gir/`에 두면 증빙 확인 후 등록 | 5.4절 표 |
 | 한전 시군구 전력판매량 | [한전 전력판매량 게시판](https://www.kepco.co.kr/home/customer/library/electricity-statistics/sales-volume/boardList.do) | 시·군·구 × 월, 계약종별 kWh | 월 | 파일 → `data/raw/kepco/` | 총량 대조용. 격자에 나누지 않음 |
 | 지역 온실가스 인벤토리 | [GIR 지역 온실가스 통계](https://www.gir.go.kr/home/index.do?menuId=36) | 시·군·구 배출량, Gg CO2eq | 2010~2023 | 파일 → `data/raw/research/gir/` | 총량 대조용 |
-| 탄소공간지도 500m (팀 데이터셋) | 탄소공간지도 사이트 (팀 데이터 카드 `carbonmap_building.md`) | 칸 × 해 건물 배출량, **tCO2e** (전기·가스·지역난방; 월별은 2026-10-01 묶음 4개 도시만) | 2014·2016·2018·2019·2021·2022·2024 (7차 인계, 53개 지역) | `import-team-grid` | 이 도구 계산값과 **더하지 않는다**(5.12절). 같은 도시·해는 가장 새 묶음만 |
-| 국토통계지도 100m (팀 데이터셋) | 국토지리정보원 국토통계지도 | 100m 인구·건물·연면적 추정 (7차 묶음은 500m 합만) | 100m: 2016·2019·2022·2024 (4개 도시) · 500m 합: 7개 해 | `import-team-grid` | **국외 반출 금지**: PC 밖·Git·공개 주소에 올리지 않는다 |
+| 탄소공간지도 500m (팀 데이터셋) | 탄소공간지도 사이트 (팀 데이터 카드 `carbonmap_building.md`) | 칸 × 해 건물 배출량, **tCO2e** (전기·가스·지역난방; 월별은 같은 묶음의 해마다 표와 연간 합계가 같은 칸만) | 2014·2016·2018·2019·2021·2022·2024 (53개 지역) + 2020·2023 (학습에서 뺀 해, 15개 지역) — 7차 인계 표 + 2026-10-29 팀 저장소 사본 | `import-team-grid` | 이 도구 계산값과 **더하지 않는다**(5.12절). 같은 도시·해는 가장 새 묶음만 |
+| 국토통계지도 100m (팀 데이터셋) | 국토지리정보원 국토통계지도 | 100m 인구·건물·연면적 추정 | 100m: 53개 지역 × 7개 해 + 2020·2023 (15개 지역), 2026-10-29 팀 저장소 사본 · 500m 합: 같은 해 | `import-team-grid` | **국외 반출 금지**: PC 밖·Git·공개 주소에 올리지 않는다 |
 | 팀 변화 모델 (urban-carbon 7차) | 팀 인계 묶음의 코드·학습 표(`00_합본_7차`) | 500m 칸 개발 계획 → 건물 배출 변화(tCO2e/년)와 구간 | 학습 2014~2024 | `team-model` 서비스(`--profile team-model`) | **추정(SCENARIO)**. 관측·5.8·5.9 계산과 섞지 않는다. 학습 표에 국토통계 값이 있어 공개 주소 제외 |
 | 탄소공간지도 100m 건물 전기 (선도소프트 제공) | 선도소프트 메일(2026-10, 데이터정의서 xlsx 동봉). [설명](SUNDOSOFT_KCSM100.md) | (100m 칸 × 법정동) 행의 월·연 건물 전기 배출, **tCO2eq** | 2023·2024 (전주 덕진구·완산구) | 파일 → `data/raw/sundosoft_kcsm100/<받은 날>/` → `import-kcsm100` | 칸 값 = 법정동 행의 합. 이 도구 계산값과 **더하지 않는다**(5.12). 산정 계수·0의 뜻·이용 조건은 확인 필요 → 공개 주소·Git에 올리지 않는다 |
 
@@ -212,6 +212,7 @@ docker compose -p carbon-urban-dss -f compose.yaml -f compose.demo.yaml exec -T 
 
 | 판 | 날짜 | 바뀐 것 |
 |---|---|---|
+| 1.6 | 2026-10-29 | 팀 저장소 사본(2026-10-29): 탄소공간지도 500m 월별을 같은 묶음의 해마다 표에서(연간 합계가 같을 때만), 학습에서 뺀 2020·2023년(15개 지역), 국토통계지도 100m 53개 지역 × 7개 해. 출처 표만 바뀜, 계산 규칙·`apply-standard` 판은 그대로 |
 | 1.5 | 2026-10-27 | 빈 자리 추정 계층(4.1절, `estimated_values`, `estimate-gaps`, 규칙 판 est-1.0)과 전주 백테스트, 업계·정부 기준 맞대기(5.14). 관측 표·`apply-standard` 판은 그대로 |
 | 1.4 | 2026-10-26 | K-apt 음수 항목 NULL 규칙(4절, `kapt_energy.classify_month`), `check-standard` 항목 추가. 저장된 달 재판정 → `apply-standard` 판 **1.2** |
 | 1.3 | 2026-10-23 | 전수 점검(9개 지역 DB) 결과: K-apt 세대당 전기 **상한 2,000 kWh/월** SUSPECT 규칙(4절, `kapt_energy.MAX_PLAUSIBLE_KWH_PER_HOUSEHOLD`), 격자 밖 단지는 `OUTSIDE_GRID`로 표시, 첫 판이 남긴 일사량 빈 자리 행(ERA5-Land, 값 전부 NULL) 정리. 저장된 달의 상태를 다시 판정하므로 `apply-standard` 판 **1.1** (`check-standard`가 1.0이면 WARN) |
