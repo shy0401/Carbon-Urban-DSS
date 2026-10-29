@@ -56,6 +56,7 @@ python scripts\llm\train_lora.py --data data\llm\area-narrative --out scripts\ll
 - 기본 모델: `Qwen/Qwen2.5-1.5B-Instruct` (현재 Ollama `qwen2.5:1.5b`와 같은 계열)
 - 기본 설정: LoRA r=16, 3 epoch, 답변 부분만 손실 계산
 - VRAM 8GB 이상 권장
+- 이어 하기(2026-10-30 추가): `--save-steps N`을 주면 N 단계마다 평가하고 체크포인트를 남깁니다(0이면 epoch마다). 체크포인트는 `<out>/checkpoints/<설정 지문 12자리>/`에 두므로, PC가 꺼져 멈춘 학습을 **같은 자료·같은 설정**으로 다시 시작하면 마지막 체크포인트부터 이어 갑니다. 자료나 설정이 다르면 새 폴더에서 처음부터 합니다. `training.json`의 `resumed_from`에 이어 받은 체크포인트 이름이 남습니다.
 
 결과물:
 

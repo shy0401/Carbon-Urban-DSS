@@ -15,6 +15,7 @@ the app still verifies every number and falls back to the template on any mismat
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import random
@@ -56,6 +57,9 @@ def main() -> None:
     parser.add_argument("--load-4bit", action="store_true", help="QLoRA: 4-bit base weights (bitsandbytes) for GPUs with 6 GB VRAM")
     parser.add_argument("--no-merge", action="store_true", help="save the adapter only")
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--save-steps", type=int, default=0,
+                        help="evaluate and keep a checkpoint every N optimizer steps (0 = once per epoch). "
+                             "A run stopped part-way (PC off) resumes from its last checkpoint when started again with the same settings")
     args = parser.parse_args()
 
     import torch
@@ -127,18 +131,33 @@ def main() -> None:
             return (loss, outputs) if return_outputs else loss
 
     steps_per_epoch = math.ceil(len(train) / (args.batch * args.accum))
+    # Checkpoints live in a folder named after everything that shapes the run, so a run started again with the same
+    # data and settings resumes (2026-10-28/29: the PC was switched off three times during a 5-6 h run), and a run
+    # with other data or settings never picks up a foreign checkpoint.
+    run_key = json.dumps({"base": args.base, "dataset": manifest["created_at"], "train": len(train), "eval": len(held),
+                          "epochs": args.epochs, "lr": args.lr, "rank": args.rank, "max_len": args.max_len, "batch": args.batch,
+                          "accum": args.accum, "seed": args.seed, "save_steps": args.save_steps, "load_4bit": args.load_4bit}, sort_keys=True)
+    checkpoints = out / "checkpoints" / hashlib.sha256(run_key.encode()).hexdigest()[:12]
+    checkpoints.mkdir(parents=True, exist_ok=True)
+    (checkpoints / "run.json").write_text(run_key, encoding="utf-8")
+    every = ({"eval_strategy": "steps", "eval_steps": args.save_steps, "save_strategy": "steps", "save_steps": args.save_steps}
+             if args.save_steps > 0 else {"eval_strategy": "epoch", "save_strategy": "epoch"})
     trainer = AnswerOnlyTrainer(
         model=model,
         args=TrainingArguments(
-            output_dir=str(out / "checkpoints"), num_train_epochs=args.epochs, learning_rate=args.lr,
+            output_dir=str(checkpoints), num_train_epochs=args.epochs, learning_rate=args.lr,
             per_device_train_batch_size=args.batch, per_device_eval_batch_size=args.batch, gradient_accumulation_steps=args.accum,
             lr_scheduler_type="cosine", warmup_ratio=0.05, logging_steps=max(1, steps_per_epoch // 5),
-            eval_strategy="epoch", save_strategy="epoch", save_total_limit=1, load_best_model_at_end=True, prediction_loss_only=True,
-            bf16=use_bf16, fp16=torch.cuda.is_available() and not use_bf16, seed=args.seed, report_to=[]),
+            save_total_limit=1, load_best_model_at_end=True, prediction_loss_only=True,
+            bf16=use_bf16, fp16=torch.cuda.is_available() and not use_bf16, seed=args.seed, report_to=[], **every),
         train_dataset=train, eval_dataset=held or None,
         data_collator=DataCollatorForSeq2Seq(tokenizer, padding=True, label_pad_token_id=-100),
     )
-    trainer.train()
+    from transformers.trainer_utils import get_last_checkpoint
+    last = get_last_checkpoint(str(checkpoints))
+    print(f"checkpoints {checkpoints} ({'resume from ' + Path(last).name if last else 'new run'}), "
+          f"{steps_per_epoch} steps per epoch, save every {args.save_steps or steps_per_epoch} steps", flush=True)
+    trainer.train(resume_from_checkpoint=last)
     final_eval = trainer.evaluate() if held else None
     adapter = out / "adapter"
     model.save_pretrained(adapter)
@@ -161,7 +180,7 @@ def main() -> None:
     (out / "training.json").write_text(json.dumps({
         "base": args.base, "dataset_created_at": manifest["created_at"], "train": len(train), "eval": len(held),
         "epochs": args.epochs, "lr": args.lr, "rank": args.rank, "final_eval": final_eval, "load_4bit": args.load_4bit,
-        "max_len": args.max_len, "limit": args.limit,
+        "max_len": args.max_len, "limit": args.limit, "save_steps": args.save_steps, "resumed_from": Path(last).name if last else None,
     }, ensure_ascii=False, indent=1), encoding="utf-8")
     print(f"adapter → {adapter}\nmerged  → {merged}\n다음 단계: scripts/llm/README.md 의 GGUF 변환·Ollama 등록·llm-eval")
 
