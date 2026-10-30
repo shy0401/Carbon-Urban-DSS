@@ -248,7 +248,7 @@ def evaluate(path: str | Path | None = None, *, model: str | None = None, limit:
             continue
         problems = verify_narrative(text, facts)
         results.append({"id": row["id"], "outcome": "rejected" if problems else "pass", "violations": problems,
-                        "seconds": round(time.monotonic() - started, 2), "text": text[:600]})
+                        "seconds": round(time.monotonic() - started, 2), "text": text})  # whole text: the new-fact sentences come late (10/30)
         log(f"{i + 1}: {'pass' if not problems else 'rejected ' + '; '.join(problems)[:120]}")
     counts = {k: sum(1 for r in results if r["outcome"] == k) for k in ("pass", "rejected", "error")}
     answered = counts["pass"] + counts["rejected"]

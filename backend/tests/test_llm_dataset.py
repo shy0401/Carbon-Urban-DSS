@@ -83,6 +83,16 @@ def test_evaluate_counts_pass_rejected_and_error_without_publishing_bad_numbers(
     assert saved["results"][1]["outcome"] == "rejected"
 
 
+def test_evaluate_keeps_the_whole_answer_for_later_coverage_counts(tmp_path):
+    """2026-10-30: only the first 600 characters were kept, so the late new-fact sentences could not be counted."""
+    path = tmp_path / "eval.jsonl"
+    path.write_text(json.dumps({"id": "0", "facts": FACTS}), encoding="utf-8")
+    long_answer = reference_summary(FACTS) + " " + "가" * 700
+    report = evaluate(path, model="m", generate=lambda facts, model: long_answer, log=lambda m: None)
+    saved = json.loads(open(report["saved"], encoding="utf-8").read())
+    assert saved["results"][0]["text"] == long_answer
+
+
 def test_evaluate_limit_spreads_over_the_file(tmp_path):
     """A multi-region eval file lists the regions one after another: a limited run samples all of them."""
     path = tmp_path / "eval.jsonl"
