@@ -615,7 +615,7 @@ function GridDetail({ props: p, year, name, dongs, metric, classification, detai
     {teamModel && <TeamModelPanel gridId={String(p.id)} region={teamModel.region} />}
     <section className="detail-section" aria-label="월별 관측">
       <h3>월별 관측 (공동주택 단지 지번, {months.length ? `${String(months[0]?.use_ym).slice(0, 4)}년` : `${year}년`})</h3>
-      {months.length > 0 ? <><MonthRow label="전력" months={months.map((r) => r.electricity_kwh !== null)} /><MonthRow label="가스" months={months.map((r) => r.gas_kwh !== null)} /></> : detailsLoading ? <p className="muted">월별 관측 확인 중…</p> : aptObserved ? <MissingValue reason="이 격자의 공동주택 단지 지번에는 이 해 월별 관측이 없습니다." /> : <p className="muted">격자 안 공동주택 단지가 없어 단지 월별 관측이 없습니다. 건물 전체 값은 위 카드(건축HUB 계측 지번)를 봅니다.</p>}
+      {months.length > 0 && aptObserved ? <><MonthRow label="전력" months={months.map((r) => r.electricity_kwh !== null)} /><MonthRow label="가스" months={months.map((r) => r.gas_kwh !== null)} /></> : detailsLoading ? <p className="muted">월별 관측 확인 중…</p> : aptObserved ? <MissingValue reason="이 격자의 공동주택 단지 지번에는 이 해 월별 관측이 없습니다." /> : <p className="muted">격자 안 공동주택 단지가 없어 단지 월별 관측이 없습니다. 건물 전체 값은 위 카드(건축HUB 계측 지번)를 봅니다.</p>}
       <h3 className="sub">월평균 기온 ({(details?.region?.short_name ?? '전주시').replace(/시$|군$/, '')}, 격자 공통)</h3>
       {weather.length ? <WeatherChart year={year} rows={weather} height={170} ariaLabel="선택 연도 월평균 기온 차트" /> : <MissingValue reason={detailsLoading ? '확인 중' : '이 연도의 기상 자료가 없습니다.'} />}
     </section>
@@ -646,7 +646,7 @@ function GridDetail({ props: p, year, name, dongs, metric, classification, detai
           <Fact label="단지 가스 원단위" value={p.gas_kwh_per_m2} unit="kWh/m²·년" digits={1} missingText="연면적이 있는 12개월 가스 관측 지번 없음" />
           <Fact label="단지 전력 탄소" value={p.electricity_carbon_t as number | null} unit="tCO₂eq/년" digits={1} missingText="연간 전력 관측이 없거나 그해 계수가 없음" />
         </>}
-        <Fact label="연면적 합 (공표값)" value={p.complex_gfa_m2} unit="m²" why={p.complex_gfa_excluded ? `연면적 이상값 ${p.complex_gfa_excluded}개 단지 제외` : undefined} missingText="연면적 공표값 없음" />
+        <Fact label="연면적 합 (공표값)" value={p.complex_gfa_m2} unit="m²" why={p.complex_gfa_excluded ? `연면적 이상값 ${p.complex_gfa_excluded}개 단지 제외` : undefined} missingText="연면적 공표값 없음" none={p.complex_count ? undefined : '격자 안 단지 없음'} />
       </dl>
     </section>
     <Sgis500Detail p={p} />
