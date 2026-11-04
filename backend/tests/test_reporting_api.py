@@ -29,18 +29,25 @@ def test_incompatible_scenario_comparison_is_rejected():
     s=c.post('/api/scenarios',json={'year':2024}).json()
     assert c.post('/api/reports',json={'year':2025,'scenario_ids':[s['id']]}).status_code==422
 
-def test_plan_report_names_plans_a_b_c_and_carries_the_reference_comparison():
+def test_plan_report_is_one_plan_with_its_reduction_ladder_and_no_comparison():
     c=TestClient(app)
     s=c.post('/api/scenarios',json={'year':2024}).json()
     assert 'place' in s and 'cell_' not in (s['place'] or '')
     assert set(s['annual'])>={'current','scenario','reference','difference'} and 'savings_pct' in s
     r=c.post('/api/reports',json={'year':2024,'scenario_ids':[s['id']]}).json()
-    assert r['kind']=='PLAN' and r['scenarios'][0]['label']=='계획안 A'
+    assert r['kind']=='PLAN' and r['scenarios'][0]['label']=='계획안'
     ids=[f['id'] for f in r['facts']]
     assert ids[0]=='scope' and ids[1]=='scenario_1'   # plan sentences right after the scope
-    assert any(f['id']=='scenario_1' and f['text'].startswith('계획안 A') for f in r['facts'])
+    assert any(f['id']=='scenario_1' and f['text'].startswith('계획안') for f in r['facts'])
     assert not any('cell_' in f['text'] for f in r['facts'])
-    assert c.get('/api/reports/'+r['id']+'/markdown').text.count('\n## ')==7
+    ladder=r['scenarios'][0]['reduction_plan']
+    if ladder['available']:   # 기준안 연간 값이 있으면: 대책 없음 → 효율 → (히트펌프) → (지붕 태양광)
+        assert ladder['steps'][0]['key']=='efficiency' and ladder['final_carbon_kg']<=ladder['start']['carbon_kg']
+        assert any(f['id']=='reduction_1' for f in r['facts'])
+    assert c.get('/api/reports/'+r['id']+'/markdown').text.count('\n## ')==8
+    # 다른 안과 비교하는 보고서는 만들지 않는다
+    s2=c.post('/api/scenarios',json={'year':2024}).json()
+    assert c.post('/api/reports',json={'year':2024,'scenario_ids':[s['id'],s2['id']]}).status_code==422
 
 def test_grid100_layer_is_refused_on_the_public_gateway():
     """국토통계지도 100m: 국외 반출 금지 — the public demo gateway never gets the cells."""
