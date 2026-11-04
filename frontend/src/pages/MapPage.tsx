@@ -577,6 +577,12 @@ function GridDetail({ props: p, year, name, dongs, metric, classification, detai
   const months = detailMatches ? details?.monthly ?? [] : [];
   const weather = details?.weather ?? [];
   const osm = p.building_source === 'OSM';
+  // 건물 전체(건축HUB) 값이 빈 이유: 건물이 없음 / 계측 지번 없음(단독주택·소규모 위주) / 12개월 미달.
+  const bldgMissing = (what: string) => p.building_count === 0 && !p.bldg_parcels ? '격자 안 건물 없음 (관측 대상 없음)'
+    : p.bldg_parcels ? `계측 지번 ${formatMetric(p.bldg_parcels, '곳')} 중 12개월이 다 찬 ${what} 지번 없음`
+    : '건축HUB 계측 지번 없음 (단독주택·소규모 위주이거나 미수집)';
+  const layerGap = p.building_layer_gap ? `도로명주소 건물 레이어에 없음 (대장 건물 ${formatMetric(p.reg_buildings, '동')}). 아래 대장 용적률을 보세요` : null;
+  const aptObserved = Boolean(p.complex_count || p.electricity_observed_parcels);
   return <aside className="map-detail" aria-label="선택 격자 상세">
     <header className="detail-head"><div><h2>{name || '선택 격자'}</h2><code className="grid-id">{p.id}</code>{p.sgis500_code && <code className="grid-id official" title={p.sgis500_status ? 'SGIS 공식 500m 격자 코드 (자료제공 신청 통계와 같은 격자)' : 'SGIS 공식 500m 격자 코드 (경계 API)'}>SGIS {p.sgis500_code}</code>}{dongs && <p className="grid-dongs">{dongs}</p>}</div><div className="detail-actions"><button className="icon-link" aria-label="선택 격자로 확대" onClick={onFocus}><LocateFixed size={17} /></button><button className="icon-link" aria-label="상세 닫기" onClick={onClose}><X size={17} /></button></div></header>
     <section className="detail-section current-metric" aria-label="지도 지표 값">
@@ -588,27 +594,26 @@ function GridDetail({ props: p, year, name, dongs, metric, classification, detai
     <section className="detail-section" aria-label="격자 지표">
       <h3>격자 지표 8개</h3>
       <div className="metric-grid dense">
-        <MetricCard dense title="연간 전력" value={p.electricity_kwh_annual as number | null} unit="kWh/년" basis={p.electricity_complete_parcels ? `12개월 관측 지번 ${p.electricity_complete_parcels}곳` : undefined} missingReason={p.electricity_months ? `관측 ${p.electricity_months}/12개월. 12개월 모두 있는 지번이 없음` : '월별 전력 관측 없음'} />
-        <MetricCard dense title="연간 가스" value={p.gas_kwh_annual as number | null} unit="kWh/년" basis={p.gas_complete_parcels ? `12개월 관측 지번 ${p.gas_complete_parcels}곳` : undefined} missingReason="월별 가스 관측 없음" />
-        <MetricCard dense title="전력 원단위" value={p.electricity_kwh_per_m2} unit="kWh/m²·년" digits={1} basis={p.electricity_area_m2 ? `연면적 ${formatMetric(p.electricity_area_m2, 'm²')}, 지번 ${p.electricity_area_parcels}곳` : undefined} missingReason="12개월 관측과 연면적이 모두 있는 지번 없음" />
-        <MetricCard dense title="세대당 전력" value={p.electricity_kwh_per_household} unit="kWh/세대·년" basis={p.electricity_households ? `${formatMetric(p.electricity_households, '세대')}, 월 ${formatMetric((p.electricity_kwh_per_household ?? 0) / 12, 'kWh')}` : undefined} missingReason="세대수가 확인된 12개월 관측 지번 없음" />
-        <MetricCard dense title="전력 탄소" value={p.electricity_carbon_t as number | null} unit="tCO₂eq/년" digits={1} basis="전력 × 그해 국가 승인 전력 배출계수 (GIR)" missingReason="연간 전력 관측이 없거나 그해 계수가 없어 계산하지 않음" />
-        <MetricCard dense title="건물 수" value={p.building_count} unit="동" provenance={osm ? 'fallback' : null} basis={osm ? 'OSM 공동주택 윤곽만 포함, 전체 건물 아님' : p.building_count !== null ? `밀도 ${formatMetric(p.building_density, '동/km²')}` : undefined} missingReason="건물 레이어 미수집" />
-        <MetricCard dense title="건폐율 근사" value={p.coverage_pct} unit="%" digits={1} basis={p.footprint_m2 !== null ? `건축면적 ${formatMetric(p.footprint_m2, 'm²')} ÷ 250,000 m²` : undefined} missingReason="건물 윤곽이 있어야 계산" />
-        <MetricCard dense title="추정 용적률" value={p.far_est_pct} unit="%" digits={1} basis={p.floor_area_est_m2 !== null ? `Σ건축면적×층수 ${formatMetric(p.floor_area_est_m2, 'm²')}, 층수 확인 ${formatMetric(p.floors_known_pct, '%')}` : undefined} missingReason="층수가 기록된 건물이 있어야 추정" />
+        <MetricCard dense title="건물 전체 연간 전력" value={p.bldg_electricity_kwh} unit="kWh/년" basis={p.bldg_electricity_complete ? `12개월 계측 지번 ${p.bldg_electricity_complete}곳 (건축HUB)` : undefined} missingReason={bldgMissing('전력')} />
+        <MetricCard dense title="건물 전체 연간 가스" value={p.bldg_gas_kwh} unit="kWh/년" basis={p.bldg_gas_complete ? `연간 계측 지번 ${p.bldg_gas_complete}곳 (건축HUB)` : undefined} missingReason={bldgMissing('가스')} />
+        <MetricCard dense title="건물 전체 전력 원단위" value={p.bldg_kwh_per_m2} unit="kWh/m²·년" digits={1} basis={p.bldg_area_parcels ? `대장 연면적 ${formatMetric(p.bldg_area_m2, 'm²')}, 지번 ${p.bldg_area_parcels}곳` : undefined} missingReason={p.bldg_electricity_kwh != null ? '대장 연면적이 있는 12개월 계측 지번 없음' : bldgMissing('전력')} />
+        <MetricCard dense title="공동주택 세대당 전력" value={p.electricity_kwh_per_household} unit="kWh/세대·년" basis={p.electricity_households ? `${formatMetric(p.electricity_households, '세대')}, 월 ${formatMetric((p.electricity_kwh_per_household ?? 0) / 12, 'kWh')}` : undefined} missingReason={aptObserved ? '세대수가 확인된 12개월 관측 단지 없음' : '격자 안 공동주택 단지 없음'} />
+        <MetricCard dense title="건물 전체 전력 탄소" value={p.bldg_carbon_t} unit="tCO₂eq/년" digits={1} basis="건물 전체 전력 × 그해 국가 승인 전력 배출계수 (GIR)" missingReason={p.bldg_electricity_kwh != null ? '그해 전력 배출계수가 없어 계산하지 않음' : bldgMissing('전력')} />
+        <MetricCard dense title="건물 수" value={p.building_count} unit="동" provenance={osm ? 'fallback' : null} basis={osm ? 'OSM 공동주택 윤곽만 포함, 전체 건물 아님' : p.building_layer_gap ? `도로명주소 건물 0동 · 대장 건물 ${formatMetric(p.reg_buildings, '동')}` : p.building_count !== null ? `밀도 ${formatMetric(p.building_density, '동/km²')}` : undefined} missingReason="건물 레이어 미수집" />
+        <MetricCard dense title="건폐율 근사" value={p.coverage_pct} unit="%" digits={1} basis={p.footprint_m2 !== null ? (p.building_count === 0 ? '도로명주소 건물 0동 (조회했으나 없음)' : `건축면적 ${formatMetric(p.footprint_m2, 'm²')} ÷ 250,000 m²`) : undefined} missingReason={layerGap ?? '건물 윤곽이 있어야 계산'} />
+        <MetricCard dense title="추정 용적률" value={p.far_est_pct} unit="%" digits={1} basis={p.floor_area_est_m2 !== null ? (p.building_count === 0 ? '도로명주소 건물 0동 (조회했으나 없음)' : `Σ건축면적×층수 ${formatMetric(p.floor_area_est_m2, 'm²')}, 층수 확인 ${formatMetric(p.floors_known_pct, '%')}`) : undefined} missingReason={layerGap ?? '층수가 기록된 건물이 있어야 추정'} />
       </div>
       <dl className="fact-list">
-        <Fact label="가스 원단위" value={p.gas_kwh_per_m2} unit="kWh/m²·년" digits={1} missingText="연면적이 있는 12개월 가스 관측 지번 없음" />
-        <Fact label="평균 지상층수" value={p.avg_floors} unit="층" digits={1} why={p.max_floors ? `최고 ${p.max_floors}층` : undefined} missingText="층수 기록 없음" />
-        <Fact label="가스 탄소 (가정 계수)" value={typeof p.gas_carbon_kg_annual === 'number' ? p.gas_carbon_kg_annual / 1000 : null} unit="tCO₂eq/년" digits={1} why="가스 × 0.1826 kgCO₂eq/kWh (IPCC 2006, 총발열량 기준 가정)" missingText="12개월 가스 관측 지번 없음 (0 아님)" />
+        <Fact label="평균 지상층수" value={p.avg_floors} unit="층" digits={1} why={p.max_floors ? `최고 ${p.max_floors}층` : undefined} missingText="층수 기록 없음" none={p.building_count === 0 && !p.building_layer_gap ? '건물 없음' : undefined} />
+        <Fact label="건물 전체 가스 탄소 (가정 계수)" value={p.bldg_gas_carbon_t} unit="tCO₂eq/년" digits={1} why="가스 × 0.1826 kgCO₂eq/kWh (IPCC 2006, 총발열량 기준 가정)" missingText={`${bldgMissing('가스')} (0 아님)`} />
       </dl>
     </section>
     {kcsm100 && <Kcsm100Panel gridId={String(p.id)} year={year} region={kcsm100.region} />}
     {grid100 && <Grid100Panel gridId={String(p.id)} year={year} region={grid100.region} />}
     {teamModel && <TeamModelPanel gridId={String(p.id)} region={teamModel.region} />}
     <section className="detail-section" aria-label="월별 관측">
-      <h3>월별 관측 ({months.length ? `${String(months[0]?.use_ym).slice(0, 4)}년` : `${year}년`})</h3>
-      {months.length > 0 ? <><MonthRow label="전력" months={months.map((r) => r.electricity_kwh !== null)} /><MonthRow label="가스" months={months.map((r) => r.gas_kwh !== null)} /></> : detailsLoading ? <p className="muted">월별 관측 확인 중…</p> : <MissingValue reason="이 격자에는 월별 에너지 관측이 없습니다." />}
+      <h3>월별 관측 (공동주택 단지 지번, {months.length ? `${String(months[0]?.use_ym).slice(0, 4)}년` : `${year}년`})</h3>
+      {months.length > 0 ? <><MonthRow label="전력" months={months.map((r) => r.electricity_kwh !== null)} /><MonthRow label="가스" months={months.map((r) => r.gas_kwh !== null)} /></> : detailsLoading ? <p className="muted">월별 관측 확인 중…</p> : aptObserved ? <MissingValue reason="이 격자의 공동주택 단지 지번에는 이 해 월별 관측이 없습니다." /> : <p className="muted">격자 안 공동주택 단지가 없어 단지 월별 관측이 없습니다. 건물 전체 값은 위 카드(건축HUB 계측 지번)를 봅니다.</p>}
       <h3 className="sub">월평균 기온 ({(details?.region?.short_name ?? '전주시').replace(/시$|군$/, '')}, 격자 공통)</h3>
       {weather.length ? <WeatherChart year={year} rows={weather} height={170} ariaLabel="선택 연도 월평균 기온 차트" /> : <MissingValue reason={detailsLoading ? '확인 중' : '이 연도의 기상 자료가 없습니다.'} />}
     </section>
@@ -620,13 +625,8 @@ function GridDetail({ props: p, year, name, dongs, metric, classification, detai
         : knownUseShares(p.use_share_pct) && <><h3 className="sub">건축면적 기준 건물 용도</h3><ShareBar shares={p.use_share_pct as Record<string, number>} colors={Object.fromEntries(USE_COLORS)} names={USE_NAME} /></>}
       <h3 className="sub">건물 전체 에너지 (건축HUB 전 지번)</h3>
       {p.bldg_parcels ? <dl className="fact-list">
-        <Fact label="계측 지번" value={p.bldg_parcels} unit="곳" why={p.bldg_electricity_complete ? `12개월 전력 ${p.bldg_electricity_complete}곳` : undefined} />
-        <Fact label="연간 전력" value={p.bldg_electricity_kwh} unit="kWh/년" missingText="12개월 계측 지번 없음" />
-        <Fact label="연간 가스" value={p.bldg_gas_kwh} unit="kWh/년" missingText="12개월 계측 지번 없음" />
-        <Fact label="전력 원단위 (대장 연면적)" value={p.bldg_kwh_per_m2} unit="kWh/m²·년" digits={1} missingText="대장 연면적이 있는 계측 지번 없음" />
-        <Fact label="전력 탄소" value={p.bldg_carbon_t} unit="tCO₂eq/년" digits={1} missingText="연간 전력 없음" />
-        <Fact label="가스 탄소 (가정 계수)" value={p.bldg_gas_carbon_t} unit="tCO₂eq/년" digits={1} missingText="연간 가스 없음" why="가스 kWh × 0.1826 (공식 계수 확인 전 가정)" />
-      </dl> : <MissingValue reason="건축HUB 전 지번 에너지를 아직 받지 않았거나, 이 격자에 계측 지번이 없습니다(단독주택 위주 등)." />}
+        <Fact label="계측 지번" value={p.bldg_parcels} unit="곳" why={`12개월 전력 ${p.bldg_electricity_complete ?? 0}곳 · 연간 가스 ${p.bldg_gas_complete ?? 0}곳${p.bldg_suspect ? ` · 이상값 ${p.bldg_suspect}곳 제외` : ''}`} />
+      </dl> : p.building_count === 0 && !p.building_layer_gap ? <p className="muted">격자 안 건물이 없어 계측 지번이 없습니다.</p> : <MissingValue reason="건축HUB 전 지번 에너지를 아직 받지 않았거나, 이 격자에 계측 지번이 없습니다(단독주택·200세대 미만 공동주택은 제공 범위 밖)." />}
       <h3 className="sub">건축물대장 (공식 연면적·용도)</h3>
       {p.reg_buildings ? <dl className="fact-list">
         <Fact label="대장 건물" value={p.reg_buildings} unit="동" why={p.reg_gfa_m2 != null ? `연면적 ${formatMetric(p.reg_gfa_m2, 'm²')}` : undefined} />
@@ -636,7 +636,14 @@ function GridDetail({ props: p, year, name, dongs, metric, classification, detai
       </dl> : <MissingValue reason="건축물대장을 아직 받지 않았거나 이 격자에 연결된 대장 건물이 없습니다." />}
       <h3 className="sub">공동주택 (K-apt)</h3>
       <dl className="fact-list">
-        <Fact label="단지·세대" value={p.complex_count ? p.complex_households : null} unit="세대" missingText="격자 안 단지 없음" why={p.complex_count ? `단지 ${p.complex_count}개` : undefined} />
+        <Fact label="단지·세대" value={p.complex_count ? p.complex_households : null} unit="세대" missingText="세대수 자료 없음" none={p.complex_count ? undefined : '격자 안 단지 없음'} why={p.complex_count ? `단지 ${p.complex_count}개` : undefined} />
+        {aptObserved && <>
+          <Fact label="단지 연간 전력" value={p.electricity_kwh_annual as number | null} unit="kWh/년" why={p.electricity_complete_parcels ? `12개월 관측 지번 ${p.electricity_complete_parcels}곳` : undefined} missingText={p.electricity_months ? `관측 ${p.electricity_months}/12개월, 12개월 다 찬 지번 없음` : '이 해 관측 없음'} />
+          <Fact label="단지 연간 가스" value={p.gas_kwh_annual as number | null} unit="kWh/년" why={p.gas_complete_parcels ? `12개월 관측 지번 ${p.gas_complete_parcels}곳` : undefined} missingText="12개월 가스 관측 지번 없음" />
+          <Fact label="단지 전력 원단위" value={p.electricity_kwh_per_m2} unit="kWh/m²·년" digits={1} why={p.electricity_area_m2 ? `K-apt 연면적 ${formatMetric(p.electricity_area_m2, 'm²')}` : undefined} missingText="12개월 관측과 연면적이 모두 있는 지번 없음" />
+          <Fact label="단지 가스 원단위" value={p.gas_kwh_per_m2} unit="kWh/m²·년" digits={1} missingText="연면적이 있는 12개월 가스 관측 지번 없음" />
+          <Fact label="단지 전력 탄소" value={p.electricity_carbon_t as number | null} unit="tCO₂eq/년" digits={1} missingText="연간 전력 관측이 없거나 그해 계수가 없음" />
+        </>}
         <Fact label="연면적 합 (공표값)" value={p.complex_gfa_m2} unit="m²" why={p.complex_gfa_excluded ? `연면적 이상값 ${p.complex_gfa_excluded}개 단지 제외` : undefined} missingText="연면적 공표값 없음" />
       </dl>
     </section>
@@ -668,9 +675,11 @@ function SgisDetail({ p }: { p: GridProps }) {
   </section>;
 }
 
-function Fact({ label, value, unit, digits = 0, why, missingText }: { label: ReactNode; value: number | null | undefined; unit: string; digits?: number; why?: string; missingText?: string }) {
+/** ``none``: 값이 없는 것이 아니라 해당 대상이 없는 경우(건물 없음·단지 없음). 빗금 없이 그 문구만 쓴다. */
+function Fact({ label, value, unit, digits = 0, why, missingText, none }: { label: ReactNode; value: number | null | undefined; unit: string; digits?: number; why?: string; missingText?: string; none?: string }) {
   const missing = value === null || value === undefined || !Number.isFinite(value);
-  return <div className={`fact${missing ? ' missing' : ''}`}><dt>{label}</dt><dd>{missing ? <MissingValue inline reason={missingText} /> : <>{formatMetric(value, '', digits, digits > 0)}{unit && <span className="unit">{unit}</span>}</>}{why && !missing && <span className="why">{why}</span>}</dd></div>;
+  const notApplicable = missing && Boolean(none);
+  return <div className={`fact${missing && !notApplicable ? ' missing' : ''}`}><dt>{label}</dt><dd>{notApplicable ? <span className="muted">{none}</span> : missing ? <MissingValue inline reason={missingText} /> : <>{formatMetric(value, '', digits, digits > 0)}{unit && <span className="unit">{unit}</span>}</>}{why && !missing && <span className="why">{why}</span>}</dd></div>;
 }
 
 function MonthRow({ label, months }: { label: string; months: boolean[] }) {

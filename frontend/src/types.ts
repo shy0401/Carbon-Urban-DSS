@@ -207,6 +207,8 @@ export interface GridProps {
   electricity_suspect_parcels?: number;
   /** Share (%) of building footprint whose use is known. */
   use_known_pct?: number | null;
+  /** The building layer returned no building for this grid while the 건축물대장 links buildings to it (layer gap: coverage/FAR unknown, not 0). */
+  building_layer_gap?: boolean;
   /** Every metered building of the grid (건축HUB by 법정동; null until collected city-wide). */
   bldg_parcels?: number | null;
   bldg_electricity_kwh?: number | null;

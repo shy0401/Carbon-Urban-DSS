@@ -445,6 +445,7 @@ def map_data(request:Request,year:int=Query(DEFAULT_YEAR,ge=2000,le=2100),region
         from .sgis_grid500 import grid500_properties,coverage as grid500_coverage,project_code
         grid500=grid500_properties(db,ids)
         from .register_grid import grid_register_summary,map_properties as register_properties
+        from .building_use import reconcile_with_register
         register=grid_register_summary(db,sc.grid_ids)
         from .energy_parcels import grid_building_energy,map_properties as building_energy_properties,region_year_complete
         building_energy=grid_building_energy(db,year,sc.grid_ids)
@@ -493,6 +494,8 @@ def map_data(request:Request,year:int=Query(DEFAULT_YEAR,ge=2000,le=2100),region
             p.update(grid500.get(grid_id,{}))
             # 건축물대장 표제부 linked to this grid: official floor area, FAR floor area, use mix.
             p.update(register_properties(register.get(grid_id)))
+            # VWorld가 0동이라 한 격자에 대장 건물이 있으면 건물 레이어 누락: 건폐율·추정 용적률을 0으로 두지 않음.
+            reconcile_with_register(p)
             # Every metered building of the grid (건축HUB by 법정동, placed through the cadastral parcel).
             p.update(building_energy_properties(building_energy.get(grid_id),e_factor))
             p.update(team.get(grid_id,{}))

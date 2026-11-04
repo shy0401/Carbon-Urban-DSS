@@ -111,7 +111,12 @@ def summarize_grid_aggregates(aggregates: Iterable[dict[str, Any]], requested: d
         item["floors_known_pct"] = round(item["floors_known_count"] / count * 100, 1) if count else None
         item["avg_floors"] = round(item["_floor_sum"] / item["floors_known_count"], 1) if item["floors_known_count"] else None
         # Gross floor area estimate = footprint × above-ground floors, only for buildings with a floor count.
-        item["floor_area_est_m2"] = round(item["floor_area_est_m2"], 1) if item["floors_known_count"] else None
+        # A requested grid where the provider returned no building has 0 floor area (FAR 0), like its
+        # building count and coverage; buildings without any floor count stay unknown (None).
+        if not count:
+            item["floor_area_est_m2"] = 0.0
+        else:
+            item["floor_area_est_m2"] = round(item["floor_area_est_m2"], 1) if item["floors_known_count"] else None
         item["far_est_pct"] = round(item["floor_area_est_m2"] / grid_area_m2 * 100, 2) if item["floor_area_est_m2"] is not None else None
         item["category_share_pct"] = {key: round(value / footprint * 100, 1) for key, value in item["category_footprint_m2"].items()} if footprint else {}
         # Use shares only count buildings whose use is known: a layer without use codes (VWorld
@@ -126,6 +131,15 @@ def summarize_grid_aggregates(aggregates: Iterable[dict[str, Any]], requested: d
         item["category_footprint_m2"] = {key: round(value, 1) for key, value in item["category_footprint_m2"].items()}
         del item["_floor_sum"]
     return summary
+
+
+def reconcile_with_register(props: dict[str, Any]) -> dict[str, Any]:
+    """Map properties of one grid: a grid the building layer returned empty (0 buildings) while the
+    건축물대장 links buildings to it is a gap in the layer, not an empty grid. Its layer-based coverage
+    and FAR estimate are then unknown (None) instead of 0; the building count stays the layer's answer."""
+    if props.get("building_status") and props.get("building_count") == 0 and (props.get("reg_buildings") or 0) > 0:
+        props.update(footprint_m2=None, coverage_pct=None, floor_area_est_m2=None, far_est_pct=None, building_layer_gap=True)
+    return props
 
 
 def _empty(status: str) -> dict[str, Any]:

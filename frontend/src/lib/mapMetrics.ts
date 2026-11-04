@@ -53,6 +53,12 @@ const suspectNote = (p: GridProps) => (suspectCount(p) ? ` · 이상값 지번 $
 const sgisBasis = (p: GridProps, extra: string | null) =>
   p.sgis1k_status === 'OBSERVED' ? `1km 격자 ${p.sgis1k_code} · ${p.sgis1k_year}년${extra ? ` · ${extra}` : ''}` : null;
 export const PERCENT_BREAKS = [20, 40, 60, 80];
+/** 공동주택(K-apt 연결 지번) 지표가 빈 격자: 대부분 격자 안에 단지가 없어서이며, 수집이 빠진 것이 아니다. */
+const APT_MISSING = '공동주택 단지 없음·12개월 미관측 (0 아님)';
+/** 건물 전체(건축HUB) 지표가 빈 격자: 계측 지번이 없거나(단독주택·소규모 위주, 건물 없음) 12개월이 다 찬 지번이 없다. */
+const BLDG_MISSING = '계측 지번 없음·12개월 미달 (0 아님)';
+/** 도로명주소 건물 레이어를 조회했으나 0동인 격자의 근거 문구. */
+const EMPTY_LAYER = '도로명주소 건물 0동 (조회했으나 없음)';
 
 export const REGISTER_GROUP = '건축물대장';
 export const BUILDING_ENERGY_GROUP = '건물 전체 에너지 (건축HUB)';
@@ -81,7 +87,7 @@ const cmBasis = (p: GridProps) => (p.cm_year ? `${p.cm_year}년 탄소공간지�
 
 export const METRICS: MetricDef[] = [
   {
-    key: 'electricity_kwh_annual', label: '연간 전력 사용량', unit: 'kWh/년', group: '에너지 관측', ramp: 'load', digits: 0,
+    key: 'electricity_kwh_annual', label: '연간 전력 사용량', unit: 'kWh/년', group: '에너지 관측', ramp: 'load', digits: 0, missingLabel: APT_MISSING,
     value: (p) => n(p.electricity_kwh_annual),
     definition: '격자 안에서 12개월 모두 관측된 지번(공동주택 단지)의 전력 사용량 합계입니다. 격자 안 모든 건물의 합이 아닙니다. 세대당 연 600kWh 미만(공용부만 계측) 또는 18,000kWh 초과(다른 건물 포함)인 지번은 이상값으로 빼고 원자료에만 남깁니다.',
     formula: 'Σ 월별 전력(kWh), 12개월 관측 지번만',
@@ -90,7 +96,7 @@ export const METRICS: MetricDef[] = [
     use: '전력 수요가 큰 격자를 찾고 격자끼리 운영탄소 규모를 비교합니다. 관측된 단지만의 합이라 격자 전체 수요가 아니므로 원단위와 함께 봅니다.',
   },
   {
-    key: 'gas_kwh_annual', label: '연간 가스 사용량', unit: 'kWh/년', group: '에너지 관측', ramp: 'load', digits: 0,
+    key: 'gas_kwh_annual', label: '연간 가스 사용량', unit: 'kWh/년', group: '에너지 관측', ramp: 'load', digits: 0, missingLabel: APT_MISSING,
     value: (p) => n(p.gas_kwh_annual),
     definition: `12개월 모두 관측된 지번의 도시가스 사용량(건축HUB kWh 환산값) 합계입니다. ${BIMONTHLY_GAS}`,
     formula: 'Σ 월별 가스(kWh), 연간이 모두 담긴 지번만',
@@ -99,7 +105,7 @@ export const METRICS: MetricDef[] = [
     use: '난방(가스) 수요가 큰 격자를 찾습니다. 가스 탄소는 도시가스 가정 계수로 따로 계산합니다.',
   },
   {
-    key: 'electricity_kwh_per_m2', label: '전력 원단위', unit: 'kWh/m²·년', group: '에너지 원단위', ramp: 'load', digits: 1,
+    key: 'electricity_kwh_per_m2', label: '전력 원단위', unit: 'kWh/m²·년', group: '에너지 원단위', ramp: 'load', digits: 1, missingLabel: APT_MISSING,
     value: (p) => n(p.electricity_kwh_per_m2),
     definition: '연면적 1m²당 연간 전력 사용량입니다. 연면적은 K-apt 공표값이며 비현실적인 값(세대당 20~400m² 밖)은 제외합니다.',
     formula: 'Σ 연간 전력 ÷ Σ 연면적 (같은 지번 집합)',
@@ -108,7 +114,7 @@ export const METRICS: MetricDef[] = [
     use: '규모를 뺀 전력 효율을 비교해 개선 우선순위를 정합니다. 계획 연면적에 곱하면 신축 전력 부하가 나오며, 지역 시뮬레이션의 추정 기준값으로 쓰입니다.',
   },
   {
-    key: 'electricity_kwh_per_household', label: '세대당 전력', unit: 'kWh/세대·년', group: '에너지 원단위', ramp: 'load', digits: 0,
+    key: 'electricity_kwh_per_household', label: '세대당 전력', unit: 'kWh/세대·년', group: '에너지 원단위', ramp: 'load', digits: 0, missingLabel: APT_MISSING,
     value: (p) => n(p.electricity_kwh_per_household),
     definition: '공동주택 1세대당 연간 전력 사용량(공용 포함)입니다. 월평균은 이 값 ÷ 12입니다.',
     formula: 'Σ 연간 전력 ÷ Σ 세대수 (같은 지번 집합)',
@@ -117,7 +123,7 @@ export const METRICS: MetricDef[] = [
     use: '세대 규모가 다른 단지를 같은 기준으로 비교합니다. 계획 세대수에 곱해 신규 개발의 전력 수요를 가늠합니다.',
   },
   {
-    key: 'gas_kwh_per_m2', label: '가스 원단위', unit: 'kWh/m²·년', group: '에너지 원단위', ramp: 'load', digits: 1,
+    key: 'gas_kwh_per_m2', label: '가스 원단위', unit: 'kWh/m²·년', group: '에너지 원단위', ramp: 'load', digits: 1, missingLabel: APT_MISSING,
     value: (p) => n(p.gas_kwh_per_m2),
     definition: '연면적 1m²당 연간 가스 사용량(kWh 환산)입니다.',
     formula: 'Σ 연간 가스 ÷ Σ 연면적 (같은 지번 집합)',
@@ -126,7 +132,7 @@ export const METRICS: MetricDef[] = [
     use: '난방 효율을 비교합니다. 노후 주택 비율과 함께 보면 단열 개보수 후보를 고를 수 있습니다.',
   },
   {
-    key: 'electricity_carbon_t', label: '전력 탄소배출량', unit: 'tCO₂eq/년', group: '탄소', ramp: 'load', digits: 1,
+    key: 'electricity_carbon_t', label: '전력 탄소배출량', unit: 'tCO₂eq/년', group: '탄소', ramp: 'load', digits: 1, missingLabel: APT_MISSING,
     value: (p) => { const kg = n(p.electricity_carbon_kg_annual); return kg === null ? null : kg / 1000; },
     definition: `연간 전력 사용량에 국가 승인 전력 배출계수를 곱한 운영탄소입니다. 가스 탄소는 가정 계수라 '가스 탄소배출량'으로 따로 봅니다.${FACTOR_YEARS}`,
     formula: '연간 전력(kWh) × 그해 전력 배출계수(kgCO₂eq/kWh) ÷ 1,000',
@@ -135,7 +141,7 @@ export const METRICS: MetricDef[] = [
     use: '격자의 전력 운영탄소 규모입니다. 감축 목표를 세울 때 기준 배출량으로 씁니다.',
   },
   {
-    key: 'gas_carbon_t', label: '가스 탄소배출량 (가정 계수)', unit: 'tCO₂eq/년', group: '탄소', ramp: 'load', digits: 1,
+    key: 'gas_carbon_t', label: '가스 탄소배출량 (가정 계수)', unit: 'tCO₂eq/년', group: '탄소', ramp: 'load', digits: 1, missingLabel: APT_MISSING,
     value: (p) => { const kg = n(p.gas_carbon_kg_annual); return kg === null ? null : kg / 1000; },
     definition: '12개월 관측 지번의 연간 도시가스 사용량에 고정 규칙의 가정 계수를 곱한 운영탄소입니다. 계수는 IPCC 2006 천연가스 기본 배출계수(CO₂·CH₄·N₂O, AR5 GWP)를 건축HUB kWh가 총발열량 기준이라고 보고 환산한 값이며, 순발열량 기준이면 약 11% 커집니다.',
     formula: '연간 가스(kWh) × 0.1826 kgCO₂eq/kWh (가정) ÷ 1,000',
@@ -144,7 +150,7 @@ export const METRICS: MetricDef[] = [
     use: '난방 탄소가 큰 격자를 찾습니다. 공식 가스 계수가 아니므로 전력 탄소와 합칠 때 가정임을 함께 적습니다.',
   },
   {
-    key: 'electricity_carbon_kg_per_m2', label: '전력 탄소 원단위', unit: 'kgCO₂eq/m²·년', group: '탄소', ramp: 'load', digits: 1,
+    key: 'electricity_carbon_kg_per_m2', label: '전력 탄소 원단위', unit: 'kgCO₂eq/m²·년', group: '탄소', ramp: 'load', digits: 1, missingLabel: APT_MISSING,
     value: (p) => n(p.electricity_carbon_kg_per_m2),
     definition: `연면적 1m²당 연간 전력 탄소배출량입니다.${FACTOR_YEARS}`,
     formula: '전력 원단위(kWh/m²) × 그해 전력 배출계수',
@@ -153,7 +159,7 @@ export const METRICS: MetricDef[] = [
     use: '연면적당 탄소로 효율을 비교하고, 신축에 요구할 목표 원단위를 정할 때 참고합니다.',
   },
   {
-    key: 'bldg_electricity_kwh', label: '건물 전체 연간 전력', unit: 'kWh/년', group: BUILDING_ENERGY_GROUP, ramp: 'load', digits: 0,
+    key: 'bldg_electricity_kwh', label: '건물 전체 연간 전력', unit: 'kWh/년', group: BUILDING_ENERGY_GROUP, ramp: 'load', digits: 0, missingLabel: BLDG_MISSING,
     value: (p) => n(p.bldg_electricity_kwh),
     definition: '격자 안에서 12개월 모두 계측된 모든 지번(상가·업무·학교·대형 공동주택 등)의 전력 합계입니다. 건축HUB가 단독주택, 200세대 미만 공동주택, 산업·수송·발전용은 제공하지 않으므로 격자 전체 소비는 아닙니다(시 전체로 한전 건물 전력(주택용+일반용+교육용)의 전주 약 78~79%, 수원 약 76%). 지번은 연속지적 필지의 대표점으로 격자에 놓습니다.',
     formula: 'Σ 월별 전력(kWh), 12개월 계측 지번, 필지 대표점이 격자 안',
@@ -162,7 +168,7 @@ export const METRICS: MetricDef[] = [
     use: '공동주택만이 아닌 격자의 건물 전력 수요를 봅니다. 도시 탄소 지도의 기본 배출 규모이며, 상업·업무가 몰린 격자를 찾는 데 씁니다.',
   },
   {
-    key: 'bldg_gas_kwh', label: '건물 전체 연간 가스', unit: 'kWh/년', group: BUILDING_ENERGY_GROUP, ramp: 'load', digits: 0,
+    key: 'bldg_gas_kwh', label: '건물 전체 연간 가스', unit: 'kWh/년', group: BUILDING_ENERGY_GROUP, ramp: 'load', digits: 0, missingLabel: BLDG_MISSING,
     value: (p) => n(p.bldg_gas_kwh),
     definition: `격자 안에서 12개월 모두 계측된 모든 지번의 도시가스 사용량(kWh 환산) 합계입니다. ${BIMONTHLY_GAS}`,
     formula: 'Σ 월별 가스(kWh), 연간이 모두 담긴 계측 지번',
@@ -171,7 +177,7 @@ export const METRICS: MetricDef[] = [
     use: '건물 난방 수요가 큰 격자를 찾습니다. 탄소로 보려면 "건물 전체 가스 탄소 (가정 계수)"를 고릅니다.',
   },
   {
-    key: 'bldg_kwh_per_m2', label: '건물 전체 전력 원단위', unit: 'kWh/m²·년', group: BUILDING_ENERGY_GROUP, ramp: 'load', digits: 1,
+    key: 'bldg_kwh_per_m2', label: '건물 전체 전력 원단위', unit: 'kWh/m²·년', group: BUILDING_ENERGY_GROUP, ramp: 'load', digits: 1, missingLabel: BLDG_MISSING,
     value: (p) => n(p.bldg_kwh_per_m2),
     definition: '12개월 계측 지번의 전력을 같은 필지의 건축물대장 연면적으로 나눈 값입니다. 2~1,500 kWh/m² 밖(부분 계측·면적 불일치)인 지번은 뺍니다.',
     formula: 'Σ 연간 전력 ÷ Σ 대장 연면적 (같은 지번 집합)',
@@ -180,7 +186,7 @@ export const METRICS: MetricDef[] = [
     use: '용도가 섞인 격자끼리 전력 효율을 비교합니다. 주거 연면적 비율과 함께 보면 상업 비중 때문에 높은지 알 수 있습니다.',
   },
   {
-    key: 'bldg_carbon_t', label: '건물 전체 전력 탄소', unit: 'tCO₂eq/년', group: BUILDING_ENERGY_GROUP, ramp: 'load', digits: 1,
+    key: 'bldg_carbon_t', label: '건물 전체 전력 탄소', unit: 'tCO₂eq/년', group: BUILDING_ENERGY_GROUP, ramp: 'load', digits: 1, missingLabel: BLDG_MISSING,
     value: (p) => n(p.bldg_carbon_t),
     definition: `건물 전체 연간 전력에 국가 승인 전력 배출계수를 곱한 운영탄소입니다. 가스 탄소는 포함하지 않습니다.${FACTOR_YEARS}`,
     formula: '건물 전체 연간 전력(kWh) × 그해 전력 배출계수 ÷ 1,000',
@@ -189,7 +195,7 @@ export const METRICS: MetricDef[] = [
     use: '격자별 건물 전력 운영탄소 규모입니다. 도시 단위 감축 목표와 우선 지역을 정할 때 씁니다.',
   },
   {
-    key: 'bldg_gas_carbon_t', label: '건물 전체 가스 탄소 (가정 계수)', unit: 'tCO₂eq/년', group: BUILDING_ENERGY_GROUP, ramp: 'load', digits: 1,
+    key: 'bldg_gas_carbon_t', label: '건물 전체 가스 탄소 (가정 계수)', unit: 'tCO₂eq/년', group: BUILDING_ENERGY_GROUP, ramp: 'load', digits: 1, missingLabel: BLDG_MISSING,
     value: (p) => n(p.bldg_gas_carbon_t),
     definition: '건물 전체 연간 가스(연간이 모두 담긴 계측 지번)에 고정 규칙의 가정 계수를 곱한 운영탄소입니다. 건축HUB kWh가 총발열량 기준이라고 보고 환산했으며, 순발열량 기준이면 약 11% 커집니다(공식 가스 계수 확인 전).',
     formula: '건물 전체 연간 가스(kWh) × 0.1826 kgCO₂eq/kWh (가정) ÷ 1,000',
@@ -246,19 +252,19 @@ export const METRICS: MetricDef[] = [
   {
     key: 'coverage_pct', label: '건폐율 근사', unit: '%', group: '도시 형태', ramp: 'seq', digits: 1,
     value: (p) => n(p.coverage_pct), breaks: [5, 10, 20, 30],
-    definition: '격자 면적 중 건물이 덮은 면적의 비율입니다. 필지 대지면적 기준의 법정 건폐율과는 다릅니다.',
+    definition: '격자 면적 중 건물이 덮은 면적의 비율입니다. 필지 대지면적 기준의 법정 건폐율과는 다릅니다. 조회했으나 건물이 없는 격자는 0이고, 건축물대장에는 건물이 있는데 도로명주소 건물 레이어에 없는 격자는 비웁니다(0 아님).',
     formula: `Σ 건축면적 ÷ ${GRID} × 100`,
-    basis: (p) => p.footprint_m2 !== null ? `건축면적 ${fmt(p.footprint_m2, 'm²')} ÷ ${GRID}` : null,
-    source: 'VWorld 건물 윤곽 면적',
+    basis: (p) => p.footprint_m2 !== null ? (p.building_count === 0 ? EMPTY_LAYER : `건축면적 ${fmt(p.footprint_m2, 'm²')} ÷ ${GRID}`) : null,
+    source: 'VWorld 건물 윤곽 면적', missingLabel: '건물 레이어 누락 (0 아님)',
     use: '땅을 건물이 얼마나 덮었는지 보고 추가 개발이나 녹지 여력을 가늠합니다.',
   },
   {
     key: 'far_est_pct', label: '추정 용적률', unit: '%', group: '도시 형태', ramp: 'seq', digits: 1,
     value: (p) => n(p.far_est_pct), breaks: [25, 50, 100, 200],
-    definition: '건축면적 × 지상층수로 추정한 연면적을 격자 면적으로 나눈 값입니다. 층수가 없는 건물은 빠지며 법정 용적률이 아닙니다.',
+    definition: '건축면적 × 지상층수로 추정한 연면적을 격자 면적으로 나눈 값입니다. 층수가 없는 건물은 빠지며 법정 용적률이 아닙니다. 조회했으나 건물이 없는 격자(산·논밭·하천 등)는 0입니다. 건물은 있는데 층수가 하나도 없거나, 건축물대장에는 건물이 있는데 도로명주소 건물 레이어에 없는 격자는 비웁니다(0 아님).',
     formula: `Σ(건축면적 × 지상층수) ÷ ${GRID} × 100`,
-    basis: (p) => p.floor_area_est_m2 !== null ? `추정 연면적 ${fmt(p.floor_area_est_m2, 'm²')} · 층수 확인 ${fmt(p.floors_known_pct, '%', 0)}` : null,
-    source: 'VWorld 건물 윤곽 × 지상층수',
+    basis: (p) => p.floor_area_est_m2 !== null ? (p.building_count === 0 ? EMPTY_LAYER : `추정 연면적 ${fmt(p.floor_area_est_m2, 'm²')} · 층수 확인 ${fmt(p.floors_known_pct, '%', 0)}`) : null,
+    source: 'VWorld 건물 윤곽 × 지상층수', missingLabel: '층수 미상·건물 레이어 누락 (0 아님)',
     use: '연면적 규모로 본 개발 밀도입니다. 추가 개발 여지를 가늠하는 데 씁니다. 건축물대장이 있으면 공식 연면적 기반 용적률을 우선 봅니다.',
   },
   {

@@ -1,4 +1,4 @@
-from app.building_use import classify_use, floors, summarize_grid_buildings
+from app.building_use import classify_use, floors, reconcile_with_register, summarize_grid_buildings
 
 
 def test_use_codes_map_by_major_group_and_unknown_codes_are_not_guessed():
@@ -37,6 +37,25 @@ def test_grid_indicators_keep_numerators_and_only_use_known_floors():
     # No use code at all (VWorld LT_C_SPBD): unknown, not "0% residential".
     unknown = summarize_grid_buildings([{"grid_id": "g", "footprint_m2": 300, "above_floors": 1, "use_category": None}])["g"]
     assert unknown["residential_share_pct"] is None and unknown["dominant_use"] is None and unknown["use_known_pct"] == 0.0
-    # Requested without buildings: zeros; never requested: absent.
-    assert summary["g2"]["building_count"] == 0 and summary["g2"]["far_est_pct"] is None
+    # Requested without buildings: zeros (floor area and FAR estimate too); never requested: absent.
+    g2 = summary["g2"]
+    assert g2["building_count"] == 0 and g2["coverage_pct"] == 0.0
+    assert g2["floor_area_est_m2"] == 0.0 and g2["far_est_pct"] == 0.0
+    assert g2["avg_floors"] is None and g2["floors_known_pct"] is None  # no building, no average height
     assert "g3" not in summary
+    # Buildings without any floor count: FAR stays unknown, not 0.
+    nofloor = summarize_grid_buildings([{"grid_id": "g4", "footprint_m2": 200, "above_floors": None, "use_category": "RESIDENTIAL"}])["g4"]
+    assert nofloor["coverage_pct"] == 0.08 and nofloor["far_est_pct"] is None
+
+
+def test_empty_layer_grid_with_register_buildings_is_a_gap_not_zero():
+    empty = {"building_status": "EMPTY_VALID", "building_count": 0, "footprint_m2": 0.0, "coverage_pct": 0.0, "floor_area_est_m2": 0.0, "far_est_pct": 0.0}
+    gap = reconcile_with_register(dict(empty, reg_buildings=3))
+    assert gap["building_count"] == 0 and gap["building_layer_gap"] is True
+    assert gap["coverage_pct"] is None and gap["far_est_pct"] is None and gap["floor_area_est_m2"] is None
+    # No register building either: a real empty grid keeps its zeros.
+    assert reconcile_with_register(dict(empty, reg_buildings=None))["far_est_pct"] == 0.0
+    assert reconcile_with_register(dict(empty, reg_buildings=0))["coverage_pct"] == 0.0
+    # Grids with buildings, or never requested, are left alone.
+    assert reconcile_with_register({"building_status": "SUCCESS", "building_count": 4, "far_est_pct": 12.0, "reg_buildings": 9})["far_est_pct"] == 12.0
+    assert "building_layer_gap" not in reconcile_with_register({"building_status": None, "building_count": None, "reg_buildings": 2})
