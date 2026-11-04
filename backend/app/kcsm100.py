@@ -369,8 +369,11 @@ def features(db: Any, region_code: str | None, year: int, bbox: tuple[float, flo
     else:
         picked = list(rows)
     if len(picked) > limit:
+        # 한도를 넘으면 값 있는 칸(0·빈 값 아님)을 먼저 남기고 0인 칸을 뺀다(같은 무리 안에서는 남→북 순서 그대로).
+        # 전주 전체를 한 화면에 볼 때 21,036칸 가운데 값 있는 칸은 약 6,900칸이라 모두 그려지고 빠지는 것은 0인 칸뿐이다.
         m["truncated"] = True
-        picked = picked[:limit]
+        m["value_cells_complete"] = sum(1 for r in picked if (r[4] or 0) > 0) <= limit
+        picked = sorted(picked, key=lambda r: not (r[4] or 0) > 0)[:limit]
     m["returned"] = len(picked)
     from pyproj import Transformer
     to_ll = Transformer.from_crs(5179, 4326, always_xy=True).transform

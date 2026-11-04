@@ -161,3 +161,20 @@ def test_the_public_gateway_never_gets_the_provider_data():
     view = public_view(stored)
     assert "kcsm" not in view["history"] and [f["id"] for f in view["facts"]] == ["scope"] and view["summary"]["paragraphs"] == ["a"]
     assert view["effort"]["available"] is False
+
+
+def test_when_the_viewport_has_too_many_cells_the_value_cells_are_kept_first():
+    from app.kcsm100 import KcsmGrid100, create_tables, features
+    db = _db()
+    create_tables(db)
+    # 남→북 순서로 0, 0, 5 t, 0, 7 t: 한도 2칸이면 값 있는 두 칸이 남는다(빠지는 것은 0인 칸).
+    for i, t in enumerate([0.0, 0.0, 5.0, 0.0, 7.0]):
+        db.add(KcsmGrid100(id=f"c{i}|2024", region_code="52110", grid_code=f"c{i}", x=955500, y=1763200 + 100 * i, grid500="cell_955500_1763000",
+                           year=2024, annual_t=t, monthly=[t / 12] * 12, parts=[], flags={}, source_file="test"))
+    db.commit()
+    out = features(db, "52110", 2024, limit=2)
+    assert out["meta"]["truncated"] is True and out["meta"]["value_cells_complete"] is True
+    assert [f["properties"]["elec_t"] for f in out["features"]] == [5.0, 7.0]
+    out = features(db, "52110", 2024, limit=1)
+    assert out["meta"]["value_cells_complete"] is False and [f["properties"]["elec_t"] for f in out["features"]] == [5.0]
+    assert features(db, "52110", 2024, limit=10)["meta"]["truncated"] is False

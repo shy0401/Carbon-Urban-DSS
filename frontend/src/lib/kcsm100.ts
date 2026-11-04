@@ -15,7 +15,11 @@ export interface KcsmProps {
   drop: boolean; drop_from_t: number | null;
   monthly?: Array<number | null>;
 }
-export interface KcsmMeta { source: string | null; unit?: string; years: number[]; year: number | null; cells: number; returned: number; truncated: boolean; reason: string | null }
+export interface KcsmMeta {
+  source: string | null; unit?: string; years: number[]; year: number | null; cells: number; returned: number; truncated: boolean; reason: string | null;
+  /** 잘렸을 때 값 있는 칸은 모두 들어갔는지(빠진 것은 0인 칸뿐). */
+  value_cells_complete?: boolean;
+}
 export interface KcsmSummary { cells: number; value_cells: number; zero_cells: number; total_t: number | null; prev_total_t: number | null; drop_cells: number; monthly: Array<number | null> }
 export interface KcsmResponse { type: 'FeatureCollection'; features: Array<GeoJSON.Feature<GeoJSON.Polygon, KcsmProps>>; meta: KcsmMeta; summary: KcsmSummary | null }
 
