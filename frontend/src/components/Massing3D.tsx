@@ -181,7 +181,8 @@ export function Massing3D({ gridId, input, site = null, onSiteChange, onCapture,
       map.addLayer({ id: 'site-line', type: 'line', source: 'massing', filter: ['==', ['get', 'kind'], 'site'], paint: { 'line-color': TOKENS['plan-a'], 'line-width': 2 } });
       map.addLayer({ id: 'buildings-3d', type: 'fill-extrusion', source: 'buildings', paint: {
         'fill-extrusion-color': ['case', ['==', ['get', 'inside'], 1], TOKENS['load-3'], ['match', ['get', 'hclass'], 1, HEIGHT_COLORS[1], 2, HEIGHT_COLORS[2], 3, HEIGHT_COLORS[3], 4, HEIGHT_COLORS[4], HEIGHT_COLORS[0]]],
-        'fill-extrusion-height': ['max', ['coalesce', ['get', 'height'], 0], 0.4], 'fill-extrusion-base': 0, 'fill-extrusion-opacity': 0.88, 'fill-extrusion-vertical-gradient': true,
+        // 대지 안 기존 건물은 철거·이전 전제라 바닥 윤곽만(0.4m) 그린다: 계획 블록과 겹쳐 보이지 않게 (2026-11-05).
+        'fill-extrusion-height': ['case', ['==', ['get', 'inside'], 1], 0.4, ['max', ['coalesce', ['get', 'height'], 0], 0.4]], 'fill-extrusion-base': 0, 'fill-extrusion-opacity': 0.88, 'fill-extrusion-vertical-gradient': true,
       } });
       map.addLayer({ id: 'blocks-3d', type: 'fill-extrusion', source: 'massing', filter: ['==', ['get', 'kind'], 'block'], paint: { 'fill-extrusion-color': TOKENS['plan-a'], 'fill-extrusion-height': ['get', 'height'], 'fill-extrusion-base': 0, 'fill-extrusion-opacity': 0.95, 'fill-extrusion-vertical-gradient': true } });
       setReady(true);
@@ -194,7 +195,7 @@ export function Massing3D({ gridId, input, site = null, onSiteChange, onCapture,
       const p = hit.properties ?? {};
       const text = hit.layer.id === 'blocks-3d'
         ? `계획 블록 ${p.index ?? ''} · ${p.floors}층 · 높이 ${Number(p.height).toFixed(0)}m`
-        : `${p.name || p.use_label || '기존 건물'} · ${typeof p.above_floors === 'number' ? `지상 ${p.above_floors}층 · 약 ${Number(p.height).toFixed(0)}m` : '층수 미상'}${p.inside === 1 ? ' · 대지 안' : ''}`;
+        : `${p.name || p.use_label || '기존 건물'} · ${typeof p.above_floors === 'number' ? `지상 ${p.above_floors}층 · 약 ${Number(p.height).toFixed(0)}m` : '층수 미상'}${p.inside === 1 ? ' · 대지 안 (철거 전제, 바닥 윤곽만 표시)' : ''}`;
       setHover({ x: event.point.x, y: event.point.y, text });
     });
     map.on('mouseout', () => setHover(null));
@@ -277,7 +278,7 @@ export function Massing3D({ gridId, input, site = null, onSiteChange, onCapture,
         <span><i className="outline" style={{ borderColor: TOKENS['plan-a'], background: TOKENS['gain-1'] }} />대지</span>
         {HEIGHT_COLORS.slice(1).map((color, i) => <span key={color}><i style={{ background: color }} />{HEIGHT_CLASS_LABELS[i + 1]}</span>)}
         <span><i style={{ background: HEIGHT_COLORS[0] }} />{HEIGHT_CLASS_LABELS[0]}</span>
-        <span><i style={{ background: TOKENS['load-3'] }} />대지 안 건물</span>
+        <span><i style={{ background: TOKENS['load-3'] }} />대지 안 건물 (철거 전제, 바닥만)</span>
         <span><i style={{ background: TOKENS['plan-a'], opacity: 0.35 }} />계획 그림자</span>
       </div>
     </div>

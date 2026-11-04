@@ -538,7 +538,39 @@ def effort(history: dict[str, Any], plan: dict[str, Any], target_pct: float, pv_
                 break
     if result.get("available") and measures:
         result["mix"] = measure_mix(result, measures)
+    if result.get("available") and not result.get("already_met"):
+        result["recommended"] = recommended_mix(result)
     return result
+
+
+# 구체적 감축 방안(자동, 기준 문서 5.15): 신축은 고효율 설계로 전력 20% 절감, 기존 건물은 조명·설비 교체로 5% 절감,
+# 남는 양은 태양광(10 kW 단위 올림)으로 채운다. 사용자가 넣은 조합(mix)과 따로 보여 준다.
+RECOMMENDED_NEW_EFFICIENCY_PCT = 20.0
+RECOMMENDED_EXISTING_EFFICIENCY_PCT = 5.0
+
+
+def recommended_mix(result: dict[str, Any]) -> dict[str, Any] | None:
+    """신축 20% → 기존 5% → 남는 양 태양광. 발전량 근거가 없으면 태양광 대신 상쇄할 전력량(kWh)만 적는다."""
+    from .reduction_plan import ROOF_M2_PER_KW
+    needed = ("factor_kgco2eq_per_kwh", "new_load_kwh", "baseline_kwh", "required_reduction_kgco2eq", "intensity_kwh_per_m2")
+    if any(result.get(k) is None for k in needed) or not result.get("factor_kgco2eq_per_kwh"):
+        return None
+    base = {"new_efficiency_pct": RECOMMENDED_NEW_EFFICIENCY_PCT if float(result["new_load_kwh"]) > 0 else 0.0,
+            "existing_efficiency_pct": RECOMMENDED_EXISTING_EFFICIENCY_PCT, "pv_kw": 0.0}
+    first = measure_mix(result, base)
+    pv_kw = 0.0
+    kwh_per_kw = (result.get("pv_yield") or {}).get("kwh_per_kw")
+    remaining_kwh = max(first["gap_kgco2eq"], 0.0) / float(result["factor_kgco2eq_per_kwh"])
+    if remaining_kwh > 0 and kwh_per_kw:
+        pv_kw = math.ceil(remaining_kwh / float(kwh_per_kw) / 10) * 10
+    mix = measure_mix(result, dict(base, pv_kw=pv_kw)) if pv_kw else first
+    factor = float(result["factor_kgco2eq_per_kwh"])
+    steps = [{"key": "new", "title": "신축 건물 고효율 설계", "detail": f"신축 전력 {base['new_efficiency_pct']:.0f}% 절감", "kwh": mix["new_kwh"], "kgco2eq": round(mix["new_kwh"] * factor, 1)},
+             {"key": "existing", "title": "기존 건물 조명·설비 교체", "detail": f"기존 건물 전력 {base['existing_efficiency_pct']:.0f}% 절감", "kwh": mix["existing_kwh"], "kgco2eq": round(mix["existing_kwh"] * factor, 1)}]
+    if pv_kw:
+        steps.append({"key": "pv", "title": "태양광", "detail": f"{pv_kw:,.0f} kW (옥상 약 {pv_kw * ROOF_M2_PER_KW:,.0f} m²)", "kwh": mix["pv_kwh"], "kgco2eq": round((mix["pv_kwh"] or 0) * factor, 1)})
+    return dict(mix, kind="RECOMMENDED", steps=[s for s in steps if s["kwh"]], roof_m2=round(pv_kw * ROOF_M2_PER_KW, 1) if pv_kw else None,
+                offset_kwh=round(remaining_kwh, 1) if remaining_kwh > 0 and not kwh_per_kw else None)
 
 
 def measure_mix(result: dict[str, Any], measures: dict[str, Any]) -> dict[str, Any]:
@@ -1240,6 +1272,20 @@ def area_facts(history: dict[str, Any], comparison: dict[str, Any] | None = None
                 add("effort_pv", f"태양광으로 상쇄하면 {how} {pv['kwh_per_kw']:,.0f} kWh/kW·년 기준 약 {o['pv_capacity_kw']:,.1f} kW가 필요합니다"
                     + ("(추정값)." if pv["basis"] == "ESTIMATED" else "."),
                     pv["kwh_per_kw"], o["pv_capacity_kw"], *([pv["year"], pv["irradiation_kwh_m2"], pv["performance_ratio"]] if pv["basis"] == "ESTIMATED" else []))
+        rec = effort_result.get("recommended")
+        if rec and rec.get("steps"):
+            parts = [f"{s['title']}({s['detail']}) {s['kgco2eq']:,.0f} kgCO2eq" for s in rec["steps"]]
+            nums: list[float] = [s["kgco2eq"] for s in rec["steps"]] + [rec["total_kgco2eq"], rec["required_kgco2eq"], rec["new_efficiency_pct"], rec["existing_efficiency_pct"]]
+            if rec.get("pv_kw"):
+                nums += [rec["pv_kw"], rec["roof_m2"] or 0]
+            text = f"구체적 감축 방안: {', '.join(parts)}를 더하면 연간 {rec['total_kgco2eq']:,.0f} kgCO2eq를 줄여 필요 감축량 {rec['required_kgco2eq']:,.0f} kgCO2eq"
+            text += "를 채웁니다." if rec["met"] else f"의 {rec['share_pct']:,.1f}%입니다."
+            if rec.get("offset_kwh"):
+                text += f" 발전량 근거가 없어 남는 {rec['offset_kwh']:,.0f} kWh는 재생에너지 상쇄량으로만 적습니다."
+                nums.append(rec["offset_kwh"])
+            if not rec["met"]:
+                nums.append(rec["share_pct"])
+            add("effort_rec", text, *nums)
         mix = effort_result.get("mix")
         if mix and not effort_result["already_met"]:
             parts = [f"신축 전력 {mix['new_efficiency_pct']:,.1f}% 절감", f"기존 건물 {mix['existing_efficiency_pct']:,.1f}% 절감"]

@@ -128,11 +128,20 @@
 .report-table th small { display: block; margin-top: 2px; font-weight: 400; color: var(--ink-3); font-size: var(--fs-caption); }
 .report-table tr.total td, .report-table tr.total th { border-top: 1px solid var(--ink); }
 .report-chart { margin: var(--sp-3) 0 0; }
+/* 탄소 감축 방안: 대책 없음 대비 막대 (다른 안 비교가 아니라 같은 안을 줄여 가는 순서) */
+.reduction-ladder { display: grid; gap: 6px; margin: var(--sp-3) 0; }
+.reduction-row { display: grid; grid-template-columns: minmax(150px, 34%) 1fr 110px; gap: var(--sp-2); align-items: center; font-size: var(--fs-caption); }
+.reduction-label { color: var(--ink-2); }
+.reduction-track { height: 14px; background: var(--line); border-radius: 3px; overflow: hidden; }
+.reduction-bar { display: block; height: 100%; background: var(--gain-4); border-radius: 0 3px 3px 0; }
+.reduction-bar.start { background: var(--load-3); }
+.reduction-value { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink); }
 .report-chart figcaption { margin-top: var(--sp-1); font-size: var(--fs-caption); color: var(--ink-3); }
 .zoning-summary.compact { margin-top: var(--sp-3); padding-top: 0; border-top: 0; }
 .zoning-summary.compact + .zoning-summary.compact { margin-top: var(--sp-4); padding-top: var(--sp-3); border-top: 1px solid var(--line); }
 .report-footer { display: flex; justify-content: space-between; gap: var(--sp-3); flex-wrap: wrap; margin-top: var(--sp-5); padding-top: var(--sp-3); border-top: 1px solid var(--line-strong); font-size: var(--fs-caption); color: var(--ink-3); }
 @media print {
-  .plan-row, .plan-card, .plan-figure, .report-chart, .report-footer { break-inside: avoid; }
+  .plan-row, .plan-card, .plan-figure, .report-chart, .report-footer, .reduction-ladder { break-inside: avoid; }
+  .reduction-track, .reduction-bar { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
   .plan-card, .plan-card-row strong, .report-table tr.total { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
 }

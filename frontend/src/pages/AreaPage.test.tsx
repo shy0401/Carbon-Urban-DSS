@@ -98,11 +98,15 @@ describe('AreaPage', () => {
     expect(screen.getByText('33.3%')).toBeInTheDocument();
   });
 
-  it('자동 전환된 기준·감축 수단 조합·행정동 비교·시나리오 저장을 엔진 값 그대로 보여 준다', async () => {
+  it('자동 전환된 기준·구체적 감축 방안·감축 수단 조합·행정동 비교를 엔진 값 그대로 보여 주고 다른 안 비교는 없다', async () => {
     window.localStorage.clear();
     const bodies: Array<Record<string, unknown>> = [];
     const effort = { ...analysis.effort, basis: 'buildings', baseline_mode: 'OBSERVED', baseline_year: 2025, intensity_kwh_per_m2: 44.25, fallback_from: 'apartments', fallback_reason: '지역 관측이 없고 연면적이 확인된 단지도 없어 기준 부하를 정할 수 없습니다',
-      factor_kgco2eq_per_kwh: 0.433, pv_yield: { kwh_per_kw: 1199.9, basis: 'ESTIMATED', label: '추정' } };
+      factor_kgco2eq_per_kwh: 0.433, pv_yield: { kwh_per_kw: 1199.9, basis: 'ESTIMATED', label: '추정' },
+      recommended: { kind: 'RECOMMENDED', new_efficiency_pct: 20, existing_efficiency_pct: 5, pv_kw: 760, new_kwh: 309700, existing_kwh: 1500000, pv_kwh: 911924, pv_counted: true, total_kwh: 2721624,
+        total_kgco2eq: 1178463.2, required_kgco2eq: 1153205.1, gap_kgco2eq: -25258.1, met: true, share_pct: 102.2, basis: '식', roof_m2: 7600, offset_kwh: null,
+        steps: [{ key: 'new', title: '신축 건물 고효율 설계', detail: '신축 전력 20% 절감', kwh: 309700, kgco2eq: 134100.1 }, { key: 'existing', title: '기존 건물 조명·설비 교체', detail: '기존 건물 전력 5% 절감', kwh: 1500000, kgco2eq: 649500 },
+          { key: 'pv', title: '태양광', detail: '760 kW (옥상 약 7,600 m²)', kwh: 911924, kgco2eq: 394863.1 }] } };
     const mix = { new_efficiency_pct: 30, existing_efficiency_pct: 0, pv_kw: 0, new_kwh: 464550, existing_kwh: 0, pv_kwh: 0, pv_counted: true, total_kwh: 464550, total_kgco2eq: 201150.2, required_kgco2eq: 1153205.1, gap_kgco2eq: 952054.9, met: false, share_pct: 17.4, basis: '식' };
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
       const url = String(input);
@@ -126,11 +130,14 @@ describe('AreaPage', () => {
     fireEvent.change(screen.getByLabelText('신축 건물 전력 절감'), { target: { value: '30' } });
     await waitFor(() => expect(bodies.some((b) => (b.measures as { new_efficiency_pct?: number } | null)?.new_efficiency_pct === 30)).toBe(true), { timeout: 3000 });
     expect(await screen.findByTestId('area-mix')).toHaveTextContent(/필요 감축량 1,153\.2 t의 17\.4 %/);
-    fireEvent.click(within(summary).getByRole('button', { name: /시나리오 저장/ }));
-    const table = await screen.findByTestId('area-compare');
-    expect(within(table).getByText('안 A · 덕진구 송천1동')).toBeInTheDocument();
-    expect(within(table).getByText('건물 전체 (건축HUB) (자동 전환)')).toBeInTheDocument();
-    expect(JSON.parse(window.localStorage.getItem('carbon-dss.area-scenarios.v1') ?? '[]')).toHaveLength(1);
+    // 다른 안을 저장·비교하는 단계는 없다(2026-11-05): 같은 계획을 줄이는 구체적 방안만
+    expect(within(summary).queryByRole('button', { name: /시나리오 저장/ })).toBeNull();
+    expect(screen.queryByTestId('area-compare')).toBeNull();
+    const rec = screen.getByTestId('area-recommended');
+    expect(rec).toHaveTextContent('구체적 감축 방안');
+    expect(rec).toHaveTextContent('760 kW (옥상 약 7,600 m²)');
+    fireEvent.click(within(rec).getByRole('button', { name: /이 방안을 아래 칸에 넣기/ }));
+    await waitFor(() => expect(bodies.some((b) => { const m = b.measures as { new_efficiency_pct?: number; existing_efficiency_pct?: number; pv_kw?: number } | null; return m?.new_efficiency_pct === 20 && m.existing_efficiency_pct === 5 && m.pv_kw === 760; })).toBe(true), { timeout: 3000 });
   });
 
   it('사례 링크로 열면 링크의 구역·계획·목표·기준 건물로 첫 계산을 하고 보고서 요청에도 기준 건물을 넣는다', async () => {

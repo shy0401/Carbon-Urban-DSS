@@ -325,6 +325,15 @@ export interface EffortResult {
   fallback_reason?: string;
   /** 감축 수단 조합(도시·군기본계획의 수단별 감축량 합산 방식): 요청에 measures가 있을 때만. */
   mix?: MeasureMix;
+  /** 구체적 감축 방안(자동, 기준 문서 5.15): 신축 20% → 기존 5% → 남는 양 태양광(10 kW 단위). 사용자 조합과 따로. */
+  recommended?: RecommendedMix | null;
+}
+
+export interface RecommendedMix extends MeasureMix {
+  kind: 'RECOMMENDED';
+  steps: Array<{ key: 'new' | 'existing' | 'pv'; title: string; detail: string; kwh: number; kgco2eq: number }>;
+  roof_m2: number | null;
+  offset_kwh: number | null;
 }
 
 export interface MeasuresState { new_efficiency_pct: number; existing_efficiency_pct: number; pv_kw: number }

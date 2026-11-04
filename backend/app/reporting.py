@@ -73,8 +73,8 @@ def arrange(selected,facts):
 PLAN_LETTERS='ABC'
 
 def plan_sentences(facts):
-    """The scope sentence and every plan sentence (계획안 A·B·C: 규모, 탄소, 상한) — the summary a plan report opens with."""
-    return [f for f in facts if f['id']=='scope' or f['id'].split('_')[0] in ('scenario','carbon','zoning')]
+    """The scope sentence and the plan sentences (규모, 탄소, 감축 방안, 상한) — the summary a plan report opens with."""
+    return [f for f in facts if f['id']=='scope' or f['id'].split('_')[0] in ('scenario','carbon','reduction','zoning')]
 
 def summarize(facts,use_local):
     lead=plan_sentences(facts)
@@ -93,15 +93,24 @@ def create_snapshot(db,year,grid_id,scenario_ids,region=None):
     region=region or region_for_grid(db,grid_id)
     data=dashboard(db,grid_id,year,region);sector=data['selected_sector'];actual_grid=sector['grid_id'] if sector else None
     scenarios=[];plan_facts=[]
+    # 보고서는 계획안 하나를 다룬다: 다른 안과 견주지 않고 그 안을 줄이는 방안(reduction_plan)을 쓴다 (2026-11-05).
+    if len(dict.fromkeys(scenario_ids))>1:raise ValueError('보고서는 계획안 하나로 작성합니다. 다른 안과 비교하지 않고 그 안의 탄소 감축 방안을 씁니다')
+    factors_now={k:v for k,v in (data.get('carbon_factors') or {}).items()}
+    pv_yield=_pv_yield(db,(data.get('region') or {}).get('code'),year) if scenario_ids else None
     for sid in dict.fromkeys(scenario_ids):
         s=db.get(Scenario,sid);r=db.get(ScenarioResult,sid)
         if not s or not r:raise ValueError('저장된 시나리오를 찾을 수 없습니다')
-        if s.inputs.get('type')=='OPTIMIZATION':raise ValueError('면적 시나리오만 비교할 수 있습니다')
+        if s.inputs.get('type')=='OPTIMIZATION':raise ValueError('면적 시나리오(계획안)만 보고서에 넣을 수 있습니다')
         if s.inputs.get('year',DEFAULT_YEAR)!=year or s.inputs.get('grid_id')!=actual_grid:
-            raise ValueError('동일 연도와 격자의 시나리오만 비교할 수 있습니다')
-        n=len(scenarios)+1;label=f'계획안 {PLAN_LETTERS[n-1] if n<=len(PLAN_LETTERS) else n}'
-        scenarios.append({'id':sid,'label':label,'inputs':s.inputs,'result':r.result,'created_at':s.created_at.isoformat()})
+            raise ValueError('보고서와 같은 연도·격자의 계획안만 넣을 수 있습니다')
+        n=len(scenarios)+1;label='계획안'
+        from .reduction_plan import building_plan,plan_text
+        annual=r.result.get('annual') or {}
+        reduction=building_plan(annual.get('reference'),r.result.get('total_footprint'),factors_now,pv_yield,(annual.get('scenario') or {}).get('carbon_kg'))
+        scenarios.append({'id':sid,'label':label,'inputs':s.inputs,'result':r.result,'created_at':s.created_at.isoformat(),'reduction_plan':reduction})
         plan_facts+=plan_sentence_facts(n,label,s.inputs,r.result)
+        text=plan_text(reduction)
+        if text:plan_facts.append({'id':f'reduction_{n}','text':text})
     context=grid_context(db,actual_grid);context['facts']=context_facts(context)
     place=place_label(context.get('admin') or [],(data.get('region') or {}).get('short_name') or (data.get('region') or {}).get('name'))
     # The report opens with the place and the plans; the grid's own energy sentences follow (status report: those alone).
@@ -131,6 +140,38 @@ def create_snapshot(db,year,grid_id,scenario_ids,region=None):
               'cautions':report_cautions(data,detail,scenarios)}
     snapshot['evidence_hash']=hashlib.sha256(json.dumps(snapshot,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
     return snapshot
+
+def _pv_yield(db,region_code,year):
+    """kWh a 1 kW roof array makes per year in the region (irradiation estimate, DATA_STANDARD 5.13); None without a basis."""
+    try:
+        from .solar import regional_pv_yield
+        solar=regional_pv_yield(db,region_code,up_to=year)
+    except Exception:  # noqa: BLE001 - the plan stands without PV
+        db.rollback();return None
+    if not solar or not solar.get('yield_kwh_per_kw'):return None
+    return {'kwh_per_kw':solar['yield_kwh_per_kw'],'basis':'ESTIMATED','year':solar.get('year'),
+            'label':f"{solar.get('year')}년 {solar.get('source')} 수평면 일사량 {solar.get('irradiation_kwh_m2'):,.0f} kWh/m² × 성능비 {solar.get('performance_ratio'):.2f}" if solar.get('irradiation_kwh_m2') and solar.get('performance_ratio') else '지역 일사량 추정'}
+
+def reduction_lines(sc):
+    """탄소 감축 방안 (markdown): 대책 없음에서 수단을 차례로 더한 표, 태양광·자립률·남는 양, 가정."""
+    p=sc.get('reduction_plan') or {}
+    if not p.get('available'):return ['- '+(p.get('reason') or '감축 방안을 계산할 근거가 없습니다.')]
+    lines=['| 단계 | 내용 | 연간 운영탄소 | 이 단계 감축 | 누적 감축 |','|---|---|---:|---:|---:|',
+           f"| 0. {p['start']['label']} | 관측 원단위 그대로 (효율 1.0·태양광 0) | {_t(p['start']['carbon_kg'])} | | |"]
+    for k,s in enumerate(p['steps'],1):
+        lines.append(f"| {k}. {s['title']} | {s['detail']} | {_t(s['carbon_kg'])} | −{_t(s['reduction_kg'])} | −{s['cumulative_pct']:.1f}% |")
+    if p.get('plan'):
+        lines.append(f"- 입력한 계획안의 연간 운영탄소는 {_t(p['plan']['carbon_kg'])}로 대책 없음 대비 {_pct(p['plan']['pct'])}입니다.")
+    pv=p.get('pv')
+    if pv:
+        lines.append(f"- 지붕 태양광: 옥상 {pv['roof_m2']:,.0f} m² · {pv['kw']:,.1f} kW · 연 {_num(pv.get('kwh'),' kWh')}"+(f" (자체 소비를 넘는 {pv['surplus_kwh']:,.0f} kWh는 감축에 넣지 않음)" if pv.get('surplus_kwh') else ''))
+    if p.get('self_sufficiency_pct') is not None:
+        lines.append(f"- 에너지자립률(1차에너지, 참고): {p['self_sufficiency_pct']:.1f}%"+(f" — ZEB {p['zeb_grade']} 구간" if p.get('zeb_grade') else ' — ZEB 5등급(20%) 미만'))
+    r=p['residual']
+    if r['carbon_kg']>0:
+        lines.append(f"- 남는 연간 {_t(r['carbon_kg'])}"+(f": 구역 밖 재생에너지(태양광 약 {r['offsite_pv_kw']:,.0f} kW 상당, PPA·REC) 조달로 운영 넷제로" if r.get('offsite_pv_kw') else ''))
+    lines+=['- '+a for a in p.get('assumptions') or []]
+    return lines
 
 def plan_sentence_facts(n,label,inputs,result):
     """계획안 X: its size, its carbon against the reference plan, and its 상한 check — the sentences a reader quotes."""
@@ -364,10 +405,13 @@ def report_markdown(s):
         for sc in plans:
             if sc.get('has_image'):energy.append(f"![{sc['label']} 3D 개념 배치]({sc['image_url']})\n\n{sc['label']} 3D 개념 배치(규모 비교용, 실제 배치안이 아닙니다)")
         sections.append(('에너지·탄소 산정',energy))
+        reduction=[]
+        for sc in plans:reduction+=([f"**{sc['label']}**"] if len(plans)>1 else [])+reduction_lines(sc)
+        sections.append(('탄소 감축 방안',reduction))
         zoning=[]
         checks=[json.dumps(sc['result'].get('zoning_check'),sort_keys=True,ensure_ascii=False) for sc in plans]
         if len(plans)>1 and len(set(checks))==1:   # the same site for every plan: one table
-            zoning=zoning_lines(dict(plans[0],label='모든 계획안 (같은 대지)'))
+            zoning=zoning_lines(dict(plans[0],label='계획안 대지'))
         else:
             for sc in plans:zoning+=zoning_lines(sc)
         sections.append(('용도지역·조례 상한 확인',zoning))
@@ -396,7 +440,7 @@ class ReportInput(BaseModel):
     year:int=Field(default=DEFAULT_YEAR,ge=2000,le=2100)
     grid_id:str|None=None
     region:str|None=Field(default=None,max_length=10)
-    scenario_ids:list[str]=Field(default_factory=list,max_length=3)
+    scenario_ids:list[str]=Field(default_factory=list,max_length=1)
     use_local_model:bool=False
 
 @router.get('/engine')

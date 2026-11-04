@@ -56,20 +56,26 @@ def test_markdown_names_the_place_shows_the_plan_and_its_savings_and_hides_cell_
                 'evidence_hash': 'abc123hash', 'scope': '격자 관측 지번 합계'}
     text = report_markdown(snapshot)
     assert 'SGIS 격자 통계 1km' not in text   # only the sources the plan's numbers rest on
-    for heading in ('## 1. 검토 요약', '## 2. 대상지 개요', '## 3. 계획 개요', '## 4. 에너지·탄소 산정', '## 5. 용도지역·조례 상한 확인', '## 6. 유의사항', '## 7. 자료 출처'):
+    for heading in ('## 1. 검토 요약', '## 2. 대상지 개요', '## 3. 계획 개요', '## 4. 에너지·탄소 산정', '## 5. 탄소 감축 방안', '## 6. 용도지역·조례 상한 확인', '## 7. 유의사항', '## 8. 자료 출처'):
         assert heading in text
-    assert text.count('\n## ') == 7
+    assert text.count('\n## ') == 8
     assert '전주시 송천1동 일대' in text and 'cell_968500_1762000' not in text and 'abc123hash' not in text and 'SHA' not in text and '다마68b62a' not in text
     assert '| 용적률 | 336.0% (상한 300.31%) |' in text and '| 효율 계수 | 0.80배 |' in text and '| 태양광 전력 대체율 | 15% |' in text
     assert '| 연간 운영탄소 (전력+가스) | 560.3 tCO2eq | 760.0 tCO2eq | −26.3% |' in text
-    assert '| 1인당 운영탄소 | 1,000.5 kgCO2eq' in text and '건축HUB' not in text.split('## 6. 유의사항')[0].split('## 2. 대상지 개요')[1]  # grid energy facts stay out of the plan sections
+    assert '| 1인당 운영탄소 | 1,000.5 kgCO2eq' in text and '건축HUB' not in text.split('## 7. 유의사항')[0].split('## 2. 대상지 개요')[1]  # grid energy facts stay out of the plan sections
     assert '전력 36.9 kWh/m²·년' in text and '0.433' in text and '0.1826' in text
     assert '![계획안 A 3D 개념 배치](/api/scenarios/s1/image)' in text and '실제 배치안이 아닙니다' in text
     assert '| 제3종일반주거지역 | 99.8% | 50% | 300% |' in text and '조례 기본 상한 이내 (1차 확인)' in text and '지구단위계획구역' in text
     assert '| K-apt | 2025-01 | 2026-09-26 |' in text and '1,252' not in text
     assert '보고서 번호 r1' in text
-    two = dict(snapshot, scenarios=[scenario, dict(scenario, id='s2', label='계획안 B')])
-    assert report_markdown(two).count('| 제3종일반주거지역 |') == 1 and '모든 계획안 (같은 대지)' in report_markdown(two)   # one site, one table
+    # 탄소 감축 방안: 다른 안과 비교하지 않고 같은 계획을 대책 없음에서 줄이는 순서 (기준 문서 5.15)
+    assert '감축 방안을 계산할 근거가 없습니다' in text   # a plan stored without the ladder says so, never zeros
+    from app.reduction_plan import building_plan
+    ladder = building_plan(scenario['result']['annual']['reference'], 2800.0, snapshot['factors'], {'kwh_per_kw': 1199.9, 'label': '추정'}, 560280.0)
+    with_plan = report_markdown(dict(snapshot, scenarios=[dict(scenario, reduction_plan=ladder)]))
+    section = with_plan.split('## 5. 탄소 감축 방안')[1].split('## 6.')[0]
+    assert '| 0. 대책 없음 (기준안) |' in section and '| 1. 고효율 외피·설비 |' in section and '| 2. 난방·급탕 전기화 |' in section and '| 3. 지붕 태양광 |' in section
+    assert '옥상 1,680 m² · 168.0 kW' in section and '에너지자립률' in section and '계획안 B' not in with_plan
     assert any('가스 탄소' in c for c in snapshot['cautions']) and any('3D 개념 배치' in c for c in snapshot['cautions'])
 
 

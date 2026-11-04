@@ -15,7 +15,15 @@ import { ZoningSummary } from '../components/ZoningSummary';
 import { PLAN_COLORS } from '../theme/palette';
 import type { ScenarioResult } from '../types';
 
-interface SavedScenario { id: string; label?: string; created_at: string; inputs: Record<string, number | string | null>; result: ScenarioResult & Record<string, any>; has_image?: boolean; image_url?: string }
+/** 탄소 감축 방안 (서버 reduction_plan, 기준 문서 5.15): 같은 계획을 대책 없음에서 수단을 차례로 더해 줄인다. */
+interface ReductionStep { key: string; title: string; detail: string; electricity_kwh: number; gas_kwh: number | null; carbon_kg: number; reduction_kg: number; cumulative_pct: number | null }
+interface ReductionPlan {
+  available: boolean; reason?: string; start?: { label: string; carbon_kg: number; electricity_kwh: number; gas_kwh: number | null }; steps?: ReductionStep[];
+  final_carbon_kg?: number; final_pct?: number | null; pv?: { roof_m2: number; kw: number; kwh: number | null; surplus_kwh?: number } | null;
+  self_sufficiency_pct?: number | null; zeb_grade?: string | null; residual?: { carbon_kg: number; offsite_pv_kw: number | null };
+  plan?: { carbon_kg: number; pct: number | null } | null; assumptions?: string[];
+}
+interface SavedScenario { id: string; label?: string; created_at: string; inputs: Record<string, number | string | null>; result: ScenarioResult & Record<string, any>; has_image?: boolean; image_url?: string; reduction_plan?: ReductionPlan }
 interface Fact { id: string; text: string }
 interface Report {
   id: string; title: string; kind?: 'PLAN' | 'STATUS'; place?: string | null; year: number; grid_id: string; created_at: string; evidence_hash: string; sector: { name: string };
@@ -48,12 +56,13 @@ export function ReportsPage() {
     if (!rows.some((s) => s.id === requested)) return;
     autoRun.current = requested; void generate([requested]);
   }, [auto, requested, rows, scenarios.loading]); // eslint-disable-line react-hooks/exhaustive-deps
-  const toggle = (id: string, on: boolean) => setChosen(on ? [...chosen, id] : chosen.filter((x) => x !== id));
+  // 계획안은 하나만: 다른 안과 비교하지 않고 그 안의 탄소 감축 방안을 쓴다.
+  const toggle = (id: string, on: boolean) => setChosen(on ? [id] : []);
   return <div className="page reports-page"><div className="no-print"><PageHeader title="검토 보고서" description="시뮬레이션에서 계산한 계획안의 에너지·탄소 결과를 대상지 정보와 함께 정리합니다. 인쇄하거나 문서로 내려받을 수 있습니다." />
     <section className="panel report-builder"><div className="panel-title"><h3>보고서에 넣을 계획안</h3><span className="status-tag">같은 대상지 · {year}년</span></div>
-      <p className="panel-description">하나를 고르면 그 계획안의 보고서가 만들어지고, 둘 이상 고르면 비교표가 함께 들어갑니다 (최대 3개, 고른 순서로 A·B·C). 계획안 없이 현재 자료 현황만 쓸 수도 있습니다.</p>
-      {scenarios.loading || (!gridId && scope.loading) ? <LoadingState label="대상지와 계획안을 확인하는 중입니다" /> : rows.length ? <div className="scenario-picker">{rows.map((s) => { const order = chosen.indexOf(s.id); const sv = s.result?.savings_pct?.carbon_kg; return <label key={s.id} className={order >= 0 ? `chosen plan-${PLAN[order]}` : undefined}><input type="checkbox" checked={order >= 0} disabled={order < 0 && chosen.length >= 3} onChange={(e) => toggle(s.id, e.target.checked)} /><span><strong>{s.inputs.floors}층 · {s.inputs.building_count}동 · 연면적 {formatMetric(Number(s.result?.gross_floor_area), 'm²')}</strong><small>{new Date(s.created_at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} 계산 · 연간 {tonnes(s.result?.annual?.scenario?.carbon_kg)}{typeof sv === 'number' ? ` · 기준안 대비 ${savingsText(sv)}` : ''}{s.has_image ? ' · 3D 장면 있음' : ''}</small>{s.result?.legal_status && s.result.legal_status !== '법적 상한 미확정' && <small className={String(s.result.legal_status).includes('초과') ? 'legal over' : 'legal'}>{String(s.result.legal_status)}</small>}</span>{order >= 0 && <i className="plan-chip">계획안 {PLAN[order].toUpperCase()}</i>}</label>; })}</div> : <EmptyState title="이 대상지에 계산한 계획안이 없습니다" description="시뮬레이션에서 ‘시나리오 계산’ 뒤 ‘보고서 작성’을 누르면 그 계획안의 보고서가 바로 만들어집니다." />}
-      {scenarios.error && <p role="alert" className="inline-error">{scenarios.error}</p>}<div className="report-actions"><label className="ai-option"><input type="checkbox" checked={useLocal} disabled={engine.data?.status !== 'READY' || busy} onChange={(e) => setUseLocal(e.target.checked)} /><Sparkles size={16} aria-hidden="true" />로컬 AI로 요약 문장 고르기<small>{engine.data?.status === 'READY' ? engine.data.model : '로컬 모델 준비 전, 검증된 서식 사용'}</small></label><button className="button primary" disabled={busy} onClick={() => void generate()}><FileText size={16} />{busy ? '보고서 작성 중…' : chosen.length ? `보고서 작성 (계획안 ${chosen.length}개)` : '현황 보고서 작성'}</button></div><p className="muted">숫자는 모두 계산 엔진에서 가져오며, AI는 검증된 근거 문장을 고르기만 합니다.</p></section>
+      <p className="panel-description">계획안을 하나 고르면 그 안의 보고서가 만들어집니다. 다른 안과 비교하지 않고, 같은 계획을 ‘대책 없음’에서 시작해 고효율 외피·설비, 난방 전기화, 지붕 태양광을 차례로 더해 줄이는 <b>탄소 감축 방안</b>을 함께 씁니다. 계획안 없이 현재 자료 현황만 쓸 수도 있습니다.</p>
+      {scenarios.loading || (!gridId && scope.loading) ? <LoadingState label="대상지와 계획안을 확인하는 중입니다" /> : rows.length ? <div className="scenario-picker">{rows.map((s) => { const order = chosen.indexOf(s.id); const sv = s.result?.savings_pct?.carbon_kg; return <label key={s.id} className={order >= 0 ? `chosen plan-${PLAN[order]}` : undefined}><input type="radio" name="report-plan" checked={order >= 0} onChange={(e) => toggle(s.id, e.target.checked)} /><span><strong>{s.inputs.floors}층 · {s.inputs.building_count}동 · 연면적 {formatMetric(Number(s.result?.gross_floor_area), 'm²')}</strong><small>{new Date(s.created_at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} 계산 · 연간 {tonnes(s.result?.annual?.scenario?.carbon_kg)}{typeof sv === 'number' ? ` · 기준안 대비 ${savingsText(sv)}` : ''}{s.has_image ? ' · 3D 장면 있음' : ''}</small>{s.result?.legal_status && s.result.legal_status !== '법적 상한 미확정' && <small className={String(s.result.legal_status).includes('초과') ? 'legal over' : 'legal'}>{String(s.result.legal_status)}</small>}</span>{order >= 0 && <i className="plan-chip">이 계획안</i>}</label>; })}</div> : <EmptyState title="이 대상지에 계산한 계획안이 없습니다" description="시뮬레이션에서 ‘시나리오 계산’ 뒤 ‘보고서 작성’을 누르면 그 계획안의 보고서가 바로 만들어집니다." />}
+      {scenarios.error && <p role="alert" className="inline-error">{scenarios.error}</p>}<div className="report-actions"><label className="ai-option"><input type="checkbox" checked={useLocal} disabled={engine.data?.status !== 'READY' || busy} onChange={(e) => setUseLocal(e.target.checked)} /><Sparkles size={16} aria-hidden="true" />로컬 AI로 요약 문장 고르기<small>{engine.data?.status === 'READY' ? engine.data.model : '로컬 모델 준비 전, 검증된 서식 사용'}</small></label><button className="button primary" disabled={busy} onClick={() => void generate()}><FileText size={16} />{busy ? '보고서 작성 중…' : chosen.length ? '보고서 작성 (감축 방안 포함)' : '현황 보고서 작성'}</button></div><p className="muted">숫자는 모두 계산 엔진에서 가져오며, AI는 검증된 근거 문장을 고르기만 합니다.</p></section>
     {error && <p role="alert" className="inline-error">{error}</p>}
     {saved.data?.length ? <section className="report-history"><label>작성 이력<span className="select-wrap"><select aria-label="저장 보고서" value={report?.id ?? ''} onChange={(e) => e.target.value && void open(e.target.value)}><option value="">이전 보고서 열기</option>{saved.data.map((r) => <option key={r.id} value={r.id}>{new Date(r.created_at).toLocaleString('ko-KR')} · {r.year}년 · 계획안 {r.scenario_count ?? 0}개</option>)}</select></span></label></section> : null}</div>
     {report && <><div className="report-export no-print"><span className="status-tag">{report.summary.mode === 'LOCAL_SLM' ? '로컬 AI 요약 문장 선택' : '검증된 서식 보고서'}</span><a className="button secondary" href={`/api/reports/${report.id}/markdown`}><Download size={15} />문서 내려받기</a><button className="button secondary" onClick={() => window.print()}><Printer size={15} />인쇄 · PDF 저장</button></div>
@@ -115,11 +124,39 @@ function PlanReport({ report }: { report: Report }) {
       {chart && <figure className="report-chart"><Chart option={chart.option} height={240} ariaLabel="계획안과 기준안의 월별 운영탄소" /><figcaption>월별 운영탄소 ({chart.unit}) — 기준안은 점선</figcaption></figure>}
       <p className="muted">{methodText(first.result, report.factors)}</p>
     </section>
-    <section className="report-section"><h2>5. 용도지역·조례 상한 확인</h2>{sameSite ? (first.result.zoning_check ? <ZoningSummary zoning={first.result.zoning_check} saved compact title="모든 계획안의 대지 (같은 위치)" /> : <p>대지와 겹치는 용도지역 자료가 없습니다.</p>) : plans.map((s) => s.result.zoning_check ? <ZoningSummary key={s.id} zoning={s.result.zoning_check} saved compact title={`${s.label} 대지`} /> : <p key={s.id}>{s.label}: 대지와 겹치는 용도지역 자료가 없습니다.</p>)}</section>
-    <section className="report-section"><h2>6. 유의사항</h2><ul className="report-list">{(report.cautions?.length ? report.cautions : [report.scope]).map((c) => <li key={c}>{c}</li>)}</ul></section>
-    <SourcesSection report={report} />
+    {plans.map((s) => <ReductionSection key={s.id} plan={s} n={5} named={plans.length > 1} />)}
+    <section className="report-section"><h2>6. 용도지역·조례 상한 확인</h2>{sameSite ? (first.result.zoning_check ? <ZoningSummary zoning={first.result.zoning_check} saved compact title="모든 계획안의 대지 (같은 위치)" /> : <p>대지와 겹치는 용도지역 자료가 없습니다.</p>) : plans.map((s) => s.result.zoning_check ? <ZoningSummary key={s.id} zoning={s.result.zoning_check} saved compact title={`${s.label} 대지`} /> : <p key={s.id}>{s.label}: 대지와 겹치는 용도지역 자료가 없습니다.</p>)}</section>
+    <section className="report-section"><h2>7. 유의사항</h2><ul className="report-list">{(report.cautions?.length ? report.cautions : [report.scope]).map((c) => <li key={c}>{c}</li>)}</ul></section>
+    <SourcesSection report={report} n={8} />
     <ReportFooter report={report} />
   </article>;
+}
+
+/** 탄소 감축 방안: 대책 없음 → 수단을 하나씩 더할 때의 연간 운영탄소. 막대 길이는 대책 없음 대비. */
+function ReductionSection({ plan, n, named }: { plan: SavedScenario; n: number; named: boolean }) {
+  const p = plan.reduction_plan;
+  const head = <h2>{n}. 탄소 감축 방안{named ? ` · ${plan.label ?? ''}` : ''}</h2>;
+  if (!p) return <section className="report-section">{head}<p>이 보고서는 감축 방안 계산 전에 작성되어 방안이 들어 있지 않습니다. 시뮬레이션에서 다시 계산한 뒤 보고서를 작성하세요.</p></section>;
+  if (!p.available || !p.start || !p.steps) return <section className="report-section">{head}<p>{p.reason ?? '감축 방안을 계산할 근거가 없습니다.'}</p></section>;
+  const start = p.start.carbon_kg;
+  const width = (kg: number) => `${start > 0 ? Math.max(1, Math.min(100, (kg / start) * 100)) : 0}%`;
+  const rows = [{ key: 'start', title: `0. ${p.start.label}`, detail: '관측 원단위 그대로 (효율 1.0·태양광 0)', carbon_kg: start, reduction_kg: null as number | null, cumulative_pct: null as number | null },
+    ...p.steps.map((s, i) => ({ ...s, title: `${i + 1}. ${s.title}` }))];
+  return <section className="report-section reduction" data-testid="report-reduction">{head}
+    <p>다른 안과 비교하지 않고, 이 계획을 대책 없이 지을 때(연간 {tonnes(start)})에서 시작해 수단을 차례로 더합니다. 모두 더하면 연간 <b>{tonnes(p.final_carbon_kg)}</b>(대책 없음 대비 −{formatMetric(p.final_pct, '%', 1)})입니다.{p.plan ? ` 입력한 계획안은 ${tonnes(p.plan.carbon_kg)}(${savingsText(p.plan.pct)})로, 이 사다리의 어디쯤인지 아래 막대와 견주어 볼 수 있습니다.` : ''}</p>
+    <div className="reduction-ladder" role="img" aria-label={`대책 없음 ${tonnes(start)}에서 ${tonnes(p.final_carbon_kg)}까지 줄이는 단계`}>
+      {rows.map((r) => <div key={r.key} className="reduction-row"><span className="reduction-label">{r.title}</span><span className="reduction-track"><span className={`reduction-bar${r.key === 'start' ? ' start' : ''}`} style={{ width: width(r.carbon_kg) }} /></span><span className="reduction-value">{tonnes(r.carbon_kg)}</span></div>)}
+    </div>
+    <div className="table-wrap report-table"><table><thead><tr><th>단계</th><th>내용</th><th className="num">연간 운영탄소</th><th className="num">이 단계 감축</th><th className="num">누적</th></tr></thead><tbody>
+      {rows.map((r) => <tr key={r.key}><th>{r.title}</th><td>{r.detail}</td><td className="num">{tonnes(r.carbon_kg)}</td><td className="num">{r.reduction_kg != null ? `−${tonnes(r.reduction_kg)}` : ''}</td><td className="num">{r.cumulative_pct != null ? `−${formatMetric(r.cumulative_pct, '%', 1)}` : ''}</td></tr>)}
+    </tbody></table></div>
+    <ul className="report-list">
+      {p.pv && <li>지붕 태양광: 옥상 {formatMetric(p.pv.roof_m2, 'm²')} · {formatMetric(p.pv.kw, 'kW', 1)} · 연 {formatMetric(p.pv.kwh, 'kWh')}{p.pv.surplus_kwh ? ` (자체 소비를 넘는 ${formatMetric(p.pv.surplus_kwh, 'kWh')}는 감축에 넣지 않음)` : ''}</li>}
+      {p.self_sufficiency_pct != null && <li>에너지자립률(1차에너지, 참고): {formatMetric(p.self_sufficiency_pct, '%', 1)} — {p.zeb_grade ? `ZEB ${p.zeb_grade} 구간` : 'ZEB 5등급(20%) 미만'}</li>}
+      {p.residual && p.residual.carbon_kg > 0 && <li>남는 연간 {tonnes(p.residual.carbon_kg)}{p.residual.offsite_pv_kw ? `: 구역 밖 재생에너지(태양광 약 ${formatMetric(p.residual.offsite_pv_kw, 'kW')} 상당, PPA·REC) 조달로 운영 넷제로` : ''}</li>}
+    </ul>
+    {p.assumptions?.length ? <details className="method-note" open><summary>가정</summary><ul>{p.assumptions.map((a) => <li key={a}>{a}</li>)}</ul></details> : null}
+  </section>;
 }
 
 /** 계획안 없이 쓴 현황 보고서: 격자의 관측 에너지·탄소와 대상지 설명만. */
@@ -137,15 +174,15 @@ function StatusReport({ report }: { report: Report }) {
     <section className="report-section"><h2>4. 계획안</h2><p>검토한 계획안이 없습니다. 시뮬레이션에서 계획안을 계산한 뒤 ‘보고서 작성’을 누르면 계획 개요·산정 표·상한 확인이 들어갑니다.</p></section>
     <section className="report-section"><h2>5. 용도지역</h2><ul className="report-list">{context.filter((f) => f.id === 'context_zoning').map((f) => <li key={f.id}>{f.text}</li>)}</ul></section>
     <section className="report-section"><h2>6. 유의사항</h2><ul className="report-list">{(report.cautions?.length ? report.cautions : [report.scope]).map((c) => <li key={c}>{c}</li>)}</ul></section>
-    <SourcesSection report={report} />
+    <SourcesSection report={report} n={7} />
     <ReportFooter report={report} />
   </article>;
 }
 
-function SourcesSection({ report }: { report: Report }) {
+function SourcesSection({ report, n }: { report: Report; n: number }) {
   const e = report.factors?.ELECTRICITY; const g = report.factors?.GAS;
   const sources = report.sources.filter((s) => REPORT_SOURCE_IDS.includes(String(s.id)));
-  return <section className="report-section"><h2>7. 자료 출처</h2><div className="table-wrap report-table"><table><thead><tr><th>자료</th><th>기간</th><th>수집일</th></tr></thead><tbody>{(sources.length ? sources : report.sources).map((s) => <tr key={s.id}><td>{s.name}</td><td>{s.reference_period ?? '기간 미기록'}</td><td>{s.collected_at ? new Date(s.collected_at).toLocaleDateString('ko-KR') : '미수집'}</td></tr>)}</tbody></table></div>
+  return <section className="report-section"><h2>{n}. 자료 출처</h2><div className="table-wrap report-table"><table><thead><tr><th>자료</th><th>기간</th><th>수집일</th></tr></thead><tbody>{(sources.length ? sources : report.sources).map((s) => <tr key={s.id}><td>{s.name}</td><td>{s.reference_period ?? '기간 미기록'}</td><td>{s.collected_at ? new Date(s.collected_at).toLocaleDateString('ko-KR') : '미수집'}</td></tr>)}</tbody></table></div>
     {report.factors && <p className="muted">배출계수: 전력 {e?.factor ?? '미등록'} kgCO₂eq/kWh ({e && !e.assumed ? 'GIR 승인' : '확인 필요'}), 가스 {g?.factor ?? '미등록'} kgCO₂eq/kWh ({g?.assumed ? '가정' : '등록'})</p>}
   </section>;
 }

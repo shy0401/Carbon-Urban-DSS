@@ -3,20 +3,18 @@
  * - 결과 요약 막대: 단계 이동 + 핵심 지표(엔진 값 그대로)
  * - 감축 수단 조합: 신축·기존 건물 절감률과 태양광을 함께 넣어 필요 감축량을 채우는지 확인 (도시·군기본계획 방식)
  * - 같은 시·군·구 행정동 비교: 원단위 분포 속 위치 (ENERGY STAR·서울 건물에너지 등급처럼 동종 비교, 단 등급 아님)
- * - 시나리오 비교: 최대 4개 안을 나란히, CSV(엑셀)로 내보내기
+ * - 구체적 감축 방안(자동): 신축 20% → 기존 5% → 남는 양 태양광. 다른 안과 비교하지 않는다(2026-11-05: 시나리오 비교 단계 삭제)
  * 숫자는 모두 서버 계산 엔진이 낸 값이며 여기서는 고르거나 단위(kg→t)만 바꾼다.
  */
-import { Download, ExternalLink, Save, Sun, Trash2 } from 'lucide-react';
+import { ListChecks, Sun } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { BASELINE_MODE_LABEL, benchmarkPosition, EFFORT_BASIS_LABEL, NO_MEASURES, toTonnes, type AreaAnalysis, type Benchmark, type EffortResult, type MeasuresState } from '../../lib/area';
-import { comparisonRows, MAX_SCENARIOS, scenariosCsv, type SavedScenario } from '../../lib/areaScenarios';
 import { formatMetric } from '../../lib/format';
 
 export const AREA_STEPS = [
   { id: 'area-step-area', label: '구역 고르기' },
   { id: 'area-step-plan', label: '계획·목표' },
-  { id: 'area-step-measures', label: '감축 수단' },
-  { id: 'area-step-compare', label: '시나리오 비교' },
+  { id: 'area-step-measures', label: '감축 방안' },
   { id: 'area-step-report', label: '보고서' },
 ] as const;
 
@@ -39,11 +37,11 @@ export function benchmarkText(bench: Benchmark | null | undefined, effort: Effor
   return { pos, text: `${pos.rank}/${pos.count}번째`, detail: `${bench.reference_year}년 ${bench.basis_label} 원단위 낮은 쪽부터${pos.quintile ? ` · 5분위 중 ${pos.quintile}분위` : ''}` };
 }
 
-export function AreaSummaryBar({ analysis, running, bench, onSave, saveNote }: { analysis: AreaAnalysis | null; running: boolean; bench: Benchmark | null; onSave: () => void; saveNote?: string | null }) {
+export function AreaSummaryBar({ analysis, running, bench }: { analysis: AreaAnalysis | null; running: boolean; bench: Benchmark | null }) {
   const e = analysis?.effort;
   const ok = Boolean(e?.available);
   const position = benchmarkText(bench, e);
-  const mix = e?.mix;
+  const mix = e?.mix ?? e?.recommended ?? null;
   return <section className="area-summary" aria-label="결과 요약" data-testid="area-summary">
     <nav className="area-steps" aria-label="작업 단계">
       <ol>{AREA_STEPS.map((s, i) => <li key={s.id}><a href={`#${s.id}`} onClick={(event) => { event.preventDefault(); go(s.id); }}><b aria-hidden="true">{i + 1}</b>{s.label}</a></li>)}</ol>
@@ -54,14 +52,10 @@ export function AreaSummaryBar({ analysis, running, bench, onSave, saveNote }: {
         <Kpi label="기준 배출" value={t1(e.baseline_kgco2eq)} sub={`${e.baseline_year}년 ${BASELINE_MODE_LABEL[e.baseline_mode ?? 'OBSERVED']} · ${e.basis === 'kcsm' ? '건물 전체(탄소공간지도)' : e.basis === 'buildings' ? '건물 전체' : '공동주택'}${e.fallback_from ? '(자동 전환)' : ''}`} />
         <Kpi label="계획 반영 (대책 없음)" value={t1(e.bau_kgco2eq)} sub={`목표 ${formatMetric(e.target_pct, '%')} 감축선 ${t1(e.target_kgco2eq)}`} />
         <Kpi label="필요 감축량" value={e.already_met ? '불필요' : t1(e.required_reduction_kgco2eq)} sub="연간 · 전력 운영탄소" tone={e.already_met ? 'good' : undefined} />
-        <Kpi label="감축 수단 조합" value={mix ? t1(mix.total_kgco2eq) : '입력 전'} sub={mix ? (mix.met ? '목표 달성' : `${t1(mix.gap_kgco2eq)} 부족`) : '3단계에서 입력'} tone={mix ? (mix.met ? 'good' : 'warn') : undefined} />
+        <Kpi label={e.mix ? '감축 수단 조합' : '구체적 감축 방안'} value={mix ? t1(mix.total_kgco2eq) : '—'} sub={mix ? (mix.met ? '목표 달성' : `${t1(mix.gap_kgco2eq)} 부족`) : '3단계에서 확인'} tone={mix ? (mix.met ? 'good' : 'warn') : undefined} />
         <Kpi label="같은 시·군 비교" value={position ? position.text : '—'} sub={position ? `원단위 낮은 쪽부터${position.pos.quintile ? ` · ${position.pos.quintile}/5분위` : ''}` : '같은 연도·기준 관측일 때만'} />
       </> : analysis ? <Kpi label="감축 노력" value="계산 근거 없음" sub={e?.reason ?? '목표를 넣으면 계산합니다'} tone="warn" /> : null}
     </dl>
-    <div className="area-summary-actions">
-      <button type="button" className="button small" onClick={onSave} disabled={!analysis || running}><Save size={14} />시나리오 저장</button>
-      {saveNote && <small role="status">{saveNote}</small>}
-    </div>
   </section>;
 }
 
@@ -85,8 +79,16 @@ export function MeasuresPanel({ effort, measures, setMeasures }: { effort: Effor
   const share = (kwh: number | null) => (need > 0 && kwh && effort?.factor_kgco2eq_per_kwh ? Math.min(100, (kwh * effort.factor_kgco2eq_per_kwh / need) * 100) : 0);
   const parts = mix ? [{ key: 'new', label: '신축', value: share(mix.new_kwh) }, { key: 'existing', label: '기존 건물', value: share(mix.existing_kwh) }, { key: 'pv', label: '태양광', value: share(mix.pv_kwh) }] : [];
   let left = 100;
+  const rec = effort?.recommended ?? null;
+  const applyRecommended = () => { if (rec) setMeasures({ new_efficiency_pct: rec.new_efficiency_pct, existing_efficiency_pct: rec.existing_efficiency_pct, pv_kw: rec.pv_kw }); };
   return <section className="panel area-measures" aria-label="감축 수단 조합">
-    <div className="panel-title"><h3>감축 수단 조합</h3><span className="status-tag neutral">수단별 감축량 합산 → 목표 확인</span></div>
+    <div className="panel-title"><h3>감축 방안</h3><span className="status-tag neutral">순서대로 더해 필요 감축량을 채움</span></div>
+    {effort?.available && !effort.already_met && rec && rec.steps.length > 0 && <div className="area-recommended" data-testid="area-recommended">
+      <h4>구체적 감축 방안 (자동 계산)</h4>
+      <ol>{rec.steps.map((s) => <li key={s.key}><b>{s.title}</b> — {s.detail}<span className="num">{t1(s.kgco2eq)}/년</span></li>)}</ol>
+      <p className={`area-headline ${rec.met ? 'good' : 'warn'}`}>{rec.met ? `합계 ${t1(rec.total_kgco2eq)}로 필요 감축량 ${t1(rec.required_kgco2eq)}를 채웁니다.` : `합계 ${t1(rec.total_kgco2eq)}로 필요 감축량 ${t1(rec.required_kgco2eq)}의 ${formatMetric(rec.share_pct, '%', 1)}입니다.${rec.offset_kwh ? ` 발전량 근거가 없어 남는 ${formatMetric(rec.offset_kwh, 'kWh')}는 재생에너지 상쇄량으로 적습니다.` : ''}`}</p>
+      <div className="area-measures-actions"><button type="button" className="button small" onClick={applyRecommended}><ListChecks size={14} />이 방안을 아래 칸에 넣기</button><small className="muted">신축 20%·기존 5%는 가정값(기준 문서 5.15), 태양광은 남는 양을 10 kW 단위로 올려 채운 값입니다. 아래 칸에서 바꿔 볼 수 있습니다.</small></div>
+    </div>}
     {!effort?.available ? <p className="muted">감축 노력을 계산할 수 있는 구역에서 씁니다.</p> : effort.already_met ? <p className="area-headline good">계획을 반영해도 목표선 아래라 추가 수단이 필요하지 않습니다.</p> : <>
       <div className="field-grid area-measures-form">
         {field('new_efficiency_pct', '신축 건물 전력 절감', '%', 100, 5, `신축 부하 ${formatMetric(effort.new_load_kwh, 'kWh/년')} 기준`)}
@@ -133,24 +135,5 @@ export function BenchmarkPanel({ bench, effort, regionName }: { bench: Benchmark
     <p className="area-benchmark-text">{position ? <><b>낮은 쪽부터 {position.text}</b> ({position.detail}) · 중앙값 {formatMetric(bench.median, 'kWh/m²·년', 2)}</>
       : <>이 구역은 {effort?.available ? (effort.baseline_mode !== 'OBSERVED' ? '기준 부하가 추정값이라' : effort.basis !== bench.basis ? '감축 기준이 달라' : '기준 연도가 달라') : '관측 원단위가 없어'} 순위를 매기지 않습니다. 중앙값 {formatMetric(bench.median, 'kWh/m²·년', 2)}.</>}</p>
     <p className="muted">{bench.note} 비교 대상: 같은 연도에 관측 원단위가 있는 행정동 {bench.count}곳 / 전체 {bench.admin_total}곳.</p>
-  </section>;
-}
-
-export function ScenarioComparePanel({ scenarios, onRemove, onClear }: { scenarios: SavedScenario[]; onRemove: (id: string) => void; onClear: () => void }) {
-  const rows = comparisonRows(scenarios);
-  const download = () => {
-    const blob = new Blob([scenariosCsv(scenarios)], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = `area-scenarios-${new Date().toISOString().slice(0, 10)}.csv`; a.click();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-  };
-  return <section className="panel area-compare" aria-label="시나리오 비교" data-testid="area-compare">
-    <div className="panel-title"><h3>시나리오 비교 ({scenarios.length}/{MAX_SCENARIOS})</h3>
-      <div className="badge-row"><button type="button" className="button small" onClick={download} disabled={!scenarios.length}><Download size={14} />CSV(엑셀) 내보내기</button><button type="button" className="button ghost small" onClick={onClear} disabled={!scenarios.length}>모두 지우기</button></div></div>
-    {!scenarios.length ? <p className="muted">위 막대의 <b>시나리오 저장</b>을 누르면 지금 구역·계획·목표·수단과 엔진 결과를 저장해 최대 {MAX_SCENARIOS}개까지 나란히 봅니다. 이 브라우저에만 저장되며, 링크로 다시 열면 같은 조건으로 다시 계산합니다.</p>
-      : <div className="table-wrap"><table className="area-compare-table">
-        <thead><tr><th scope="col">항목</th>{scenarios.map((s) => <th key={s.id} scope="col"><span>{s.name}</span><span className="area-compare-actions">{s.link ? <a className="icon-link" href={s.link} title="이 조건으로 다시 열기"><ExternalLink size={13} /><span className="sr-only">다시 열기</span></a> : null}<button type="button" className="icon-link" onClick={() => onRemove(s.id)} title="삭제"><Trash2 size={13} /><span className="sr-only">{s.name} 삭제</span></button></span></th>)}</tr></thead>
-        <tbody>{rows.map((r) => <tr key={r.label}><th scope="row">{r.label}</th>{r.values.map((v, i) => <td key={scenarios[i].id} className={/^[\d,.\-]/.test(v) ? 'num' : undefined}>{v}</td>)}</tr>)}</tbody>
-      </table></div>}
   </section>;
 }

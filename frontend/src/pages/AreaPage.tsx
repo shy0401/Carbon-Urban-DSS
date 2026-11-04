@@ -2,8 +2,7 @@ import { Download, FileText, Info, Link2, Pause, Play, Printer, RotateCcw, Undo2
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { AreaMap } from '../components/area/AreaMap';
-import { AreaSummaryBar, benchmarkText, BenchmarkPanel, FallbackNotice, MeasuresPanel, ScenarioComparePanel } from '../components/area/AreaWorkflow';
-import { loadScenarios, MAX_SCENARIOS, storeScenarios, toScenario, type SavedScenario } from '../lib/areaScenarios';
+import { AreaSummaryBar, BenchmarkPanel, FallbackNotice, MeasuresPanel } from '../components/area/AreaWorkflow';
 import { BeforeAfterChart, DevelopmentChart, EffortBars, EffortCurve, ElectricityChart, RegisterChart, WeatherYearsChart } from '../components/area/AreaCharts';
 import { MetricCard } from '../components/MetricCard';
 import { PageHeader } from '../components/PageHeader';
@@ -62,8 +61,6 @@ export function AreaPage() {
   const [effortBasis, setEffortBasis] = useState<EffortBasis>(link?.basis ?? 'apartments');
   const [measures, setMeasures] = useState<MeasuresState>(link?.measures ?? NO_MEASURES);
   const [bench, setBench] = useState<Benchmark | null>(null);
-  const [scenarios, setScenarios] = useState<SavedScenario[]>(() => (typeof window === 'undefined' ? [] : loadScenarios()));
-  const [saveNote, setSaveNote] = useState<string | null>(null);
   const [linkUrl, setLinkUrl] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<AreaAnalysis | null>(null);
   const [running, setRunning] = useState(false);
@@ -178,22 +175,6 @@ export function AreaPage() {
     return () => { live = false; };
   }, [benchBasis, fromYear, toYear, region]);
 
-  const saveScenario = () => {
-    if (!analysis) return;
-    if (scenarios.length >= MAX_SCENARIOS) { setSaveNote(`최대 ${MAX_SCENARIOS}개입니다. 비교표에서 하나를 지우세요.`); return; }
-    const name = `안 ${String.fromCharCode(65 + scenarios.length)} · ${analysis.history.area.label.replace(/ \(행정동\)$/, '')}`;
-    const rank = benchmarkText(bench, analysis.effort);
-    const next = [...scenarios, toScenario(analysis, {
-      name, region, rank: rank ? `${rank.text} (${rank.detail})` : null,
-      link: areaLink(lastSpec.current, { region, from: fromYear, to: toYear, event: eventYear, window: windowSize, plan, target, pv: pvYield, basis: effortBasis, measures }),
-      inputs: { from: fromYear, to: toYear, planned_m2: plannedArea(plan), removed_m2: plan.removed_floor_area_m2, target_pct: target, basis: effortBasis, pv_yield: pvYield, measures },
-    })];
-    setScenarios(next);
-    setSaveNote(storeScenarios(next) ? `${name} 저장 (${next.length}/${MAX_SCENARIOS})` : '이 브라우저에 저장하지 못했습니다(화면을 닫으면 사라짐).');
-  };
-  const removeScenario = (id: string) => { const next = scenarios.filter((s) => s.id !== id); setScenarios(next); storeScenarios(next); setSaveNote(null); };
-  const clearScenarios = () => { setScenarios([]); storeScenarios([]); setSaveNote(null); };
-
   const activeEvent = analysis?.before_after.available ? analysis.before_after.event_year ?? null : null;
 
   if (options.loading) return <div className="page"><LoadingState label="지역 목록을 불러오는 중입니다" /></div>;
@@ -223,7 +204,7 @@ export function AreaPage() {
       <CoverageStrip analysis={analysis} collection={collection.data} regionName={region ? (options.data?.region?.short_name ?? null) : null} />
     </section>
 
-    <AreaSummaryBar analysis={analysis} running={running} bench={bench} onSave={saveScenario} saveNote={saveNote} />
+    <AreaSummaryBar analysis={analysis} running={running} bench={bench} />
 
     <div className="area-workspace">
       <div className="area-map-stage">
@@ -254,11 +235,8 @@ export function AreaPage() {
       <EffortPanel effort={analysis.effort} plan={plan} setPlan={setPlan} target={target} setTarget={setTarget} pvYield={pvYield} setPvYield={setPvYield} basis={effortBasis} setBasis={setEffortBasis} kcsmAvailable={!!analysis.history.kcsm?.available} />
       <BenchmarkPanel bench={bench} effort={analysis.effort} regionName={options.data?.region?.short_name ?? '시·군·구'} />
 
-      <div className="section-label" id="area-step-measures"><h2>감축 수단 조합</h2><span>수단별 감축량을 더해 필요 감축량을 채우는지 봅니다</span></div>
+      <div className="section-label" id="area-step-measures"><h2>감축 방안</h2><span>구체적 방안을 순서대로 더해 필요 감축량을 채웁니다. 다른 안과 비교하지 않습니다</span></div>
       <MeasuresPanel effort={analysis.effort} measures={measures} setMeasures={setMeasures} />
-
-      <div className="section-label" id="area-step-compare"><h2>시나리오 비교</h2><span>저장한 안을 나란히 보고 CSV로 내보냅니다</span></div>
-      <ScenarioComparePanel scenarios={scenarios} onRemove={removeScenario} onClear={clearScenarios} />
 
       <div className="section-label" id="area-step-report"><h2>보고서</h2><span>계산 엔진의 근거 문장으로 작성하고, 로컬 AI 문장은 숫자 검증을 통과할 때만 씁니다</span></div>
       <ReportPanel request={() => ({ area: lastSpec.current, region, from_year: fromYear, to_year: toYear, event_year: eventYear, window: windowSize, plan: planBody(plan), target_pct: target, pv_yield_kwh_per_kw: pvYield && Number(pvYield) > 0 ? Number(pvYield) : null, effort_basis: effortBasis, measures: measuresBody(measures) })} label={analysis.history.area.label} />
