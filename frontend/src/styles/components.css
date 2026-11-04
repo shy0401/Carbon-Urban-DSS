@@ -40,6 +40,8 @@
 .missing-value .mv-dash { font-weight: 500; color: var(--prov-missing); }
 .missing-value .mv-reason { font-size: var(--fs-caption); font-weight: 400; line-height: 1.4; color: var(--ink-2); }
 .missing-value.inline { display: inline-flex; align-items: baseline; gap: var(--sp-1); }
+/* 해당 없음(건물·단지 없음): 결측이 아니므로 결측 색·해치를 쓰지 않는다. */
+.missing-value.none .mv-dash { color: var(--ink-3); }
 
 /* 상태 태그: 작업·모델 상태 코드와 서버의 자유 문장. 시스템 상태 색은 성공·경고·오류에만. */
 .status-tag, .badge {

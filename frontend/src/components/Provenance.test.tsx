@@ -28,4 +28,15 @@ describe('근거 배지와 결측 값', () => {
     expect(screen.getByText('0 °C·일')).toHaveClass('sr-only');
     expect(screen.getByText('실측')).toBeInTheDocument();
   });
+  it('대상이 없는 카드(건물·단지 없음)는 해치·자료 미확보 배지 없이 해당 없음으로 쓴다', () => {
+    const { container } = render(<MetricCard title="공동주택 세대당 전력" value={null} unit="kWh" missingReason="관측 없음" none="격자 안 공동주택 단지 없음" basis="쓰지 않음" />);
+    const card = container.querySelector('.metric-card');
+    expect(card).not.toHaveClass('is-missing');
+    expect(card).toHaveClass('is-none');
+    expect(screen.getByText('격자 안 공동주택 단지 없음')).toBeInTheDocument();
+    expect(screen.getByText('해당 없음')).toHaveClass('sr-only');
+    expect(screen.queryByText('자료 미확보')).not.toBeInTheDocument();
+    expect(screen.queryByText('관측 없음')).not.toBeInTheDocument();
+    expect(screen.queryByText('쓰지 않음')).not.toBeInTheDocument();
+  });
 });
