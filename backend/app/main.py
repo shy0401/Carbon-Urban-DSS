@@ -596,7 +596,8 @@ class ScenarioInput(BaseModel):
     site_area:float=Field(default=50000,gt=0,le=250000)
     building_count:int=Field(default=8,ge=1,le=200)
     footprint_per_building:float=Field(default=600,gt=0,le=250000)
-    floors:int=Field(default=15,ge=3,le=40)
+    # 직접 입력은 60층까지(49층 주상복합 같은 실제 계획을 그대로 넣기 위해). 최적안 탐색은 3~40층만 열거한다(modeling.py).
+    floors:int=Field(default=15,ge=3,le=60)
     households:int=Field(default=600,ge=0,le=100000)
     population:int=Field(default=1500,ge=0,le=1000000)
     efficiency_factor:float=Field(default=0.85,gt=0,le=2)

@@ -16,7 +16,7 @@ export function validateScenario(input: ScenarioInput): ScenarioErrors {
   if (input.footprint_per_building<=0) errors.footprint_per_building='건축면적은 0보다 커야 합니다.';
   if (input.building_count*input.footprint_per_building+input.site_area*input.green_ratio>input.site_area) errors.green_ratio='건축면적과 녹지면적 합계가 부지를 초과합니다.';
   if(input.households*input.average_household_area>input.building_count*input.footprint_per_building*input.floors) errors.households='입력 세대수의 면적 수요가 연면적을 초과합니다.';
-  if (input.floors < 3 || input.floors > 40) errors.floors = '층수는 3층부터 40층까지 입력하세요.';
+  if (input.floors < 3 || input.floors > 60) errors.floors = '층수는 3층부터 60층까지 입력하세요.';
   if (input.efficiency_factor <= 0 || input.efficiency_factor > 2) errors.efficiency_factor = '효율 계수는 0 초과 2 이하로 입력하세요.';
   if (input.pv_ratio < 0 || input.pv_ratio > 1) errors.pv_ratio = '태양광 비율은 0부터 1 사이여야 합니다.';
   if (input.green_ratio < 0 || input.green_ratio > 1) errors.green_ratio = '녹지 비율은 0부터 1 사이여야 합니다.';

@@ -86,3 +86,12 @@ def test_scenario_3d_scene_is_stored_only_as_png_for_a_saved_scenario():
             img=db.get(ScenarioImage,sid)
             if img:db.delete(img)
             db.delete(db.get(Scenario,sid));db.commit()
+
+def test_scenario_input_takes_up_to_60_floors_for_real_high_rise_plans():
+    from pydantic import ValidationError
+    from app.main import ScenarioInput
+    plan=ScenarioInput(site_area=189937,building_count=10,footprint_per_building=830,floors=49,households=3536,population=8133,green_ratio=0.4,average_household_area=84)
+    assert plan.floors==49
+    try:
+        ScenarioInput(floors=61);raise AssertionError('61층은 거절해야 함')
+    except ValidationError:pass

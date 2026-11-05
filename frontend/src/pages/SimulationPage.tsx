@@ -24,7 +24,7 @@ import { zoningTone } from '../lib/zoning';
 const initial: ScenarioInput = { site_area: 10000, building_count: 4, footprint_per_building: 700, floors: 10, households: 200, population: 467, efficiency_factor: 0.85, pv_ratio: 0.2, green_ratio: 0.25, average_household_area: 84 };
 const fields: Array<{ key: keyof ScenarioInput; label: string; unit: string; step?: number; min?: number; max?: number }> = [
   { key: 'site_area', label: '대지면적', unit: 'm²', min: 1 }, { key: 'building_count', label: '건물 수', unit: '동', min: 1 },
-  { key: 'footprint_per_building', label: '동별 건축면적', unit: 'm²', min: 0 }, { key: 'floors', label: '층수', unit: '층', min: 3, max: 40 },
+  { key: 'footprint_per_building', label: '동별 건축면적', unit: 'm²', min: 0 }, { key: 'floors', label: '층수', unit: '층', min: 3, max: 60 },
   { key: 'households', label: '세대수', unit: '세대', min: 0 }, { key: 'population', label: '계획 인구', unit: '명', min: 0 },
   { key: 'efficiency_factor', label: '효율 계수', unit: '배', step: 0.05, min: 0.05, max: 2 }, { key: 'pv_ratio', label: '태양광 전력 대체율', unit: '비율', step: 0.05, min: 0, max: 1 },
   { key: 'green_ratio', label: '녹지 비율', unit: '비율', step: 0.05, min: 0, max: 1 }, { key: 'average_household_area', label: '평균 세대면적', unit: 'm²', min: 1 },

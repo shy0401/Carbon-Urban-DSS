@@ -15,13 +15,14 @@ const valid = {
 };
 
 describe('validateScenario', () => {
-  it('층수 범위 3~40을 허용한다', () => {
+  it('층수 범위 3~60을 허용한다 (49층 주상복합 등 실제 계획)', () => {
     expect(validateScenario({ ...valid, floors: 3, households: 50 })).toEqual({});
-    expect(validateScenario({ ...valid, floors: 40 })).toEqual({});
+    expect(validateScenario({ ...valid, floors: 49 })).toEqual({});
+    expect(validateScenario({ ...valid, floors: 60 })).toEqual({});
   });
 
   it('층수 범위를 벗어나거나 건폐면적이 대지면적을 넘으면 설명을 반환한다', () => {
-    expect(validateScenario({ ...valid, floors: 41 })).toMatchObject({ floors: expect.any(String) });
+    expect(validateScenario({ ...valid, floors: 61 })).toMatchObject({ floors: expect.any(String) });
     expect(validateScenario({ ...valid, building_count: 20, footprint_per_building: 700 })).toMatchObject({ footprint_per_building: expect.any(String) });
   });
 });
