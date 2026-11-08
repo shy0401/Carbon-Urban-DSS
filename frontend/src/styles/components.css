@@ -165,3 +165,12 @@
 .area-link-button { align-self: end; margin-left: auto; }
 .not-found-links { display: grid; gap: var(--sp-2); padding-left: 1.2em; }
 .not-found-links a { display: inline-block; padding: 3px 0; }
+
+/* 신뢰도 등급 (에너지 모델 표 · 시뮬레이션·보고서 요약 줄) */
+.confidence-grades { margin-top: var(--sp-4); }
+.confidence-grades td:nth-child(2) { width: 48px; text-align: center; }
+.grade { display: inline-block; min-width: 22px; padding: 1px 6px; border-radius: 999px; font-style: normal; font-weight: 700; font-size: 12px; text-align: center; }
+.grade-B { background: var(--success-bg); color: var(--success); }
+.grade-C { background: var(--warning-bg); color: var(--warning); }
+.confidence-line { margin: var(--sp-2) 0 0; font-size: var(--fs-label); color: var(--ink-2); }
+.area-target-note { display: block; margin-top: calc(-1 * var(--sp-1)); line-height: 1.5; }

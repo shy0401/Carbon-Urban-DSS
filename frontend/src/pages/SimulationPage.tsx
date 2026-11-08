@@ -19,6 +19,7 @@ import { annualSide, gasCarbon, hasAnnual, methodText, planChartOption, savingsT
 import { useSystemInfo } from '../hooks/useSystemInfo';
 import type { ScenarioInput, ScenarioResult, ZoningCheck } from '../types';
 import { zoningTone } from '../lib/zoning';
+import { ConfidenceGrades } from '../components/ConfidenceGrades';
 
 // 기본 입력은 용적률 280%(4동 × 700m² × 10층 ÷ 1만m²)로 흔한 조례 상한 300% 안에 둔다(UX 검토 F14: 12층 336%는 첫 화면부터 상한 초과 경고).
 const initial: ScenarioInput = { site_area: 10000, building_count: 4, footprint_per_building: 700, floors: 10, households: 200, population: 467, efficiency_factor: 0.85, pv_ratio: 0.2, green_ratio: 0.25, average_household_area: 84 };
@@ -163,7 +164,7 @@ function PlanResult({ result, chart, reporting, sceneSaved, onReport }: { result
     return <>
       {result.total_footprint !== undefined && <PlanStrip result={result} />}
       <div className="missing-reason"><Info size={18} /><div><strong>기준 자료가 없어 추정할 수 없습니다</strong><p>{result.quality ?? '공간 매칭된 기준 에너지 또는 기준 연면적이 없습니다.'}</p></div></div>
-      <details className="method-note"><summary>산정 방법과 가정</summary><p>{result.limitation ?? `${result.label ?? '원단위 기반 1차 추정'} 결과이며, 설계·인허가 수치로 사용할 수 없습니다.`}</p>{result.assumptions?.length ? <ul>{result.assumptions.map((a) => <li key={a}>{a}</li>)}</ul> : null}</details>
+      <details className="method-note"><summary>산정 방법과 가정</summary><p>{result.limitation ?? `${result.label ?? '원단위 기반 1차 추정'} 결과이며, 설계·인허가 수치로 사용할 수 없습니다.`}</p>{result.assumptions?.length ? <ul>{result.assumptions.map((a) => <li key={a}>{a}</li>)}</ul> : null}<ConfidenceGrades compact ids={['cell', 'measure']} /></details>
     </>;
   }
   return <>
@@ -183,7 +184,7 @@ function PlanResult({ result, chart, reporting, sceneSaved, onReport }: { result
       <tr><th>가스 탄소 (가정 계수)</th><td className="num">{tonnes(gasCarbon(plan))}</td><td className="num">{tonnes(gasCarbon(reference))}</td><td className="num"></td></tr>
     </tbody></table>
     {chart && <Chart option={chart.option} height={250} ariaLabel="계획안과 기준안의 월별 운영탄소" />}
-    <details className="method-note"><summary>산정 방법과 가정</summary><p>{methodText(result)}</p><p>{result.limitation ?? '원단위 기반 1차 추정이며, 설계·인허가 수치로 사용할 수 없습니다.'}</p>{result.assumptions?.length ? <ul>{result.assumptions.map((a) => <li key={a}>{a}</li>)}</ul> : null}</details>
+    <details className="method-note"><summary>산정 방법과 가정</summary><p>{methodText(result)}</p><p>{result.limitation ?? '원단위 기반 1차 추정이며, 설계·인허가 수치로 사용할 수 없습니다.'}</p>{result.assumptions?.length ? <ul>{result.assumptions.map((a) => <li key={a}>{a}</li>)}</ul> : null}<ConfidenceGrades compact ids={['cell', 'measure']} /></details>
   </>;
 }
 

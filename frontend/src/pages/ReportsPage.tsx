@@ -13,6 +13,7 @@ import { EmptyState, LoadingState } from '../components/Status';
 import { MissingValue } from '../components/MissingValue';
 import { ZoningSummary } from '../components/ZoningSummary';
 import { PLAN_COLORS } from '../theme/palette';
+import { ConfidenceGrades } from '../components/ConfidenceGrades';
 import type { ScenarioResult } from '../types';
 
 /** 탄소 감축 방안 (서버 reduction_plan, 기준 문서 5.15): 같은 계획을 대책 없음에서 수단을 차례로 더해 줄인다. */
@@ -126,7 +127,7 @@ function PlanReport({ report }: { report: Report }) {
     </section>
     {plans.map((s) => <ReductionSection key={s.id} plan={s} n={5} named={plans.length > 1} />)}
     <section className="report-section"><h2>6. 용도지역·조례 상한 확인</h2>{sameSite ? (first.result.zoning_check ? <ZoningSummary zoning={first.result.zoning_check} saved compact title="모든 계획안의 대지 (같은 위치)" /> : <p>대지와 겹치는 용도지역 자료가 없습니다.</p>) : plans.map((s) => s.result.zoning_check ? <ZoningSummary key={s.id} zoning={s.result.zoning_check} saved compact title={`${s.label} 대지`} /> : <p key={s.id}>{s.label}: 대지와 겹치는 용도지역 자료가 없습니다.</p>)}</section>
-    <section className="report-section"><h2>7. 유의사항</h2><ul className="report-list">{(report.cautions?.length ? report.cautions : [report.scope]).map((c) => <li key={c}>{c}</li>)}</ul></section>
+    <section className="report-section"><h2>7. 유의사항</h2><ul className="report-list">{(report.cautions?.length ? report.cautions : [report.scope]).map((c) => <li key={c}>{c}</li>)}</ul><ConfidenceGrades compact ids={['cell', 'measure']} /></section>
     <SourcesSection report={report} n={8} />
     <ReportFooter report={report} />
   </article>;

@@ -479,6 +479,7 @@ function EffortPanel({ effort, plan, setPlan, target, setTarget, pvYield, setPvY
         </div>
         <p className="muted">계획 연면적 {formatMetric(plannedArea(plan), 'm²')}</p>
         <label className="area-target"><span>목표 감축률 (기준 연도 대비)</span><div><input type="range" min={0} max={100} step={1} value={target} onChange={(e) => setTarget(Number(e.target.value))} aria-label="목표 감축률 슬라이더" /><div className="with-unit"><input type="number" min={0} max={100} value={target} onChange={(e) => setTarget(Math.min(100, Math.max(0, Number(e.target.value))))} aria-label="목표 감축률" /><em>%</em></div></div></label>
+        <small className="muted area-target-note" data-testid="target-note">목표는 사용자가 정하는 값이고 기본 {DEFAULT_TARGET}%는 예시입니다. 참고로 국가 감축목표의 건물 부문은 2018년 대비 2030년 −32.8%, 2035년 −53.6~−56.2%입니다(기준 연도가 달라 그대로 비교하지 않습니다).</small>
         <div className="area-effort-basis"><span>기준 건물</span><div className="area-modes small" role="tablist" aria-label="감축 노력 기준 건물">
           {(kcsmAvailable || basis === 'kcsm' ? (['apartments', 'buildings', 'kcsm'] as const) : (['apartments', 'buildings'] as const)).map((b) => <button key={b} role="tab" aria-selected={basis === b} onClick={() => setBasis(b)}>{EFFORT_BASIS_LABEL[b]}</button>)}
         </div><small className="muted">{basis === 'kcsm' ? '선도소프트가 준 탄소공간지도 100m 건물 전기 배출(단독주택 포함 모든 건물, 2024년까지). 경계 안 100m 칸 합을 기준으로, 신축 부하는 같은 격자의 배출 ÷ 건축물대장 연면적으로 냅니다.' : basis === 'buildings' ? '상가·업무·학교 등 구역의 계측 건물 전체(건축HUB, 최근 12개월 완비 연도). 상업지역은 이 기준이 맞습니다.' : '공동주택 관리비 전력(같은 출처로 연도 비교). 주거지역 기본값.'}</small></div>
