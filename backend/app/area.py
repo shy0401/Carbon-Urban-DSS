@@ -543,14 +543,15 @@ def effort(history: dict[str, Any], plan: dict[str, Any], target_pct: float, pv_
     return result
 
 
-# 구체적 감축 방안(자동, 기준 문서 5.15): 신축은 고효율 설계로 전력 20% 절감, 기존 건물은 조명·설비 교체로 5% 절감,
+# 구체적 감축 방안(자동, 기준 문서 5.15): 신축은 인증·기준 강화로 전력 11.3% 절감, 기존 건물은 에너지 절약 운영으로 4.8% 절감,
 # 남는 양은 태양광(10 kW 단위 올림)으로 채운다. 사용자가 넣은 조합(mix)과 따로 보여 준다.
-RECOMMENDED_NEW_EFFICIENCY_PCT = 20.0
-RECOMMENDED_EXISTING_EFFICIENCY_PCT = 5.0
+# 두 값은 실측 문헌 중앙값이다(docs/REDUCTION_INDICATORS.md): 신축 인증·ZEB·기준 강화 총에너지 14건 −11.3%, 운영·계량·행동 전기 6건 −4.8%.
+RECOMMENDED_NEW_EFFICIENCY_PCT = 11.3
+RECOMMENDED_EXISTING_EFFICIENCY_PCT = 4.8
 
 
 def recommended_mix(result: dict[str, Any]) -> dict[str, Any] | None:
-    """신축 20% → 기존 5% → 남는 양 태양광. 발전량 근거가 없으면 태양광 대신 상쇄할 전력량(kWh)만 적는다."""
+    """신축 11.3% → 기존 4.8% → 남는 양 태양광. 발전량 근거가 없으면 태양광 대신 상쇄할 전력량(kWh)만 적는다."""
     from .reduction_plan import ROOF_M2_PER_KW
     needed = ("factor_kgco2eq_per_kwh", "new_load_kwh", "baseline_kwh", "required_reduction_kgco2eq", "intensity_kwh_per_m2")
     if any(result.get(k) is None for k in needed) or not result.get("factor_kgco2eq_per_kwh"):
@@ -565,8 +566,8 @@ def recommended_mix(result: dict[str, Any]) -> dict[str, Any] | None:
         pv_kw = math.ceil(remaining_kwh / float(kwh_per_kw) / 10) * 10
     mix = measure_mix(result, dict(base, pv_kw=pv_kw)) if pv_kw else first
     factor = float(result["factor_kgco2eq_per_kwh"])
-    steps = [{"key": "new", "title": "신축 건물 고효율 설계", "detail": f"신축 전력 {base['new_efficiency_pct']:.0f}% 절감", "kwh": mix["new_kwh"], "kgco2eq": round(mix["new_kwh"] * factor, 1)},
-             {"key": "existing", "title": "기존 건물 조명·설비 교체", "detail": f"기존 건물 전력 {base['existing_efficiency_pct']:.0f}% 절감", "kwh": mix["existing_kwh"], "kgco2eq": round(mix["existing_kwh"] * factor, 1)}]
+    steps = [{"key": "new", "title": "신축 건물 인증·기준 강화", "detail": f"신축 전력 {base['new_efficiency_pct']:g}% 절감", "kwh": mix["new_kwh"], "kgco2eq": round(mix["new_kwh"] * factor, 1)},
+             {"key": "existing", "title": "기존 건물 에너지 절약 운영", "detail": f"기존 건물 전력 {base['existing_efficiency_pct']:g}% 절감", "kwh": mix["existing_kwh"], "kgco2eq": round(mix["existing_kwh"] * factor, 1)}]
     if pv_kw:
         steps.append({"key": "pv", "title": "태양광", "detail": f"{pv_kw:,.0f} kW (옥상 약 {pv_kw * ROOF_M2_PER_KW:,.0f} m²)", "kwh": mix["pv_kwh"], "kgco2eq": round((mix["pv_kwh"] or 0) * factor, 1)})
     return dict(mix, kind="RECOMMENDED", steps=[s for s in steps if s["kwh"]], roof_m2=round(pv_kw * ROOF_M2_PER_KW, 1) if pv_kw else None,

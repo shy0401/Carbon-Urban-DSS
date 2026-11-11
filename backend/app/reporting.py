@@ -106,7 +106,7 @@ def create_snapshot(db,year,grid_id,scenario_ids,region=None):
         n=len(scenarios)+1;label='계획안'
         from .reduction_plan import building_plan,plan_text
         annual=r.result.get('annual') or {}
-        reduction=building_plan(annual.get('reference'),r.result.get('total_footprint'),factors_now,pv_yield,(annual.get('scenario') or {}).get('carbon_kg'))
+        reduction=building_plan(annual.get('reference'),r.result.get('total_footprint'),factors_now,pv_yield,(annual.get('scenario') or {}).get('carbon_kg'),green_area_m2=r.result.get('green_area_m2'))
         scenarios.append({'id':sid,'label':label,'inputs':s.inputs,'result':r.result,'created_at':s.created_at.isoformat(),'reduction_plan':reduction})
         plan_facts+=plan_sentence_facts(n,label,s.inputs,r.result)
         text=plan_text(reduction)
@@ -153,7 +153,7 @@ def _pv_yield(db,region_code,year):
             'label':f"{solar.get('year')}년 {solar.get('source')} 수평면 일사량 {solar.get('irradiation_kwh_m2'):,.0f} kWh/m² × 성능비 {solar.get('performance_ratio'):.2f}" if solar.get('irradiation_kwh_m2') and solar.get('performance_ratio') else '지역 일사량 추정'}
 
 def reduction_lines(sc):
-    """탄소 감축 방안 (markdown): 대책 없음에서 수단을 차례로 더한 표, 태양광·자립률·남는 양, 가정."""
+    """탄소 감축 방안 (markdown): 대책 없음에서 수단을 차례로 더한 표, 태양광·녹지 흡수·자립률·남는 양, 근거와 가정."""
     p=sc.get('reduction_plan') or {}
     if not p.get('available'):return ['- '+(p.get('reason') or '감축 방안을 계산할 근거가 없습니다.')]
     lines=['| 단계 | 내용 | 연간 운영탄소 | 이 단계 감축 | 누적 감축 |','|---|---|---:|---:|---:|',
@@ -165,6 +165,9 @@ def reduction_lines(sc):
     pv=p.get('pv')
     if pv:
         lines.append(f"- 지붕 태양광: 옥상 {pv['roof_m2']:,.0f} m² · {pv['kw']:,.1f} kW · 연 {_num(pv.get('kwh'),' kWh')}"+(f" (자체 소비를 넘는 {pv['surplus_kwh']:,.0f} kWh는 감축에 넣지 않음)" if pv.get('surplus_kwh') else ''))
+    gr=p.get('green')
+    if gr and gr.get('uptake_kg'):
+        lines.append(f"- 녹지·조경 흡수: 녹지 {gr['area_m2']:,.0f} m² · 연 {_t(gr['uptake_kg'])} (수종·수령에 따라 {_t(gr['range_kg'][0])}~{_t(gr['range_kg'][1])}, 상쇄로 따로 적음)")
     if p.get('self_sufficiency_pct') is not None:
         lines.append(f"- 에너지자립률(1차에너지, 참고): {p['self_sufficiency_pct']:.1f}%"+(f" — ZEB {p['zeb_grade']} 구간" if p.get('zeb_grade') else ' — ZEB 5등급(20%) 미만'))
     r=p['residual']

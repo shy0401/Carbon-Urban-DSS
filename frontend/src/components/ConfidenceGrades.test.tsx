@@ -15,7 +15,7 @@ describe('ConfidenceGrades', () => {
     render(<ConfidenceGrades compact ids={['cell', 'measure']} />);
     const line = screen.getByTestId('confidence-line');
     expect(line).toHaveTextContent('500m 칸 하나의 값');
-    expect(line).toHaveTextContent('감축 수단 상수');
+    expect(line).toHaveTextContent('감축 수단 지표');
     expect(line).not.toHaveTextContent('시·군·구');
   });
 });

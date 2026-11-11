@@ -41,8 +41,8 @@ def test_plan_report_is_one_plan_with_its_reduction_ladder_and_no_comparison():
     assert any(f['id']=='scenario_1' and f['text'].startswith('계획안') for f in r['facts'])
     assert not any('cell_' in f['text'] for f in r['facts'])
     ladder=r['scenarios'][0]['reduction_plan']
-    if ladder['available']:   # 기준안 연간 값이 있으면: 대책 없음 → 효율 → (히트펌프) → (지붕 태양광)
-        assert ladder['steps'][0]['key']=='efficiency' and ladder['final_carbon_kg']<=ladder['start']['carbon_kg']
+    if ladder['available']:   # 기준안 연간 값이 있으면: 대책 없음 → (단열·창호) → 에너지 절약 운영 → (지붕 태양광) → (녹지 흡수)
+        assert ladder['steps'][0]['key'] in ('envelope','operation') and all(s['key']!='heat_pump' for s in ladder['steps']) and ladder['final_carbon_kg']<=ladder['start']['carbon_kg']
         assert any(f['id']=='reduction_1' for f in r['facts'])
     assert c.get('/api/reports/'+r['id']+'/markdown').text.count('\n## ')==8
     # 다른 안과 비교하는 보고서는 만들지 않는다

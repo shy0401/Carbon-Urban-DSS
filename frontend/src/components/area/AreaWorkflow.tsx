@@ -3,7 +3,7 @@
  * - 결과 요약 막대: 단계 이동 + 핵심 지표(엔진 값 그대로)
  * - 감축 수단 조합: 신축·기존 건물 절감률과 태양광을 함께 넣어 필요 감축량을 채우는지 확인 (도시·군기본계획 방식)
  * - 같은 시·군·구 행정동 비교: 원단위 분포 속 위치 (ENERGY STAR·서울 건물에너지 등급처럼 동종 비교, 단 등급 아님)
- * - 구체적 감축 방안(자동): 신축 20% → 기존 5% → 남는 양 태양광. 다른 안과 비교하지 않는다(2026-11-05: 시나리오 비교 단계 삭제)
+ * - 구체적 감축 방안(자동): 신축 11.3% → 기존 4.8% → 남는 양 태양광(실측 문헌 중앙값). 다른 안과 비교하지 않는다(2026-11-05: 시나리오 비교 단계 삭제)
  * 숫자는 모두 서버 계산 엔진이 낸 값이며 여기서는 고르거나 단위(kg→t)만 바꾼다.
  */
 import { ListChecks, Sun } from 'lucide-react';
@@ -87,12 +87,12 @@ export function MeasuresPanel({ effort, measures, setMeasures }: { effort: Effor
       <h4>구체적 감축 방안 (자동 계산)</h4>
       <ol>{rec.steps.map((s) => <li key={s.key}><b>{s.title}</b> — {s.detail}<span className="num">{t1(s.kgco2eq)}/년</span></li>)}</ol>
       <p className={`area-headline ${rec.met ? 'good' : 'warn'}`}>{rec.met ? `합계 ${t1(rec.total_kgco2eq)}로 필요 감축량 ${t1(rec.required_kgco2eq)}를 채웁니다.` : `합계 ${t1(rec.total_kgco2eq)}로 필요 감축량 ${t1(rec.required_kgco2eq)}의 ${formatMetric(rec.share_pct, '%', 1)}입니다.${rec.offset_kwh ? ` 발전량 근거가 없어 남는 ${formatMetric(rec.offset_kwh, 'kWh')}는 재생에너지 상쇄량으로 적습니다.` : ''}`}</p>
-      <div className="area-measures-actions"><button type="button" className="button small" onClick={applyRecommended}><ListChecks size={14} />이 방안을 아래 칸에 넣기</button><small className="muted">신축 20%·기존 5%는 가정값(기준 문서 5.15), 태양광은 남는 양을 10 kW 단위로 올려 채운 값입니다. 아래 칸에서 바꿔 볼 수 있습니다.</small></div>
+      <div className="area-measures-actions"><button type="button" className="button small" onClick={applyRecommended}><ListChecks size={14} />이 방안을 아래 칸에 넣기</button><small className="muted">신축 11.3%·기존 4.8%는 실측 문헌 중앙값(기준 문서 5.15), 태양광은 남는 양을 10 kW 단위로 올려 채운 값입니다. 아래 칸에서 바꿔 볼 수 있습니다.</small></div>
     </div>}
     {!effort?.available ? <p className="muted">감축 노력을 계산할 수 있는 구역에서 씁니다.</p> : effort.already_met ? <p className="area-headline good">계획을 반영해도 목표선 아래라 추가 수단이 필요하지 않습니다.</p> : <>
       <div className="field-grid area-measures-form">
-        {field('new_efficiency_pct', '신축 건물 전력 절감', '%', 100, 5, `신축 부하 ${formatMetric(effort.new_load_kwh, 'kWh/년')} 기준`)}
-        {field('existing_efficiency_pct', '기존 건물 전력 절감', '%', 100, 1, `기준 부하 ${formatMetric(effort.baseline_kwh, 'kWh/년')} − 철거분 기준`)}
+        {field('new_efficiency_pct', '신축 건물 전력 절감', '%', 100, 0.1, `신축 부하 ${formatMetric(effort.new_load_kwh, 'kWh/년')} 기준`)}
+        {field('existing_efficiency_pct', '기존 건물 전력 절감', '%', 100, 0.1, `기준 부하 ${formatMetric(effort.baseline_kwh, 'kWh/년')} − 철거분 기준`)}
         {field('pv_kw', '태양광 설비', 'kW', 1000000, 10, yieldPerKw ? `kW당 ${formatMetric(yieldPerKw, 'kWh/년')} (${effort.pv_yield?.basis === 'USER' ? '입력값' : '지역 추정'})` : '발전량 근거가 없어 합계에서 빠집니다')}
       </div>
       {mix ? <div className="area-mix" data-testid="area-mix">

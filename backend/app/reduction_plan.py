@@ -2,11 +2,14 @@
 
 다른 계획안과 견주지 않는다. 같은 계획(같은 연면적·동수·층수)에서
   0. 대책 없음(기준안: 관측 원단위 그대로, 효율 1.0·태양광 0)
-  1. 고효율 외피·설비(에너지 사용 20% 절감)
-  2. 난방·급탕 전기화(가스 보일러 → 공기열 히트펌프)
+  1. 단열·창호 기준 강화(가스 사용 23.6% 절감: 준공 시기만 다른 개별난방 단지 78쌍 실측)
+  2. 에너지 절약 운영(전력 사용 4.8% 절감: 계량·제어·행동 실측 문헌 6건 중앙값)
   3. 지붕 태양광(옥상 면적이 허락하는 만큼)
+  4. 녹지·조경 흡수(녹지 면적 × 연 1.0 kgCO2/m², 상쇄)
 을 차례로 더하고, 그래도 남는 전력을 운영 넷제로까지 채우는 데 필요한 외부 재생에너지를 적는다.
-가정값은 모두 이 파일 상수이며 DATA_STANDARD 5.15와 같아야 한다. 값이 없으면 0으로 채우지 않고 그 단계를 뺀다.
+절감률은 설계 목표가 아니라 실측에서 나온 지표이며, 출처와 범위는 docs/REDUCTION_INDICATORS.md에 있다.
+값은 모두 이 파일 상수이며 DATA_STANDARD 5.15와 같아야 한다. 값이 없으면 0으로 채우지 않고 그 단계를 뺀다.
+난방·급탕 전기화(히트펌프)는 초기 비용이 크고 국내 공동주택 실측 근거가 부족해 2026-11-11부터 기본 단계에서 뺐다.
 """
 from __future__ import annotations
 
@@ -14,9 +17,11 @@ from typing import Any
 
 from .benchmarks import PRIMARY_ENERGY_FACTOR
 
-EFFICIENCY_SAVING = 0.20     # 외피 단열·고효율 설비·조명으로 전력·가스 사용 20% 절감 (설계 목표 가정)
-BOILER_EFFICIENCY = 0.90     # 가스 보일러가 연료 kWh를 쓰는 열로 바꾸는 비율 (가정)
-HEAT_PUMP_COP = 3.0          # 공기열 히트펌프 연평균 성능계수 (가정)
+# 지표(실측 기반). 근거 표: docs/REDUCTION_INDICATORS.md
+ENVELOPE_GAS_SAVING = 0.236            # 단열·창호 기준 강화: 가스 −23.6% (개별난방 단지 78쌍, 준공 2017~ 대 ~2008, 95% 구간 −25.8~−20.5%)
+OPERATION_ELECTRICITY_SAVING = 0.048   # 에너지 절약 운영: 전력 −4.8% (실측 문헌 6건 중앙값, 범위 −17.0~−1.95%)
+GREEN_UPTAKE_KG_PER_M2 = 1.0           # 녹지·조경 흡수: 연 1.0 kgCO2/m² = 10 t/ha (국립산림과학원 표준 탄소흡수량 20년생 8.8~15.9 t/ha의 낮은 쪽, 가정)
+GREEN_UPTAKE_RANGE_T_PER_HA = (8.8, 15.9)
 ROOF_USABLE_RATIO = 0.60     # 옥상 중 패널을 놓을 수 있는 비율 (설비·통로·옥탑 제외, 가정)
 ROOF_M2_PER_KW = 10.0        # 태양광 1 kW에 필요한 옥상 면적 (경사 설치·그림자 이격 포함, 가정)
 # 제로에너지건축물 인증 등급의 에너지자립률 하한(%) — 참고 위치일 뿐 인증 판정이 아니다(1++ 효율등급·BEMS 등 다른 요건 있음).
@@ -47,14 +52,16 @@ def _carbon(electricity_kwh: float, gas_kwh: float, fe: float, fg: float | None)
 
 
 def building_plan(reference: dict[str, Any] | None, footprint_m2: float | None, factors: dict[str, Any] | None,
-                  pv_yield: dict[str, Any] | None = None, plan_carbon_kg: float | None = None) -> dict[str, Any]:
+                  pv_yield: dict[str, Any] | None = None, plan_carbon_kg: float | None = None,
+                  green_area_m2: float | None = None) -> dict[str, Any]:
     """계획안 하나의 감축 방안 사다리.
 
     reference: 기준안 연간 {'electricity_kwh', 'gas_kwh'} (같은 연면적을 관측 원단위 그대로 지을 때)
     footprint_m2: 건축면적 합계(옥상 면적의 근거)
-    factors: {'ELECTRICITY': {'factor'}, 'GAS': {'factor'}} — 가스 계수가 없으면 가스 단계와 가스 탄소를 뺀다
+    factors: {'ELECTRICITY': {'factor'}, 'GAS': {'factor'}} — 가스 계수가 없으면 단열·창호 단계와 가스 탄소를 뺀다
     pv_yield: {'kwh_per_kw', 'label'} — 지역 일사량 추정 또는 사용자 값. 없으면 태양광은 용량만 적는다
     plan_carbon_kg: 입력한 계획안의 연간 운영탄소(사다리 위 위치를 말하기 위해)
+    green_area_m2: 계획안의 녹지 면적(대지면적 × 녹지 비율). 없으면 녹지·조경 흡수 단계를 뺀다
     """
     ref = reference or {}
     e0, g0 = ref.get("electricity_kwh"), ref.get("gas_kwh")
@@ -68,19 +75,18 @@ def building_plan(reference: dict[str, Any] | None, footprint_m2: float | None, 
     c0 = _carbon(e0, g0, fe, fg if gas_known else None)
     steps: list[dict[str, Any]] = []
 
-    def step(key: str, title: str, detail: str, e: float, g: float) -> None:
-        c = _carbon(e, g, fe, fg if gas_known else None)
+    def step(key: str, title: str, detail: str, e: float, g: float, offset_kg: float = 0.0) -> None:
+        c = max(_carbon(e, g, fe, fg if gas_known else None) - offset_kg, 0.0)
         prev = steps[-1]["carbon_kg"] if steps else c0
         steps.append({"key": key, "title": title, "detail": detail, "electricity_kwh": round(e, 1), "gas_kwh": round(g, 1) if gas_known else None,
                       "carbon_kg": round(c, 1), "reduction_kg": round(prev - c, 1), "cumulative_pct": round((c0 - c) / c0 * 100, 1) if c0 > 0 else None})
 
-    e1, g1 = e0 * (1 - EFFICIENCY_SAVING), g0 * (1 - EFFICIENCY_SAVING)
-    step("efficiency", "고효율 외피·설비", f"단열·창호·고효율 설비·조명으로 전력과 가스 사용을 {EFFICIENCY_SAVING * 100:.0f}% 줄임", e1, g1)
-    e2, g2 = e1, g1
-    if gas_known and g1 > 0 and fg:
-        heat = g1 * BOILER_EFFICIENCY
-        e2, g2 = e1 + heat / HEAT_PUMP_COP, 0.0
-        step("heat_pump", "난방·급탕 전기화", f"가스 보일러(효율 {BOILER_EFFICIENCY:.2f})를 공기열 히트펌프(연평균 COP {HEAT_PUMP_COP:.1f})로 바꿈: 가스 {g1:,.0f} kWh → 전력 {heat / HEAT_PUMP_COP:,.0f} kWh", e2, g2)
+    e1, g1 = e0, g0
+    if gas_known and g0 > 0 and fg:
+        g1 = g0 * (1 - ENVELOPE_GAS_SAVING)
+        step("envelope", "단열·창호 기준 강화", f"가스 사용을 {ENVELOPE_GAS_SAVING * 100:.1f}% 줄임 (준공 시기만 다른 개별난방 단지 78쌍의 실측 차이)", e1, g1)
+    e2, g2 = e1 * (1 - OPERATION_ELECTRICITY_SAVING), g1
+    step("operation", "에너지 절약 운영", f"계량·제어·행동 개선으로 전력 사용을 {OPERATION_ELECTRICITY_SAVING * 100:.1f}% 줄임 (실측 문헌 6건 중앙값)", e2, g2)
     kwh_per_kw = (pv_yield or {}).get("kwh_per_kw")
     pv = roof_pv(footprint_m2, kwh_per_kw)
     e3 = e2
@@ -90,29 +96,41 @@ def building_plan(reference: dict[str, Any] | None, footprint_m2: float | None, 
         pv["used_kwh"] = round(used, 1)
         pv["surplus_kwh"] = round(pv["kwh"] - used, 1)
         step("rooftop_pv", "지붕 태양광", f"옥상 {pv['roof_m2']:,.0f} m²(건축면적의 {ROOF_USABLE_RATIO * 100:.0f}%)에 {pv['kw']:,.1f} kW, 연 {pv['kwh']:,.0f} kWh 발전", e3, g2)
+    green = None
+    if green_area_m2 and green_area_m2 > 0:
+        before = steps[-1]["carbon_kg"] if steps else c0
+        uptake = min(green_area_m2 * GREEN_UPTAKE_KG_PER_M2, before)
+        green = {"area_m2": round(green_area_m2, 1), "uptake_kg": round(uptake, 1),
+                 "range_kg": [round(green_area_m2 * lo / 10, 1) for lo in GREEN_UPTAKE_RANGE_T_PER_HA]}
+        if uptake > 0:
+            step("greenery", "녹지·조경 흡수", f"녹지 {green_area_m2:,.0f} m² × 연 {GREEN_UPTAKE_KG_PER_M2:.1f} kgCO2/m² = {uptake / 1000:,.1f} t 흡수(상쇄)", e3, g2, offset_kg=uptake)
     final = steps[-1]["carbon_kg"] if steps else c0
-    # 에너지자립률(ZEB 참고): 태양광 1차에너지 ÷ 전기화 뒤 소비 1차에너지
+    # 에너지자립률(ZEB 참고): 태양광 1차에너지 ÷ 절감 뒤 소비 1차에너지
     demand_primary = e2 * PRIMARY_ENERGY_FACTOR["ELECTRICITY"] + g2 * PRIMARY_ENERGY_FACTOR["GAS"]
     self_pct = round(pv["kwh"] * PRIMARY_ENERGY_FACTOR["ELECTRICITY"] / demand_primary * 100, 1) if pv and pv["kwh"] and demand_primary > 0 else None
     residual = {"electricity_kwh": round(e3, 1), "gas_kwh": round(g2, 1) if gas_known else None, "carbon_kg": round(final, 1),
                 "offsite_pv_kw": round(e3 / kwh_per_kw, 1) if kwh_per_kw and e3 > 0 else None}
     assumptions = [
-        f"고효율 외피·설비는 전력·가스 사용 {EFFICIENCY_SAVING * 100:.0f}% 절감을 설계 목표로 가정했습니다(인증 등급 판정 아님).",
-        f"히트펌프 전환은 가스 전량이 난방·급탕이라고 보고 보일러 효율 {BOILER_EFFICIENCY:.2f}, 연평균 COP {HEAT_PUMP_COP:.1f}로 환산했습니다(취사 가스 구분 없음).",
+        f"단열·창호 기준 강화는 가스 사용 {ENVELOPE_GAS_SAVING * 100:.1f}% 절감을 적용했습니다. 같은 지역·난방 방식·규모에서 준공 시기만 다른 개별난방 단지 78쌍의 실측 차이(면적당 가스, 95% 구간 20.5~25.8%)이며, 같은 비교에서 전기는 5.2% 많아 전기 절감은 넣지 않았습니다.",
+        f"에너지 절약 운영은 전력 사용 {OPERATION_ELECTRICITY_SAVING * 100:.1f}% 절감을 적용했습니다. 계량·제어·행동 개선을 실측한 문헌 6건의 중앙값이며 범위는 1.95~17.0%입니다.",
         f"지붕 태양광은 건축면적의 {ROOF_USABLE_RATIO * 100:.0f}%를 쓸 수 있고 1 kW에 {ROOF_M2_PER_KW:.0f} m²가 든다고 가정했습니다."
         + (f" 발전량은 {pv_yield['label']} 기준 {kwh_per_kw:,.0f} kWh/kW·년입니다." if kwh_per_kw and (pv_yield or {}).get("label") else ""),
+        f"녹지·조경 흡수는 녹지 1 m²에 연 {GREEN_UPTAKE_KG_PER_M2:.1f} kgCO2(1 ha에 10 t)를 가정했습니다. 국립산림과학원 표준 탄소흡수량(20년생 주요 수종 1 ha에 연 {GREEN_UPTAKE_RANGE_T_PER_HA[0]}~{GREEN_UPTAKE_RANGE_T_PER_HA[1]} t)의 낮은 쪽이며, 조경 녹지는 숲보다 나무가 성기어 더 작을 수 있습니다(확인 필요).",
+        "난방·급탕 전기화(히트펌프)는 초기 비용이 크고 국내 공동주택 실측 근거가 부족해 기본 단계에 넣지 않았습니다.",
         "에너지자립률은 태양광 발전량과 소비를 1차에너지(전력 2.75·가스 1.1)로 환산한 비율이며 ZEB 등급은 참고 위치입니다(1++ 효율등급·BEMS 요건 별도).",
     ]
     if not gas_known:
-        assumptions.append("기준안 가스 사용량이 없어 가스 단계와 가스 탄소를 넣지 않았습니다.")
+        assumptions.append("기준안 가스 사용량이 없어 단열·창호 단계와 가스 탄소를 넣지 않았습니다.")
     elif not fg:
-        assumptions.append("가스 배출계수가 없어 가스 탄소를 넣지 않았습니다.")
+        assumptions.append("가스 배출계수가 없어 단열·창호 단계와 가스 탄소를 넣지 않았습니다.")
     if pv and not pv["kwh"]:
         assumptions.append("태양광 발전량 근거가 없어 용량만 적고 감축량에는 넣지 않았습니다.")
+    if not green_area_m2:
+        assumptions.append("녹지 면적이 없어 녹지·조경 흡수 단계를 넣지 않았습니다.")
     return {
         "available": True, "start": {"label": "대책 없음 (기준안)", "electricity_kwh": round(e0, 1), "gas_kwh": round(g0, 1) if gas_known else None, "carbon_kg": round(c0, 1)},
         "steps": steps, "final_carbon_kg": round(final, 1), "final_pct": round((c0 - final) / c0 * 100, 1) if c0 > 0 else None,
-        "pv": pv, "pv_yield": pv_yield, "self_sufficiency_pct": self_pct, "zeb_grade": zeb_grade(self_pct), "residual": residual,
+        "pv": pv, "pv_yield": pv_yield, "green": green, "self_sufficiency_pct": self_pct, "zeb_grade": zeb_grade(self_pct), "residual": residual,
         "plan": {"carbon_kg": round(plan_carbon_kg, 1), "pct": round((c0 - plan_carbon_kg) / c0 * 100, 1) if c0 > 0 else None} if plan_carbon_kg is not None else None,
         "factors": {"electricity": fe, "gas": fg if gas_known else None},
         "assumptions": assumptions,

@@ -74,7 +74,7 @@ def test_markdown_names_the_place_shows_the_plan_and_its_savings_and_hides_cell_
     ladder = building_plan(scenario['result']['annual']['reference'], 2800.0, snapshot['factors'], {'kwh_per_kw': 1199.9, 'label': '추정'}, 560280.0)
     with_plan = report_markdown(dict(snapshot, scenarios=[dict(scenario, reduction_plan=ladder)]))
     section = with_plan.split('## 5. 탄소 감축 방안')[1].split('## 6.')[0]
-    assert '| 0. 대책 없음 (기준안) |' in section and '| 1. 고효율 외피·설비 |' in section and '| 2. 난방·급탕 전기화 |' in section and '| 3. 지붕 태양광 |' in section
+    assert '| 0. 대책 없음 (기준안) |' in section and '| 1. 단열·창호 기준 강화 |' in section and '| 2. 에너지 절약 운영 |' in section and '| 3. 지붕 태양광 |' in section and '난방·급탕 전기화 |' not in section
     assert '옥상 1,680 m² · 168.0 kW' in section and '에너지자립률' in section and '계획안 B' not in with_plan
     assert any('가스 탄소' in c for c in snapshot['cautions']) and any('3D 개념 배치' in c for c in snapshot['cautions'])
 

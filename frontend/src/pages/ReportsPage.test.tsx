@@ -14,7 +14,7 @@ const plan = {
     savings_pct: { electricity_kwh: 0, gas_kwh: 0, carbon_kg: 0 }, baseline_intensity: { electricity_kwh_per_m2: 36.9, gas_kwh_per_m2: 48.2 },
     zoning_check: { status: 'OK', zones: [{ zone: '제3종일반주거지역', share: 99.8, bcr_limit: 50, far_limit: 300 }], covered_share: 100, bcr_limit: 50.02, far_limit: 300.31, mixed: false, check: { label: '조례 기본 상한 이내 (1차 확인)', notes: [] } } },
   reduction_plan: { available: true, start: { label: '대책 없음 (기준안)', carbon_kg: 2230040.9, electricity_kwh: 3320137.9, gas_kwh: 4339656.2 },
-    steps: [{ key: 'efficiency', title: '고효율 외피·설비', detail: '전력과 가스 사용을 20% 줄임', electricity_kwh: 2656110.3, gas_kwh: 3471725.0, carbon_kg: 1784032.7, reduction_kg: 446008.2, cumulative_pct: 20 },
+    steps: [{ key: 'envelope', title: '단열·창호 기준 강화', detail: '가스 사용을 23.6% 줄임', electricity_kwh: 3320137.9, gas_kwh: 3315497.3, carbon_kg: 2043029.5, reduction_kg: 187011.4, cumulative_pct: 8.4 },
       { key: 'rooftop_pv', title: '지붕 태양광', detail: '옥상 3,600 m²에 360.0 kW', electricity_kwh: 2224146.3, gas_kwh: 3471725.0, carbon_kg: 1597000.0, reduction_kg: 187032.7, cumulative_pct: 28.4 }],
     final_carbon_kg: 1597000.0, final_pct: 28.4, pv: { roof_m2: 3600, kw: 360, kwh: 431964 }, self_sufficiency_pct: 11.2, zeb_grade: null,
     residual: { carbon_kg: 1597000.0, offsite_pv_kw: 1853.6 }, plan: { carbon_kg: 2230040.9, pct: 0 }, assumptions: ['가정 문장.'] },
@@ -51,7 +51,8 @@ describe('ReportsPage', () => {
     // 다른 안과 비교하지 않고 같은 계획을 줄여 가는 감축 방안
     const reduction = screen.getByTestId('report-reduction');
     expect(reduction).toHaveTextContent('5. 탄소 감축 방안');
-    expect(reduction).toHaveTextContent('1. 고효율 외피·설비');
+    expect(reduction).toHaveTextContent('1. 단열·창호 기준 강화');
+    expect(reduction).toHaveTextContent('근거와 가정');
     expect(reduction).toHaveTextContent(/1,597\.0\s?tCO₂eq/);
     expect(reduction).toHaveTextContent('ZEB 5등급(20%) 미만');
     expect(article).not.toHaveTextContent('계획안 B');
