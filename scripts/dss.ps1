@@ -608,9 +608,13 @@ function Invoke-CaseCheck([string]$File) {
     $total = $c.MATCH + $c.DIFF + $c.ERROR + $c.NOT_RECORDED
     $script:Summary.results.cases = [ordered]@{ recorded_on = $json.cases_recorded_on; match = $c.MATCH; diff = $c.DIFF; error = $c.ERROR; not_recorded = $c.NOT_RECORDED; report = $report }
     Save-Summary
-    $text = "simulation cases: $($c.MATCH)/$total match (recorded $($json.cases_recorded_on))"
+    # Cases the reference PC could not record have nothing to compare with: they are counted, not failed.
+    $compared = $c.MATCH + $c.DIFF + $c.ERROR
+    $text = "simulation cases: $($c.MATCH)/$compared match"
+    if ($c.NOT_RECORDED -gt 0) { $text += ", $($c.NOT_RECORDED) not recorded on the reference PC (not compared)" }
+    $text += " (recorded $($json.cases_recorded_on))"
     if (-not $json.all_match) {
-        $bad = @($json.results | Where-Object { $_.status -ne 'MATCH' } | ForEach-Object { "$($_.id) $($_.status)" })
+        $bad = @($json.results | Where-Object { $_.status -ne 'MATCH' -and $_.status -ne 'NOT_RECORDED' } | ForEach-Object { "$($_.id) $($_.status)" })
         throw "$text; not matching: $($bad -join ', ') (details: $report)"
     }
     return $text

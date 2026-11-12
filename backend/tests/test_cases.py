@@ -95,9 +95,18 @@ def test_one_failing_case_does_not_stop_the_run_and_nothing_is_committed(monkeyp
     assert "expected" not in recorded["cases"][0] and recorded["cases"][1]["expected"]["values"] == {"far": 225.0}
     assert recorded["data_note"] == "test" and "expected" not in doc["cases"][1]   # the input document is not changed
     report = cases.verify(FakeDb(), recorded, log=lines.append)
-    assert report["counts"] == {"MATCH": 1, "DIFF": 0, "ERROR": 1, "NOT_RECORDED": 0} and not report["all_match"]
+    # A는 기준 PC에서도 계산되지 않아 기준값이 없다: 견줄 값이 없으므로 '기준값 없음'으로 세고, 기준값이 있는 B가 일치하면 통과
+    assert report["counts"] == {"MATCH": 1, "DIFF": 0, "ERROR": 0, "NOT_RECORDED": 1} and report["all_match"]
     assert FakeDb.commits == 0 and FakeDb.rollbacks >= 1
-    assert any(line.startswith("[오류] A") for line in lines) and any(line.startswith("[일치] B") for line in lines)
+    assert any(line.startswith("[기준값 없음] A") and "기록되지 않은 사례" in line for line in lines) and any(line.startswith("[일치] B") for line in lines)
+    assert any("기준값이 있는 1개 사례 모두 일치" in line and "기록되지 않은 사례 1개" in line for line in lines)
+    # 기준값이 있는 사례가 이 PC에서 오류면 실패 그대로
+    broken = json.loads(json.dumps(recorded)); broken["cases"][0]["expected"] = {"values": {"x": 1}, "facts": [], "facts_sha256": ""}
+    failed = cases.verify(FakeDb(), broken, log=lines.append)
+    assert failed["counts"]["ERROR"] == 1 and not failed["all_match"]
+    # 기준값이 하나도 없으면 통과가 아니다
+    empty = {"cases": [{"id": "A", "kind": "area", "title": "a", "input": {}}]}
+    assert not cases.verify(FakeDb(), empty, log=lines.append)["all_match"]
     only = cases.verify(FakeDb(), recorded, only={"B"}, log=lines.append)
     assert only["all_match"] and only["counts"]["MATCH"] == 1
     json.dumps(report, default=str)

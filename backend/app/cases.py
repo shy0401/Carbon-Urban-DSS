@@ -307,11 +307,13 @@ FACT_RULES = 4
 
 
 def compare(spec: dict[str, Any], got: dict[str, Any], fact_rules: int = FACT_RULES) -> dict[str, Any]:
-    if "error" in got:
-        return {"status": "ERROR", "message": got["error"], "diffs": []}
     expected = spec.get("expected")
     if not expected:
-        return {"status": "NOT_RECORDED", "diffs": [], "checked": 0}
+        # 기준 PC가 기록하지 못한 사례(기록할 때 오류였거나 아직 기록 전)는 견줄 값이 없다: 오류가 나도 '다름'이 아니라 '기준값 없음'으로 적는다.
+        message = f"기준 PC에서 기록되지 않은 사례라 비교하지 않음 (이 PC: {got['error']})" if "error" in got else None
+        return {"status": "NOT_RECORDED", "diffs": [], "checked": 0, **({"message": message} if message else {})}
+    if "error" in got:
+        return {"status": "ERROR", "message": got["error"], "diffs": []}
     tolerance = spec.get("tolerance") or {}
     diffs = []
     keys = sorted(set(expected["values"]) | set(got["values"]))
@@ -360,11 +362,14 @@ def verify(db: Any, cases: dict[str, Any], only: set[str] | None = None, log: Ca
             for d in verdict.get("text_diffs", [])[:5]:
                 log(f"       문장 기준: {d['expected']}\n       문장 이 PC: {d['actual']}")
     counts = {s: sum(1 for r in results if r["status"] == s) for s in ("MATCH", "DIFF", "ERROR", "NOT_RECORDED")}
-    ok = counts["MATCH"] == len(results) and results
+    # 기준값이 있는 사례가 모두 일치하면 통과. 기준값 없는 사례는 수만 알리고 통과 여부에 넣지 않는다(견줄 값이 없음).
+    recorded = len(results) - counts["NOT_RECORDED"]
+    ok = recorded > 0 and counts["MATCH"] == recorded
     data_diff = any(r["kind"] == "dataset" and r["status"] == "DIFF" for r in results)
     if ok:
         changed = sum(1 for r in results if r.get("rules_changed"))
-        log(f"결과: {len(results)}개 사례 모두 일치 — 이 PC의 계산 결과는 기준 PC({cases.get('recorded_on', '-')})와 같습니다."
+        log(f"결과: 기준값이 있는 {recorded}개 사례 모두 일치 — 이 PC의 계산 결과는 기준 PC({cases.get('recorded_on', '-')})와 같습니다."
+            + (f" 기준 PC에서 기록되지 않은 사례 {counts['NOT_RECORDED']}개는 비교하지 않았습니다." if counts["NOT_RECORDED"] else "")
             + (f" (근거 문장 규칙 v{cases.get('fact_rules', 1)}→v{FACT_RULES}로 바뀐 사례 {changed}개는 값만 비교)" if changed else ""))
     else:
         log(f"결과: 일치 {counts['MATCH']} · 다름 {counts['DIFF']} · 오류 {counts['ERROR']} · 기준값 없음 {counts['NOT_RECORDED']} (사례 {len(results)}개)")
