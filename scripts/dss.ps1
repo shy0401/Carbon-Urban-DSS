@@ -290,9 +290,29 @@ function Remove-RestoreProject {
     }
 }
 
+function Invoke-RestPatient([string]$Uri, [int]$TimeoutSec = 120, [int]$Tries = 10, [int]$WaitSec = 30) {
+    # Right after a restore the database is cold and the API is still reading its regional inputs: the first
+    # answers can take minutes (2026-11-12: /api/health passed the container healthcheck and then timed out at 60 s).
+    # Keep asking for a while instead of reporting a finished import as failed.
+    for ($attempt = 1; $attempt -le $Tries; $attempt++) {
+        try { return Invoke-RestMethod -Uri $Uri -TimeoutSec $TimeoutSec }
+        catch {
+            if ($attempt -ge $Tries) { throw }
+            Write-Log "    waiting for $Uri (try $attempt/$Tries): $($_.Exception.Message)"
+            Start-Sleep -Seconds $WaitSec
+        }
+    }
+}
+
 function Invoke-WebCheck([string]$Url) {
-    $response = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 60
-    return $response
+    for ($attempt = 1; $attempt -le 6; $attempt++) {
+        try { return Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 60 }
+        catch {
+            if ($attempt -ge 6) { throw }
+            Write-Log "    waiting for $Url (try $attempt/6): $($_.Exception.Message)"
+            Start-Sleep -Seconds 20
+        }
+    }
 }
 
 function Invoke-VerifyRestore([string]$Dir) {
@@ -310,6 +330,9 @@ function Invoke-VerifyRestore([string]$Dir) {
     Assert-Native (Compose-Restore @('cp', (Join-Path $Dir 'db.dump'), 'postgres:/tmp/restore.dump')) 'copy dump into restore-test'
     $restore = Compose-Restore @('exec', '-T', 'postgres', 'pg_restore', '-U', 'carbon', '-d', 'carbon', '--no-owner', '--no-privileges', '/tmp/restore.dump')
     Write-Log "    pg_restore exit $($restore.Code) (warnings such as 'schema public already exists' are expected)"
+    # pg_restore leaves no planner statistics; without them the first API queries on a large database are very slow.
+    $analyze = Compose-Restore @('exec', '-T', 'postgres', 'psql', '-U', 'carbon', '-d', 'carbon', '-c', 'ANALYZE')
+    Write-Log "    ANALYZE exit $($analyze.Code)"
     $actual = Get-TableCounts 'restore'
     $problems = Compare-Counts $expected $actual $beforeCounts
     $script:Summary.results.restore = [ordered]@{ backup = $Dir; tables = $expected.Count; mismatches = $problems; pg_restore_exit = $restore.Code }
@@ -320,10 +343,10 @@ function Invoke-VerifyRestore([string]$Dir) {
 
 function Invoke-RestoreServices {
     Assert-Native (Compose-Restore @('up', '-d', '--build', '--wait', 'api', 'worker', 'frontend')) 'restore-test api/frontend start'
-    $health = Invoke-RestMethod -Uri 'http://127.0.0.1:8010/api/health' -TimeoutSec 60
-    $ready = Invoke-RestMethod -Uri 'http://127.0.0.1:8010/api/readiness' -TimeoutSec 120
-    $map = Invoke-RestMethod -Uri 'http://127.0.0.1:8010/api/map' -TimeoutSec 120
-    $overlays = Invoke-RestMethod -Uri 'http://127.0.0.1:8010/api/map/overlays' -TimeoutSec 120
+    $health = Invoke-RestPatient 'http://127.0.0.1:8010/api/health' 60
+    $ready = Invoke-RestPatient 'http://127.0.0.1:8010/api/readiness' 180
+    $map = Invoke-RestPatient 'http://127.0.0.1:8010/api/map' 180
+    $overlays = Invoke-RestPatient 'http://127.0.0.1:8010/api/map/overlays' 180
     $web = Invoke-WebCheck 'http://127.0.0.1:5190/map'
     $grids = @($map.grids.features).Count
     $script:Summary.results.restore_services = [ordered]@{ health = $health.status; postgis = $health.postgis; readiness_sources = $ready.summary.total_sources; grids = $grids; zoning_features = $overlays.meta.zoning_features; admin_features = $overlays.meta.admin_features; web_status = $web.StatusCode }
@@ -712,6 +735,9 @@ function Invoke-ImportBundle {
     Assert-Native (Compose-Main @('cp', (Join-Path $stage 'db.dump'), 'postgres:/tmp/restore.dump')) 'copy dump'
     $restore = Compose-Main @('exec', '-T', 'postgres', 'pg_restore', '-U', 'carbon', '-d', 'carbon', '--no-owner', '--no-privileges', '/tmp/restore.dump')
     Write-Log "    pg_restore exit $($restore.Code)"
+    # pg_restore leaves no planner statistics; without them the first API queries on a large database are very slow.
+    $analyze = Compose-Main @('exec', '-T', 'postgres', 'psql', '-U', 'carbon', '-d', 'carbon', '-c', 'ANALYZE')
+    Write-Log "    ANALYZE exit $($analyze.Code)"
     $imported = Get-TableCounts 'main'
     Set-Content -LiteralPath (Join-Path $RunDir 'imported-counts.tsv') -Value @($imported.GetEnumerator() | ForEach-Object { "$($_.Key)|$($_.Value)" }) -Encoding UTF8
     $problems = Compare-Counts (Read-CountFile (Join-Path $stage 'table-counts.tsv')) $imported
@@ -720,8 +746,8 @@ function Invoke-ImportBundle {
     if ($problems.Count) { throw "Row count mismatch after import: $($problems -join '; ')" }
     Import-CollectionProgress $stage
     Assert-Native (Compose-Main @('up', '-d', '--build', '--wait', 'api', 'worker', 'frontend')) 'service start'
-    $health = Invoke-RestMethod -Uri "http://127.0.0.1:$ApiPort/api/health" -TimeoutSec 60
-    $map = Invoke-RestMethod -Uri "http://127.0.0.1:$ApiPort/api/map" -TimeoutSec 120
+    $health = Invoke-RestPatient "http://127.0.0.1:$ApiPort/api/health" 60
+    $map = Invoke-RestPatient "http://127.0.0.1:$ApiPort/api/map" 180
     $web = Invoke-WebCheck "http://127.0.0.1:$WebPort/map"
     $grids = @($map.grids.features).Count
     $script:Summary.results.import_services = [ordered]@{ health = $health.status; grids = $grids; web_status = $web.StatusCode }
