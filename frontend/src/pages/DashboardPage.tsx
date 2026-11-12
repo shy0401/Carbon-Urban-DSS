@@ -5,7 +5,6 @@ import { Chart } from '../components/Chart';
 import { MetricCard } from '../components/MetricCard';
 import { MissingValue } from '../components/MissingValue';
 import { PageHeader } from '../components/PageHeader';
-import { SectionNav } from '../components/SectionNav';
 import { Fold, FoldAllButton, FoldStack, Note } from '../components/Fold';
 import { ProvenanceBadge } from '../components/ProvenanceBadge';
 import { QualityBadge } from '../components/QualityBadge';
@@ -67,7 +66,6 @@ export function DashboardPage() {
   const cddRows = weatherRows.filter((r) => typeof r.cdd === 'number');
   return <div className="page dashboard-page">
     <PageHeader title="도시 탄소 대시보드" description="선택한 격자의 에너지·탄소·도시 형태를 핵심 수치로 먼저 보여 줍니다. 산식과 근거 자료는 아래 접힌 구역을 눌러 펼칩니다." action={<div className="header-actions"><span className="status-tag">{year}년 1–12월 공동주택 관측 범위</span><QualityBadge value={data.quality} /><FoldAllButton /></div>} />
-    <SectionNav items={[{ id: 'metrics', label: '핵심 지표' }, { id: 'monthly', label: '월별 에너지' }, ...(data.regional_totals ? [{ id: 'regional-totals', label: '지역 합계' }] : []), { id: 'urban-form', label: '용도·용도지역' }, { id: 'building-energy', label: '건물 전체 에너지' }, { id: 'population', label: '인구·주택' }, { id: 'weather', label: '기상' }]} />
 
     <section className="panel site-summary" id="site" aria-label="현재 분석 대상지">
       <div className="site-name"><h2>{sector?.name ?? '선정된 섹터 없음'}</h2>{sector?.reason ? <Note label="이 격자를 고른 이유">{areaWithCommas(sector.reason)}</Note> : <p>섹터 선정에 필요한 공간 자료가 없습니다.</p>}</div>
