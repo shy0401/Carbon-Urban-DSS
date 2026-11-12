@@ -266,3 +266,8 @@
 @media print {
   details.fold::details-content, details.note::details-content { content-visibility: visible; display: block; }
 }
+
+/* 대시보드: 카드 줄과 그림 사이의 '지표 산식과 근거' 한 줄. */
+.dashboard-page > .fold.slim { margin: var(--sp-2) 0 var(--sp-3); }
+.dashboard-page > .fold.slim[open] { margin-bottom: var(--sp-4); padding: 0 var(--sp-4) var(--sp-3); border: 1px solid var(--line); background: var(--surface); }
+.dashboard-page > .fold.slim[open] > summary { padding-top: var(--sp-2); }
