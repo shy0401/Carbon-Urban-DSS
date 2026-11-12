@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { Note } from './Fold';
 import { api } from '../lib/api';
 import { formatMetric } from '../lib/format';
 import {
@@ -106,6 +107,6 @@ export function TeamModelPanel({ gridId, region }: { gridId: string; region: str
       </table></div>
       <p className="muted">용도별(42곳 교차검증, 1천 이상): {status.accuracy.by_use}. {status.accuracy.band_coverage}. 출처: {status.accuracy.source}.</p>
     </details>}
-    <p className="muted">탄소공간지도 건물 배출(전기·가스·지역난방)의 변화를 팀 데이터셋 42개 지역으로 학습한 모델이 추정한 값입니다. 관측과 섞지 않고 다른 기준의 감축 계산에도 넣지 않습니다. 학습 표에 국토통계지도 값이 있어 이 PC 화면에서만 보입니다.</p>
+    <Note label="추정 방식"><p className="muted">탄소공간지도 건물 배출(전기·가스·지역난방)의 변화를 팀 데이터셋 42개 지역으로 학습한 모델이 추정한 값입니다. 관측과 섞지 않고 다른 기준의 감축 계산에도 넣지 않습니다. 학습 표에 국토통계지도 값이 있어 이 PC 화면에서만 보입니다.</p></Note>
   </section>;
 }

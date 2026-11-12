@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Note } from './Fold';
 import { api } from '../lib/api';
 import { formatMetric } from '../lib/format';
 import { kcsmClassify, kcsmClassLabel, kcsmFill, kcsmLines, kcsmValueText, KCSM_ZERO_FILL, type KcsmProps, type KcsmResponse } from '../lib/kcsm100';
@@ -35,7 +36,7 @@ export function Kcsm100Panel({ gridId, year, region }: { gridId: string; year: n
       </div>
       {picked && <dl className="fact-list grid100-picked">{kcsmLines(picked, y).map(([k, v]) => <div className="fact" key={k}><dt>{k}</dt><dd>{v}</dd></div>)}</dl>}
       {s && <p className="muted">25칸 합 {s.total_t === null ? '값 없음' : formatMetric(s.total_t, 'tCO₂eq', 1)}{s.prev_total_t != null && data.features[0]?.properties.prev_year ? ` (${data.features[0].properties.prev_year}년 ${formatMetric(s.prev_total_t, 't', 1)})` : ''} · 값 있는 칸 {s.value_cells} · 0 {s.zero_cells}{s.drop_cells ? ` · 급감 ${s.drop_cells}칸` : ''}</p>}
-      <p className="muted">선도소프트가 준 탄소공간지도 값(건물 전기, 산정 계수 확인 필요)입니다. 0은 제공값으로, 건물이 없는 칸인지 사용량이 연계되지 않은 칸인지 확인이 필요합니다. 이용 조건을 확인하기 전이라 이 PC 화면에서만 보입니다.</p>
+      <Note label="자료 읽는 법"><p className="muted">선도소프트가 준 탄소공간지도 값(건물 전기, 산정 계수 확인 필요)입니다. 0은 제공값으로, 건물이 없는 칸인지 사용량이 연계되지 않은 칸인지 확인이 필요합니다. 이용 조건을 확인하기 전이라 이 PC 화면에서만 보입니다.</p></Note>
     </>}
   </section>;
 }

@@ -23,6 +23,11 @@ def test_ladder_from_no_measures_through_envelope_operation_rooftop_pv_and_green
     # 녹지 3,000 m² × 1.0 kg = 3,000 kg 흡수(상쇄): 전력·가스는 그대로, 탄소만 줄어든다
     assert green["electricity_kwh"] == 880_000 and green["carbon_kg"] == 425_400 and green["reduction_kg"] == 3000
     assert p["green"] == {"area_m2": 3000, "uptake_kg": 3000, "range_kg": [2640.0, 4770.0]}
+    # 지표의 실측 범위: 계산은 중앙값, 범위는 그 단계 감축량이 움직일 수 있는 폭 (가스 500,000 × 20.5~25.8% × 0.2, 전력 1,000,000 × 1.95~17.0% × 0.4)
+    assert env["range_pct"] == [20.5, 25.8] and env["reduction_range_kg"] == [20_500, 25_800]
+    assert op["range_pct"] == [1.95, 17.0] and op["reduction_range_kg"] == [7_800, 68_000]
+    assert pv["range_pct"] is None and pv["reduction_range_kg"] is None
+    assert green["range_pct"] is None and green["reduction_range_kg"] == [2640.0, 4770.0]
     assert p["final_carbon_kg"] == 425_400 and p["final_pct"] == 14.9
     assert p["self_sufficiency_pct"] == 6.5 and p["zeb_grade"] is None
     assert p["residual"]["electricity_kwh"] == 880_000 and p["residual"]["offsite_pv_kw"] == 733.3

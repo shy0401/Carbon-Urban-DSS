@@ -1,4 +1,5 @@
 import * as maplibregl from 'maplibre-gl';
+import { Note } from './Fold';
 import { ChevronDown, Layers3, MapPinned, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -245,7 +246,7 @@ function CellDetail({ grid, index, row, metric, units, onClose, onOpenRegion }: 
       <dl className="fact-list">
         {PROVINCE_METRICS.filter((m) => m.group === 'sgis500').map((m) => <div className={`fact${value(m.key) === null ? ' missing' : ''}`} key={m.key}><dt>{m.label}{m.key === 'pop_change5' && grid.meta.sgis500_base_year ? ` (${grid.meta.sgis500_base_year}→${grid.meta.sgis500_year})` : ''}</dt><dd>{value(m.key) === null ? <span className="muted">{m.key === 'pop_change5' ? '20명 미만·통계 없음' : '통계 없음 (0 아님)'}</span> : <>{formatMetric(value(m.key), '', m.digits)}<span className="unit">{m.unit}</span></>}</dd></div>)}
       </dl>
-      <p className="muted">격자 자체의 공식 통계입니다. 인구 부문 5 미만은 0 또는 5, 사업체 부문 3 미만은 0 또는 3으로 대체됐고, 그 이상도 최대 ±7(사업체 ±4) 잡음이 있습니다.</p>
+      <Note label="통계 읽는 법"><p className="muted">격자 자체의 공식 통계입니다. 인구 부문 5 미만은 0 또는 5, 사업체 부문 3 미만은 0 또는 3으로 대체됐고, 그 이상도 최대 ±7(사업체 ±4) 잡음이 있습니다.</p></Note>
     </section> : null}
     <section className="detail-section" aria-label="인구와 주택">
       <h3>인구·주택 <small className="resolution-tag res-1km">SGIS {grid.meta.sgis_year ?? ''} 1km 격자</small></h3>

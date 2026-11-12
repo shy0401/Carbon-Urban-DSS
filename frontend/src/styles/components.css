@@ -172,5 +172,97 @@
 .grade { display: inline-block; min-width: 22px; padding: 1px 6px; border-radius: 999px; font-style: normal; font-weight: 700; font-size: 12px; text-align: center; }
 .grade-B { background: var(--success-bg); color: var(--success); }
 .grade-C { background: var(--warning-bg); color: var(--warning); }
+/* 시·군·구 총량 보정식: 식 한 줄 + 단계별 평균 차이 막대(값이 줄어드는 순서). */
+.correction { margin: var(--sp-4) 0 var(--sp-2); padding: var(--sp-3) var(--sp-4); border: 1px solid var(--line); border-radius: var(--r-map); background: var(--surface); }
+.correction h4 { font-size: var(--fs-label); font-weight: 600; }
+.correction-formula { margin: var(--sp-2) 0 var(--sp-3); padding: var(--sp-2) var(--sp-3); background: var(--surface-sunk); border-radius: var(--r-map); font-size: var(--fs-label); font-weight: 500; }
+.correction-steps { display: grid; gap: var(--sp-2); margin: 0 0 var(--sp-2); padding: 0; list-style: none; }
+.correction-steps li { display: grid; grid-template-columns: 96px minmax(80px, 240px) 56px minmax(0, 1fr); align-items: center; gap: var(--sp-3); font-size: var(--fs-label); }
+.correction-label { color: var(--ink-2); font-weight: 500; }
+.correction-track { display: block; height: 10px; background: var(--surface-sunk); border-radius: var(--r-map); overflow: hidden; }
+.correction-track i { display: block; height: 100%; background: var(--seq-4); }
+.correction-steps b { font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
+.correction-steps small { color: var(--ink-3); font-size: var(--fs-caption); line-height: 1.5; }
+@media (max-width: 760px) { .correction-steps li { grid-template-columns: 88px 1fr 52px; } .correction-steps small { grid-column: 1 / -1; } }
 .confidence-line { margin: var(--sp-2) 0 0; font-size: var(--fs-label); color: var(--ink-2); }
 .area-target-note { display: block; margin-top: calc(-1 * var(--sp-1)); line-height: 1.5; }
+
+/* 화면 정보 3단 (DESIGN.md 4.6): 핵심 수치 → 그림·표 하나 → 접어 둔 근거.
+   접이식 구역: 닫혀 있을 때는 제목과 핵심 숫자 한 줄만 보인다. 그림자 없이 1px 선, 패널과 같은 8px 모서리. */
+.fold { min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-panel); }
+.fold + .fold { margin-top: var(--sp-2); }
+.fold > summary {
+  display: flex; align-items: baseline; gap: var(--sp-3); min-height: 44px; padding: 10px var(--sp-4);
+  cursor: pointer; list-style: none; color: var(--ink); font-size: var(--fs-body);
+}
+.fold > summary::-webkit-details-marker { display: none; }
+.fold > summary::before {
+  content: ""; flex: none; align-self: center; width: 7px; height: 7px; margin: 0 2px 0 2px;
+  border-right: 1.5px solid var(--ink-3); border-bottom: 1.5px solid var(--ink-3); transform: rotate(-45deg);
+}
+.fold[open] > summary::before { transform: rotate(45deg); margin-top: -3px; }
+.fold > summary:hover { background: var(--canvas); }
+.fold > summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--r-panel); }
+.fold[open] > summary { border-bottom: 1px solid var(--line); }
+.fold-title { flex: none; max-width: 100%; font-weight: 600; }
+.fold-figures { flex: 1; min-width: 0; color: var(--ink-2); font-size: var(--fs-label); font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fold-figures b { font-weight: 600; color: var(--ink); }
+.fold-hint { flex: none; margin-left: auto; color: var(--ink-3); font-size: var(--fs-caption); }
+.fold[open] > summary .fold-hint { visibility: hidden; }
+.fold-body { padding: var(--sp-4); }
+.fold-body > :first-child { margin-top: 0; }
+.fold-body > :last-child { margin-bottom: 0; }
+/* 접이식 구역 안의 패널은 테두리를 겹치지 않는다. 제목은 접이식 머리에 있으므로 화면에서는 숨기고 낭독기에는 남긴다. */
+.fold.flat > .fold-body > .panel { padding: 0; border: 0; border-radius: 0; background: transparent; }
+.fold.flat > .fold-body > .panel > .panel-title > h3 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.fold.flat > .fold-body > .panel > .panel-title { justify-content: flex-end; margin-bottom: var(--sp-2); }
+.fold:not(.flat) > .fold-body > .panel + .panel, .fold:not(.flat) > .fold-body > * + * { margin-top: var(--sp-3); }
+.fold-body > .regional-totals { margin-top: 0; padding: 0; }
+.fold.slim { border-color: transparent; background: transparent; }
+.fold.slim > summary { min-height: 30px; padding: 4px 0; font-size: var(--fs-label); color: var(--ink-2); }
+.fold.slim > summary:hover { background: transparent; color: var(--ink); }
+.fold.slim[open] > summary { border-bottom: 0; }
+.fold.slim .fold-title { font-weight: 500; }
+.fold.slim > .fold-body { padding: var(--sp-2) 0 0; }
+
+.fold-stack { margin-top: var(--sp-5); }
+.fold-stack-head { display: flex; align-items: baseline; gap: var(--sp-3); flex-wrap: wrap; margin-bottom: var(--sp-3); }
+.fold-stack-head h2 { font-size: var(--fs-panel); }
+.fold-stack-head span { color: var(--ink-2); font-size: var(--fs-caption); }
+
+/* 긴 설명: '설명·주의' 한 줄로 접는다. */
+.note { margin-top: var(--sp-2); font-size: var(--fs-caption); color: var(--ink-3); }
+.note > summary { display: inline-flex; align-items: center; gap: var(--sp-1); min-height: 24px; cursor: pointer; list-style: none; color: var(--ink-3); font-weight: 500; }
+.note > summary::-webkit-details-marker { display: none; }
+.note > summary::before { content: "i"; display: inline-grid; place-items: center; width: 14px; height: 14px; border: 1px solid var(--line-strong); border-radius: 50%; font-size: 10px; font-weight: 600; line-height: 1; color: var(--ink-3); }
+.note > summary:hover { color: var(--ink); }
+.note > summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--r-map); }
+.note-body { margin-top: var(--sp-1); padding: var(--sp-2) var(--sp-3); border-left: 2px solid var(--line-strong); color: var(--ink-2); line-height: 1.6; }
+.note-body > p { margin: 0; }
+.note-body > p + p, .note-body > ul { margin-top: var(--sp-2); }
+.note-body .muted { color: var(--ink-2); }
+
+/* 산식·근거 목록(접이식 안): 지표 이름 — 산식 한 줄. */
+.basis-list { margin: 0; display: grid; gap: 0; }
+.basis-list > div { display: grid; grid-template-columns: minmax(120px, 180px) minmax(0, 1fr); gap: var(--sp-3); padding: var(--sp-2) 0; border-bottom: 1px solid var(--line); font-size: var(--fs-label); line-height: 1.6; }
+.basis-list > div:last-child { border-bottom: 0; }
+.basis-list dt { color: var(--ink); font-weight: 500; }
+.basis-list dd { margin: 0; color: var(--ink-2); }
+.basis-list dd b { font-weight: 500; color: var(--ink); }
+
+/* 지표 카드의 기준 문구는 한 줄(연도·관측 기간). 긴 산식은 접이식 '산식과 근거'로 보낸다. */
+.metric-card.brief .metric-basis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.metric-card.brief .metric-foot { flex-wrap: nowrap; align-items: center; }
+
+@media (max-width: 760px) {
+  .fold > summary { flex-wrap: wrap; row-gap: 2px; }
+  .fold-figures { flex-basis: 100%; order: 3; white-space: normal; }
+  .basis-list > div { grid-template-columns: 1fr; gap: 2px; }
+}
+@media print {
+  /* 인쇄에서는 접힌 내용도 모두 보이게 한다. */
+  .fold-hint, .fold-all { display: none !important; }
+}
+@media print {
+  details.fold::details-content, details.note::details-content { content-visibility: visible; display: block; }
+}

@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Feature, FeatureCollection, Polygon } from 'geojson';
 import { api } from '../lib/api';
 import { formatMetric } from '../lib/format';
+import { Note } from './Fold';
 import { buildingHeight, HEIGHT_CLASS_LABELS, heightClass, massingFeatures, outerRings, planBlocks, polygonBounds, ringCentroid, type BlockShape } from '../lib/massing';
 import { kst, pointInRing, shadowLength, shadowRing, SUN_DAYS, sunPosition, type SunDay } from '../lib/solar';
 import { TOKENS } from '../theme/palette';
@@ -306,7 +307,7 @@ export function Massing3D({ gridId, input, site = null, onSiteChange, onCapture,
         {zoning.source && <a href={zoning.source.url} target="_blank" rel="noreferrer">{zoning.source.name} ({zoning.rules_kind === 'DECREE' || (!zoning.rules_kind && zoning.basis === 'DECREE') ? zoning.source.articles : `${zoning.source.effective} 시행`})</a>}
       </> : <span className="muted">대지 위치가 정해지면 확인합니다.</span>}
     </div>
-    <small className="massing-note">{note}{officialCode ? ` · SGIS 공식 격자 ${officialCode}` : ''}. 계획 블록은 같은 크기로 규칙적으로 늘어놓은 개념 배치이며 실제 배치안이 아닙니다. 동 간격은 마주보는 벽 사이(높이 × 비율, 최소 6m)이고 옆 간격은 그 절반입니다. 그림자는 맑은 날 태양 위치로 그린 개략 그림자이며 지형·주변 지붕은 반영하지 않았습니다. {zoning ? zoningSourceNote(zoning) : '용도지역 상한은 그 지역 도시계획 조례(없으면 국토계획법 시행령)의 기본값으로 1차 확인합니다.'}</small>
+    <Note label="이 배치 그림 읽는 법"><small className="massing-note">{note}{officialCode ? ` · SGIS 공식 격자 ${officialCode}` : ''}. 계획 블록은 같은 크기로 규칙적으로 늘어놓은 개념 배치이며 실제 배치안이 아닙니다. 동 간격은 마주보는 벽 사이(높이 × 비율, 최소 6m)이고 옆 간격은 그 절반입니다. 그림자는 맑은 날 태양 위치로 그린 개략 그림자이며 지형·주변 지붕은 반영하지 않았습니다. {zoning ? zoningSourceNote(zoning) : '용도지역 상한은 그 지역 도시계획 조례(없으면 국토계획법 시행령)의 기본값으로 1차 확인합니다.'}</small></Note>
   </div>;
 }
 

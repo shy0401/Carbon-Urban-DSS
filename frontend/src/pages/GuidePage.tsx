@@ -88,6 +88,8 @@ export function GuidePage() {
             <>같은 PC에서는 <code>http://localhost:5173</code>으로 접속합니다. 다른 기기에서는 런처가 만든 외부 주소로 접속하고 비밀번호를 입력합니다. 주소는 PC의 <code>data/deployment/public-url.txt</code>, 계정은 <code>.secrets/prototype-access.md</code>에 있습니다.</>,
           ]} />
           <Note tone="warn">외부 주소는 PC와 Docker가 켜져 있는 동안만 열리고, 런처를 다시 실행하면 바뀔 수 있습니다. 새 기능이 보이지 않으면 런처를 다시 실행하세요(새 코드로 다시 빌드합니다).</Note>
+          <h3>화면 읽는 순서</h3>
+          <p>모든 화면은 위에서부터 <b>핵심 수치 → 그림이나 표 하나 → 접힌 근거</b> 순서입니다. 접힌 줄을 누르면 산식, 수집 범위, 보조 표가 열리고, 화면 머리의 <b>모두 펼치기</b>를 누르면 한 번에 열립니다. 접혀 있어도 값과 계산은 그대로입니다.</p>
           <h3>추천 순서</h3>
           <div className="guide-flow">
             <article><span>1</span><strong>자료 채우기</strong><p>수집 데이터에서 <b>빠진 자료 전부 수집</b>을 누릅니다.</p><Go to="/data#collect-missing">수집 데이터</Go></article>

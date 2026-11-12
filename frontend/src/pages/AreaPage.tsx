@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { AreaMap } from '../components/area/AreaMap';
 import { AreaSummaryBar, BenchmarkPanel, FallbackNotice, MeasuresPanel } from '../components/area/AreaWorkflow';
 import { BeforeAfterChart, DevelopmentChart, EffortBars, EffortCurve, ElectricityChart, RegisterChart, WeatherYearsChart } from '../components/area/AreaCharts';
+import { Fold, FoldAllButton, FoldStack, Note } from '../components/Fold';
 import { MetricCard } from '../components/MetricCard';
 import { PageHeader } from '../components/PageHeader';
 import { ProvenanceBadge } from '../components/ProvenanceBadge';
@@ -182,7 +183,7 @@ export function AreaPage() {
   const o = options.data;
 
   return <div className="page area-page" data-testid="area-page">
-    <PageHeader title="지역 개발 시뮬레이션" description="행정동·반경·직접 그린 구역·용도지역 어디든 골라 과거와 현재를 비교하고, 개발 전후 영향과 앞으로 필요한 감축 노력을 계산합니다." action={<div className="badge-row"><span className="badge warn"><Info size={13} />운영 단계 1차 추정</span><Link className="button ghost small" to="/guide#area">사용 방법</Link></div>} />
+    <PageHeader title="지역 개발 시뮬레이션" description="구역을 고르면 기준 배출, 계획 반영, 필요 감축량, 감축 방안을 한 줄로 먼저 보여 줍니다. 근거 자료와 계산 가정은 접힌 구역을 눌러 펼칩니다." action={<div className="badge-row"><span className="badge warn"><Info size={13} />운영 단계 1차 추정</span><FoldAllButton /><Link className="button ghost small" to="/guide#area">사용 방법</Link></div>} />
 
     <section className="panel area-controls" aria-label="분석 구역 선택" id="area-step-area">
       <div className="area-modes" role="tablist" aria-label="구역 선택 방식">
@@ -201,7 +202,7 @@ export function AreaPage() {
       </div>
       {linkUrl && <label className="case-link"><span>이 조건의 링크 (다른 PC에서 열면 같은 구역·입력으로 시작)</span><input readOnly value={linkUrl} onFocus={(event) => event.currentTarget.select()} /></label>}
       {error && <p className="form-error" role="alert">{error}</p>}
-      <CoverageStrip analysis={analysis} collection={collection.data} regionName={region ? (options.data?.region?.short_name ?? null) : null} />
+      <Fold className="slim" title="이 구역에 자료가 있는 연도와 수집 진행" hint="펼치기"><CoverageStrip analysis={analysis} collection={collection.data} regionName={region ? (options.data?.region?.short_name ?? null) : null} /></Fold>
     </section>
 
     <AreaSummaryBar analysis={analysis} running={running} bench={bench} />
@@ -216,17 +217,19 @@ export function AreaPage() {
     {analysis && <>
       <div className="section-label"><h2>과거와 현재</h2><span>{analysis.history.years[0]}~{analysis.history.years[analysis.history.years.length - 1]} · {analysis.history.area.label}</span></div>
       <div className="content-grid two-up area-charts">
-        <section className="panel"><div className="panel-title"><h3>연도별 전력 사용량</h3><div className="badge-row"><ProvenanceBadge kind="observed" detail="12개월 완전 지번" /><ProvenanceBadge kind="estimated" /></div></div><ElectricityChart history={analysis.history} eventYear={activeEvent} /><p className="muted">막대는 12개월이 모두 관측된 단지만 더한 값을 단지 준공 시기별로 나눈 것입니다. 점선은 그 해까지 준공된 단지 연면적 × {analysis.history.region_label ?? '전주'} 관측 원단위로 낸 추정입니다. 전력은 모든 연도를 K-apt 관리비 전력 한 출처로 셉니다(건축HUB 계측값은 같은 단지에서 K-apt보다 커서, 섞으면 사용량이 늘어난 것처럼 보입니다). 건축HUB 값은 아래 '건물 전체 에너지'에 따로 둡니다.</p></section>
-        <section className="panel"><div className="panel-title"><h3>개발 이력 (사용승인 세대)</h3><ProvenanceBadge kind="computed" detail="K-apt 사용승인일" /></div><DevelopmentChart history={analysis.history} eventYear={activeEvent} /><p className="muted">호박색 막대가 전후 비교에 쓰는 개발 연도입니다. 막대를 누르거나 마우스를 올리면 단지명이 보입니다.</p></section>
-        <section className="panel"><div className="panel-title"><h3>기상 (난방도일·냉방도일)</h3><ProvenanceBadge kind={region ? 'estimated' : 'observed'} detail={region ? 'ERA5-Land 재분석' : 'ASOS 전주'} /></div><WeatherYearsChart history={analysis.history} /><p className="muted">12개월이 모두 있는 해만 그립니다. 전후 사용량 차이의 일부는 기상 차이일 수 있습니다.</p></section>
-        <PopulationPanel analysis={analysis} />
-        <RegisterPanel analysis={analysis} eventYear={activeEvent} />
+        <section className="panel"><div className="panel-title"><h3>연도별 전력 사용량</h3><div className="badge-row"><ProvenanceBadge kind="observed" detail="12개월 완전 지번" /><ProvenanceBadge kind="estimated" /></div></div><ElectricityChart history={analysis.history} eventYear={activeEvent} /><Note><p className="muted">막대는 12개월이 모두 관측된 단지만 더한 값을 단지 준공 시기별로 나눈 것입니다. 점선은 그 해까지 준공된 단지 연면적 × {analysis.history.region_label ?? '전주'} 관측 원단위로 낸 추정입니다. 전력은 모든 연도를 K-apt 관리비 전력 한 출처로 셉니다(건축HUB 계측값은 같은 단지에서 K-apt보다 커서, 섞으면 사용량이 늘어난 것처럼 보입니다). 건축HUB 값은 아래 '건물 전체 에너지'에 따로 둡니다.</p></Note></section>
+        <section className="panel"><div className="panel-title"><h3>개발 이력 (사용승인 세대)</h3><ProvenanceBadge kind="computed" detail="K-apt 사용승인일" /></div><DevelopmentChart history={analysis.history} eventYear={activeEvent} /><Note><p className="muted">호박색 막대가 전후 비교에 쓰는 개발 연도입니다. 막대를 누르거나 마우스를 올리면 단지명이 보입니다.</p></Note></section>
       </div>
-      <BuildingEnergyPanel analysis={analysis} />
-      <EstimatesPanel analysis={analysis} />
-      <IndustryPanel analysis={analysis} />
-      <KcsmPanel analysis={analysis} />
-      <SgisAreaPanel analysis={analysis} />
+      <FoldStack title="근거 자료 더 보기" hint="기상, 인구, 건물 전체 에너지, 추정, 외부 기준과의 대조입니다. 눌러서 펼칩니다.">
+        <Fold title="기상 추이"><section className="panel"><div className="panel-title"><h3>기상 (난방도일·냉방도일)</h3><ProvenanceBadge kind={region ? 'estimated' : 'observed'} detail={region ? 'ERA5-Land 재분석' : 'ASOS 전주'} /></div><WeatherYearsChart history={analysis.history} /><p className="muted">12개월이 모두 있는 해만 그립니다. 전후 사용량 차이의 일부는 기상 차이일 수 있습니다.</p></section></Fold>
+        <Fold title="인구·가구 추이"><PopulationPanel analysis={analysis} /></Fold>
+        <Fold title="건축물대장 개발 이력"><RegisterPanel analysis={analysis} eventYear={activeEvent} /></Fold>
+        <Fold title="건물 전체 에너지 표"><BuildingEnergyPanel analysis={analysis} /></Fold>
+        {analysis.history.estimates?.available && <Fold title="빈 자료 보정과 추정"><EstimatesPanel analysis={analysis} /></Fold>}
+        {analysis.history.industry?.available && analysis.history.industry.table.length > 0 && <Fold title="업계·정부 기준 대조"><IndustryPanel analysis={analysis} /></Fold>}
+        {analysis.history.kcsm && <Fold title="탄소공간지도 100m 건물 전기 배출"><KcsmPanel analysis={analysis} /></Fold>}
+        <Fold title="지역 특성 (인구·사업체)"><SgisAreaPanel analysis={analysis} /></Fold>
+      </FoldStack>
 
       <div className="section-label"><h2>개발 전후 영향</h2><span>개발 연도는 전환기라 제외하고 앞뒤 {windowSize}년 평균을 비교합니다</span></div>
       <BeforeAfterPanel comparison={analysis.before_after} candidates={eventYears(analysis.history)} eventYear={eventYear} setEventYear={setEventYear} windowSize={windowSize} setWindowSize={setWindowSize} />
@@ -283,16 +286,20 @@ function YearPanel({ analysis, year, setYear, playing, setPlaying, eventYear }: 
       <strong>{year}년{year === eventYear ? ' · 개발 연도' : ''}</strong>
     </div>
     <div className="metric-grid dense">
-      <MetricCard dense title="준공 누적 단지" value={stock?.complexes} unit="곳" provenance="computed" basis="K-apt 사용승인일 기준" />
       <MetricCard dense title="준공 누적 세대" value={stock?.households} unit="세대" provenance="computed" />
-      <MetricCard dense title="연면적 확인 단지 합계" value={stock?.gfa_m2} unit="m²" provenance="computed" basis={stock?.gfa_excluded ? `연면적 이상 ${stock.gfa_excluded}곳 제외` : undefined} />
-      <MetricCard dense title="이 해 사용승인" value={ev?.households ?? 0} unit="세대" provenance="computed" basis={ev?.complexes ? `${ev.complexes}개 단지` : '없음'} />
       <MetricCard dense title="전력 관측" value={elec?.kwh} unit="kWh" provenance="observed" basis={elec?.kwh != null ? `12개월 관측 ${elec.complete_parcels}곳` : undefined} missingReason={collected ? '12개월이 모두 관측된 지번이 없습니다.' : '과거 전력을 아직 수집하지 않았습니다.'} />
-      <MetricCard dense title="전력 추정" value={e?.estimated?.kwh} unit="kWh" provenance="estimated" basis={`연면적 × ${h.region_label ?? '전주'} 원단위`} missingReason="연면적이 확인된 단지가 없습니다." />
-      <MetricCard dense title="전력 탄소 (관측)" value={e?.electricity_carbon_kgco2eq} unit="kgCO₂eq" provenance="computed" basis={h.factor.electricity ? `계수 ${h.factor.electricity}` : undefined} missingReason="관측 전력이 없어 계산하지 않았습니다." />
+      <MetricCard dense title="전력 탄소 (관측)" value={e?.electricity_carbon_kgco2eq} unit="kgCO₂eq" provenance="computed" basis="관측 전력 기준" missingReason="관측 전력이 없어 계산하지 않았습니다." />
       <MetricCard dense title="인구" value={pop?.population} unit="명" provenance="observed" basis={pop?.basis} missingReason={`${year}년 SGIS 인구가 이 도구에 없습니다(제공기관 공표 전이거나 아직 받지 않음).`} />
     </div>
-    <p className="muted">{h.factor_basis}</p>
+    <Fold className="slim" title="이 해의 지표 4개 더 보기" hint="펼치기">
+      <div className="metric-grid dense">
+        <MetricCard dense title="준공 누적 단지" value={stock?.complexes} unit="곳" provenance="computed" basis="K-apt 사용승인일 기준" />
+        <MetricCard dense title="연면적 확인 단지 합계" value={stock?.gfa_m2} unit="m²" provenance="computed" basis={stock?.gfa_excluded ? `연면적 이상 ${stock.gfa_excluded}곳 제외` : undefined} />
+        <MetricCard dense title="이 해 사용승인" value={ev?.households ?? 0} unit="세대" provenance="computed" basis={ev?.complexes ? `${ev.complexes}개 단지` : '없음'} />
+        <MetricCard dense title="전력 추정" value={e?.estimated?.kwh} unit="kWh" provenance="estimated" basis={`연면적 × ${h.region_label ?? '전주'} 원단위`} missingReason="연면적이 확인된 단지가 없습니다." />
+      </div>
+    </Fold>
+    <Note label="전력 탄소 계산 기준"><p className="muted">{h.factor_basis}</p></Note>
   </section>;
 }
 
@@ -441,6 +448,7 @@ function BeforeAfterPanel({ comparison, candidates, eventYear, setEventYear, win
             <Figure label="기존 단지만의 변화" value={m?.electricity.existing_change_pct} unit="%" digits={1} note={m?.electricity.existing_complexes ? `전후 모든 해에 보고한 같은 단지 ${m.electricity.existing_complexes}곳끼리` : '같은 단지끼리 비교'} signed />
             <Figure label="개발 후 신규 단지 비중" value={m?.electricity.new_share_pct} unit="%" digits={1} />
           </dl>
+          <Fold className="slim" title="추정값과 맥락 (기상·인구) 보기" hint="펼치기">
           <h4 className="area-subhead">추정 <ProvenanceBadge kind="estimated" /></h4>
           <dl className="area-figures">
             <Figure label="이 개발로 늘어난 연면적" value={m?.estimated?.added_gfa_m2} unit="m²" />
@@ -453,9 +461,10 @@ function BeforeAfterPanel({ comparison, candidates, eventYear, setEventYear, win
             <Figure label="냉방도일 전 → 후" value={comparison.weather?.before_cdd} unit="°C·일" note={comparison.weather?.after_cdd != null ? `→ ${formatMetric(comparison.weather.after_cdd, '°C·일')}` : undefined} />
             <Figure label="인구 전 → 후" value={comparison.population?.before} unit="명" note={comparison.population?.after != null ? `→ ${formatMetric(comparison.population.after, '명')}` : comparison.population?.basis} />
           </dl>
+          </Fold>
         </div>
       </div>
-      {comparison.gaps?.length ? <ul className="area-gaps">{comparison.gaps.map((g) => <li key={g}>{g}</li>)}</ul> : null}
+      {comparison.gaps?.length ? <Note label={`자료 공백 ${comparison.gaps.length}건`}><ul className="area-gaps">{comparison.gaps.map((g) => <li key={g}>{g}</li>)}</ul></Note> : null}
     </>}
   </section>;
 }
@@ -479,7 +488,7 @@ function EffortPanel({ effort, plan, setPlan, target, setTarget, pvYield, setPvY
         </div>
         <p className="muted">계획 연면적 {formatMetric(plannedArea(plan), 'm²')}</p>
         <label className="area-target"><span>목표 감축률 (기준 연도 대비)</span><div><input type="range" min={0} max={100} step={1} value={target} onChange={(e) => setTarget(Number(e.target.value))} aria-label="목표 감축률 슬라이더" /><div className="with-unit"><input type="number" min={0} max={100} value={target} onChange={(e) => setTarget(Math.min(100, Math.max(0, Number(e.target.value))))} aria-label="목표 감축률" /><em>%</em></div></div></label>
-        <small className="muted area-target-note" data-testid="target-note">목표는 사용자가 정하는 값이고 기본 {DEFAULT_TARGET}%는 예시입니다. 참고로 국가 감축목표의 건물 부문은 2018년 대비 2030년 −32.8%, 2035년 −53.6~−56.2%입니다(기준 연도가 달라 그대로 비교하지 않습니다).</small>
+        <Note label="목표 감축률 안내"><small className="muted area-target-note" data-testid="target-note">목표는 사용자가 정하는 값이고 기본 {DEFAULT_TARGET}%는 예시입니다. 참고로 국가 감축목표의 건물 부문은 2018년 대비 2030년 −32.8%, 2035년 −53.6~−56.2%입니다(기준 연도가 달라 그대로 비교하지 않습니다).</small></Note>
         <div className="area-effort-basis"><span>기준 건물</span><div className="area-modes small" role="tablist" aria-label="감축 노력 기준 건물">
           {(kcsmAvailable || basis === 'kcsm' ? (['apartments', 'buildings', 'kcsm'] as const) : (['apartments', 'buildings'] as const)).map((b) => <button key={b} role="tab" aria-selected={basis === b} onClick={() => setBasis(b)}>{EFFORT_BASIS_LABEL[b]}</button>)}
         </div><small className="muted">{basis === 'kcsm' ? '선도소프트가 준 탄소공간지도 100m 건물 전기 배출(단독주택 포함 모든 건물, 2024년까지). 경계 안 100m 칸 합을 기준으로, 신축 부하는 같은 격자의 배출 ÷ 건축물대장 연면적으로 냅니다.' : basis === 'buildings' ? '상가·업무·학교 등 구역의 계측 건물 전체(건축HUB, 최근 12개월 완비 연도). 상업지역은 이 기준이 맞습니다.' : '공동주택 관리비 전력(같은 출처로 연도 비교). 주거지역 기본값.'}</small></div>
@@ -500,8 +509,10 @@ function EffortPanel({ effort, plan, setPlan, target, setTarget, pvYield, setPvY
             <Figure label="재생에너지로 상쇄할 전력" value={o?.offset_kwh_per_year} unit="kWh/년" />
             <Figure label="태양광 설비 용량" value={o?.pv_capacity_kw} unit="kW" digits={1} note={pvNote(effort.pv_yield, o?.pv_capacity_kw)} />
           </dl>
-          <EffortCurve effort={effort} />
-          <div className="assumption-note"><strong>계산 가정 · {effort.scope}</strong><ul>{(effort.assumptions ?? []).map((a) => <li key={a}>{a}</li>)}</ul></div>
+          <Fold className="slim" title="목표 감축률별 필요 노력 곡선과 계산 가정" hint="펼치기">
+            <EffortCurve effort={effort} />
+            <div className="assumption-note"><strong>계산 가정 · {effort.scope}</strong><ul>{(effort.assumptions ?? []).map((a) => <li key={a}>{a}</li>)}</ul></div>
+          </Fold>
         </>}
       </div>
     </div>

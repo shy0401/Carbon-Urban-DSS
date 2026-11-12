@@ -5,6 +5,7 @@ import { lastCompletedMonth, MonthRangePicker, rangeProblem } from '../component
 import { MissingCollection } from '../components/MissingCollection';
 import { MissingValue } from '../components/MissingValue';
 import { RegionYearProgress } from '../components/RegionYearProgress';
+import { Fold, FoldAllButton, FoldStack } from '../components/Fold';
 import { PageHeader } from '../components/PageHeader';
 import { SectionNav } from '../components/SectionNav';
 import { QualityBadge } from '../components/QualityBadge';
@@ -72,7 +73,7 @@ export function DataPage() {
   useEffect(() => { void load(); return () => requestRef.current?.abort(); }, [load]);
   // Links such as /data#collect-missing open the matching panel once the page has rendered.
   const { hash } = useLocation();
-  useEffect(() => { if (!loading && hash) window.setTimeout(() => document.getElementById(hash.slice(1))?.scrollIntoView({ block: 'start' }), 50); }, [loading, hash]);
+  useEffect(() => { if (!loading && hash) window.setTimeout(() => { const target = document.getElementById(hash.slice(1)); if (target instanceof HTMLDetailsElement) target.open = true; target?.scrollIntoView({ block: 'start' }); }, 50); }, [loading, hash]);
   useEffect(() => {
     if (!readiness) return;
     const available = new Set(readiness.sources.filter((source) => source.collection_dataset && source.collectable_now).map((source) => source.collection_dataset as string));
@@ -120,16 +121,18 @@ export function DataPage() {
   const sourceSummary = summarizeSources(sources);
   const readinessByDataset = new globalThis.Map(readiness?.sources.filter((source) => source.collection_dataset).map((source) => [source.collection_dataset as string, source]));
   return <div className="page">
-    <PageHeader title="수집 데이터" description="공식·대체 출처의 수집 범위와 원본에서 정규화까지의 이력을 확인합니다." action={<button className="button secondary" onClick={() => void load()}><RefreshCw size={15} />새로고침</button>} />
-    <SectionNav items={[...(headerRegion ? [{ id: 'region-years', label: '연도별 진행' }] : []), { id: 'collect-missing', label: '빠진 자료 수집' }, { id: 'summary', label: '출처 요약' }, { id: 'collect', label: '수집 요청' }, { id: 'jobs', label: '작업 이력' }, { id: 'readiness', label: '수집 준비 상태' }, { id: 'sources', label: '데이터 출처' }, { id: 'manual-upload', label: '수동 업로드' }]} />
+    <PageHeader title="수집 데이터" description="출처별 수집 상태를 숫자로 먼저 보여 줍니다. 수동 수집, 준비 상태, 출처 목록, 파일 올리기는 접힌 구역에 있습니다." action={<div className="header-actions"><FoldAllButton /><button className="button secondary" onClick={() => void load()}><RefreshCw size={15} />새로고침</button></div>} />
+    <SectionNav items={[...(headerRegion ? [{ id: 'region-years', label: '연도별 진행' }] : []), { id: 'summary', label: '출처 요약' }, { id: 'collect-missing', label: '빠진 자료 수집' }, { id: 'collect', label: '수집 요청·작업 이력' }, { id: 'readiness', label: '수집 준비 상태' }, { id: 'sources', label: '데이터 출처' }, { id: 'manual-upload', label: '수동 업로드' }]} />
+    <section className="data-summary" id="summary">{sourceSummary.map(([label, value, tone]) => <article className={tone} key={label}><span>{label}</span><strong>{value}</strong></article>)}<article><span>마지막 수집</span><strong>{latestCollection(sources)}</strong></article></section>
     <p className="panel-description"><b>수집 전에 <Link to="/guide#standard">공통 데이터 기준</Link>을 확인하세요</b> (결측·단위·격자·계수·공식) · <Link to="/guide#collect">이 화면 사용 방법</Link> · <a href="https://github.com/shy0401/Carbon-Urban-DSS/blob/main/docs/DATA_SETUP_GUIDE.md" target="_blank" rel="noopener noreferrer">자료별 인증키 신청 · 다운로드 · 필드 매핑 안내</a></p>
     <p className="data-scope-note" data-testid="data-scope-note"><Globe2 size={15} aria-hidden="true" />{headerRegion
       ? <span>머리의 분석 지역은 <b>{headerName}</b>입니다. 아래 표가 이 지역의 연도별 수집 진행이고, 이 지역 자료는 <Link to={`/regions?select=${headerRegion}`}>전국 지역</Link>에서 받습니다. 그 아래 '빠진 자료 전부 수집'과 수동 수집은 최초 연구 지역(전주시) 범위입니다.</span>
       : <span>이 화면의 '빠진 자료 전부 수집'과 수동 수집은 최초 연구 지역(전주시) 범위입니다. 다른 시·군·구는 <Link to="/regions">전국 지역</Link>에서 지역을 골라 준비하면 그 지역 자료를 받습니다.</span>}</p>
     {headerRegion && headerName && <RegionYearProgress code={headerRegion} name={headerName} lastYear={system?.baseline_year ?? year} />}
     <MissingCollection onChanged={() => void load(true)} />
-    <section className="data-summary" id="summary">{sourceSummary.map(([label, value, tone]) => <article className={tone} key={label}><span>{label}</span><strong>{value}</strong></article>)}<article><span>마지막 수집</span><strong>{latestCollection(sources)}</strong></article></section>
-    <div className="data-layout" id="collect">
+    <FoldStack title="수집 작업과 출처" hint="수동 수집, 준비 상태, 출처 목록, 파일 올리기입니다. 눌러서 펼칩니다.">
+    <Fold id="collect" flat={false} title="수동 수집 요청과 작업 이력" figures={`작업 이력 ${jobs.length}건`}>
+    <div className="data-layout">
       <form className="panel collection-form" onSubmit={submit}>
         <div className="panel-title"><h3>데이터 수집 요청</h3></div>
         <div className="form-step"><header><b>1</b><strong>데이터셋</strong><small>{form.datasets.length}개 선택</small></header>
@@ -146,16 +149,20 @@ export function DataPage() {
         <button className="button primary full" disabled={submitting}><CloudDownload size={17} />{submitting ? '요청 중…' : '수집 작업 시작'}</button>
         <p className="form-caption">수집은 백그라운드에서 실행되고 진행률이 오른쪽 작업 이력에 표시됩니다. '전체'는 같은 출처의 '첫 검증'이 성공한 뒤에만 시작되며, 성공한 응답은 캐시되어 다시 요청하지 않습니다.</p>
       </form>
-      <section className="panel jobs-panel" id="jobs"><div className="panel-title"><h3>작업 이력</h3></div>
+      <section className="panel jobs-panel"><div className="panel-title"><h3>작업 이력</h3></div>
         {jobs.length ? <div className="job-list" tabIndex={0} role="region" aria-label="수집 작업 이력">{jobs.map((job) => <article key={job.id}><div className={`job-state ${job.resolved ? 'good' : qualityTone(job.status)}`}><span>{statusLabel(job.status)}</span>{job.resolved && <b className="resolved-badge">이후 해결</b>}<small title={String(job.id)}>작업 {String(job.id).slice(0, 8)}</small></div><div className="job-body"><strong>{datasetLabel(job.dataset) ?? job.datasets?.map((d) => datasetLabel(d)).join(', ') ?? '데이터 수집'}</strong><small>{formatDate(job.updated_at ?? job.created_at)}</small>{job.message && <p>{job.message}</p>}{job.error && <p className="error-text">{job.error}</p>}{job.resolved_datasets?.length ? <p className="resolved-text">이후 작업에서 수집 성공: {job.resolved_datasets.join(', ')}</p> : null}{job.errors?.map((item, index) => <p className={typeof item !== 'string' && item.dataset && job.resolved_datasets?.includes(item.dataset) ? 'error-text resolved' : 'error-text'} key={`${typeof item === 'string' ? 'error' : item.dataset ?? 'error'}-${index}`}><b>{typeof item !== 'string' && item.dataset ? `${item.dataset}: ` : ''}</b>{typeof item === 'string' ? item : item.message ?? '수집 오류'}</p>)}{typeof job.progress === 'number' && ['RUNNING', 'STARTED'].includes(String(job.status).toUpperCase()) && <div className="progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(job.progress)} aria-label="수집 진행률"><span style={{ width: `${Math.max(0, Math.min(100, job.progress))}%` }} /></div>}</div></article>)}</div> : <EmptyState title="수집 작업 이력이 없습니다" />}
       </section>
     </div>
-    {readiness && <ReadinessOverview data={readiness} />}
-    {engine && <LocalAiFlow engine={engine} />}
-    <section className="panel source-catalog" id="sources"><div className="panel-title"><h3>연결된 데이터 출처</h3></div>
+    </Fold>
+    {readiness && <Fold id="readiness" flat={false} title="수집 준비 상태와 활용처" figures={`지금 자동 실행 가능 ${readiness.summary.collectable_now}개`}><ReadinessOverview data={readiness} /></Fold>}
+    {engine && <Fold title="요약 모델(로컬 LLM) 상태" figures={engine.status === 'READY' ? '연결됨' : '연결 안 됨'}><LocalAiFlow engine={engine} /></Fold>}
+    <Fold id="sources" title="연결된 데이터 출처 목록" figures={`출처 ${sources.length}개`}>
+    <section className="panel source-catalog"><div className="panel-title"><h3>연결된 데이터 출처</h3></div>
       {sources.length ? <div className="source-cards">{sources.map((source) => <button className="source-card" key={source.id} onClick={() => navigate(`/data/sources/${source.id}`)}><div className="source-card-head"><span>{source.category}</span><QualityBadge value={source.quality} /></div><h4>{source.name}</h4><p>{source.organization ?? '기관 정보 없음'}</p><dl><div><dt>수집 상태</dt><dd>{statusLabel(source.status)}</dd></div><div><dt>정규화</dt><dd>{formatMetric(source.normalized_row_count, '행')}</dd></div><div><dt>기준 기간</dt><dd>{source.reference_period ?? '기록 없음'}</dd></div><div><dt>종합 품질</dt><dd>{score(source.quality_scores?.overall)}</dd></div></dl>{source.limitation && <small className="limitation"><AlertTriangle size={13} />{source.limitation}</small>}<span className="card-action">상세 보기 <ChevronRight size={15} /></span></button>)}</div> : <EmptyState title="연결된 데이터 출처가 없습니다" description="위 수집 양식으로 실제 자료 수집을 요청해 주세요." />}
     </section>
-    <ManualUpload onImported={() => void load(true)} />
+    </Fold>
+    <Fold id="manual-upload" title="공식 파일 직접 올리기"><ManualUpload onImported={() => void load(true)} /></Fold>
+    </FoldStack>
   </div>;
 }
 
@@ -174,7 +181,7 @@ function ReadinessOverview({ data }: { data: ReadinessData }) {
     ['공식 파일 직접 필요', data.summary.states.MANUAL_REQUIRED ?? 0, 'manual'],
   ] as const;
   return <>
-    <section className="panel readiness-panel" id="readiness">
+    <section className="panel readiness-panel">
       <div className="panel-title"><h3>현재 수집 가능성과 차단 요인</h3></div>
       <div className="readiness-summary">{summary.map(([label, value, tone]) => <article className={tone} key={label}><strong>{value}</strong><span>{label}</span></article>)}</div>
       <div className="truth-rules">{data.truth_rules.map((rule) => <span key={rule}><CheckCircle2 size={14} />{rule}</span>)}</div>
@@ -259,7 +266,7 @@ function ManualUpload({ onImported }: { onImported: () => void }) {
     catch (reason) { setMessage(reason instanceof Error ? reason.message : '가져오기에 실패했습니다.'); }
     finally { setBusy(false); }
   };
-  return <section className="panel upload-panel" id="manual-upload"><div className="panel-title"><h3>수동 파일 업로드</h3></div><p className="panel-description">자동 접근이 어려운 공식 CSV, XLSX, GeoJSON, SHP ZIP을 먼저 분석한 뒤 열 매핑을 확인합니다.</p>
+  return <section className="panel upload-panel"><div className="panel-title"><h3>수동 파일 업로드</h3></div><p className="panel-description">자동 접근이 어려운 공식 CSV, XLSX, GeoJSON, SHP ZIP을 먼저 분석한 뒤 열 매핑을 확인합니다.</p>
     {!preview ? <form className="upload-start" onSubmit={makePreview}><select aria-label="업로드할 자료 종류" value={datasetType} onChange={(event) => setDatasetType(event.target.value)}><option value="building_register">건축물대장</option><option value="building_geometry">건물 공간정보</option><option value="zoning">용도지역</option><option value="population_grid">인구 통계격자</option><option value="energy">에너지</option></select><input type="file" aria-label="업로드할 파일" accept=".csv,.xlsx,.geojson,.json,.zip" onChange={(event) => setFile(event.target.files?.[0] ?? null)} /><button className="button secondary" disabled={busy}><FileUp size={15} />{busy ? '분석 중…' : '파일 분석'}</button></form> : <div className="mapping-preview"><div className="detected-meta"><span>인코딩 <strong>{preview.encoding ?? '감지 안 됨'}</strong></span><span>좌표계 <strong>{preview.detected_crs ?? '감지 안 됨'}</strong></span><span>열 <strong>{preview.columns.length}개</strong></span></div>{preview.warnings?.map((warning) => <p className="form-error" key={warning}><AlertTriangle size={15} />{warning}</p>)}<div className="mapping-grid">{(preview.required_fields ?? Object.keys(preview.suggested_mapping ?? {})).map((field) => <label key={field}><span>{field}</span><select value={mapping[field] ?? ''} onChange={(event) => setMapping((old) => ({ ...old, [field]: event.target.value }))}><option value="">매핑 선택</option>{preview.columns.map((column) => <option key={column}>{column}</option>)}</select></label>)}</div><div className="mapping-grid metadata"><label><span>제공기관 *</span><input value={meta.provider} onChange={(event) => setMeta((old) => ({ ...old, provider: event.target.value }))} /></label><label><span>공식 URL</span><input value={meta.source_url} onChange={(event) => setMeta((old) => ({ ...old, source_url: event.target.value }))} /></label><label><span>기준기간 *</span><input placeholder="예: 2025" value={meta.reference_period} onChange={(event) => setMeta((old) => ({ ...old, reference_period: event.target.value }))} /></label><label><span>원본 좌표계</span><input placeholder="예: EPSG:5179" value={meta.source_crs} onChange={(event) => setMeta((old) => ({ ...old, source_crs: event.target.value }))} /></label></div><PreviewTable value={preview.rows} /><div className="form-actions"><button className="button ghost" onClick={() => setPreview(null)}>취소</button><button className="button primary" onClick={() => void importFile()} disabled={busy}>{busy ? '가져오는 중…' : '매핑 확인 및 가져오기'}</button></div></div>}
     {message && <p className="upload-message">{message}</p>}
   </section>;

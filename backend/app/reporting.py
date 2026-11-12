@@ -165,6 +165,9 @@ def reduction_lines(sc):
     pv=p.get('pv')
     if pv:
         lines.append(f"- 지붕 태양광: 옥상 {pv['roof_m2']:,.0f} m² · {pv['kw']:,.1f} kW · 연 {_num(pv.get('kwh'),' kWh')}"+(f" (자체 소비를 넘는 {pv['surplus_kwh']:,.0f} kWh는 감축에 넣지 않음)" if pv.get('surplus_kwh') else ''))
+    ranged=[s for s in p['steps'] if s.get('range_pct') and s.get('reduction_range_kg')]
+    if ranged:
+        lines.append('- 지표의 실측 범위(계산은 중앙값, 범위는 그 단계 감축량이 움직일 수 있는 폭): '+'; '.join(f"{s['title']} {s['range_pct'][0]:g}~{s['range_pct'][1]:g}% → −{_t(s['reduction_range_kg'][0])}~−{_t(s['reduction_range_kg'][1])}" for s in ranged))
     gr=p.get('green')
     if gr and gr.get('uptake_kg'):
         lines.append(f"- 녹지·조경 흡수: 녹지 {gr['area_m2']:,.0f} m² · 연 {_t(gr['uptake_kg'])} (수종·수령에 따라 {_t(gr['range_kg'][0])}~{_t(gr['range_kg'][1])}, 상쇄로 따로 적음)")

@@ -10,6 +10,7 @@ import { ListChecks, Sun } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { BASELINE_MODE_LABEL, benchmarkPosition, EFFORT_BASIS_LABEL, NO_MEASURES, toTonnes, type AreaAnalysis, type Benchmark, type EffortResult, type MeasuresState } from '../../lib/area';
 import { formatMetric } from '../../lib/format';
+import { Note } from '../Fold';
 
 export const AREA_STEPS = [
   { id: 'area-step-area', label: '구역 고르기' },
@@ -109,7 +110,7 @@ export function MeasuresPanel({ effort, measures, setMeasures }: { effort: Effor
         <button type="button" className="button small" onClick={fillWithPv} disabled={!mix || mix.met || !yieldPerKw}><Sun size={14} />남은 양을 태양광으로 채우기</button>
         <button type="button" className="button ghost small" onClick={() => setMeasures(NO_MEASURES)} disabled={measures === NO_MEASURES}>초기화</button>
       </div>
-      <p className="muted">도시·군기본계획 수립지침의 탄소중립 계획처럼 수단별 예상 감축량을 더해 목표 달성 여부를 봅니다. 기존 건물 절감은 철거분을 뺀 기준 부하에, 태양광은 kW당 연 발전량에 곱합니다(전력 배출계수 {effort.factor_kgco2eq_per_kwh} kgCO₂eq/kWh).</p>
+      <Note label="계산 방식"><p className="muted">도시·군기본계획 수립지침의 탄소중립 계획처럼 수단별 예상 감축량을 더해 목표 달성 여부를 봅니다. 기존 건물 절감은 철거분을 뺀 기준 부하에, 태양광은 kW당 연 발전량에 곱합니다(전력 배출계수 {effort.factor_kgco2eq_per_kwh} kgCO₂eq/kWh).</p></Note>
     </>}
   </section>;
 }
@@ -134,6 +135,6 @@ export function BenchmarkPanel({ bench, effort, regionName }: { bench: Benchmark
     </svg>
     <p className="area-benchmark-text">{position ? <><b>낮은 쪽부터 {position.text}</b> ({position.detail}) · 중앙값 {formatMetric(bench.median, 'kWh/m²·년', 2)}</>
       : <>이 구역은 {effort?.available ? (effort.baseline_mode !== 'OBSERVED' ? '기준 부하가 추정값이라' : effort.basis !== bench.basis ? '감축 기준이 달라' : '기준 연도가 달라') : '관측 원단위가 없어'} 순위를 매기지 않습니다. 중앙값 {formatMetric(bench.median, 'kWh/m²·년', 2)}.</>}</p>
-    <p className="muted">{bench.note} 비교 대상: 같은 연도에 관측 원단위가 있는 행정동 {bench.count}곳 / 전체 {bench.admin_total}곳.</p>
+    <Note label="비교 기준"><p className="muted">{bench.note} 비교 대상: 같은 연도에 관측 원단위가 있는 행정동 {bench.count}곳 / 전체 {bench.admin_total}곳.</p></Note>
   </section>;
 }

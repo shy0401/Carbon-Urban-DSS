@@ -1,4 +1,5 @@
 import * as maplibregl from 'maplibre-gl';
+import { Note } from './Fold';
 import { ArrowLeft, ChevronDown, Layers3, MapPinned, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -259,7 +260,7 @@ export function NationalMap({ sido, sgg, onSido, onSgg, onProvinceGrid, onOpenRe
             {(['admin', 'grid500', 'complexes', 'kepco', 'ghg'] as const).map((source) => <div className="metric-group" key={source}><span>{SOURCE_GROUP[source]}</span>
               {NATIONAL_METRICS.filter((m) => m.source === source).map((m) => <button key={m.key} className={`metric-option${m.key === metric.key ? ' active' : ''}`} aria-pressed={m.key === metric.key} onClick={() => { setMetricKey(m.key); setPickerOpen(false); }}><span>{m.label} <small>{m.unit}</small></span></button>)}
             </div>)}
-            <p className="muted">전력은 한전 판매량{data?.meta.kepco_year ? ` (${data.meta.kepco_year}년)` : ''}, 온실가스는 공식 지역 인벤토리{data?.meta.ghg_year ? ` (${data.meta.ghg_year}년)` : ''} 값입니다. 건물·격자 단위 에너지(건축HUB·K-apt)는 시·군·구마다 모읍니다(상세 자료).</p>
+            <Note label="지표 출처"><p className="muted">전력은 한전 판매량{data?.meta.kepco_year ? ` (${data.meta.kepco_year}년)` : ''}, 온실가스는 공식 지역 인벤토리{data?.meta.ghg_year ? ` (${data.meta.ghg_year}년)` : ''} 값입니다. 건물·격자 단위 에너지(건축HUB·K-apt)는 시·군·구마다 모읍니다(상세 자료).</p></Note>
           </section>}
         </div>
         <section className={`map-legend${legendOpen ? '' : ' collapsed'}`} aria-label="지표 범례">

@@ -17,7 +17,7 @@ import { ConfidenceGrades } from '../components/ConfidenceGrades';
 import type { ScenarioResult } from '../types';
 
 /** 탄소 감축 방안 (서버 reduction_plan, 기준 문서 5.15): 같은 계획을 대책 없음에서 수단을 차례로 더해 줄인다. */
-interface ReductionStep { key: string; title: string; detail: string; electricity_kwh: number; gas_kwh: number | null; carbon_kg: number; reduction_kg: number; cumulative_pct: number | null }
+interface ReductionStep { key: string; title: string; detail: string; electricity_kwh: number; gas_kwh: number | null; carbon_kg: number; reduction_kg: number; cumulative_pct: number | null; range_pct?: number[] | null; reduction_range_kg?: number[] | null }
 interface ReductionPlan {
   available: boolean; reason?: string; start?: { label: string; carbon_kg: number; electricity_kwh: number; gas_kwh: number | null }; steps?: ReductionStep[];
   final_carbon_kg?: number; final_pct?: number | null; pv?: { roof_m2: number; kw: number; kwh: number | null; surplus_kwh?: number } | null;
@@ -152,6 +152,7 @@ function ReductionSection({ plan, n, named }: { plan: SavedScenario; n: number; 
       {rows.map((r) => <tr key={r.key}><th>{r.title}</th><td>{r.detail}</td><td className="num">{tonnes(r.carbon_kg)}</td><td className="num">{r.reduction_kg != null ? `−${tonnes(r.reduction_kg)}` : ''}</td><td className="num">{r.cumulative_pct != null ? `−${formatMetric(r.cumulative_pct, '%', 1)}` : ''}</td></tr>)}
     </tbody></table></div>
     <ul className="report-list">
+      {p.steps.some((s) => s.range_pct && s.reduction_range_kg) && <li data-testid="reduction-ranges">지표의 실측 범위(계산은 중앙값, 범위는 그 단계 감축량이 움직일 수 있는 폭): {p.steps.filter((s) => s.range_pct && s.reduction_range_kg).map((s) => `${s.title} ${s.range_pct![0]}~${s.range_pct![1]}% → −${tonnes(s.reduction_range_kg![0])}~−${tonnes(s.reduction_range_kg![1])}`).join('; ')}</li>}
       {p.pv && <li>지붕 태양광: 옥상 {formatMetric(p.pv.roof_m2, 'm²')} · {formatMetric(p.pv.kw, 'kW', 1)} · 연 {formatMetric(p.pv.kwh, 'kWh')}{p.pv.surplus_kwh ? ` (자체 소비를 넘는 ${formatMetric(p.pv.surplus_kwh, 'kWh')}는 감축에 넣지 않음)` : ''}</li>}
       {p.green && p.green.uptake_kg > 0 && <li>녹지·조경 흡수: 녹지 {formatMetric(p.green.area_m2, 'm²')} · 연 {tonnes(p.green.uptake_kg)} (수종·수령에 따라 {tonnes(p.green.range_kg[0])}~{tonnes(p.green.range_kg[1])}, 상쇄로 따로 적음)</li>}
       {p.self_sufficiency_pct != null && <li>에너지자립률(1차에너지, 참고): {formatMetric(p.self_sufficiency_pct, '%', 1)} — {p.zeb_grade ? `ZEB ${p.zeb_grade} 구간` : 'ZEB 5등급(20%) 미만'}</li>}

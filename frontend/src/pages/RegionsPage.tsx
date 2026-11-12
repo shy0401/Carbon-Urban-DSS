@@ -1,4 +1,5 @@
 import * as maplibregl from 'maplibre-gl';
+import { Note } from '../components/Fold';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import { CheckCircle2, Clock3, Database, Globe2, Loader2, MapPinned, Play, Search, TriangleAlert } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -146,13 +147,13 @@ export function RegionsPage() {
           <td><span className={`status-tag ${statusTone(p.study_status)}`}>{STATUS_LABEL[p.study_status] ?? p.study_status}</span></td>
         </tr>)}</tbody>
       </table></div>
-      <p className="muted">인구·가구는 SGIS {overview.data?.meta.year ?? ''} 행정구역 통계(시군구 합계, 비공개 값은 합에서 빠짐)이고, 단지 수는 K-apt 의무관리 공동주택 목록입니다. 자료가 없는 칸은 0이 아니라 '자료 없음'입니다.</p>
+      <Note label="숫자 기준"><p className="muted">인구·가구는 SGIS {overview.data?.meta.year ?? ''} 행정구역 통계(시군구 합계, 비공개 값은 합에서 빠짐)이고, 단지 수는 K-apt 의무관리 공동주택 목록입니다. 자료가 없는 칸은 0이 아니라 '자료 없음'입니다.</p></Note>
     </section>
 
     <section className="panel national-sources">
       <div className="panel-title"><h3>전국 기초 자료 상태</h3></div>
       <ul>{NATIONAL_LAYERS.map(({ key, label }) => { const s = national.sources[key]; return <li key={key}><strong>{label}</strong><span className={`status-tag ${statusTone(s?.status)}`}>{s?.status ?? '미수집'}</span><small>{s?.quality ?? '아직 받지 않았습니다.'}{s?.collected_at ? ` · ${formatDate(s.collected_at)}` : ''}</small></li>; })}</ul>
-      <p className="muted">전국 기초 자료는 요청 수가 적은 층(행정구역 코드, SGIS 시군구·행정동, K-apt 단지 목록, SGIS 500m 격자 경계)만 전국으로 받습니다. 호출 한도가 있는 층(건축HUB 에너지·건축물대장, K-apt 월별 에너지, VWorld 건물·용도지역)은 지역을 준비할 때 그 지역만 받습니다.</p>
+      <Note label="전국 기초 자료 안내"><p className="muted">전국 기초 자료는 요청 수가 적은 층(행정구역 코드, SGIS 시군구·행정동, K-apt 단지 목록, SGIS 500m 격자 경계)만 전국으로 받습니다. 호출 한도가 있는 층(건축HUB 에너지·건축물대장, K-apt 월별 에너지, VWorld 건물·용도지역)은 지역을 준비할 때 그 지역만 받습니다.</p></Note>
     </section>
   </div>;
 }
@@ -189,12 +190,12 @@ function RegionDetail({ props, detail, current, busy, onPrepare, onAnalyse }: { 
       <button type="button" className="button primary" onClick={onAnalyse}><MapPinned size={15} aria-hidden="true" />{hasGrid ? (current ? '이 지역 지도 보기' : '이 지역 분석하기') : '지도 열기 (읍면동 포함)'}</button>
       <button type="button" className="button secondary" onClick={onPrepare} disabled={busy || preparing}>{preparing ? <><Loader2 size={15} className="spin" aria-hidden="true" />준비 중…</> : <><Play size={15} aria-hidden="true" />{detail.status === 'NOT_PREPARED' || detail.level === 'BASIC' ? '상세 자료 수집 (에너지·건물·용도지역)' : '남은 단계 이어서 수집'}</>}</button>
     </div>
-    {!hasGrid && <p className="muted">지도 열기는 전국 기초 자료(SGIS 격자 통계·행정동·K-apt 단지 목록·조례)로 500m 격자와 읍면동 지도를 몇 초 만에 만듭니다. 에너지·건물·용도지역은 '상세 자료 수집'으로 모읍니다.</p>}
+    {!hasGrid && <Note label="지도 열기 안내"><p className="muted">지도 열기는 전국 기초 자료(SGIS 격자 통계·행정동·K-apt 단지 목록·조례)로 500m 격자와 읍면동 지도를 몇 초 만에 만듭니다. 에너지·건물·용도지역은 '상세 자료 수집'으로 모읍니다.</p></Note>}
     {detail.message && <p className="muted">{detail.message}</p>}
     <ol className="step-list">{steps.map((step) => <li key={step.id} className={`step ${step.status ? step.status.toLowerCase() : 'todo'}`}>
       <StepIcon status={step.status} /><div><strong>{step.label}</strong><small>{step.status ? STEP_LABEL[step.status] ?? step.status : '아직 안 함'}{step.message ? ` · ${step.message}` : ''}{step.resume_at ? ` · 재개 ${formatDate(step.resume_at)}` : ''}</small></div>
     </li>)}</ol>
-    <p className="muted">격자는 SGIS 공식 500m 격자로 만들고, 호출 한도가 있는 단계(건축HUB 에너지·K-apt 에너지)는 한도가 풀리는 다음 날 자동으로 이어서 받습니다. 받지 못한 층은 0으로 채우지 않고 '자료 없음'으로 둡니다.</p>
+    <Note label="상세 수집 안내"><p className="muted">격자는 SGIS 공식 500m 격자로 만들고, 호출 한도가 있는 단계(건축HUB 에너지·K-apt 에너지)는 한도가 풀리는 다음 날 자동으로 이어서 받습니다. 받지 못한 층은 0으로 채우지 않고 '자료 없음'으로 둡니다.</p></Note>
   </div>;
 }
 

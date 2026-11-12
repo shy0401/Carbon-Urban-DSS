@@ -1,4 +1,5 @@
 import { X } from 'lucide-react';
+import { Note } from './Fold';
 import { useMemo } from 'react';
 import { aggregateMetric, complexesByDong, dongCells, rankDongs, WEIGHT_KEYS, type DongAggregate, type DongComplexes } from '../lib/dongs';
 import { formatMetric } from '../lib/format';
@@ -90,7 +91,7 @@ export function DongPanel({ data, index, grids, complexes, metric, regionName, o
           <td className="bar-cell">{r.result.value !== null && top > 0 && <i style={{ width: `${Math.max(2, (r.result.value / top) * 100)}%` }} aria-hidden="true" />}</td>
         </tr>)}</tbody>
       </table>
-      <p className="muted">합계 지표는 격자 값을 행정동과 겹친 면적 비율로 나눠 더하고("덮음" = 값 있는 격자가 덮는 동 면적 비율, 낮으면 합계가 작게 나옵니다), 비율·원단위는 겹친 비율(연면적·세대수가 있으면 그것)로 가중 평균합니다. "없음"은 0이 아니라 값 있는 격자가 없다는 뜻입니다. {data.source}</p>
+      <Note label="동 단위 계산 방식"><p className="muted">합계 지표는 격자 값을 행정동과 겹친 면적 비율로 나눠 더하고("덮음" = 값 있는 격자가 덮는 동 면적 비율, 낮으면 합계가 작게 나옵니다), 비율·원단위는 겹친 비율(연면적·세대수가 있으면 그것)로 가중 평균합니다. "없음"은 0이 아니라 값 있는 격자가 없다는 뜻입니다. {data.source}</p></Note>
     </section>
   </aside>;
 }

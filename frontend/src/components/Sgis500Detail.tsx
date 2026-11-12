@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Note } from './Fold';
 import { api } from '../lib/api';
 import { formatMetric } from '../lib/format';
 import type { GridProps, Sgis500Series, Sgis500Year } from '../types';
@@ -63,7 +64,7 @@ export function Sgis500Detail({ p }: { p: GridProps }) {
         </details>
       </>}
       {failed && <p className="muted">연도별 값을 불러오지 못했습니다.</p>}
-      <p className="muted">격자 자체의 공식 통계입니다. 비밀보호로 인구 부문 5 미만은 0 또는 5, 사업체 부문 3 미만은 0 또는 3으로 대체했고, 그 이상 값에도 최대 ±7(사업체 ±4)의 잡음이 있습니다.{small.length ? ` 이 격자의 ${small.join('·')}는 대체됐을 수 있는 작은 값입니다.` : ''}</p>
+      <Note label="통계 읽는 법"><p className="muted">격자 자체의 공식 통계입니다. 비밀보호로 인구 부문 5 미만은 0 또는 5, 사업체 부문 3 미만은 0 또는 3으로 대체했고, 그 이상 값에도 최대 ±7(사업체 ±4)의 잡음이 있습니다.{small.length ? ` 이 격자의 ${small.join('·')}는 대체됐을 수 있는 작은 값입니다.` : ''}</p></Note>
     </>}
   </section>;
 }

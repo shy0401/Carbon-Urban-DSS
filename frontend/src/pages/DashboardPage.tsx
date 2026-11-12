@@ -6,6 +6,7 @@ import { MetricCard } from '../components/MetricCard';
 import { MissingValue } from '../components/MissingValue';
 import { PageHeader } from '../components/PageHeader';
 import { SectionNav } from '../components/SectionNav';
+import { Fold, FoldAllButton, FoldStack, Note } from '../components/Fold';
 import { ProvenanceBadge } from '../components/ProvenanceBadge';
 import { QualityBadge } from '../components/QualityBadge';
 import { SgisGridSummaryView } from '../components/SgisGridPanel';
@@ -57,12 +58,19 @@ export function DashboardPage() {
   const admins = (context?.admin ?? []).filter((row) => row.grid_share_pct >= 1);
   const complete = data.annual_complete ?? { electricity: false, gas: false };
   const hasEnergy = monthly.some((r) => r.electricity_kwh !== null || r.gas_kwh !== null);
+  const gasCarbonT = typeof data.gas_carbon_kg === 'number' ? data.gas_carbon_kg / 1000 : null;
+  const zoneTop = zoning ? Object.entries(zoning.shares_pct).sort((a, b) => b[1] - a[1])[0] : undefined;
+  const be = data.building_energy;
+  const sgisCell = context?.sgis_grid;
+  const weatherRows = data.weather ?? [];
+  const hddRows = weatherRows.filter((r) => typeof r.hdd === 'number');
+  const cddRows = weatherRows.filter((r) => typeof r.cdd === 'number');
   return <div className="page dashboard-page">
-    <PageHeader title="도시 탄소 대시보드" description="선택 격자의 관측 에너지와 전력 탄소, 도시 형태를 값마다 산식과 근거 범위를 붙여 보여줍니다." action={<div className="header-actions"><span className="status-tag">{year}년 1–12월 공동주택 관측 범위</span><QualityBadge value={data.quality} /></div>} />
-    <SectionNav items={[{ id: 'site', label: '대상지' }, { id: 'metrics', label: '핵심 지표' }, ...(data.regional_totals ? [{ id: 'regional-totals', label: '지역 합계' }] : []), { id: 'monthly', label: '월별 에너지' }, { id: 'urban-form', label: '용도·용도지역' }, { id: 'building-energy', label: '건물 전체 에너지' }, { id: 'population', label: '인구·주택' }, { id: 'weather', label: '기상' }]} />
+    <PageHeader title="도시 탄소 대시보드" description="선택한 격자의 에너지·탄소·도시 형태를 핵심 수치로 먼저 보여 줍니다. 산식과 근거 자료는 아래 접힌 구역을 눌러 펼칩니다." action={<div className="header-actions"><span className="status-tag">{year}년 1–12월 공동주택 관측 범위</span><QualityBadge value={data.quality} /><FoldAllButton /></div>} />
+    <SectionNav items={[{ id: 'metrics', label: '핵심 지표' }, { id: 'monthly', label: '월별 에너지' }, ...(data.regional_totals ? [{ id: 'regional-totals', label: '지역 합계' }] : []), { id: 'urban-form', label: '용도·용도지역' }, { id: 'building-energy', label: '건물 전체 에너지' }, { id: 'population', label: '인구·주택' }, { id: 'weather', label: '기상' }]} />
 
     <section className="panel site-summary" id="site" aria-label="현재 분석 대상지">
-      <div className="site-name"><h2>{sector?.name ?? '선정된 섹터 없음'}</h2><p>{sector?.reason ? areaWithCommas(sector.reason) : '섹터 선정에 필요한 공간 자료가 없습니다.'}</p></div>
+      <div className="site-name"><h2>{sector?.name ?? '선정된 섹터 없음'}</h2>{sector?.reason ? <Note label="이 격자를 고른 이유">{areaWithCommas(sector.reason)}</Note> : <p>섹터 선정에 필요한 공간 자료가 없습니다.</p>}</div>
       <dl className="site-facts">
         <div><dt>격자 ID</dt><dd><code>{sector?.grid_id ?? '—'}</code></dd></div>
         <div><dt>면적</dt><dd>{formatMetric(sector?.area_m2, 'm²')}</dd></div>
@@ -72,54 +80,81 @@ export function DashboardPage() {
       </dl>
     </section>
 
-    <div className="section-label"><h2>핵심 지표</h2><span>에너지·탄소는 관측된 공동주택 지번 기준이며 격자 안 모든 건물의 합이 아닙니다. 도시 형태는 격자 250,000m² 기준으로 법정 건폐율·용적률(대지면적 기준)과 다릅니다.</span></div>
+    <div className="section-label"><h2>핵심 지표</h2><span>에너지·탄소는 관측된 공동주택 지번 기준, 도시 형태는 격자 250,000 m² 기준</span></div>
     <section className="metric-grid" id="metrics" aria-label="핵심 지표 8개">
-      <MetricCard title="전력 사용량" provenance={observed} value={data.electricity_kwh} unit="kWh" basis={<>{complete.electricity ? '완전 연간 값' : '관측 기간 합계'} <b>{eMonths}/12개월</b>{eMonths ? `, 월평균 ${formatMetric((data.electricity_kwh ?? 0) / Math.max(eMonths, 1), 'kWh')}` : ''}</>} missingReason="이 격자·연도에 월별 전력 관측이 없습니다." />
-      <MetricCard title="가스 사용량" provenance={observed} value={data.gas_kwh} unit="kWh" basis={<>{complete.gas ? '완전 연간 값' : '관측 기간 합계'} <b>{gMonths}/12개월</b>, 건축HUB kWh 환산값</>} missingReason="이 격자·연도에 월별 가스 관측이 없습니다." />
-      <MetricCard title="전력 탄소배출" value={electricityCarbonT} unit="tCO₂eq" digits={1} basis={<>전력 × <b>{data.carbon_factors?.ELECTRICITY?.factor ?? '—'}</b> kgCO₂eq/kWh ({data.carbon_factors?.ELECTRICITY?.source ?? 'GIR 승인 계수'}). {typeof data.gas_carbon_kg === 'number' ? <>가스 탄소 <b>{formatMetric(data.gas_carbon_kg / 1000, 'tCO₂eq', 1)}</b>는 가정 계수 {data.carbon_factors?.GAS?.factor ?? 0.1826}로 따로 계산</> : '가스 탄소는 가스 관측이 없어 제외'}</>} missingReason="전력 관측이 없어 계산하지 않았습니다." />
-      <MetricCard title="전력 원단위" value={norm.electricity_kwh_per_m2 ?? null} unit="kWh/m²·년" digits={1} basis={<>지번 <b>{norm.electricity_area_parcels}곳</b>, 연면적 {formatMetric(norm.electricity_matched_floor_area_m2, 'm²')}{areaIssues.length ? `, 연면적 이상 ${areaIssues.length}곳 제외` : ''}</>} missingReason="12개월 관측과 연면적이 모두 확인된 지번이 없습니다." />
-      <MetricCard title="세대당 전력" value={norm.electricity_kwh_per_household ?? null} unit="kWh/세대·년" basis={<>{formatMetric(norm.electricity_households, '세대')} 기준, 월 <b>{formatMetric((norm.electricity_kwh_per_household ?? 0) / 12, 'kWh')}</b></>} missingReason="세대수가 확인된 12개월 관측 지번이 없습니다." />
-      <MetricCard title="건폐율 근사" value={buildings?.coverage_pct ?? null} unit="%" digits={1} ratio={buildings?.coverage_pct} basis={<>건축면적 <b>{formatMetric(buildings?.footprint_m2, 'm²')}</b> ÷ 250,000 m²</>} missingReason="건물 윤곽이 있어야 계산합니다." />
-      <MetricCard title="추정 용적률" value={buildings?.far_est_pct ?? null} unit="%" digits={1} basis={<>Σ건축면적×층수 <b>{formatMetric(buildings?.floor_area_est_m2, 'm²')}</b> ÷ 250,000 m², 층수 확인 {formatMetric(buildings?.floors_known_pct, '%')}</>} missingReason="층수가 기록된 건물이 있어야 추정합니다." />
-      <MetricCard title="주거지역 비율" value={zoning?.residential_pct ?? null} unit="%" digits={1} ratio={zoning?.residential_pct} basis={zoning ? Object.entries(zoning.shares_pct).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${ZONE_NAME[k] ?? k} ${v.toFixed(1)}%`).join(', ') || '도시지역 용도지역 없음' : undefined} missingReason="용도지역(VWorld)을 아직 수집하지 않았습니다." />
+      <MetricCard brief title="전력 사용량" provenance={observed} value={data.electricity_kwh} unit="kWh" basis={<><b>{eMonths}/12개월</b> {complete.electricity ? '연간 값' : '관측 기간 합계'}</>} missingReason="이 격자·연도에 월별 전력 관측이 없습니다." />
+      <MetricCard brief title="가스 사용량" provenance={observed} value={data.gas_kwh} unit="kWh" basis={<><b>{gMonths}/12개월</b> {complete.gas ? '연간 값' : '관측 기간 합계'}</>} missingReason="이 격자·연도에 월별 가스 관측이 없습니다." />
+      <MetricCard brief title="전력 탄소배출" value={electricityCarbonT} unit="tCO₂eq" digits={1} basis={gasCarbonT !== null ? <>가스 <b>{formatMetric(gasCarbonT, 'tCO₂eq', 1)}</b> 별도 (가정 계수)</> : '가스는 관측이 없어 제외'} missingReason="전력 관측이 없어 계산하지 않았습니다." />
+      <MetricCard brief title="전력 원단위" value={norm.electricity_kwh_per_m2 ?? null} unit="kWh/m²·년" digits={1} basis={<>12개월 관측 지번 <b>{norm.electricity_area_parcels}곳</b></>} missingReason="12개월 관측과 연면적이 모두 확인된 지번이 없습니다." />
+      <MetricCard brief title="세대당 전력" value={norm.electricity_kwh_per_household ?? null} unit="kWh/세대·년" basis={<>월 <b>{formatMetric((norm.electricity_kwh_per_household ?? 0) / 12, 'kWh')}</b></>} missingReason="세대수가 확인된 12개월 관측 지번이 없습니다." />
+      <MetricCard brief title="건폐율 근사" value={buildings?.coverage_pct ?? null} unit="%" digits={1} ratio={buildings?.coverage_pct} basis="건축면적 ÷ 격자 면적" missingReason="건물 윤곽이 있어야 계산합니다." />
+      <MetricCard brief title="추정 용적률" value={buildings?.far_est_pct ?? null} unit="%" digits={1} basis={<>층수 확인 <b>{formatMetric(buildings?.floors_known_pct, '%')}</b></>} missingReason="층수가 기록된 건물이 있어야 추정합니다." />
+      <MetricCard brief title="주거지역 비율" value={zoning?.residential_pct ?? null} unit="%" digits={1} ratio={zoning?.residential_pct} basis={zoneTop ? <>가장 넓은 곳 <b>{ZONE_NAME[zoneTop[0]] ?? zoneTop[0]}</b></> : zoning ? '도시지역 용도지역 없음' : undefined} missingReason="용도지역(VWorld)을 아직 수집하지 않았습니다." />
     </section>
+    <Fold className="slim" title="지표 산식과 근거" hint="펼치기" testId="dashboard-basis">
+      <dl className="basis-list">
+        <div><dt>전력 사용량</dt><dd>{complete.electricity ? '완전 연간 값' : '관측 기간 합계'} <b>{eMonths}/12개월</b>{eMonths ? `, 월평균 ${formatMetric((data.electricity_kwh ?? 0) / Math.max(eMonths, 1), 'kWh')}` : ''}</dd></div>
+        <div><dt>가스 사용량</dt><dd>{complete.gas ? '완전 연간 값' : '관측 기간 합계'} <b>{gMonths}/12개월</b>, 건축HUB kWh 환산값</dd></div>
+        <div><dt>전력 탄소배출</dt><dd>전력 × <b>{data.carbon_factors?.ELECTRICITY?.factor ?? '—'}</b> kgCO₂eq/kWh ({data.carbon_factors?.ELECTRICITY?.source ?? 'GIR 승인 계수'}). {gasCarbonT !== null ? <>가스 탄소 <b>{formatMetric(gasCarbonT, 'tCO₂eq', 1)}</b>는 가정 계수 {data.carbon_factors?.GAS?.factor ?? 0.1826}로 따로 계산</> : '가스 탄소는 가스 관측이 없어 제외'}</dd></div>
+        <div><dt>전력 원단위</dt><dd>지번 <b>{norm.electricity_area_parcels}곳</b>, 연면적 {formatMetric(norm.electricity_matched_floor_area_m2, 'm²')}{areaIssues.length ? `, 연면적 이상 ${areaIssues.length}곳 제외` : ''}</dd></div>
+        <div><dt>세대당 전력</dt><dd>{formatMetric(norm.electricity_households, '세대')} 기준, 월 <b>{formatMetric((norm.electricity_kwh_per_household ?? 0) / 12, 'kWh')}</b></dd></div>
+        <div><dt>건폐율 근사</dt><dd>건축면적 <b>{formatMetric(buildings?.footprint_m2, 'm²')}</b> ÷ 250,000 m²</dd></div>
+        <div><dt>추정 용적률</dt><dd>Σ건축면적×층수 <b>{formatMetric(buildings?.floor_area_est_m2, 'm²')}</b> ÷ 250,000 m², 층수 확인 {formatMetric(buildings?.floors_known_pct, '%')}</dd></div>
+        <div><dt>주거지역 비율</dt><dd>{zoning ? Object.entries(zoning.shares_pct).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${ZONE_NAME[k] ?? k} ${v.toFixed(1)}%`).join(', ') || '도시지역 용도지역 없음' : '용도지역(VWorld)을 아직 수집하지 않았습니다.'}</dd></div>
+        <div><dt>읽을 때 주의</dt><dd>에너지·탄소는 관측된 공동주택 지번 기준이며 격자 안 모든 건물의 합이 아닙니다. 도시 형태는 격자 250,000m² 기준으로 법정 건폐율·용적률(대지면적 기준)과 다릅니다.</dd></div>
+        <div><dt>시뮬레이션 기준</dt><dd>{data.baseline_scope ? `${data.baseline_scope.parcel_names.join(', ')} (연면적 ${formatMetric(data.baseline_scope.area_m2, 'm²')}, ${data.baseline_scope.energy_types.map((t) => (t === 'GAS' ? '가스' : '전력')).join('·')} 12개월)${data.baseline_scope.excluded_names.length ? `. 제외: ${data.baseline_scope.excluded_names.join(', ')}` : ''}` : '12개월 관측과 연면적이 모두 있는 지번이 없어 기준을 만들지 않았습니다.'}</dd></div>
+        <div><dt>표시 원칙</dt><dd>관측이 없는 값은 0으로 채우지 않습니다. 근거 유형은 서버가 알려준 값에만 표시하고, 공표 연면적이 비현실적이면 원단위 분모에서 뺍니다.</dd></div>
+      </dl>
+    </Fold>
 
-    {data.regional_totals && <section className="panel regional-totals" id="regional-totals" aria-label={`${regionName} 전체 수집 합계`}><div><h3>{regionName} 전체 수집 합계</h3><p className="caveat">공간 미매칭 자료를 포함한 수집 합계이며 {regionName} 전체 소비량이 아닙니다.</p></div><dl><div><dt>전력</dt><dd>{formatMetric(data.regional_totals.electricity_kwh, 'kWh')}</dd></div><div><dt>가스</dt><dd>{formatMetric(data.regional_totals.gas_kwh, 'kWh')}</dd></div><div><dt>탄소 (전력+가스{data.carbon_factors?.GAS?.assumed ? ', 가스는 가정 계수' : ''})</dt><dd>{data.regional_totals.carbon_kg === null ? <MissingValue inline reason="전력 또는 가스 계수·관측이 빠진 달이 있음" /> : formatMetric(data.regional_totals.carbon_kg, 'kgCO₂eq')}</dd></div></dl></section>}
-
-    <p className="scope-notice"><span>시뮬레이션 기준: {data.baseline_scope ? `${data.baseline_scope.parcel_names.join(', ')} (연면적 ${formatMetric(data.baseline_scope.area_m2, 'm²')}, ${data.baseline_scope.energy_types.map((t) => (t === 'GAS' ? '가스' : '전력')).join('·')} 12개월)${data.baseline_scope.excluded_names.length ? `. 제외: ${data.baseline_scope.excluded_names.join(', ')}` : ''}` : '12개월 관측과 연면적이 모두 있는 지번이 없어 기준을 만들지 않았습니다.'}</span><Link to="/analysis">이 결과의 데이터 보기</Link></p>
     <section className="content-grid dashboard-grid" id="monthly">
-      <article className="panel chart-panel"><div className="panel-title"><h3>월별 관측 에너지</h3><div className="badge-row">{observed && <ProvenanceBadge kind={observed} />}<small>결측 월은 선을 잇지 않습니다. 단위 kWh</small></div></div>
+      <article className="panel chart-panel"><div className="panel-title"><h3>월별 관측 에너지</h3><div className="badge-row">{observed && <ProvenanceBadge kind={observed} />}<small>결측 월은 선을 잇지 않습니다. 단위 kWh</small><Link to="/analysis">이 결과의 데이터 보기</Link></div></div>
         {hasEnergy ? <Chart option={chartOption} height={300} ariaLabel="월별 전력 및 가스 사용량 차트" /> : <div className="empty-block is-missing"><strong>월별 에너지 관측이 없어 운영탄소를 계산하지 않았습니다.</strong><dl><div><dt>관측 월</dt><dd>0 / 필요 1 이상</dd></div></dl><Link className="button secondary" to="/data">수집 상태 보기</Link></div>}
       </article>
       <aside className="panel coverage-panel"><div className="panel-title"><h3>관측 범위</h3></div>
         <p className="coverage-figure"><b>{eMonths + gMonths}</b><span className="unit">/ 24개월</span><small>전력·가스 관측 월 ({formatMetric(((eMonths + gMonths) / 24) * 100, '%', 0)})</small></p>
         <MonthRow label="전력" months={Array.from({ length: 12 }, (_, i) => monthsOf(year, monthly, 'electricity_kwh')[i] !== null)} />
         <MonthRow label="가스" months={Array.from({ length: 12 }, (_, i) => monthsOf(year, monthly, 'gas_kwh')[i] !== null)} />
-        <dl className="compact-list">
-          <div><dt>수집 관측 행 (연도 전체)</dt><dd>{formatMetric(coverage.energy_records, '행')}</dd></div>
-          <div><dt>격자에 공간 매칭된 행</dt><dd>{formatMetric(coverage.matched_records, '행')}{coverage.energy_records ? ` (${Math.round(((coverage.matched_records ?? 0) / coverage.energy_records) * 100)}%)` : ''}</dd></div>
-          <div><dt>연결된 데이터 출처</dt><dd>{data.sources?.length ?? 0}개</dd></div>
-        </dl>
-        <div className="truth-note"><strong>표시 원칙</strong><p>관측이 없는 값은 0으로 채우지 않습니다. 근거 유형은 서버가 알려준 값에만 표시하고, 공표 연면적이 비현실적이면 원단위 분모에서 뺍니다.</p></div>
+        <Note label="수집·매칭 행 수">
+          <dl className="compact-list">
+            <div><dt>수집 관측 행 (연도 전체)</dt><dd>{formatMetric(coverage.energy_records, '행')}</dd></div>
+            <div><dt>격자에 공간 매칭된 행</dt><dd>{formatMetric(coverage.matched_records, '행')}{coverage.energy_records ? ` (${Math.round(((coverage.matched_records ?? 0) / coverage.energy_records) * 100)}%)` : ''}</dd></div>
+            <div><dt>연결된 데이터 출처</dt><dd>{data.sources?.length ?? 0}개</dd></div>
+          </dl>
+        </Note>
       </aside>
     </section>
-    <section className="content-grid two-up" id="urban-form">
-      <article className="panel" data-testid="building-use-panel">{context?.register_use
-        ? <><div className="panel-title"><h3>연면적 기준 건물 용도 구성</h3></div><ShareBar shares={context.register_use.use_gfa_pct} names={REGISTER_USE_NAMES} colors={REGISTER_USE_COLORS} /><p className="muted">건축물대장 표제부 주용도 {context.register_use.buildings?.toLocaleString('ko-KR') ?? '—'}동의 연면적 기준입니다.</p></>
-        : buildings && knownUseShares(buildings.category_share_pct)
-          ? <><div className="panel-title"><h3>건축면적 기준 건물 용도 구성</h3></div><ShareBar shares={buildings.category_share_pct} names={USE_NAME} colors={Object.fromEntries(USE_COLORS)} counts={buildings.category_count} /></>
-          : <><div className="panel-title"><h3>건물 용도 구성</h3></div><MissingValue reason={buildings ? '도로명주소 건물 층에는 용도코드가 없어, 건축물대장 표제부를 받으면 연면적 기준으로 보여 줍니다.' : '건축물대장 표제부를 아직 받지 않았습니다.'} /></>}</article>
-      <article className="panel"><div className="panel-title"><h3>격자 면적 중 법정 용도지역</h3></div>{zoning && Object.keys(zoning.shares_pct).length > 0 ? <ShareBar shares={zoning.shares_pct} names={ZONE_NAME} colors={ZONE_GROUP_COLOR} rest="도시지역 외·미지정" /> : <MissingValue reason={zoning ? '이 격자에 도시지역 용도지역 도형이 없습니다.' : '용도지역(VWorld)을 아직 수집하지 않았습니다.'} />}</article>
-    </section>
-    <BuildingEnergyPanel data={data} />
-    <SgisPanel context={context} />
-    <WeatherPanel data={data} year={year} />
+
+    <FoldStack title="더 보기" hint="접힌 줄에도 핵심 값이 보입니다. 누르면 그림과 표가 열립니다.">
+      {data.regional_totals && <Fold id="regional-totals" title={`${regionName} 전체 수집 합계`} label={`${regionName} 전체 수집 합계`} figures={`전력 ${formatMetric(data.regional_totals.electricity_kwh, 'kWh')} · 가스 ${formatMetric(data.regional_totals.gas_kwh, 'kWh')}`}>
+        <div className="regional-totals"><p className="caveat">공간 미매칭 자료를 포함한 수집 합계이며 {regionName} 전체 소비량이 아닙니다.</p><dl><div><dt>전력</dt><dd>{formatMetric(data.regional_totals.electricity_kwh, 'kWh')}</dd></div><div><dt>가스</dt><dd>{formatMetric(data.regional_totals.gas_kwh, 'kWh')}</dd></div><div><dt>탄소 (전력+가스{data.carbon_factors?.GAS?.assumed ? ', 가스는 가정 계수' : ''})</dt><dd>{data.regional_totals.carbon_kg === null ? <MissingValue inline reason="전력 또는 가스 계수·관측이 빠진 달이 있음" /> : formatMetric(data.regional_totals.carbon_kg, 'kgCO₂eq')}</dd></div></dl></div>
+      </Fold>}
+      <Fold id="urban-form" title="건물 용도와 용도지역" figures={zoneTop ? `가장 넓은 용도지역 ${ZONE_NAME[zoneTop[0]] ?? zoneTop[0]} ${zoneTop[1].toFixed(1)}%` : undefined}>
+        <div className="content-grid two-up">
+          <article className="panel" data-testid="building-use-panel">{context?.register_use
+            ? <><div className="panel-title"><h3>연면적 기준 건물 용도 구성</h3></div><ShareBar shares={context.register_use.use_gfa_pct} names={REGISTER_USE_NAMES} colors={REGISTER_USE_COLORS} /><p className="muted">건축물대장 표제부 주용도 {context.register_use.buildings?.toLocaleString('ko-KR') ?? '—'}동의 연면적 기준입니다.</p></>
+            : buildings && knownUseShares(buildings.category_share_pct)
+              ? <><div className="panel-title"><h3>건축면적 기준 건물 용도 구성</h3></div><ShareBar shares={buildings.category_share_pct} names={USE_NAME} colors={Object.fromEntries(USE_COLORS)} counts={buildings.category_count} /></>
+              : <><div className="panel-title"><h3>건물 용도 구성</h3></div><MissingValue reason={buildings ? '도로명주소 건물 층에는 용도코드가 없어, 건축물대장 표제부를 받으면 연면적 기준으로 보여 줍니다.' : '건축물대장 표제부를 아직 받지 않았습니다.'} /></>}</article>
+          <article className="panel"><div className="panel-title"><h3>격자 면적 중 법정 용도지역</h3></div>{zoning && Object.keys(zoning.shares_pct).length > 0 ? <ShareBar shares={zoning.shares_pct} names={ZONE_NAME} colors={ZONE_GROUP_COLOR} rest="도시지역 외·미지정" /> : <MissingValue reason={zoning ? '이 격자에 도시지역 용도지역 도형이 없습니다.' : '용도지역(VWorld)을 아직 수집하지 않았습니다.'} />}</article>
+        </div>
+      </Fold>
+      <Fold id="building-energy" title="건물 전체 에너지 (건축HUB 전 지번)" label="건물 전체 에너지 (건축HUB 전 지번)" figures={be && be.bldg_electricity_kwh != null ? `${be.year}년 전력 ${formatMetric(be.bldg_electricity_kwh as number, 'kWh')} · 계측 지번 ${formatMetric(be.bldg_parcels as number | null, '곳')}` : undefined}>
+        <BuildingEnergyPanel data={data} />
+      </Fold>
+      <Fold id="population" title="인구·주택 (SGIS 1km 격자)" label="인구·주택 (SGIS 1km 격자)" figures={sgisCell && sgisCell.status === 'OBSERVED' && sgisCell.population !== null ? `${sgisCell.year}년 인구 ${formatMetric(sgisCell.population, '명')} (1km 격자 전체)` : undefined}>
+        <SgisPanel context={context} />
+      </Fold>
+      <Fold id="weather" title="월별 기상과 냉난방 수요 조건" figures={hddRows.length || cddRows.length ? `난방도일 ${hddRows.length ? formatMetric(hddRows.reduce((sum, r) => sum + (r.hdd as number), 0), '°C·일') : '자료 없음'} · 냉방도일 ${cddRows.length ? formatMetric(cddRows.reduce((sum, r) => sum + (r.cdd as number), 0), '°C·일') : '자료 없음'}${hddRows.length > 0 && hddRows.length < 12 ? ` (${hddRows.length}개월 합계)` : ''}` : undefined}>
+        <WeatherPanel data={data} year={year} />
+      </Fold>
+    </FoldStack>
   </div>;
 }
 
 function BuildingEnergyPanel({ data }: { data: DashboardData }) {
   const b = data.building_energy;
-  return <section className="panel sgis-panel" id="building-energy" aria-label="건물 전체 에너지 (건축HUB 전 지번)">
+  return <section className="panel sgis-panel">
     <div className="panel-title"><h3>건물 전체 에너지 (건축HUB 전 지번{b ? `, ${b.year}년` : ''})</h3><div className="badge-row">{b?.complete === false && <span className="status-tag warn">수집 중 · 일부 법정동</span>}<ProvenanceBadge kind="observed" detail="12개월 계측 지번" /></div></div>
     {!b ? <MissingValue reason="이 격자에는 건축HUB 계측 지번이 없거나 그해 전 지번 수집이 아직 끝나지 않았습니다(지역마다 받은 연도가 다릅니다)." /> : <>
       <dl className="sgis-figures">
@@ -136,7 +171,7 @@ function BuildingEnergyPanel({ data }: { data: DashboardData }) {
 
 function SgisPanel({ context }: { context: DashboardData['context'] }) {
   const cell = context?.sgis_grid;
-  return <section className="panel sgis-panel" id="population" aria-label="인구·주택 (SGIS 1km 격자)">
+  return <section className="panel sgis-panel">
     <div className="panel-title"><h3>인구·주택 (SGIS 1km 격자{cell ? ` ${cell.year}년` : ''})</h3><div className="badge-row"><ProvenanceBadge kind="observed" detail="공공데이터포털 격자 통계" /></div></div>
     {!cell ? <MissingValue reason="SGIS 격자 통계를 아직 가져오지 않았습니다. 사용 방법 화면의 'SGIS 격자 통계' 절차를 따라 주세요." />
       : cell.status === 'NO_STAT' ? <MissingValue reason={`이 격자가 속한 1km 격자(${cell.code})에는 공표된 통계가 없습니다. 인구·사업체가 없거나 비공개인 격자이며 0이 아닙니다.`} />
@@ -159,7 +194,7 @@ function WeatherPanel({ data, year }: { data: DashboardData; year: number }) {
   const cddRows = rows.filter((r) => typeof r.cdd === 'number');
   const hdd = hddRows.reduce((s, r) => s + (r.hdd as number), 0);
   const cdd = cddRows.reduce((s, r) => s + (r.cdd as number), 0);
-  return <section className="panel weather-panel" id="weather"><div className="panel-title"><h3>월별 기상과 냉난방 수요 조건</h3><div className="badge-row">{official > 0 && <ProvenanceBadge kind="observed" detail={`${official}개월`} />}{fallback > 0 && <ProvenanceBadge kind="fallback" detail={`${fallback}개월`} />}{!rows.length && <ProvenanceBadge kind="missing" />}</div></div>
+  return <section className="panel weather-panel"><div className="panel-title"><h3>월별 기상과 냉난방 수요 조건</h3><div className="badge-row">{official > 0 && <ProvenanceBadge kind="observed" detail={`${official}개월`} />}{fallback > 0 && <ProvenanceBadge kind="fallback" detail={`${fallback}개월`} />}{!rows.length && <ProvenanceBadge kind="missing" />}</div></div>
     {rows.length ? <><WeatherChart year={year} rows={rows} /><dl className="chart-note"><div><dt>자료</dt><dd>{official === rows.length ? 'KMA ASOS 전주(146) 관측' : official ? `KMA ASOS ${official}개월, ERA5-Land 대체 ${rows.length - official}개월` : provider || 'ERA5-Land 재분석(대체)'}</dd></div><div><dt>기온 관측 월</dt><dd>{rows.length}/12개월</dd></div><div><dt>난방도일 HDD</dt><dd>{hddRows.length ? formatMetric(hdd, '°C·일') : <MissingValue inline />}{hddRows.length > 0 && hddRows.length < 12 ? ` (${hddRows.length}개월 합계)` : ''}</dd></div><div><dt>냉방도일 CDD</dt><dd>{cddRows.length ? formatMetric(cdd, '°C·일') : <MissingValue inline />}{cddRows.length > 0 && cddRows.length < 12 ? ` (${cddRows.length}개월 합계)` : ''}</dd></div><div><dt>기준온도</dt><dd>난방 18°C · 냉방 24°C</dd></div></dl></> : <EmptyState description="이 연도의 기상 자료가 없습니다." />}
   </section>;
 }

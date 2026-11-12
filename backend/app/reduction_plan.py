@@ -20,6 +20,9 @@ from .benchmarks import PRIMARY_ENERGY_FACTOR
 # 지표(실측 기반). 근거 표: docs/REDUCTION_INDICATORS.md
 ENVELOPE_GAS_SAVING = 0.236            # 단열·창호 기준 강화: 가스 −23.6% (개별난방 단지 78쌍, 준공 2017~ 대 ~2008, 95% 구간 −25.8~−20.5%)
 OPERATION_ELECTRICITY_SAVING = 0.048   # 에너지 절약 운영: 전력 −4.8% (실측 문헌 6건 중앙값, 범위 −17.0~−1.95%)
+# 지표의 실측 범위(작은 쪽, 큰 쪽). 계산은 위 중앙값으로 하고, 범위는 그 단계 감축량이 움직일 수 있는 폭으로만 함께 적는다.
+ENVELOPE_GAS_SAVING_RANGE = (0.205, 0.258)           # 78쌍 차이의 95% 구간
+OPERATION_ELECTRICITY_SAVING_RANGE = (0.0195, 0.170)   # 문헌 6건의 최소~최대
 GREEN_UPTAKE_KG_PER_M2 = 1.0           # 녹지·조경 흡수: 연 1.0 kgCO2/m² = 10 t/ha (국립산림과학원 표준 탄소흡수량 20년생 8.8~15.9 t/ha의 낮은 쪽, 가정)
 GREEN_UPTAKE_RANGE_T_PER_HA = (8.8, 15.9)
 ROOF_USABLE_RATIO = 0.60     # 옥상 중 패널을 놓을 수 있는 비율 (설비·통로·옥탑 제외, 가정)
@@ -75,18 +78,24 @@ def building_plan(reference: dict[str, Any] | None, footprint_m2: float | None, 
     c0 = _carbon(e0, g0, fe, fg if gas_known else None)
     steps: list[dict[str, Any]] = []
 
-    def step(key: str, title: str, detail: str, e: float, g: float, offset_kg: float = 0.0) -> None:
+    def step(key: str, title: str, detail: str, e: float, g: float, offset_kg: float = 0.0,
+             range_pct: tuple[float, float] | None = None, range_kg: tuple[float, float] | None = None) -> None:
         c = max(_carbon(e, g, fe, fg if gas_known else None) - offset_kg, 0.0)
         prev = steps[-1]["carbon_kg"] if steps else c0
         steps.append({"key": key, "title": title, "detail": detail, "electricity_kwh": round(e, 1), "gas_kwh": round(g, 1) if gas_known else None,
-                      "carbon_kg": round(c, 1), "reduction_kg": round(prev - c, 1), "cumulative_pct": round((c0 - c) / c0 * 100, 1) if c0 > 0 else None})
+                      "carbon_kg": round(c, 1), "reduction_kg": round(prev - c, 1), "cumulative_pct": round((c0 - c) / c0 * 100, 1) if c0 > 0 else None,
+                      # 지표의 실측 범위와, 그 범위에서 이 단계 감축량이 움직이는 폭(다른 단계는 그대로 둔 값). 범위가 없는 단계는 None
+                      "range_pct": [round(v, 2) for v in range_pct] if range_pct else None,
+                      "reduction_range_kg": [round(min(max(v, 0.0), prev), 1) for v in range_kg] if range_kg else None})
 
     e1, g1 = e0, g0
     if gas_known and g0 > 0 and fg:
         g1 = g0 * (1 - ENVELOPE_GAS_SAVING)
-        step("envelope", "단열·창호 기준 강화", f"가스 사용을 {ENVELOPE_GAS_SAVING * 100:.1f}% 줄임 (준공 시기만 다른 개별난방 단지 78쌍의 실측 차이)", e1, g1)
+        step("envelope", "단열·창호 기준 강화", f"가스 사용을 {ENVELOPE_GAS_SAVING * 100:.1f}% 줄임 (준공 시기만 다른 개별난방 단지 78쌍의 실측 차이)", e1, g1,
+             range_pct=tuple(r * 100 for r in ENVELOPE_GAS_SAVING_RANGE), range_kg=tuple(g0 * r * fg for r in ENVELOPE_GAS_SAVING_RANGE))
     e2, g2 = e1 * (1 - OPERATION_ELECTRICITY_SAVING), g1
-    step("operation", "에너지 절약 운영", f"계량·제어·행동 개선으로 전력 사용을 {OPERATION_ELECTRICITY_SAVING * 100:.1f}% 줄임 (실측 문헌 6건 중앙값)", e2, g2)
+    step("operation", "에너지 절약 운영", f"계량·제어·행동 개선으로 전력 사용을 {OPERATION_ELECTRICITY_SAVING * 100:.1f}% 줄임 (실측 문헌 6건 중앙값)", e2, g2,
+         range_pct=tuple(r * 100 for r in OPERATION_ELECTRICITY_SAVING_RANGE), range_kg=tuple(e1 * r * fe for r in OPERATION_ELECTRICITY_SAVING_RANGE))
     kwh_per_kw = (pv_yield or {}).get("kwh_per_kw")
     pv = roof_pv(footprint_m2, kwh_per_kw)
     e3 = e2
@@ -103,7 +112,8 @@ def building_plan(reference: dict[str, Any] | None, footprint_m2: float | None, 
         green = {"area_m2": round(green_area_m2, 1), "uptake_kg": round(uptake, 1),
                  "range_kg": [round(green_area_m2 * lo / 10, 1) for lo in GREEN_UPTAKE_RANGE_T_PER_HA]}
         if uptake > 0:
-            step("greenery", "녹지·조경 흡수", f"녹지 {green_area_m2:,.0f} m² × 연 {GREEN_UPTAKE_KG_PER_M2:.1f} kgCO2/m² = {uptake / 1000:,.1f} t 흡수(상쇄)", e3, g2, offset_kg=uptake)
+            step("greenery", "녹지·조경 흡수", f"녹지 {green_area_m2:,.0f} m² × 연 {GREEN_UPTAKE_KG_PER_M2:.1f} kgCO2/m² = {uptake / 1000:,.1f} t 흡수(상쇄)", e3, g2, offset_kg=uptake,
+                 range_kg=(green["range_kg"][0], green["range_kg"][1]))
     final = steps[-1]["carbon_kg"] if steps else c0
     # 에너지자립률(ZEB 참고): 태양광 1차에너지 ÷ 절감 뒤 소비 1차에너지
     demand_primary = e2 * PRIMARY_ENERGY_FACTOR["ELECTRICITY"] + g2 * PRIMARY_ENERGY_FACTOR["GAS"]

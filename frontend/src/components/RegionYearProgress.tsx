@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Note } from './Fold';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 
@@ -37,7 +38,7 @@ export function RegionYearProgress({ code, name, lastYear }: { code: string; nam
               })}</tr>;
             })}</tbody>
           </table></div>
-          <p className="muted">'—'는 이 지역 준비에서 그 해를 받은 기록이 없다는 뜻입니다(사용량 0이 아님). 이 지역 자료는 <Link to={`/regions?select=${code}`}>전국 지역</Link>에서 받습니다.</p>
+          <Note label="표 읽는 법"><p className="muted">'—'는 이 지역 준비에서 그 해를 받은 기록이 없다는 뜻입니다(사용량 0이 아님). 이 지역 자료는 <Link to={`/regions?select=${code}`}>전국 지역</Link>에서 받습니다.</p></Note>
         </>}
   </section>;
 }
