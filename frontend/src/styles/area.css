@@ -197,3 +197,9 @@
 .area-estimates tr.is-estimated-row td { background-image: var(--hatch-image); print-color-adjust: exact; -webkit-print-color-adjust: exact; }
 .area-estimate-note { margin: var(--sp-2) 0 0; color: var(--ink-2); }
 .area-industry-notes { margin: var(--sp-2) 0 0; padding-left: 20px; color: var(--ink-2); font-size: var(--fs-caption); line-height: 1.6; }
+
+/* 2026-11-12 화면 정보 3단: 접이식 구역 안에서는 윗선·여백을 겹치지 않는다. */
+.area-controls > .fold.slim { margin-top: var(--sp-2); border-top: 1px solid var(--line); border-radius: 0; padding-top: var(--sp-1); }
+.fold-body > .area-coverage { padding-top: 0; border-top: 0; }
+.area-year > .fold.slim { margin-top: var(--sp-2); }
+.area-before-after .fold.slim, .area-effort-result > .fold.slim { margin-top: var(--sp-3); }
