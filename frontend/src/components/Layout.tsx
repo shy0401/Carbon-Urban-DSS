@@ -8,22 +8,25 @@ import { RegionOpenNotice } from './RegionOpenNotice';
 import { SystemStatus } from './SystemStatus';
 import { TitleBlock } from './TitleBlock';
 
-/** 메뉴 이름은 사용설명서·안내 영상과 같게 둔다. 묶음 제목(탐색·계획·결과·도움)은 길잡이일 뿐 주소나 이름을 바꾸지 않는다. */
+/**
+ * 메뉴 이름과 주소는 사용설명서·안내 영상과 같게 둔다. 묶음은 하는 일 순서다(2026-11-12 다시 묶음):
+ * 현황(지금 값을 본다) → 계획(계획을 넣고 결과·보고서를 본다) → 자료(지역을 준비하고 수집·검증 상태를 본다) → 도움.
+ */
 const navigation = [
-  { group: '탐색', items: [
-    { to: '/regions', label: '전국 지역', icon: Globe2 },
+  { group: '현황', items: [
     { to: '/', label: '대시보드', icon: BarChart3, end: true },
     { to: '/map', label: '지도 분석', icon: Map },
     { to: '/analysis', label: '분석', icon: Activity },
   ] },
   { group: '계획', items: [
-    { to: '/model', label: '모델', icon: BrainCircuit },
     { to: '/area', label: '지역 시뮬레이션', icon: LandPlot },
     { to: '/simulation', label: '시뮬레이션', icon: PlayCircle },
-  ] },
-  { group: '결과', items: [
-    { to: '/data', label: '수집 데이터', icon: Database },
     { to: '/reports', label: '검토 보고서', icon: FileText },
+  ] },
+  { group: '자료', items: [
+    { to: '/regions', label: '전국 지역', icon: Globe2 },
+    { to: '/data', label: '수집 데이터', icon: Database },
+    { to: '/model', label: '모델', icon: BrainCircuit },
   ] },
   { group: '도움', items: [
     { to: '/guide', label: '사용 방법', icon: BookOpen },
