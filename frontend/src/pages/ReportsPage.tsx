@@ -20,8 +20,8 @@ import type { ScenarioResult } from '../types';
 interface ReductionStep { key: string; title: string; detail: string; electricity_kwh: number; gas_kwh: number | null; carbon_kg: number; reduction_kg: number; cumulative_pct: number | null; range_pct?: number[] | null; reduction_range_kg?: number[] | null }
 interface ReductionPlan {
   available: boolean; reason?: string; start?: { label: string; carbon_kg: number; electricity_kwh: number; gas_kwh: number | null }; steps?: ReductionStep[];
-  final_carbon_kg?: number; final_pct?: number | null; pv?: { roof_m2: number; kw: number; kwh: number | null; surplus_kwh?: number } | null;
-  green?: { area_m2: number; uptake_kg: number; range_kg: number[] } | null; self_sufficiency_pct?: number | null; zeb_grade?: string | null; residual?: { carbon_kg: number; offsite_pv_kw: number | null };
+  final_carbon_kg?: number; final_pct?: number | null; reduction_pct?: number | null; pv?: { roof_m2: number; kw: number; kwh: number | null; surplus_kwh?: number } | null;
+  green?: { area_m2: number; uptake_kg: number; range_kg: number[] } | null; self_sufficiency_pct?: number | null; zeb_grade?: string | null; residual?: { carbon_kg: number; offsite_pv_kw: number | null; electricity_carbon_kg?: number; gas_carbon_kg?: number | null; offset_kg?: number };
   plan?: { carbon_kg: number; pct: number | null } | null; assumptions?: string[];
 }
 interface SavedScenario { id: string; label?: string; created_at: string; inputs: Record<string, number | string | null>; result: ScenarioResult & Record<string, any>; has_image?: boolean; image_url?: string; reduction_plan?: ReductionPlan }
@@ -134,6 +134,12 @@ function PlanReport({ report }: { report: Report }) {
 }
 
 /** 탄소 감축 방안: 대책 없음 → 수단을 하나씩 더할 때의 연간 운영탄소. 막대 길이는 대책 없음 대비. */
+/** 남는 양의 구성(전력 + 가스 − 녹지 흡수). 구성 값이 하나뿐이면 적지 않는다. */
+function residualParts(r: { electricity_carbon_kg?: number; gas_carbon_kg?: number | null; offset_kg?: number }) {
+  const parts = [r.electricity_carbon_kg != null ? `전력 ${tonnes(r.electricity_carbon_kg)}` : null, r.gas_carbon_kg ? `가스 ${tonnes(r.gas_carbon_kg)}` : null, r.offset_kg ? `녹지 흡수 −${tonnes(r.offset_kg)}` : null].filter(Boolean);
+  return parts.length > 1 ? `(${parts.join(' + ')})` : '';
+}
+
 function ReductionSection({ plan, n, named }: { plan: SavedScenario; n: number; named: boolean }) {
   const p = plan.reduction_plan;
   const head = <h2>{n}. 탄소 감축 방안{named ? ` · ${plan.label ?? ''}` : ''}</h2>;
@@ -144,7 +150,7 @@ function ReductionSection({ plan, n, named }: { plan: SavedScenario; n: number; 
   const rows = [{ key: 'start', title: `0. ${p.start.label}`, detail: '관측 원단위 그대로 (효율 1.0·태양광 0)', carbon_kg: start, reduction_kg: null as number | null, cumulative_pct: null as number | null },
     ...p.steps.map((s, i) => ({ ...s, title: `${i + 1}. ${s.title}` }))];
   return <section className="report-section reduction" data-testid="report-reduction">{head}
-    <p>다른 안과 비교하지 않고, 이 계획을 대책 없이 지을 때(연간 {tonnes(start)})에서 시작해 수단을 차례로 더합니다. 모두 더하면 연간 <b>{tonnes(p.final_carbon_kg)}</b>(대책 없음 대비 −{formatMetric(p.final_pct, '%', 1)})입니다.{p.plan ? ` 입력한 계획안은 ${tonnes(p.plan.carbon_kg)}(${savingsText(p.plan.pct)})로, 이 사다리의 어디쯤인지 아래 막대와 견주어 볼 수 있습니다.` : ''}</p>
+    <p>다른 안과 비교하지 않고, 이 계획을 대책 없이 지을 때(연간 {tonnes(start)})에서 시작해 수단을 차례로 더합니다. 모두 더하면 연간 <b>{tonnes(p.final_carbon_kg)}</b>(대책 없음 대비 −{formatMetric(p.final_pct, '%', 1)})입니다.{p.reduction_pct != null && (p.residual?.offset_kg ?? 0) > 0 ? ` 이 가운데 녹지 흡수 ${tonnes(p.residual!.offset_kg!)}는 상쇄이고, 감축 수단만으로는 −${formatMetric(p.reduction_pct, '%', 1)}입니다.` : ''}{p.plan ? ` 입력한 계획안은 ${tonnes(p.plan.carbon_kg)}(${savingsText(p.plan.pct)})로, 이 사다리의 어디쯤인지 아래 막대와 견주어 볼 수 있습니다.` : ''}</p>
     <div className="reduction-ladder" role="img" aria-label={`대책 없음 ${tonnes(start)}에서 ${tonnes(p.final_carbon_kg)}까지 줄이는 단계`}>
       {rows.map((r) => <div key={r.key} className="reduction-row"><span className="reduction-label">{r.title}</span><span className="reduction-track"><span className={`reduction-bar${r.key === 'start' ? ' start' : ''}`} style={{ width: width(r.carbon_kg) }} /></span><span className="reduction-value">{tonnes(r.carbon_kg)}</span></div>)}
     </div>
@@ -156,7 +162,7 @@ function ReductionSection({ plan, n, named }: { plan: SavedScenario; n: number; 
       {p.pv && <li>지붕 태양광: 옥상 {formatMetric(p.pv.roof_m2, 'm²')} · {formatMetric(p.pv.kw, 'kW', 1)} · 연 {formatMetric(p.pv.kwh, 'kWh')}{p.pv.surplus_kwh ? ` (자체 소비를 넘는 ${formatMetric(p.pv.surplus_kwh, 'kWh')}는 감축에 넣지 않음)` : ''}</li>}
       {p.green && p.green.uptake_kg > 0 && <li>녹지·조경 흡수: 녹지 {formatMetric(p.green.area_m2, 'm²')} · 연 {tonnes(p.green.uptake_kg)} (수종·수령에 따라 {tonnes(p.green.range_kg[0])}~{tonnes(p.green.range_kg[1])}, 상쇄로 따로 적음)</li>}
       {p.self_sufficiency_pct != null && <li>에너지자립률(1차에너지, 참고): {formatMetric(p.self_sufficiency_pct, '%', 1)} — {p.zeb_grade ? `ZEB ${p.zeb_grade} 구간` : 'ZEB 5등급(20%) 미만'}</li>}
-      {p.residual && p.residual.carbon_kg > 0 && <li>남는 연간 {tonnes(p.residual.carbon_kg)}{p.residual.offsite_pv_kw ? `: 구역 밖 재생에너지(태양광 약 ${formatMetric(p.residual.offsite_pv_kw, 'kW')} 상당, PPA·REC) 조달로 운영 넷제로` : ''}</li>}
+      {p.residual && p.residual.carbon_kg > 0 && <li data-testid="reduction-residual">남는 연간 {tonnes(p.residual.carbon_kg)}{residualParts(p.residual)}{p.residual.offsite_pv_kw ? `. 전력분은 구역 밖 재생에너지(태양광 약 ${formatMetric(p.residual.offsite_pv_kw, 'kW')} 상당, PPA·REC) 조달로 채울 수 있습니다${p.residual.gas_carbon_kg ? '. 가스분은 전력 조달로 줄지 않습니다' : ''}` : ''}</li>}
     </ul>
     {p.assumptions?.length ? <details className="method-note" open><summary>근거와 가정</summary><ul>{p.assumptions.map((a) => <li key={a}>{a}</li>)}</ul></details> : null}
   </section>;

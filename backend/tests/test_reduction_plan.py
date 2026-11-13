@@ -33,6 +33,14 @@ def test_ladder_from_no_measures_through_envelope_operation_rooftop_pv_and_green
     assert p["residual"]["electricity_kwh"] == 880_000 and p["residual"]["offsite_pv_kw"] == 733.3
     assert p["plan"] == {"carbon_kg": 450_000, "pct": 10.0}
     assert "425.4 t" in plan_text(p) and "구역 밖 재생에너지" in plan_text(p)
+    # 녹지 흡수는 상쇄라 감축 수단만의 비율을 따로 둔다: (500,000 − 428,400) ÷ 500,000 = 14.3%
+    assert p["reduction_pct"] == 14.3 and "감축 수단만으로는 −14.3%" in plan_text(p)
+    # 남는 425,400 kg = 전력 880,000 × 0.4 + 가스 382,000 × 0.2 − 녹지 3,000. 구역 밖 태양광 733.3 kW는 전력분(352 t)만 덮는다
+    r = p["residual"]
+    assert r["electricity_carbon_kg"] == 352_000 and r["gas_carbon_kg"] == 76_400 and r["offset_kg"] == 3000
+    assert r["electricity_carbon_kg"] + r["gas_carbon_kg"] - r["offset_kg"] == r["carbon_kg"]
+    assert "전력분은 구역 밖 재생에너지" in plan_text(p) and "가스분은 전력 조달로 줄지 않습니다" in plan_text(p)
+    assert "는 구역 밖 재생에너지(태양광 약 733 kW 상당) 조달로 채웁니다" not in plan_text(p)
     assert any("78쌍" in a for a in p["assumptions"]) and any("히트펌프" in a and "넣지 않았습니다" in a for a in p["assumptions"])
 
 
@@ -45,6 +53,8 @@ def test_missing_inputs_drop_the_step_instead_of_using_zero():
     no_yield = building_plan({"electricity_kwh": 100_000, "gas_kwh": 50_000}, 500, FACTORS, None)
     assert [s["key"] for s in no_yield["steps"]] == ["envelope", "operation"] and no_yield["pv"]["kwh"] is None
     assert no_yield["residual"]["offsite_pv_kw"] is None
+    assert no_yield["reduction_pct"] == no_yield["final_pct"] and no_yield["residual"]["offset_kg"] == 0   # 상쇄가 없으면 두 비율이 같다
+    assert no_gas["residual"]["gas_carbon_kg"] is None and "가스분" not in plan_text(no_gas)
     assert no_yield["green"] is None and any("녹지 면적이 없어" in a for a in no_yield["assumptions"])
 
 

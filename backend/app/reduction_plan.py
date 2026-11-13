@@ -115,10 +115,16 @@ def building_plan(reference: dict[str, Any] | None, footprint_m2: float | None, 
             step("greenery", "녹지·조경 흡수", f"녹지 {green_area_m2:,.0f} m² × 연 {GREEN_UPTAKE_KG_PER_M2:.1f} kgCO2/m² = {uptake / 1000:,.1f} t 흡수(상쇄)", e3, g2, offset_kg=uptake,
                  range_kg=(green["range_kg"][0], green["range_kg"][1]))
     final = steps[-1]["carbon_kg"] if steps else c0
+    # 감축 수단만의 결과(녹지 흡수 상쇄 전). 상쇄는 줄이는 것이 아니라 메우는 것이라 따로 적는다.
+    reduced = next((s["carbon_kg"] for s in reversed(steps) if s["key"] != "greenery"), c0)
     # 에너지자립률(ZEB 참고): 태양광 1차에너지 ÷ 절감 뒤 소비 1차에너지
     demand_primary = e2 * PRIMARY_ENERGY_FACTOR["ELECTRICITY"] + g2 * PRIMARY_ENERGY_FACTOR["GAS"]
     self_pct = round(pv["kwh"] * PRIMARY_ENERGY_FACTOR["ELECTRICITY"] / demand_primary * 100, 1) if pv and pv["kwh"] and demand_primary > 0 else None
+    # 남는 양의 구성. 구역 밖 태양광(kW 상당)은 남는 '전력'만 덮는다. 남는 가스 탄소는 전력 조달로 줄지 않는다.
+    gas_carbon = g2 * fg if gas_known and fg else None
     residual = {"electricity_kwh": round(e3, 1), "gas_kwh": round(g2, 1) if gas_known else None, "carbon_kg": round(final, 1),
+                "electricity_carbon_kg": round(e3 * fe, 1), "gas_carbon_kg": round(gas_carbon, 1) if gas_carbon is not None else None,
+                "offset_kg": round(green["uptake_kg"], 1) if green and green.get("uptake_kg") else 0.0,
                 "offsite_pv_kw": round(e3 / kwh_per_kw, 1) if kwh_per_kw and e3 > 0 else None}
     assumptions = [
         f"단열·창호 기준 강화는 가스 사용 {ENVELOPE_GAS_SAVING * 100:.1f}% 절감을 적용했습니다. 같은 지역·난방 방식·규모에서 준공 시기만 다른 개별난방 단지 78쌍의 실측 차이(면적당 가스, 95% 구간 20.5~25.8%)이며, 같은 비교에서 전기는 5.2% 많아 전기 절감은 넣지 않았습니다.",
@@ -140,6 +146,7 @@ def building_plan(reference: dict[str, Any] | None, footprint_m2: float | None, 
     return {
         "available": True, "start": {"label": "대책 없음 (기준안)", "electricity_kwh": round(e0, 1), "gas_kwh": round(g0, 1) if gas_known else None, "carbon_kg": round(c0, 1)},
         "steps": steps, "final_carbon_kg": round(final, 1), "final_pct": round((c0 - final) / c0 * 100, 1) if c0 > 0 else None,
+        "reduction_pct": round((c0 - reduced) / c0 * 100, 1) if c0 > 0 else None,
         "pv": pv, "pv_yield": pv_yield, "green": green, "self_sufficiency_pct": self_pct, "zeb_grade": zeb_grade(self_pct), "residual": residual,
         "plan": {"carbon_kg": round(plan_carbon_kg, 1), "pct": round((c0 - plan_carbon_kg) / c0 * 100, 1) if c0 > 0 else None} if plan_carbon_kg is not None else None,
         "factors": {"electricity": fe, "gas": fg if gas_known else None},
@@ -156,6 +163,25 @@ def plan_text(plan: dict[str, Any]) -> str | None:
     text = (f"탄소 감축 방안: 대책 없이 지으면 연간 {t(plan['start']['carbon_kg'])}이고, " + ", ".join(parts)
             + f"을 차례로 더하면 {t(plan['final_carbon_kg'])}(대책 없음 대비 −{plan['final_pct']:.1f}%)까지 줄어듭니다.")
     r = plan["residual"]
-    if r["carbon_kg"] > 0 and r.get("offsite_pv_kw"):
-        text += f" 남는 {t(r['carbon_kg'])}는 구역 밖 재생에너지(태양광 약 {r['offsite_pv_kw']:,.0f} kW 상당) 조달로 채웁니다."
+    if r.get("offset_kg") and plan.get("reduction_pct") is not None:
+        text += f" 이 가운데 녹지 흡수 {t(r['offset_kg'])}는 상쇄이고, 감축 수단만으로는 −{plan['reduction_pct']:.1f}%입니다."
+    text += residual_text(r)
+    return text
+
+
+def residual_text(r: dict[str, Any]) -> str:
+    """남는 양과 그 구성. 구역 밖 태양광(kW 상당)은 남는 전력만 덮는다는 점을 함께 적는다."""
+    if not r or r.get("carbon_kg", 0) <= 0:
+        return ""
+    t = lambda kg: f"{kg / 1000:,.1f} t"  # noqa: E731
+    parts = [f"전력 {t(r['electricity_carbon_kg'])}"] if r.get("electricity_carbon_kg") is not None else []
+    if r.get("gas_carbon_kg"):
+        parts.append(f"가스 {t(r['gas_carbon_kg'])}")
+    if r.get("offset_kg"):
+        parts.append(f"녹지 흡수 −{t(r['offset_kg'])}")
+    text = f" 남는 연간 {t(r['carbon_kg'])}" + (f"({' + '.join(parts)})" if len(parts) > 1 else "") + "입니다."
+    if r.get("offsite_pv_kw"):
+        text += f" 전력분은 구역 밖 재생에너지(태양광 약 {r['offsite_pv_kw']:,.0f} kW 상당, PPA·REC) 조달로 채울 수 있습니다."
+        if r.get("gas_carbon_kg"):
+            text += " 가스분은 전력 조달로 줄지 않습니다."
     return text
