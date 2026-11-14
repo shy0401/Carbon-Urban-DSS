@@ -91,6 +91,9 @@ def _warm_caches_in_background():
             _warm_map()
             from .area import warm_inputs
             warm_inputs(2015,DEFAULT_YEAR)
+            # 모델 화면의 공식 통계 대조(계산 40초쯤): 발표 중 처음 열어도 바로 나오게
+            from .validation import warm as warm_validation
+            warm_validation()
             from .sgis_grid500 import data_root,import_sgis_grid500,scan
             if scan(data_root())[0]:
                 with Session() as db:import_sgis_grid500(db)

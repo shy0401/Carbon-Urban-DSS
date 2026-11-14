@@ -8,9 +8,9 @@ function Segmented<T extends string>({ legend, value, options, onChange, swatch 
   legend: string; value: T; options: ReadonlyArray<{ value: T; label: string }>; onChange: (value: T) => void; swatch?: boolean;
 }) {
   const name = useId();
-  return <fieldset className="segmented">
+  return <fieldset className="ui-seg">
     <legend>{legend}</legend>
-    <div className="segmented-row">
+    <div className="ui-seg-row">
       {options.map((option) => <label key={option.value} className={option.value === value ? 'on' : undefined}>
         <input type="radio" name={name} value={option.value} checked={option.value === value} onChange={() => onChange(option.value)} />
         {swatch && <i className={`accent-dot accent-${option.value}`} aria-hidden="true" />}

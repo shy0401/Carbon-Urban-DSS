@@ -1,4 +1,4 @@
-"""지역 합계를 독립된 공식 통계와 맞대는 검증 (화면: 모델 → 공식 통계와 맞대기).
+"""지역 합계를 독립된 공식 통계와 대조하는 검증 (화면: 모델 → 공식 통계 대조).
 
 이 도구의 관측·계산 값이 믿을 만한지를, 같은 것을 다른 기관이 센 통계와 비교해 숫자로 보여 준다.
 어느 한쪽을 정답으로 보지 않고 차이와 그 까닭(포함 범위)을 함께 적는다.
@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import math
 import statistics
+import threading
 import time
 from typing import Any, Iterable
 
@@ -27,6 +28,10 @@ router = APIRouter(prefix="/api/validation", tags=["validation"])
 HUB = "국토교통부 건축HUB"
 _CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
 TTL = 300.0
+# 한 번 계산하는 데 40초쯤 걸린다(전주, 2026-11-14 측정). 기한이 지난 값은 바로 돌려주고 뒤에서 새로 계산한다
+# (화면이 40초를 기다리지 않게). 같은 지역을 두 번 동시에 다시 계산하지 않는다.
+_REFRESHING: set[str] = set()
+_REFRESH_LOCK = threading.Lock()
 
 
 # --------------------------------------------------------------------------- pure helpers (tested without a database)
@@ -247,17 +252,51 @@ def region_validation(db: Any, region: str | None = None) -> dict[str, Any]:
                         "sgis": "SGIS 행정구역 통계·500m 격자 통계"}}
 
 
+def _cache_key(region: str | None) -> str:
+    """기본 지역은 region을 주든 안 주든 같은 값이라 한 칸에 담는다."""
+    from .regions import DEFAULT_REGION
+    return "*" if not region or region == DEFAULT_REGION else region
+
+
+def _compute(region: str | None) -> dict[str, Any]:
+    with Session() as db:
+        return region_validation(db, region)
+
+
+def _refresh_in_background(key: str, region: str | None) -> None:
+    with _REFRESH_LOCK:
+        if key in _REFRESHING:
+            return
+        _REFRESHING.add(key)
+
+    def run() -> None:
+        try:
+            _CACHE[key] = (time.monotonic(), _compute(region))
+        except Exception as exc:  # noqa: BLE001 - 다시 계산하지 못하면 이전 값을 그대로 둔다
+            print("검증 다시 계산 실패:", type(exc).__name__, exc)
+        finally:
+            with _REFRESH_LOCK:
+                _REFRESHING.discard(key)
+    threading.Thread(target=run, name=f"validation-refresh-{key}", daemon=True).start()
+
+
+def warm(region: str | None = None) -> None:
+    """API 시작 뒤 예열(main._warm_caches_in_background)에서 부른다. 첫 방문자가 40초를 기다리지 않게."""
+    _CACHE[_cache_key(region)] = (time.monotonic(), _compute(region))
+
+
 @router.get("")
 def validation(region: str | None = Query(None, max_length=10)) -> dict[str, Any]:
-    key = region or "*"
+    key = _cache_key(region)
     cached = _CACHE.get(key)
-    if cached and cached[0] > time.monotonic() - TTL:
+    if cached:
+        if cached[0] <= time.monotonic() - TTL:
+            _refresh_in_background(key, region)
         return cached[1]
     from .regions import RegionNotReady
-    with Session() as db:
-        try:
-            body = region_validation(db, region)
-        except RegionNotReady as exc:
-            raise HTTPException(404, str(exc)) from None
+    try:
+        body = _compute(region)
+    except RegionNotReady as exc:
+        raise HTTPException(404, str(exc)) from None
     _CACHE[key] = (time.monotonic(), body)
     return body

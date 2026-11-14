@@ -97,3 +97,49 @@ def test_gas_completeness_splits_full_bimonthly_and_gaps():
     s = completeness_summary(2025, [(every, 1e6), (skip, 2e6), (gap, 3e6), (every, 1e6)])
     assert s == {"year": 2025, "parcels": 4, "full": 2, "bimonthly": 1, "partial": 1, "full_gwh": 2.0, "bimonthly_gwh": 2.0, "partial_gwh": 3.0}
     assert completeness_summary(2025, []) is None
+
+
+def test_validation_cache_serves_stale_value_and_refreshes_in_background(monkeypatch):
+    """기한이 지난 대조 결과는 바로 돌려주고 뒤에서 다시 계산한다. 기본 지역은 region을 주든 안 주든 한 칸."""
+    import threading
+    import time as real_time
+
+    from app import validation as v
+    from app.regions import DEFAULT_REGION
+
+    calls = []
+    done = threading.Event()
+
+    def fake_compute(region):
+        calls.append(region)
+        done.set()
+        return {"n": len(calls)}
+
+    monkeypatch.setattr(v, "_compute", fake_compute)
+    monkeypatch.setattr(v, "_CACHE", {})
+    assert v._cache_key(None) == v._cache_key(DEFAULT_REGION) == "*" and v._cache_key("41110") == "41110"
+
+    assert v.validation(None) == {"n": 1}                      # 처음: 계산해서 돌려줌
+    assert v.validation(DEFAULT_REGION) == {"n": 1}            # 같은 칸: 다시 계산하지 않음
+    assert calls == [None]
+
+    stamp, body = v._CACHE["*"]
+    v._CACHE["*"] = (stamp - v.TTL - 1, body)                  # 기한 지남
+    done.clear()
+    assert v.validation(None) == {"n": 1}                      # 기다리지 않고 이전 값
+    assert done.wait(5)
+    for _ in range(100):
+        if v._CACHE["*"][1] == {"n": 2} and not v._REFRESHING:
+            break
+        real_time.sleep(0.02)
+    assert v._CACHE["*"][1] == {"n": 2} and not v._REFRESHING   # 뒤에서 새 값으로 바뀜
+
+
+def test_db_pool_settings_come_from_env(monkeypatch):
+    from app.db import _int_env
+    monkeypatch.setenv("DB_POOL_SIZE", "12")
+    assert _int_env("DB_POOL_SIZE", 10) == 12
+    monkeypatch.setenv("DB_POOL_SIZE", "abc")
+    assert _int_env("DB_POOL_SIZE", 10) == 10
+    monkeypatch.setenv("DB_POOL_SIZE", "0")
+    assert _int_env("DB_POOL_SIZE", 10) == 1

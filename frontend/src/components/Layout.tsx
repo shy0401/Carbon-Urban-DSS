@@ -134,13 +134,15 @@ export function Layout() {
     <main className="main-shell" id="main-content" tabIndex={-1} ref={main}>
       <header className={`shell-header${compact ? ' compact' : ''}`} ref={header}>
         <div className="mobile-top"><button className="menu-button" aria-label="메뉴 열기" onClick={() => setOpen(true)}><Menu size={20} /></button><strong>Carbon Urban DSS</strong></div>
-        <div className="shell-scope"><TitleBlock /><AnalysisScopeBar />
+        <div className="shell-scope"><TitleBlock /><AnalysisScopeBar /></div>
+        {/* 둘째 줄: 보는 순서 + 빠른 이동·화면 설정 (첫 줄이 넘쳐 단추만 따로 내려가지 않게 같은 줄에 둔다) */}
+        <div className="shell-row2">
+          <FlowBar />
           <div className="shell-tools">
             <button type="button" className="tool-button" aria-label="빠른 이동" aria-haspopup="dialog" aria-keyshortcuts="Control+K" data-testid="command-button" onClick={() => setPalette(true)}><Search size={16} aria-hidden="true" /><span>빠른 이동</span><kbd aria-hidden="true">Ctrl K</kbd></button>
             <UiSettings />
           </div>
         </div>
-        <FlowBar />
       </header>
       <RegionOpenNotice />
       <LinkedRegionNotice />
