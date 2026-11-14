@@ -1,0 +1,146 @@
+name: 협업자 PR 자동 병합
+
+# 허용한 협업자(ALLOWED_AUTHORS)가 이 저장소의 브랜치에서 main으로 여는 PR을
+# 승인을 기다리지 않고 Squash and merge 한다. 규칙과 예외: docs/GIT_WORKFLOW.md 8절.
+#
+# 안전: pull_request_target이라 이 파일은 항상 main의 것이 쓰이고, PR의 코드를 내려받거나 실행하지 않는다
+# (GitHub API만 부른다). PR이 정한 문자열(제목·브랜치 이름)을 ${{ }}로 스크립트에 넣지 않는다.
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review, edited]
+    branches: [main]
+  push:
+    branches: [main]
+    paths: ['.github/workflows/auto-merge-collaborator.yml']   # 규칙을 넣거나 고친 직후, 열려 있던 PR을 한 번 훑는다
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: auto-merge-collaborator
+  cancel-in-progress: false
+
+jobs:
+  merge:
+    name: 열려 있는 PR 확인·병합
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      ALLOWED_AUTHORS: yangbun-GIT          # 쉼표로 여러 명. GitHub 로그인 이름(대소문자 무시)
+      BASE_BRANCH: main
+      MAX_REMOVED_FILES: '20'               # 한 PR이 지우는 파일 수가 이보다 많으면 보류
+      MAX_DELETED_LINES: '3000'             # 한 PR이 지우는 줄 수가 이보다 많으면 보류
+    steps:
+      - name: 병합
+        shell: bash
+        run: |
+          set -uo pipefail
+
+          api() { gh api -H "Accept: application/vnd.github+json" "$@"; }
+          lower() { tr '[:upper:]' '[:lower:]'; }
+          note() { echo "$*"; echo "$*" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"; }
+          allowed=" $(printf '%s' "$ALLOWED_AUTHORS" | lower | tr ',' ' ') "
+
+          # 올리지 않기로 한 경로(AGENTS.md "올리지 않는 것", .gitignore와 같은 뜻). .env.example은 예외.
+          BLOCKED_RE='(^|/)\.env($|\.)|(^|/)\.secrets/|^data/(raw|backups|cache|ops|llm|tmp|uploads|deployment)/|\.(dump|pem|key|p12|pfx)$'
+
+          # 같은 이유의 댓글은 PR의 같은 커밋에 한 번만 단다
+          comment_once() {  # $1 PR 번호, $2 표식, $3 본문
+            local marker="<!-- auto-merge-collaborator:$2 -->" existing
+            existing=$(api --paginate "repos/$GH_REPO/issues/$1/comments?per_page=100" --jq '.[].body' 2>/dev/null || true)
+            if grep -qF -- "$marker" <<<"$existing"; then return 0; fi
+            api -X POST "repos/$GH_REPO/issues/$1/comments" -f body="$3"$'\n\n'"$marker" >/dev/null 2>&1 \
+              || echo "::warning::PR #$1 댓글을 남기지 못했습니다"
+          }
+          hold() {  # $1 PR 번호, $2 커밋, $3 이유 이름, $4 댓글 본문
+            note "- #$1: 자동 병합하지 않음 ($3)"
+            comment_once "$1" "$3:$2" "$4"
+          }
+
+          handle() {
+            local n="$1" pr author sha ref files names bad removed deleted mergeable i out err msg merged enc cur
+            pr=$(api "repos/$GH_REPO/pulls/$n" 2>/dev/null) || { note "- #$n: PR 정보를 읽지 못함"; return 0; }
+            [ "$(jq -r '.state' <<<"$pr")" = "open" ] || return 0
+            [ "$(jq -r '.base.ref' <<<"$pr")" = "$BASE_BRANCH" ] || return 0
+            author=$(jq -r '.user.login' <<<"$pr")
+            case "$allowed" in
+              *" $(printf '%s' "$author" | lower) "*) ;;
+              *) note "- #$n ($author): 자동 병합 대상이 아님"; return 0 ;;
+            esac
+            if [ "$(jq -r '.draft' <<<"$pr")" = "true" ]; then note "- #$n: 초안(Draft)이라 기다림"; return 0; fi
+            sha=$(jq -r '.head.sha' <<<"$pr")
+            ref=$(jq -r '.head.ref' <<<"$pr")
+            if [ "$(jq -r '.head.repo.full_name // ""' <<<"$pr")" != "$GH_REPO" ]; then
+              hold "$n" "$sha" fork "다른 저장소(fork)에서 온 PR은 자동 병합하지 않습니다. 이 저장소의 브랜치로 올리면 자동으로 병합됩니다."
+              return 0
+            fi
+
+            files=$(api --paginate "repos/$GH_REPO/pulls/$n/files?per_page=100" --jq '.[] | [.status, .filename, (.previous_filename // "")] | @tsv' 2>/dev/null) \
+              || { note "- #$n: 바뀐 파일 목록을 읽지 못함"; return 0; }
+            names=$(awk -F'\t' '{ print $2; if ($3 != "") print $3 }' <<<"$files")
+
+            if grep -qE '^\.github/' <<<"$names"; then
+              hold "$n" "$sha" workflow "\`.github/\` 아래 파일(자동 병합 규칙 포함)을 바꾸는 PR은 자동 병합하지 않습니다. 저장소 관리자가 직접 확인하고 병합합니다."
+              return 0
+            fi
+            bad=$(grep -vE '(^|/)\.env\.example$' <<<"$names" | grep -E "$BLOCKED_RE" | head -10 || true)
+            if [ -n "$bad" ]; then
+              hold "$n" "$sha" blocked-path "올리지 않기로 한 경로가 들어 있어 자동 병합하지 않았습니다(\`AGENTS.md\`의 올리지 않는 것). 해당 파일을 PR에서 빼고 다시 푸시해 주세요."$'\n\n```\n'"$bad"$'\n```'
+              return 0
+            fi
+            removed=$(awk -F'\t' '$1 == "removed"' <<<"$files" | grep -c . || true)
+            deleted=$(jq -r '.deletions // 0' <<<"$pr")
+            if [ "$removed" -gt "$MAX_REMOVED_FILES" ] || [ "$deleted" -gt "$MAX_DELETED_LINES" ]; then
+              hold "$n" "$sha" mass-delete "지우는 양이 많아 자동 병합하지 않았습니다(파일 ${removed}개 삭제, ${deleted}줄 삭제. 기준: 파일 ${MAX_REMOVED_FILES}개, ${MAX_DELETED_LINES}줄). 의도한 변경이면 저장소 관리자가 내용을 보고 직접 병합합니다."
+              return 0
+            fi
+
+            # 병합 가능 여부는 GitHub이 뒤에서 계산한다. 계산이 끝날 때까지 최대 1분 기다린다.
+            mergeable=$(jq -r '.mergeable' <<<"$pr")
+            for i in $(seq 1 12); do
+              [ "$mergeable" = "null" ] || break
+              sleep "${MERGEABLE_WAIT_SECONDS:-5}"
+              mergeable=$(api "repos/$GH_REPO/pulls/$n" --jq '.mergeable' 2>/dev/null || echo null)
+            done
+            if [ "$mergeable" = "false" ]; then
+              hold "$n" "$sha" conflict "\`$BASE_BRANCH\`과 충돌이 있어 자동 병합하지 않았습니다. \`git fetch origin\` → \`git merge origin/$BASE_BRANCH\`으로 충돌을 풀고 같은 브랜치에 푸시하면 다시 시도합니다."
+              return 0
+            fi
+            if [ "$mergeable" != "true" ]; then
+              hold "$n" "$sha" unknown "병합 가능 여부를 아직 확인하지 못해 자동 병합하지 않았습니다. 커밋을 더 올리거나, Actions에서 이 워크플로를 다시 실행(Run workflow)하면 다시 시도합니다."
+              return 0
+            fi
+
+            err=$(mktemp)
+            if out=$(api -X PUT "repos/$GH_REPO/pulls/$n/merge" -f merge_method=squash -f sha="$sha" 2>"$err"); then
+              merged=$(jq -r '.sha // ""' <<<"$out" | cut -c1-7)
+              note "- #$n ($author): 병합함 → $merged"
+              comment_once "$n" "merged:$sha" "자동으로 병합했습니다(Squash and merge → \`$merged\`). 이 저장소는 \`$author\`의 PR을 승인 대기 없이 병합합니다. 규칙과 예외는 \`docs/GIT_WORKFLOW.md\` 8절에 있습니다."
+              # 병합한 커밋 그대로일 때만 브랜치를 지운다(그 사이에 커밋이 더 올라왔으면 남긴다)
+              if [ "$ref" != "$BASE_BRANCH" ] && [ "$ref" != "gh-pages" ]; then
+                enc=$(jq -rn --arg b "$ref" '$b | split("/") | map(@uri) | join("/")')
+                cur=$(api "repos/$GH_REPO/git/ref/heads/$enc" --jq '.object.sha' 2>/dev/null || true)
+                if [ "$cur" = "$sha" ]; then
+                  api -X DELETE "repos/$GH_REPO/git/refs/heads/$enc" >/dev/null 2>&1 && note "  - 브랜치 삭제: $ref" || note "  - 브랜치를 지우지 못함: $ref"
+                else
+                  note "  - 브랜치에 새 커밋이 있어 남겨 둠: $ref"
+                fi
+              fi
+            else
+              msg=$(jq -r '.message // empty' <<<"$out" 2>/dev/null || true)
+              [ -n "$msg" ] || msg=$(head -c 300 "$err")
+              hold "$n" "$sha" merge-failed "자동 병합을 시도했지만 GitHub이 받지 않았습니다: ${msg:-이유를 읽지 못함}"
+            fi
+            rm -f "$err"
+          }
+
+          note "### 협업자 PR 자동 병합 (대상: $ALLOWED_AUTHORS → $BASE_BRANCH)"
+          numbers=$(api --paginate "repos/$GH_REPO/pulls?state=open&base=$BASE_BRANCH&per_page=100" --jq '.[].number') \
+            || { echo "::error::열려 있는 PR 목록을 읽지 못했습니다"; exit 1; }
+          if [ -z "$numbers" ]; then note "- 열려 있는 PR 없음"; exit 0; fi
+          for n in $numbers; do handle "$n"; done
