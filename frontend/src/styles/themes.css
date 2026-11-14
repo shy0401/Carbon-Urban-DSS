@@ -71,6 +71,7 @@
   font-size: var(--fs-label); font-weight: 500; white-space: nowrap;
 }
 .tool-button:hover, .tool-button[aria-expanded="true"] { border-color: var(--ink-3); color: var(--ink); }
+kbd { padding: 1px 5px; border: 1px solid var(--line-strong); border-radius: 4px; background: var(--surface-sunk); color: var(--ink-2); font-family: var(--mono); font-size: .85em; line-height: 1.5; }
 .tool-button kbd, .command-input kbd { padding: 1px 5px; border: 1px solid var(--line-strong); border-radius: 4px; background: var(--surface-sunk); color: var(--ink-3); font-family: var(--mono); font-size: 11px; line-height: 1.5; }
 
 .ui-settings { position: relative; }
