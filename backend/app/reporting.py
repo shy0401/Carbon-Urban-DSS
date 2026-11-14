@@ -173,9 +173,12 @@ def reduction_lines(sc):
         lines.append(f"- 녹지·조경 흡수: 녹지 {gr['area_m2']:,.0f} m² · 연 {_t(gr['uptake_kg'])} (수종·수령에 따라 {_t(gr['range_kg'][0])}~{_t(gr['range_kg'][1])}, 상쇄로 따로 적음)")
     if p.get('self_sufficiency_pct') is not None:
         lines.append(f"- 에너지자립률(1차에너지, 참고): {p['self_sufficiency_pct']:.1f}%"+(f" — ZEB {p['zeb_grade']} 구간" if p.get('zeb_grade') else ' — ZEB 5등급(20%) 미만'))
+    if p.get('reduction_pct') is not None and (p['residual'].get('offset_kg') or 0)>0:
+        lines.append(f"- 감축 수단만(녹지 흡수 상쇄 전): 대책 없음 대비 −{p['reduction_pct']:.1f}%. 끝 값 −{p['final_pct']:.1f}%에는 상쇄가 들어 있습니다.")
     r=p['residual']
     if r['carbon_kg']>0:
-        lines.append(f"- 남는 연간 {_t(r['carbon_kg'])}"+(f": 구역 밖 재생에너지(태양광 약 {r['offsite_pv_kw']:,.0f} kW 상당, PPA·REC) 조달로 운영 넷제로" if r.get('offsite_pv_kw') else ''))
+        from .reduction_plan import residual_text
+        lines.append('-'+residual_text(r))
     lines+=['- '+a for a in p.get('assumptions') or []]
     return lines
 

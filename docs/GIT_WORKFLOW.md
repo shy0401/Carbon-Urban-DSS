@@ -109,4 +109,5 @@ git push -u origin fix/<무엇을-고치나>
 
 | 브랜치 | 내용 | 상태 |
 |---|---|---|
-| `feature/interview-feedback` | 11-11 면담 의견과 점검에서 나온 오류 수정(감축 사다리의 계수·구역 밖 태양광 문장, 용어 정리 등) | 시작. 첫 커밋은 파일 변경 없는 연결 확인 |
+| `feature/interview-feedback` | 연결 확인 + 이 문서 | PR #1로 병합, 브랜치 삭제 |
+| `fix/feedback-audit` | 점검 결과 문서(`FEEDBACK_AUDIT_2026-11-13.md`)와 감축 사다리의 남는 양·상쇄 표시 수정 | PR 검토 대기 |
