@@ -1,12 +1,15 @@
-import { Activity, BarChart3, BookOpen, BrainCircuit, Database, FileText, Globe2, LandPlot, Leaf, Map, Menu, PlayCircle, X } from 'lucide-react';
-import { useEffect, useRef, useState, type RefObject } from 'react';
+import { Activity, BarChart3, BookOpen, BrainCircuit, Database, FileText, Globe2, LandPlot, Leaf, Map, Menu, PlayCircle, Search, X } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useSystemInfo } from '../hooks/useSystemInfo';
 import { AnalysisScopeBar } from './AnalysisScopeBar';
+import { CommandPalette } from './CommandPalette';
+import { FlowBar } from './FlowBar';
 import { LinkedRegionNotice } from './LinkedRegionNotice';
 import { RegionOpenNotice } from './RegionOpenNotice';
 import { SystemStatus } from './SystemStatus';
 import { TitleBlock } from './TitleBlock';
+import { UiSettings } from './UiSettings';
 
 /**
  * 메뉴 이름과 주소는 사용설명서·안내 영상과 같게 둔다. 묶음은 하는 일 순서다(2026-11-12 다시 묶음):
@@ -78,9 +81,26 @@ function useCompactHeader(): boolean {
   return compact;
 }
 
-/** 앱 셸 (DESIGN.md 4.1): 220px 먹녹색 사이드바 + 표제란 머리. 1023px 이하에서는 드로어. */
+/** 빠른 이동 창을 Ctrl+K(맥은 ⌘K)로 여닫는다. 입력 칸에 글자를 치는 중에도 같은 키로 열린다(브라우저 기본 동작만 막음). */
+function useCommandKey(toggle: () => void) {
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'k') { event.preventDefault(); toggle(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [toggle]);
+}
+
+/**
+ * 앱 셸 (DESIGN.md 4.1): 220px 먹녹색 사이드바 + 표제란 머리. 1023px 이하에서는 드로어.
+ * 머리 오른쪽에 빠른 이동·화면 설정, 머리 아래 줄에 보는 순서(4.7). 보기 방식이 '발표'면 넓은 화면에서도 사이드바를 드로어로 둔다(themes.css).
+ */
 export function Layout() {
   const [open, setOpen] = useState(false);
+  const [palette, setPalette] = useState(false);
+  const togglePalette = useCallback(() => setPalette((shown) => !shown), []);
+  useCommandKey(togglePalette);
   const compact = useCompactHeader();
   const system = useSystemInfo();
   const regionName = system?.region?.short_name ?? '전주시';
@@ -114,11 +134,18 @@ export function Layout() {
     <main className="main-shell" id="main-content" tabIndex={-1} ref={main}>
       <header className={`shell-header${compact ? ' compact' : ''}`} ref={header}>
         <div className="mobile-top"><button className="menu-button" aria-label="메뉴 열기" onClick={() => setOpen(true)}><Menu size={20} /></button><strong>Carbon Urban DSS</strong></div>
-        <div className="shell-scope"><TitleBlock /><AnalysisScopeBar /></div>
+        <div className="shell-scope"><TitleBlock /><AnalysisScopeBar />
+          <div className="shell-tools">
+            <button type="button" className="tool-button" aria-label="빠른 이동" aria-haspopup="dialog" aria-keyshortcuts="Control+K" data-testid="command-button" onClick={() => setPalette(true)}><Search size={16} aria-hidden="true" /><span>빠른 이동</span><kbd aria-hidden="true">Ctrl K</kbd></button>
+            <UiSettings />
+          </div>
+        </div>
+        <FlowBar />
       </header>
       <RegionOpenNotice />
       <LinkedRegionNotice />
       <Outlet />
     </main>
+    <CommandPalette open={palette} onClose={() => setPalette(false)} />
   </div>;
 }

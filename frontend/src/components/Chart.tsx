@@ -17,5 +17,6 @@ export function Chart({ option, height = 300, ariaLabel }: { option: EChartsOpti
     });
     return () => { disposed = true; cleanup(); };
   }, [option]);
-  return <div ref={ref} style={{ height }} role="img" aria-label={ariaLabel} />;
+  // chart-canvas: 어두운 테마에서도 그림은 밝은 종이 위에 둔다(themes.css). 축·범례 글자색이 밝은 바탕 기준이라서다.
+  return <div ref={ref} className="chart-canvas" style={{ height }} role="img" aria-label={ariaLabel} />;
 }

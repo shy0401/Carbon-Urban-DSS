@@ -499,7 +499,7 @@
 .massing-hud .good dd { color: var(--success); }
 .massing-hud .bad dd, .massing-hud .bad dd small { color: var(--danger); }
 .massing-hud .warn dd { color: var(--warning); }
-.massing-legend { position: absolute; left: var(--sp-3); bottom: var(--sp-3); display: flex; flex-wrap: wrap; gap: 4px var(--sp-3); max-width: calc(100% - 180px); padding: 6px var(--sp-2); border: 1px solid var(--line); border-radius: var(--r-control); background: rgba(255, 255, 255, .92); font-size: var(--fs-caption); color: var(--ink-2); pointer-events: none; }
+.massing-legend { position: absolute; left: var(--sp-3); bottom: var(--sp-3); display: flex; flex-wrap: wrap; gap: 4px var(--sp-3); max-width: calc(100% - 180px); padding: 6px var(--sp-2); border: 1px solid var(--line); border-radius: var(--r-control); background: color-mix(in srgb, var(--surface) 92%, transparent); font-size: var(--fs-caption); color: var(--ink-2); pointer-events: none; }
 .massing-legend span { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
 .massing-legend i { width: 12px; height: 10px; border-radius: 2px; }
 .massing-legend i.outline { border: 2px solid; }

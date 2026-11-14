@@ -14,7 +14,7 @@ describe('ConfidenceGrades', () => {
   it('시·군·구 총량 보정식과 단계별 평균 차이를 보여 준다', () => {
     render(<ConfidenceGrades />);
     const block = screen.getByTestId('correction-formula');
-    expect(block).toHaveTextContent('계측 건물 전력 합 ÷ ① 덮음 × ② 부문 범위 × ③ 계수 비');
+    expect(block).toHaveTextContent('계측 건물 전력 합 ÷ ① 계측 포함률 × ② 부문 범위 × ③ 계수 비');
     expect(within(block).getAllByRole('listitem')).toHaveLength(CORRECTION_STEPS.length);
     expect(block).toHaveTextContent('44.4%');
     expect(block).toHaveTextContent('8.1%');

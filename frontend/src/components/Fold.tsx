@@ -1,9 +1,27 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { useUiPrefs } from '../hooks/useUiPrefs';
 
 /**
  * 화면 정보 3단 (DESIGN.md 4.6): ① 핵심 수치 → ② 그림·표 하나 → ③ 근거·산식·보조 자료(접어 둠).
  * 이 파일은 ③을 담는 부품이다. 접힌 내용도 DOM에는 그대로 있어 찾기(Ctrl+F)·인쇄·화면 낭독기에서 빠지지 않는다.
  */
+
+/**
+ * 화면 설정의 보기 방식을 따른다: '상세'로 바꾸면 펼치고, '상세'에서 다른 방식으로 돌아오면 처음 상태로 접는다.
+ * 그 밖에는 사용자가 직접 연 상태를 건드리지 않는다.
+ */
+function useFollowDetailMode(ref: RefObject<HTMLDetailsElement | null>, defaultOpen: boolean) {
+  const { prefs } = useUiPrefs();
+  const previous = useRef(prefs.mode);
+  useEffect(() => {
+    const el = ref.current;
+    if (el) {
+      if (prefs.mode === 'detail') el.open = true;
+      else if (previous.current === 'detail') el.open = defaultOpen;
+    }
+    previous.current = prefs.mode;
+  }, [prefs.mode, defaultOpen, ref]);
+}
 
 /** 접이식 구역: 제목과 핵심 숫자 한 줄만 보이고, 누르면 표·그림·설명이 열린다. 주소의 #id로 오면 스스로 열린다. */
 export function Fold({ title, figures, hint = '자세히', children, defaultOpen = false, id, className, testId, label, flat = true }: {
@@ -21,6 +39,7 @@ export function Fold({ title, figures, hint = '자세히', children, defaultOpen
   flat?: boolean;
 }) {
   const ref = useRef<HTMLDetailsElement>(null);
+  useFollowDetailMode(ref, defaultOpen);
   useEffect(() => {
     if (!id || typeof window === 'undefined') return undefined;
     const openIfTarget = () => { if (window.location.hash === `#${id}` && ref.current) ref.current.open = true; };
@@ -36,7 +55,9 @@ export function Fold({ title, figures, hint = '자세히', children, defaultOpen
 
 /** 그림·표 아래의 긴 설명: '설명' 한 줄로 접어 두고 누르면 펼친다. 짧은 기준 문구(연도·관측 기간)는 접지 않고 그대로 둔다. */
 export function Note({ children, label = '설명·주의' }: { children: ReactNode; label?: string }) {
-  return <details className="note"><summary>{label}</summary><div className="note-body">{children}</div></details>;
+  const ref = useRef<HTMLDetailsElement>(null);
+  useFollowDetailMode(ref, false);
+  return <details ref={ref} className="note"><summary>{label}</summary><div className="note-body">{children}</div></details>;
 }
 
 /** 접힌 구역을 한 번에 펼치거나 접는다(발표·인쇄·검토용). 값은 바꾸지 않는다. */

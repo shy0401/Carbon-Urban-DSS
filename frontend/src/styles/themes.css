@@ -1,0 +1,178 @@
+/* 화면 설정 (DESIGN.md 4.7): <html data-theme data-accent data-ui-mode>에 따라 토큰을 덮어쓴다.
+   tokens.css의 키만 다시 정한다(새 키는 --paper 하나). 지표 램프·용도지역·계획안 색은 자료의 색이라 테마와 무관하게 그대로 둔다. */
+
+/* 1. 색 테마: 어둡게 ---------------------------------------------------------------------- */
+:root { --paper: transparent; }
+/* 화면에서만 적용한다. 인쇄물(검토 보고서 PDF)은 고른 테마와 상관없이 밝은 종이 기준 그대로 나온다 */
+@media screen {
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --canvas: #131A17;
+  --surface: #1B2420;
+  --surface-sunk: #232E29;
+  --line: #2E3A34;
+  --line-strong: #46544D;
+
+  --ink: #E8EEEA;
+  --ink-2: #B7C2BC;
+  --ink-3: #9BA9A2;
+
+  --primary: #7FC2AA;
+  --primary-hover: #9BD4BF;
+  --on-primary: #0E1613;
+
+  --nav-bg: #0D1411;
+  --nav-ink: #E6EEEA;
+  --nav-ink-2: #9FB5AB;
+  --nav-active: #24493F;
+
+  --focus: #8DB8E8;
+  --select-line: #F2F5F3;
+  --select-halo: #0E1613;
+
+  --danger: #F2A099;  --danger-bg: #3A1E1B;
+  --warning: #E6BD62; --warning-bg: #382D12;
+  --success: #8FD1A6; --success-bg: #1B3224;
+  --info: #9CC3EE;    --info-bg: #1A2A3C;
+
+  --prov-observed: #8FD3BB;  --prov-observed-bg: #1A322A;
+  --prov-computed: #9CC3EE;  --prov-computed-bg: #1A2A3C;
+  --prov-estimated: #E3BE7C; --prov-estimated-bg: #382D16;
+  --prov-scenario: #BAC4D5;  --prov-scenario-bg: #252C37;
+  --prov-missing: #A8B1AB;   --prov-missing-bg: #222A26;
+  --hatch: #3D4943;
+
+  --shadow-popover: 0 8px 28px rgba(0, 0, 0, .55);
+  --scrim: rgba(0, 0, 0, .6);
+
+  /* 그림(ECharts)은 축·범례 글자색이 밝은 바탕 기준이라, 어두운 테마에서도 밝은 종이 위에 둔다 */
+  --paper: #F6F6F1;
+}
+:root[data-theme="dark"] .chart-canvas { background: var(--paper); border-radius: var(--r-control); }
+/* 지도 조작 단추·축척·출처는 밝은 바탕 지도 위에 있으므로 밝은 값 그대로 */
+:root[data-theme="dark"] .map-stage .maplibregl-ctrl-scale { background: #FFFFFF; color: #1C2622; border-color: #1C2622; }
+:root[data-theme="dark"] .maplibregl-ctrl-attrib, :root[data-theme="dark"] .maplibregl-ctrl-attrib a { color: #505B55 !important; }
+:root[data-theme="dark"] .maplibregl-ctrl-attrib.maplibregl-compact, :root[data-theme="dark"] .maplibregl-ctrl.maplibregl-ctrl-attrib { background: rgba(255, 255, 255, .92) !important; }
+}
+
+/* 2. 강조색: 단추·선택 표시·메뉴 바탕만 바꾼다(그림 속 자료 색은 그대로) ------------------------- */
+:root[data-accent="navy"] { --primary: #2B4C7E; --primary-hover: #223D66; --nav-bg: #1B2A41; --nav-active: #2B4C7E; --nav-ink-2: #A9B8CE; }
+:root[data-accent="ink"]  { --primary: #3A4440; --primary-hover: #2A3330; --nav-bg: #22292B; --nav-active: #3F4A4D; --nav-ink-2: #AEB8B6; }
+@media screen {
+  :root[data-theme="dark"][data-accent="navy"] { --primary: #9CC3EE; --primary-hover: #B8D5F4; --nav-bg: #0D131C; --nav-active: #24395A; }
+  :root[data-theme="dark"][data-accent="ink"]  { --primary: #D2DAD5; --primary-hover: #E6EBE8; --nav-bg: #0E1112; --nav-active: #2F3937; }
+}
+
+/* 3. 머리 오른쪽 도구: 빠른 이동 · 화면 설정 ------------------------------------------------- */
+.shell-tools { display: flex; align-items: center; gap: var(--sp-2); margin-left: auto; flex: none; }
+.tool-button {
+  display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 10px;
+  border: 1px solid var(--line-strong); border-radius: var(--r-control); background: var(--surface); color: var(--ink-2);
+  font-size: var(--fs-label); font-weight: 500; white-space: nowrap;
+}
+.tool-button:hover, .tool-button[aria-expanded="true"] { border-color: var(--ink-3); color: var(--ink); }
+.tool-button kbd, .command-input kbd { padding: 1px 5px; border: 1px solid var(--line-strong); border-radius: 4px; background: var(--surface-sunk); color: var(--ink-3); font-family: var(--mono); font-size: 11px; line-height: 1.5; }
+
+.ui-settings { position: relative; }
+.ui-settings-panel {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 40; width: min(320px, calc(100vw - 32px));
+  display: grid; gap: var(--sp-3); padding: var(--sp-4);
+  border: 1px solid var(--line-strong); border-radius: var(--r-panel); background: var(--surface); box-shadow: var(--shadow-popover);
+}
+.segmented { margin: 0; padding: 0; border: 0; min-width: 0; }
+.segmented legend { padding: 0; margin-bottom: var(--sp-1); font-size: var(--fs-caption); font-weight: 600; color: var(--ink-2); }
+.segmented-row { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; padding: 2px; border: 1px solid var(--line-strong); border-radius: var(--r-control); background: var(--surface-sunk); }
+.segmented label { position: relative; display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 30px; padding: 0 var(--sp-2); border-radius: 4px; color: var(--ink-2); font-size: var(--fs-label); font-weight: 500; cursor: pointer; white-space: nowrap; }
+.segmented label.on { background: var(--surface); color: var(--ink); box-shadow: 0 0 0 1px var(--line-strong); font-weight: 600; }
+.segmented input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.segmented label:has(input:focus-visible) { outline: 2px solid var(--focus); outline-offset: 1px; }
+.accent-dot { flex: none; width: 10px; height: 10px; border-radius: 50%; border: 1px solid var(--line-strong); }
+.accent-dot.accent-green { background: #2F5D50; }
+.accent-dot.accent-navy { background: #2B4C7E; }
+.accent-dot.accent-ink { background: #3A4440; }
+.ui-settings-hint { margin: calc(-1 * var(--sp-2)) 0 0; color: var(--ink-2); font-size: var(--fs-caption); line-height: 1.5; }
+.ui-settings-foot { margin: 0; padding-top: var(--sp-2); border-top: 1px solid var(--line); color: var(--ink-3); font-size: var(--fs-caption); line-height: 1.5; }
+.ui-settings-foot .link-button { padding: 0; border: 0; background: none; color: var(--primary); font: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+
+/* 4. 보는 순서 (머리 아래 한 줄) ------------------------------------------------------------ */
+.flow-bar { display: flex; align-items: center; gap: var(--sp-3); max-width: var(--content-max); margin-top: var(--sp-2); }
+.flow-bar ol { flex: 1; min-width: 0; display: flex; align-items: center; margin: 0; padding: 2px 0; list-style: none; overflow-x: auto; scrollbar-width: none; }
+.flow-bar ol::-webkit-scrollbar { display: none; }
+.flow-bar li { flex: none; display: flex; align-items: center; }
+.flow-bar li + li::before { content: ""; flex: none; width: 16px; height: 1px; margin: 0 2px; background: var(--line-strong); }
+.flow-bar li.done + li::before, .flow-bar li.current::before { background: var(--primary); }
+.flow-bar ol a {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 2px 10px 2px 3px;
+  border: 1px solid transparent; border-radius: 999px; color: var(--ink-2); font-size: var(--fs-label); font-weight: 500; text-decoration: none; white-space: nowrap;
+}
+.flow-bar ol a:hover { color: var(--ink); border-color: var(--line-strong); }
+.flow-no { flex: none; display: inline-grid; place-items: center; width: 22px; height: 22px; border: 1px solid var(--line-strong); border-radius: 50%; background: var(--surface); color: var(--ink-2); font-size: var(--fs-caption); font-weight: 600; line-height: 1; }
+.flow-q { display: none; color: var(--ink-3); font-size: var(--fs-caption); font-weight: 400; }
+.flow-bar li.done .flow-no { border-color: var(--primary); color: var(--primary); }
+.flow-bar li.current a { border-color: var(--primary); background: var(--surface); color: var(--ink); font-weight: 600; }
+.flow-bar li.current .flow-no { border-color: var(--primary); background: var(--primary); color: var(--on-primary); }
+.flow-bar li.current .flow-q { display: inline; }
+.flow-move { flex: none; display: flex; align-items: center; gap: var(--sp-1); }
+.flow-prev, .flow-next { display: inline-flex; align-items: center; gap: 2px; min-height: 30px; padding: 0 6px; border: 1px solid var(--line-strong); border-radius: var(--r-control); background: var(--surface); color: var(--ink-2); font-size: var(--fs-label); font-weight: 500; text-decoration: none; white-space: nowrap; }
+.flow-next { padding-left: 10px; }
+.flow-prev:hover, .flow-next:hover { border-color: var(--ink-3); color: var(--ink); }
+
+/* 5. 빠른 이동 (Ctrl+K) ------------------------------------------------------------------- */
+.command-scrim { position: fixed; inset: 0; z-index: 60; display: flex; justify-content: center; align-items: flex-start; padding: 12vh var(--sp-4) var(--sp-4); background: var(--scrim); }
+.command-palette { width: min(560px, 100%); max-height: 70vh; display: flex; flex-direction: column; border: 1px solid var(--line-strong); border-radius: var(--r-panel); background: var(--surface); box-shadow: var(--shadow-popover); overflow: hidden; }
+.command-input { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-3) var(--sp-4); border-bottom: 1px solid var(--line); color: var(--ink-3); }
+.command-input input { flex: 1; min-width: 0; height: 28px; padding: 0; border: 0; outline: none; background: transparent; color: var(--ink); font-size: var(--fs-panel); }
+.command-input input::placeholder { color: var(--ink-3); font-size: var(--fs-body); }
+.command-list { margin: 0; padding: var(--sp-2); list-style: none; overflow-y: auto; }
+.command-list li[role="option"] { display: flex; align-items: baseline; gap: var(--sp-3); min-height: 34px; padding: 6px var(--sp-3); border-radius: var(--r-control); color: var(--ink); font-size: var(--fs-body); cursor: pointer; }
+.command-list li[role="option"].active { background: var(--surface-sunk); box-shadow: inset 2px 0 0 var(--primary); }
+.command-group { padding: var(--sp-2) var(--sp-3) 2px; color: var(--ink-3); font-size: var(--fs-caption); font-weight: 600; }
+.command-label { font-weight: 500; }
+.command-hint { margin-left: auto; color: var(--ink-3); font-size: var(--fs-caption); white-space: nowrap; }
+.command-empty { padding: var(--sp-4) var(--sp-3); color: var(--ink-2); font-size: var(--fs-label); }
+
+/* 6. 보기 방식: 발표 — 글자를 키우고, 왼쪽 메뉴는 드로어로, 설명 줄은 숨긴다 ---------------------- */
+:root[data-ui-mode="present"] {
+  --fs-caption: 13.5px; --fs-label: 15px; --fs-body: 16.5px; --fs-panel: 19px; --fs-title: 27px; --fs-figure: 38px;
+  --content-max: 1600px;
+}
+:root[data-ui-mode="present"] .sidebar { transform: translateX(-100%); box-shadow: none; }
+:root[data-ui-mode="present"] .sidebar.open { transform: translateX(0); box-shadow: var(--shadow-popover); }
+:root[data-ui-mode="present"] .mobile-close { display: grid; place-items: center; position: absolute; top: var(--sp-3); right: var(--sp-2); width: 36px; height: 36px; border: 0; border-radius: var(--r-control); background: transparent; color: var(--nav-ink); }
+:root[data-ui-mode="present"] .backdrop { display: block; position: fixed; inset: 0; z-index: 25; border: 0; background: var(--scrim); }
+:root[data-ui-mode="present"] .main-shell { margin-left: 0; }
+:root[data-ui-mode="present"] .app-shell::before { display: none; }
+:root[data-ui-mode="present"] .mobile-top { display: flex; align-items: center; gap: var(--sp-2); height: 44px; }
+:root[data-ui-mode="present"] .mobile-top strong { font-size: var(--fs-body); }
+:root[data-ui-mode="present"] .menu-button { display: grid; place-items: center; width: 36px; height: 36px; margin-left: -6px; border: 0; border-radius: var(--r-control); background: transparent; color: var(--ink); }
+:root[data-ui-mode="present"] .shell-header { padding-top: 0; }
+:root[data-ui-mode="present"] .shell-tools { position: absolute; top: 5px; right: var(--sp-6); margin: 0; }
+/* 표제란은 한 줄 요약으로(누르면 펼침) */
+:root[data-ui-mode="present"] .title-block-summary { display: flex; width: auto; min-width: 260px; }
+:root[data-ui-mode="present"] .title-block-wrap:not(.open) .title-block { display: none; }
+:root[data-ui-mode="present"] .title-block-wrap.open .title-block { margin-top: var(--sp-2); }
+/* 설명·주의 줄과 '자세히' 귀띔은 발표 화면에서 뺀다(요약·상세에서는 그대로 보인다) */
+:root[data-ui-mode="present"] details.note, :root[data-ui-mode="present"] .fold-hint, :root[data-ui-mode="present"] .fold-all { display: none; }
+:root[data-ui-mode="present"] .page-header p { font-size: var(--fs-body); }
+:root[data-ui-mode="present"] .flow-bar ol a { min-height: 36px; padding-right: 14px; }
+:root[data-ui-mode="present"] .flow-no { width: 26px; height: 26px; }
+:root[data-ui-mode="present"] .flow-prev, :root[data-ui-mode="present"] .flow-next { min-height: 36px; }
+
+/* 7. 좁은 화면 --------------------------------------------------------------------------- */
+@media (max-width: 1023px) {
+  .shell-tools { position: absolute; top: 7px; right: var(--sp-4); margin: 0; }
+  .tool-button { padding: 0 9px; }
+  .tool-button span, .tool-button kbd { display: none; }
+  :root[data-ui-mode="present"] .shell-tools { top: 5px; right: var(--sp-4); }
+}
+@media (max-width: 760px) {
+  .flow-bar { gap: var(--sp-2); }
+  .flow-bar li.current .flow-q { display: none; }
+  .flow-next span { display: none; }
+  .flow-next { padding: 0 6px; }
+  .command-scrim { padding-top: 8vh; }
+}
+
+@media print {
+  .command-scrim, .ui-settings-panel { display: none !important; }
+}

@@ -207,7 +207,7 @@ export const METRICS: MetricDef[] = [
     key: 'cm_total_t', label: '건물 배출 합계', unit: 'tCO₂eq/년', group: CARBONMAP_GROUP, ramp: 'load', digits: 0,
     value: (p) => n(p.cm_total_t), definition: `전기·가스·지역난방 배출의 합입니다. ${CM_NOTE}`,
     formula: '전기 + 가스 + 지역난방 (탄소공간지도 산정, tCO₂eq)', basis: cmBasis, source: CM_SOURCE,
-    use: '단독주택까지 포함한 건물 배출 총량입니다. 이 도구의 건축HUB 계측(단독주택 제외)과 맞대 빠진 몫을 가늠하고, 우선 관리 격자를 고릅니다.',
+    use: '단독주택까지 포함한 건물 배출 총량입니다. 이 도구의 건축HUB 계측(단독주택 제외)과 대조해 빠진 몫을 가늠하고, 우선 관리 격자를 고릅니다.',
   },
   {
     key: 'cm_elec_t', label: '전기 배출', unit: 'tCO₂eq/년', group: CARBONMAP_GROUP, ramp: 'load', digits: 0,

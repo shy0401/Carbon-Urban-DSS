@@ -1,5 +1,5 @@
 /**
- * 숫자의 신뢰도 등급. 공식 온실가스 통계·탄소공간지도와 맞대 본 분석 결과로 정한 기준이다
+ * 숫자의 신뢰도 등급. 공식 온실가스 통계·탄소공간지도와 대조한 분석 결과로 정한 기준이다
  * (ASHRAE Guideline 14의 월 CV 15%·편향 5%, IPCC 2006 불확도 지침 참고).
  * 등급은 분석 문서 기준의 고정값이며, 화면 값이 바뀌어도 자동으로 다시 매기지 않는다.
  */
@@ -18,12 +18,12 @@ export const CONFIDENCE_ROWS: ConfidenceRow[] = [
  */
 export const CORRECTION_STEPS: Array<{ key: string; label: string; gap_pct: number; what: string }> = [
   { key: 'raw', label: '보정 전', gap_pct: 44.4, what: '건축HUB 계측 지번 전력 합에 승인 계수를 곱한 값' },
-  { key: 'coverage', label: '① 덮음', gap_pct: 28.8, what: '건축HUB에 없는 단독·소규모 공동주택의 몫. 계측 전력이 그 지역 건물 전력을 덮는 비율(0.60~0.82)로 나눔' },
+  { key: 'coverage', label: '① 계측 포함률', gap_pct: 28.8, what: '건축HUB에 없는 단독·소규모 공동주택의 몫. 그 지역 건물 전력 가운데 계량 자료에 들어 있는 비율(0.60~0.82)로 나눔' },
   { key: 'scope', label: '② 부문 범위', gap_pct: 11.3, what: '공식 통계의 건물 부문에 들어가는 농사용·심야 전력을 같은 범위로 맞춤' },
   { key: 'factor', label: '③ 계수 비', gap_pct: 8.1, what: '공식 통계가 쓴 그해 계수와 이 도구가 쓴 승인 계수의 비를 곱함' },
 ];
 
-const GRADE_NOTE = '등급 B = 공식 통계·독립 자료와 맞대어 범위를 확인함, C = 오차가 크거나 가정값임.';
+const GRADE_NOTE = '등급 B = 공식 통계·독립 자료와 대조해 범위를 확인함, C = 오차가 크거나 가정값임.';
 
 /** Full table (에너지 모델) or a one-line summary of selected rows (시뮬레이션·보고서). */
 export function ConfidenceGrades({ ids, compact = false }: { ids?: ConfidenceRow['id'][]; compact?: boolean }) {
@@ -37,7 +37,7 @@ export function ConfidenceGrades({ ids, compact = false }: { ids?: ConfidenceRow
       <tbody>{rows.map((r) => <tr key={r.id}><td>{r.target}</td><td><em className={`grade grade-${r.grade}`}>{r.grade}</em></td><td>{r.basis}</td><td>{r.use}</td></tr>)}</tbody></table></div>
     <div className="correction" data-testid="correction-formula">
       <h4>시·군·구 총량 보정식</h4>
-      <p className="correction-formula">보정 후 건물 전력 배출 = 계측 건물 전력 합 ÷ ① 덮음 × ② 부문 범위 × ③ 계수 비</p>
+      <p className="correction-formula">보정 후 건물 전력 배출 = 계측 건물 전력 합 ÷ ① 계측 포함률 × ② 부문 범위 × ③ 계수 비</p>
       <ol className="correction-steps" aria-label="보정 단계별 공식 통계와의 평균 차이">{CORRECTION_STEPS.map((s) => <li key={s.key}><span className="correction-label">{s.label}</span><span className="correction-track" aria-hidden="true"><i style={{ width: `${(s.gap_pct / CORRECTION_STEPS[0].gap_pct) * 100}%` }} /></span><b>{s.gap_pct.toFixed(1)}%</b><small>{s.what}</small></li>)}</ol>
       <p className="muted">막대는 공식 온실가스 통계와의 평균 차이입니다(2023년 19개 시·군·구 건물 부문 전력, 보정값은 자기 지역을 빼고 구함, 가장 큰 지역 22%). 제도나 학계가 정한 식이 아니라 계산 범위를 공식 통계의 범위에 맞추는 대조이며 전력 총량에만 씁니다. 화면의 지역 합계와 500m 칸 값은 보정 전 값입니다.</p>
     </div>
