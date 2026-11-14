@@ -156,6 +156,9 @@ kbd { padding: 1px 5px; border: 1px solid var(--line-strong); border-radius: 4px
 /* 설명·주의 줄과 '자세히' 귀띔은 발표 화면에서 뺀다(요약·상세에서는 그대로 보인다) */
 :root[data-ui-mode="present"] details.note, :root[data-ui-mode="present"] .fold-hint, :root[data-ui-mode="present"] .fold-all { display: none; }
 :root[data-ui-mode="present"] .page-header p { font-size: var(--fs-body); }
+/* 넓은 화면(발표 화면·영상 1920px)에서 본문이 왼쪽에 몰리지 않게 가운데로. 보고서 종이도 조금 넓혀 가운데에 */
+:root[data-ui-mode="present"] .page, :root[data-ui-mode="present"] .shell-scope, :root[data-ui-mode="present"] .shell-row2 { margin-inline: auto; }
+:root[data-ui-mode="present"] .report-paper { max-width: 1200px; margin-inline: auto; }
 :root[data-ui-mode="present"] .flow-bar ol a { min-height: 36px; padding-right: 14px; }
 :root[data-ui-mode="present"] .flow-no { width: 26px; height: 26px; }
 :root[data-ui-mode="present"] .flow-prev, :root[data-ui-mode="present"] .flow-next { min-height: 36px; }
