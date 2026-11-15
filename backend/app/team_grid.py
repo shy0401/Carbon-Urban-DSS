@@ -1,4 +1,4 @@
-"""팀원 데이터셋(urban-carbon, 윤영준)의 격자 자료를 이 도구에 붙인다.
+"""팀원 데이터셋(urban-carbon)의 격자 자료를 이 도구에 붙인다.
 
 두 가지 묶음 모양을 읽는다(``DATA_DIR/raw/team_urban_carbon/<묶음 날짜>/``, ``python -m app.cli import-team-grid``):
 
@@ -43,7 +43,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from .db import Base
 
 SNAPSHOT = "2026-10-29"
-SOURCE_CARBONMAP = "국토교통부 탄소공간지도 500m 건물 배출 (팀 수집: 윤영준, 7차 인계 2026-10-20 표 + 2026-10-29 팀 저장소의 월별·보류 해)"
+SOURCE_CARBONMAP = "국토교통부 탄소공간지도 500m 건물 배출 (팀 데이터셋 urban-carbon, 7차 인계 2026-10-20 표 + 2026-10-29 팀 저장소의 월별·보류 해)"
 SOURCE_NGII = "국토지리정보원 국토통계지도 100m (팀 수집, 국외 반출 금지)"
 YEARS = (2014, 2016, 2018, 2019, 2020, 2021, 2022, 2023, 2024)  # 2020·2023은 학습에서 뺀 해(_held_year_*, 15개 지역)
 HELD_PREFIX = "_held_year_"
