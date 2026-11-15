@@ -1,4 +1,4 @@
-"""팀 변화 모델 서비스 (urban-carbon 7차, 윤영준) — Carbon Urban DSS가 개발 계획의 배출 변화를 묻는 작은 HTTP 서버.
+"""팀 변화 모델 서비스 (urban-carbon 7차) — Carbon Urban DSS가 개발 계획의 배출 변화를 묻는 작은 HTTP 서버.
 
 * 팀 코드와 학습 표는 저장소에 넣지 않는다. ``TEAM_ROOT``(compose에서 ``data/raw/team_urban_carbon``을 읽기 전용으로
   붙임) 아래 가장 새 묶음의 ``code/``(urban-carbon 저장소 사본: ``src/``, ``config/``, ``data/processed/``)를 그대로 쓴다.

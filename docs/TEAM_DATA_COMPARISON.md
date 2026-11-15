@@ -5,8 +5,8 @@
 | 묶음 | 위치 (PC, Git 제외) | 만든 방법 |
 |---|---|---|
 | **A. 이 도구** | Docker DB `carbon-urban-dss` | 이 저장소의 수집기 (`scripts\dss.cmd`) |
-| **B. urban-carbon** (팀 데이터셋) | `urban-carbon_공유_전체_2026-10-01_윤영준\` | 팀원 저장소 `urban-carbon` (Python 파이프라인, 설정 `config/*.yaml`, ADR 26개) |
-| **C. 전주 두 동 사례** | `데이터수집_예린\share\` | 이 저장소의 수집기 (같은 DB 구조의 묶음) |
+| **B. urban-carbon** (팀 데이터셋) | `urban-carbon_공유_전체_2026-10-01_*\` | 팀원 저장소 `urban-carbon` (Python 파이프라인, 설정 `config/*.yaml`, ADR 26개) |
+| **C. 전주 두 동 사례** | `데이터수집_*\share\` | 이 저장소의 수집기 (같은 DB 구조의 묶음) |
 
 ## 1. 구성 차이 한눈에
 

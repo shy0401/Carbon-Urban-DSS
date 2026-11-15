@@ -65,7 +65,7 @@ export const BUILDING_ENERGY_GROUP = '건물 전체 에너지 (건축HUB)';
 export const CARBONMAP_GROUP = '건물 배출 (탄소공간지도)';
 export const NGII_GROUP = '국토통계지도 100m';
 export const METRIC_GROUPS = ['에너지 관측', '에너지 원단위', '탄소', BUILDING_ENERGY_GROUP, CARBONMAP_GROUP, '도시 형태', REGISTER_GROUP, NGII_GROUP, '토지이용', SGIS500_GROUP, SGIS_GROUP, '데이터 품질'] as const;
-const CM_SOURCE = '국토교통부 탄소공간지도 500m 건물 배출 (팀 수집: 윤영준, 7차 인계 표 + 2026-10-29 팀 저장소의 월별·2020·2023년)';
+const CM_SOURCE = '국토교통부 탄소공간지도 500m 건물 배출 (팀 데이터셋 urban-carbon, 7차 인계 표 + 2026-10-29 팀 저장소의 월별·2020·2023년)';
 const CM_NOTE = '탄소공간지도는 한국부동산원 건물에너지 DB(전기·가스·지역난방)로 산정한 공식 배출이며, 건축HUB API가 빼는 단독주택·소규모 공동주택까지 들어 있습니다. 팀 데이터셋 53개 지역은 2014·2016·2018·2019·2021·2022·2024년이 있고, 지도 연도 이전의 가장 가까운 해를 씁니다. 건물이 있는데 0인 칸은 원자료 누락으로 보고 비웁니다(0 아님).';
 const NGII_SOURCE = '국토지리정보원 국토통계지도 100m (팀 수집, 국외 반출 금지)';
 const NGII_NOTE = '국토통계지도 100m 격자 값을 이 500m 격자 안에서 더한 것입니다. 이용 조건상 국외 반출이 금지되어 공개 시연 주소에서는 보이지 않습니다.';
@@ -310,7 +310,7 @@ export const METRICS: MetricDef[] = [
     definition: '팀 데이터셋이 건축물대장의 모든 건물을 지번 도형으로 격자에 놓아 더한 연면적입니다. 이 도구가 건축물대장을 받지 않은 지역(세종·부산 강서·서울 강동)에서만 보입니다.',
     formula: 'Σ 건축물대장 연면적 (지번 도형 → 격자)',
     basis: (p) => (n(p.team_reg_floor_area_m2) !== null ? `주거 ${fmt(n(p.team_reg_residential_m2), 'm²')} · 비주거 ${fmt(n(p.team_reg_nonresidential_m2), 'm²')} · 세대 ${fmt(n(p.team_reg_dwellings))}` : null),
-    source: '건축물대장 (팀 수집: 윤영준, 2026-10-01)',
+    source: '건축물대장 (팀 데이터셋 urban-carbon, 2026-10-01)',
     use: '대장을 아직 받지 않은 지역의 개발 밀도와 주거·비주거 구성을 봅니다.',
   },
   {

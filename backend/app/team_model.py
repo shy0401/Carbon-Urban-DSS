@@ -1,4 +1,4 @@
-"""팀 변화 모델(urban-carbon 7차, 윤영준) 연결: 500m 칸에 개발 계획을 넣으면 건물 배출 변화(tCO₂e)와 구간을 돌려준다.
+"""팀 변화 모델(urban-carbon 7차) 연결: 500m 칸에 개발 계획을 넣으면 건물 배출 변화(tCO₂e)와 구간을 돌려준다.
 
 모델은 ``team-model`` 컨테이너(``deploy/team-model/server.py``, compose ``--profile team-model``)가 팀 코드 그대로 학습·예측한다.
 이 모듈은 그 서비스에 묻고, 칸의 과거 개발 사례(탄소공간지도 실제 변화와 모델 점수)를 DB에서 함께 준다.
