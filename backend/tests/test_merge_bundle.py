@@ -91,8 +91,9 @@ CREATE TABLE scenarios (id varchar PRIMARY KEY, name text);
 
 
 @pytest.mark.skipif(not os.getenv("MERGE_TEST_ADMIN_URL"), reason="needs a PostgreSQL server (MERGE_TEST_ADMIN_URL)")
-def test_merge_inserts_only_missing_rows_and_never_changes_local_ones(tmp_path: Path):
+def test_merge_inserts_only_missing_rows_and_never_changes_local_ones(tmp_path: Path, monkeypatch):
     from sqlalchemy import create_engine, text
+    monkeypatch.setenv("PRIVATE_NAMES", "길순")  # 지어낸 이름: 들어오는 행에서 세기만 하고 값은 그대로
     admin_url = os.environ["MERGE_TEST_ADMIN_URL"]
     tag = uuid.uuid4().hex[:8]
     src_db, dst_db = f"merge_t_src_{tag}", f"merge_t_dst_{tag}"
@@ -116,7 +117,7 @@ def test_merge_inserts_only_missing_rows_and_never_changes_local_ones(tmp_path: 
             c.execute(text("INSERT INTO energy_monthly (source,sigungu_code,bjdong_code,lot_type,bun,ji,use_ym,energy_type,usage_kwh,raw_record) VALUES "
                            "('HUB','52111','12800','0','0001','0002','202501','ELECTRICITY',100,'{\"b\": 2, \"a\": 1}'),"
                            "('HUB','52111','12800','0','0001','0002','202502','ELECTRICITY',999,'{}'),"
-                           "('HUB','52111','12800','0','0001','0002','202503','ELECTRICITY',NULL,'{}')"))
+                           "('HUB','52111','12800','0','0001','0002','202503','ELECTRICITY',NULL,'{\"note\": \"길순 수집\"}')"))
             c.execute(text("INSERT INTO apartment_energy_monthly VALUES ('A1:202201:K-apt','A1','202201','K-apt',5,'SUCCESS'),"
                            "('A1:202101:K-apt','A1','202101','K-apt',7,'SUCCESS'),('A1:202102:K-apt','A1','202102','K-apt',NULL,'NOT_REPORTED')"))
             c.execute(text("INSERT INTO raw_data_assets VALUES ('r1','kapt_energy','/data/raw/kapt-energy/2021/A1/202101.json'),"
@@ -137,6 +138,7 @@ def test_merge_inserts_only_missing_rows_and_never_changes_local_ones(tmp_path: 
         e = by["energy_monthly"]
         assert (e["source_rows"], e["matched"], e["identical"], e["differing"], e["inserted"]) == (3, 2, 1, 1, 1)
         assert e["differing_columns"] == {"usage_kwh": 1}          # json key order alone is not a difference
+        assert e["names_seen"] == {"raw_record": 1}
         assert e["differing_samples"][0]["use_ym"] == "202502"
         a = by["apartment_energy_monthly"]
         assert (a["matched"], a["identical"], a["inserted"]) == (1, 1, 2)
@@ -146,6 +148,7 @@ def test_merge_inserts_only_missing_rows_and_never_changes_local_ones(tmp_path: 
         with create_engine(dst_url).connect() as c:
             assert c.execute(text("SELECT usage_kwh FROM energy_monthly WHERE use_ym='202502'")).scalar_one() == 200  # local value kept
             assert c.execute(text("SELECT usage_kwh IS NULL FROM energy_monthly WHERE use_ym='202503'")).scalar_one()  # NULL stays NULL, not 0
+            assert c.execute(text("SELECT raw_record->>'note' FROM energy_monthly WHERE use_ym='202503'")).scalar_one() == "길순 수집"
             assert c.execute(text("SELECT max(id) FROM energy_monthly")).scalar_one() < 500  # local sequence, not the teammate's ids (501+)
             assert c.execute(text("SELECT count(*) FROM scenarios")).scalar_one() == 1
             assert c.execute(text("SELECT quality_status FROM apartment_energy_monthly WHERE year_month='202102'")).scalar_one() == "NOT_REPORTED"

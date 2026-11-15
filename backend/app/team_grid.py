@@ -41,6 +41,7 @@ from sqlalchemy import JSON, Boolean, Float, Integer, String, delete, func, inse
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .db import Base
+from .privacy import scrub_path, scrub_values
 
 SNAPSHOT = "2026-10-29"
 SOURCE_CARBONMAP = "국토교통부 탄소공간지도 500m 건물 배출 (팀 데이터셋 urban-carbon, 7차 인계 2026-10-20 표 + 2026-10-29 팀 저장소의 월별·보류 해)"
@@ -207,7 +208,7 @@ def dev_row(dataset: str, r: dict[str, str]) -> dict[str, Any] | None:
     if not grid or None in (x, y, b, a):
         return None
     dev = (r.get("development_id") or f"{int(b)}_{int(a)}_{grid}").strip()
-    values = {k: (num(v) if num(v) is not None else (v or None)) for k, v in r.items()}
+    values = scrub_values({k: (num(v) if num(v) is not None else (v or None)) for k, v in r.items()})
     # 7차 표는 한 칸에 가능한 전후 해 쌍을 모두 담으므로 해까지 넣어 한 줄 = 한 쌍
     return {"id": f"{dataset}|{dev}|{grid}|{int(b)}-{int(a)}", "dataset": dataset, "region_code": dataset_region(dataset) or "", "grid_code": grid,
             "x": int(x), "y": int(y), "before_year": int(b), "after_year": int(a), "data": values}
@@ -371,6 +372,13 @@ def _write_g500(db: Any, dataset: str, year: int, rows: list[dict[str, Any]]) ->
     return {"months_kept": kept, "months_dropped": dropped}
 
 
+def record_path(path: Path, root: Path) -> str:
+    """The path written to the DB (team_imports·source_file) and the log: relative to the root, sender names left out.
+
+    팀원이 보낸 폴더 이름에 붙은 이름(``…_2026-10-01_<이름>``, 이 PC의 이름 목록)은 기록하지 않는다(app.privacy)."""
+    return scrub_path(path.relative_to(root).as_posix()) or ""
+
+
 def _done(db: Any, rel: str, sha: str, force: bool) -> tuple[bool, Any]:
     done = db.get(TeamImport, rel)
     return bool(done and done.sha256 == sha and not force), done
@@ -465,7 +473,7 @@ def apply_case_scores(db: Any, scores: dict[tuple[str, str, int, int], dict[str,
             x, y, region = cells[(dataset, grid)]
         if x is None or y is None:
             continue
-        values = {k: (num(v) if num(v) is not None else (v or None)) for k, v in raw.items() if k != "region"}
+        values = scrub_values({k: (num(v) if num(v) is not None else (v or None)) for k, v in raw.items() if k != "region"})
         values.setdefault("pair_usable", True)
         values["model"] = {k: v for k, v in score.items() if k != "row"}
         values["source"] = "팀 모델 점수 파일(사례마다 고른 전후 해)"
@@ -494,7 +502,7 @@ def import_team_grid(db: Any, root: Path | None = None, force: bool = False, log
         for year, (path, _kind) in sorted(plan["g500"].items()):
             by_file.setdefault(path, []).append(year)
         for path, years in by_file.items():
-            rel = str(path.relative_to(root))
+            rel = record_path(path, root)
             month_files = [plan["months"][y] for y in years if y in plan["months"]] if path.name == TRAINING_FILE else []
             sha = _sha(path) if not month_files else hashlib.sha256("".join([_sha(path), *(_sha(m) for m in month_files)]).encode()).hexdigest()
             skip, done = _done(db, rel, sha, force)
@@ -515,7 +523,7 @@ def import_team_grid(db: Any, root: Path | None = None, force: bool = False, log
             for year, rows in rows_by_year.items():
                 rows = list({r["id"]: r for r in rows}.values())  # the same key twice in one file: the last row (no double count)
                 if year in plan["months"] and path.name == TRAINING_FILE:
-                    label = f"{path.relative_to(root).parts[0]} {year}/grid_500m.csv"
+                    label = f"{record_path(path, root).split('/')[0]} {year}/grid_500m.csv"
                     k, d = attach_months(rows, same_bundle_months(plan["months"][year]), label)
                     stats["months_same_bundle"] += k
                     stats["months_same_bundle_dropped"] += d
@@ -528,7 +536,7 @@ def import_team_grid(db: Any, root: Path | None = None, force: bool = False, log
             stats["grid500"] += total
             log(f"{rel}: {total} ({', '.join(str(y) for y in years)})")
         for year, path in sorted(plan["g100"].items()):
-            rel = str(path.relative_to(root))
+            rel = record_path(path, root)
             sha = _sha(path)
             skip, done = _done(db, rel, sha, force)
             if skip:
@@ -543,7 +551,7 @@ def import_team_grid(db: Any, root: Path | None = None, force: bool = False, log
             log(f"{rel}: {len(rows)}")
         path = plan["dev"]
         if path is not None:
-            rel = str(path.relative_to(root))
+            rel = record_path(path, root)
             sha = _sha(path)
             skip, done = _done(db, rel, sha, force)
             if skip:
@@ -561,7 +569,7 @@ def import_team_grid(db: Any, root: Path | None = None, force: bool = False, log
     files = [p for p in (newest_file(root, CASES_CV), newest_file(root, CASES_TEST)) if p]
     changed = dev_changed
     for p in files:
-        rel = str(p.relative_to(root))
+        rel = record_path(p, root)
         sha = _sha(p)
         skip, done = _done(db, rel, sha, force)
         if not skip:

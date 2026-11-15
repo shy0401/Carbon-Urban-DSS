@@ -31,6 +31,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .db import Base, Session
+from .privacy import scrub_path, scrub_text
 from .models import (
     Building,
     DataSource,
@@ -705,7 +706,7 @@ async def preview_upload(
     batch = UploadBatch(
         id=upload_id,
         dataset_type=dataset_type,
-        filename=file.filename or "upload",
+        filename=scrub_path(Path(file.filename or "upload").name) or "upload",  # 파일 이름에 붙은 보낸 사람 이름은 기록하지 않음
         content_type=file.content_type,
         stored_path=str(stored_path),
         file_size=len(content),
@@ -989,7 +990,7 @@ def import_upload(upload_id: str, request: ImportRequest, db: Any = Depends(_db_
             "energy": "건물 에너지",
         }[batch.dataset_type],
         name=batch.filename,
-        organization=request.provider,
+        organization=scrub_text(request.provider),
         source_url=str(request.source_url),
         source_type="UNVERIFIED",
         status="IMPORTED",

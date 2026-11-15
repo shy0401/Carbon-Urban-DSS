@@ -9,6 +9,9 @@ database does not have yet:
   those rows are counted per column and sampled in the report so the difference can be looked at.
 * Only observation tables are merged (MERGE_TABLES). Settings, work products and region preparation
   state (grids, study regions, scenarios, reports, collection jobs, team CSV imports) stay local.
+* Incoming text and JSON values that hold a name from this PC's private list as a word (app.privacy) are counted
+  per table (names_seen) and left as they are: these are observation tables, and a building or place can carry the
+  same letters. Look at them and, when they are a teammate's name, run python -m app.privacy scrub-db.
 * raw_data_assets rows are merged only when the raw file they point to came with the bundle and the file
   here is that same file (SHA-256 against the bundle's raw-manifest.csv), and their data source is known.
   Records that point to the other PC's response cache, or to a raw file kept local because it differs,
@@ -31,6 +34,8 @@ from typing import Any, Iterable
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Connection, Engine, make_url
+
+from .privacy import private_names, word_pattern
 
 # Not data values: when a row was fetched or matched, and which stored response it came from.
 VOLATILE = frozenset({"collected_at", "matched_at", "created_at", "updated_at", "raw_source_id"})
@@ -114,6 +119,7 @@ class TableResult:
     differing_samples: list[dict[str, Any]] = field(default_factory=list)
     new_rows: int = 0
     inserted: int = 0
+    names_seen: dict[str, int] = field(default_factory=dict)   # column → incoming rows holding a private name as a word
     skipped: dict[str, int] = field(default_factory=dict)
     message: str | None = None
 
@@ -216,6 +222,22 @@ def _copy_into_temp(src: Connection, dst: Connection, table: str, cols: list[Col
     return int(dst.execute(text("SELECT count(*) FROM _merge_src")).scalar_one())
 
 
+TEXT_TYPES = ("text", "character varying", "json", "jsonb")
+
+
+def names_in_incoming(dst: Connection, cols: list[Column], names: tuple[str, ...] | None = None) -> dict[str, int]:
+    """{column: rows of _merge_src whose value holds a private name as a word}. Values are not printed or changed."""
+    names = private_names() if names is None else names
+    if not names:
+        return {}
+    text_cols = [c for c in cols if c.data_type in TEXT_TYPES]
+    if not text_cols:
+        return {}
+    counts = ", ".join(f"count(*) FILTER (WHERE {q(c.name)}::text ~ :w)" for c in text_cols)
+    row = dst.execute(text(f"SELECT {counts} FROM _merge_src"), {"w": word_pattern(names)}).one()
+    return {c.name: int(n) for c, n in zip(text_cols, row) if n}
+
+
 def merge_table(src: Connection, dst: Connection, spec: TableSpec, data_dir: Path, dry_run: bool,
                 manifest: dict[str, str] | None = None) -> TableResult:
     res = TableResult(spec.name)
@@ -238,6 +260,7 @@ def merge_table(src: Connection, dst: Connection, spec: TableSpec, data_dir: Pat
         res.message = "묶음에만 있는 열은 버림: " + ", ".join(unknown)
     nullable = {c.name for c in cols if c.nullable}
     res.source_rows = _copy_into_temp(src, dst, spec.name, cols)
+    res.names_seen = names_in_incoming(dst, cols)
     on = key_match(key, nullable)
     t = f"public.{q(spec.name)}"
     compare = compared_columns(spec, cols, key)

@@ -98,6 +98,7 @@ git push -u origin fix/<무엇을-고치나>
 | 올리지 않기로 한 경로가 들어 있음(`.env`, `.secrets/`, `data/raw`·`data/backups`·`data/cache` 등, 키·덤프 파일) | 그 파일을 PR에서 빼고 다시 푸시 |
 | 한 PR이 파일을 20개 넘게 지우거나 3,000줄 넘게 지움 | 관리자가 내용을 보고 직접 병합(잘못 푼 충돌로 다른 사람의 반영이 사라지는 것을 막기 위함) |
 | 다른 저장소(fork)에서 온 PR | 이 저장소의 브랜치로 올림 |
+| 더한 줄이나 파일 이름에 보낸 사람 이름으로 보이는 것이 있음(10절) | 출처를 팀 데이터셋 이름·받은 날짜로 고쳐 다시 푸시. 이름이 아니면 그 줄에 `privacy: ok` |
 
 알아 둘 것:
 - GitHub에서는 시험이 돌지 않습니다. 병합 전에 확인해 주는 단계가 없으므로, 올리는 사람이 로컬에서 시험을 돌리고 결과를 PR 설명에 적습니다.
@@ -111,3 +112,14 @@ git push -u origin fix/<무엇을-고치나>
 |---|---|---|
 | `feature/interview-feedback` | 연결 확인 + 이 문서 | PR #1로 병합, 브랜치 삭제 |
 | `fix/feedback-audit` | 점검 결과 문서(`FEEDBACK_AUDIT_2026-11-13.md`)와 감축 사다리의 남는 양·상쇄 표시 수정 | PR 검토 대기 |
+
+## 10. 보낸 사람 이름을 남기지 않기
+
+팀원이 보낸 자료를 붙일 때 출처·폴더 이름·기록에 사람 이름을 적지 않습니다(`AGENTS.md`). 출처는 "팀 데이터셋 urban-carbon, 2026-10-20 인계"처럼 자료 이름과 받은 날짜로 씁니다.
+
+- **가져오기 코드**: 팀 격자(`import-team-grid`)·선도소프트 100m·파일 업로드가 DB에 적는 경로·파일 이름에서 이름을 뺍니다(`backend/app/privacy.py`). 날짜나 "수집" 뒤에 붙인 이름(`…_2026-10-01_<이름>`, `데이터수집_<이름>`)은 목록 없이도 빠집니다. 시·군·구·동…으로 끝나는 이름과 다른 자리에 쓴 이름은 목록에 적어야 빠집니다. 팀 표의 칸(개발 사례·점수 줄)은 목록의 이름이 한 낱말로 든 칸만 "팀원"으로 바꿉니다(이름과 같은 글자가 든 건물 이름 '○○교회' 같은 것은 그대로). 다른 PC 묶음 합치기(`MergeBundle`)는 관측 표라 값을 바꾸지 않고 이름이 든 행 수만 보고서(`names_seen`)에 적습니다.
+- **이름 목록**: 저장소에 두지 않습니다(목록이 곧 기록이므로). PC마다 `data/ops/private_names.txt`(한 줄에 하나) 또는 `.env`의 `PRIVATE_NAMES`(쉼표)에 적습니다. GitHub에서는 저장소 Settings → Secrets and variables → Actions → `PRIVATE_NAMES`.
+- **점검**: 올리기 전 `python backend/app/privacy.py check`(저장소 파일. 발표자료·문서 파일(pptx·docx·xlsx)은 슬라이드·발표자 노트·본문 글자까지, PDF는 보지 않음), DB는 `docker compose -p carbon-urban-dss -f compose.yaml -f compose.demo.yaml exec -T api python -m app.privacy check --db`. GitHub에서는 "보낸 사람 이름 점검"이 푸시·PR마다, 자동 병합이 PR의 더한 줄마다 봅니다. 걸린 곳은 파일·줄만 찍고 이름은 찍지 않습니다.
+- **이미 들어간 기록**: `python -m app.privacy scrub-db`(세기만) → `--apply`(경로 열은 이름 자리를 빼고, 다른 글자·JSON은 한 낱말로 쓰인 이름만 "팀원"으로). 원본 파일 자리(`storage_location`)와 다른 낱말 안의 같은 글자는 바꾸지 않고 셉니다. 먼저 `scripts\dss.cmd Backup`.
+- Git 기록(지난 커밋)에 남은 이름은 지우지 않습니다(기록 다시 쓰기·강제 푸시 금지).
+

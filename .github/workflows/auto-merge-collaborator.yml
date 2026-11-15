@@ -4,7 +4,8 @@ name: 협업자 PR 자동 병합
 # 승인을 기다리지 않고 Squash and merge 한다. 규칙과 예외: docs/GIT_WORKFLOW.md 8절.
 #
 # 안전: pull_request_target이라 이 파일은 항상 main의 것이 쓰이고, PR의 코드를 내려받거나 실행하지 않는다
-# (GitHub API만 부른다). PR이 정한 문자열(제목·브랜치 이름)을 ${{ }}로 스크립트에 넣지 않는다.
+# (GitHub API만 부른다. 내려받는 것은 main의 이름 점검 스크립트뿐이고, PR이 더한 줄은 그 스크립트가 글자로만 읽는다).
+# PR이 정한 문자열(제목·브랜치 이름)을 ${{ }}로 스크립트에 넣지 않는다.
 
 on:
   pull_request_target:
@@ -31,11 +32,19 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
-      ALLOWED_AUTHORS: yangbun-GIT          # 쉼표로 여러 명. GitHub 로그인 이름(대소문자 무시)
+      ALLOWED_AUTHORS: yangbun-GIT          # 쉼표로 여러 명. GitHub 로그인 이름(대소문자 무시) privacy: ok
+      PRIVATE_NAMES: ${{ secrets.PRIVATE_NAMES }}   # 보낸 사람 이름 점검용(저장소 Secrets, 없으면 관례 규칙만)
       BASE_BRANCH: main
       MAX_REMOVED_FILES: '20'               # 한 PR이 지우는 파일 수가 이보다 많으면 보류
       MAX_DELETED_LINES: '3000'             # 한 PR이 지우는 줄 수가 이보다 많으면 보류
     steps:
+      - name: main의 이름 점검 스크립트 받기
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          sparse-checkout: backend/app/privacy.py
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
       - name: 병합
         shell: bash
         run: |
@@ -91,6 +100,14 @@ jobs:
             bad=$(grep -vE '(^|/)\.env\.example$' <<<"$names" | grep -E "$BLOCKED_RE" | head -10 || true)
             if [ -n "$bad" ]; then
               hold "$n" "$sha" blocked-path "올리지 않기로 한 경로가 들어 있어 자동 병합하지 않았습니다(\`AGENTS.md\`의 올리지 않는 것). 해당 파일을 PR에서 빼고 다시 푸시해 주세요."$'\n\n```\n'"$bad"$'\n```'
+              return 0
+            fi
+            # 더한 줄에 보낸 사람 이름(이 저장소 Secrets의 PRIVATE_NAMES, 날짜·수집 뒤 이름 관례)이 있으면 보류. 이름은 찍지 않는다
+            added=$(api --paginate "repos/$GH_REPO/pulls/$n/files?per_page=100" \
+              --jq '.[] | ("+++ " + .filename), ((.patch // "") | split("\n")[] | select(startswith("+") and (startswith("+++") | not)) | .[1:])' 2>/dev/null || true)
+            privacy=$(printf '%s\n' "$added" | python3 "$GITHUB_WORKSPACE/backend/app/privacy.py" check-lines 2>/dev/null | head -20 || true)
+            if [ -n "$privacy" ]; then
+              hold "$n" "$sha" privacy "더한 줄에 보낸 사람 이름으로 보이는 것이 있어 자동 병합하지 않았습니다(\`AGENTS.md\`: 팀 자료 출처는 사람 이름 대신 팀 데이터셋 이름·받은 날짜). 고쳐서 다시 푸시하면 다시 확인합니다. 이름이 아니면 그 줄에 \`privacy: ok\`를 적어 주세요."$'\n\n```\n'"$privacy"$'\n```'
               return 0
             fi
             removed=$(awk -F'\t' '$1 == "removed"' <<<"$files" | grep -c . || true)

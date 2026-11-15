@@ -45,6 +45,7 @@
 #    data/raw/team_urban_carbon/2026-10-01/<5자리 코드>_<도시>/<연도>/grid_500m.csv, grid_100m.csv
 #    data/raw/team_urban_carbon/2026-10-01/<5자리 코드>_<도시>/developments.csv
 #    7차 인계 묶음은 zip을 그대로 풉니다(맨 위 폴더만 빼고): data/raw/team_urban_carbon/2026-10-20/code/...
+#    묶음 폴더 이름은 받은 날짜만 씁니다(보낸 사람 이름을 붙이지 않음). 기록하는 경로에서는 이름을 한 번 더 뺍니다(GIT_WORKFLOW 10절)
 # 2) 넣기 (바뀐 파일만, --force면 전부)
 docker compose exec api python -m app.cli import-team-grid
 ```

@@ -34,6 +34,7 @@ from sqlalchemy import JSON, Float, Integer, String, delete, func, insert, selec
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .db import Base
+from .privacy import scrub_path
 
 SOURCE = "탄소공간지도 100m 건물 전기 배출 (선도소프트 제공, 2026-10-17 받음)"
 SOURCE_SHORT = "탄소공간지도 100m (선도소프트)"
@@ -201,7 +202,7 @@ def import_kcsm100(db: Any, root: Path | None = None, force: bool = False, log: 
     stats: dict[str, Any] = {"years": [], "cells": 0, "rows": 0, "bad_code": 0, "sum_mismatch": 0, "skipped_years": [], "files": 0}
     by_year = source_files(root)
     for year, paths in sorted(by_year.items()):
-        rels = [str(p.relative_to(root)) for p in paths]
+        rels = [scrub_path(p.relative_to(root).as_posix()) or "" for p in paths]  # 보낸 사람 이름은 기록하지 않음(app.privacy)
         shas = [_sha(p) for p in paths]
         done = [db.get(KcsmImport, rel) for rel in rels]
         if not force and all(d is not None and d.sha256 == s for d, s in zip(done, shas)):

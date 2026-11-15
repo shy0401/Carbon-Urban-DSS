@@ -1,0 +1,27 @@
+name: 보낸 사람 이름 점검
+
+# 팀원이 보낸 자료의 출처·폴더 이름에 사람 이름이 들어가지 않았는지 본다(backend/app/privacy.py, 표준 라이브러리만).
+# 이름 목록은 저장소 Secrets의 PRIVATE_NAMES(쉼표로 구분)에 둔다. 없으면 관례 규칙(날짜·수집 뒤에 붙인 이름 등)만 본다.
+# 걸린 곳은 파일·줄 번호만 찍고 이름은 찍지 않는다.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: 저장소 파일 점검
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: 점검
+        env:
+          PRIVATE_NAMES: ${{ secrets.PRIVATE_NAMES }}
+        run: python3 backend/app/privacy.py check

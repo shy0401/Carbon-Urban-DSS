@@ -9,6 +9,7 @@
 - 계수·기준온도·임계값은 기준 문서 5절과 코드 상수(`backend/app/emissions.py`, `degree_days.py`, `kapt_energy.py`)가 같아야 한다. 바꿀 때는 문서와 코드를 같은 커밋에서 바꾼다.
 - 보고서의 숫자는 계산 엔진 근거 문장에서만 가져온다. 감축량을 쓸 때는 기준(공동주택/건물 전체/추정)과 기준 연도를 함께 쓴다.
 - 확인하지 못한 API 필드·주소·단위는 "확인 필요"로 적는다. 짐작으로 채우지 않는다.
+- 팀원이 보낸 자료의 출처·폴더 이름·기록·문서에 사람 이름을 쓰지 않는다. "팀 데이터셋 <이름>", 받은 날짜로 적고 받은 폴더는 `data/raw/<자료>/<받은 날짜>/`처럼 날짜로 넣는다. 이름 목록은 PC의 `data/ops/private_names.txt`에만 둔다([GIT 작업 방식 10절](docs/GIT_WORKFLOW.md)).
 
 ## 올리지 않는 것
 - `.env`·키·토큰, `.secrets/`, `data/`(원본·DB 덤프·백업·캐시), 개인 설정(`.idea/` 등).
@@ -19,6 +20,7 @@
 ```powershell
 docker compose -p carbon-urban-dss -f compose.yaml -f compose.demo.yaml exec -T api python -m app.cli check-standard
 docker compose -p carbon-urban-dss -f compose.yaml -f compose.demo.yaml exec -T api python -m app.cli check-standard --csv /data/raw/<폴더>/<파일>.csv
+python backend/app/privacy.py check   # 올리기 전: 보낸 사람 이름이 없는지
 scripts\dss.cmd ExportBundle      # 팀원에게 줄 때
 scripts\dss.cmd MergeBundle -BundlePath <묶음.zip> -DryRun   # 받을 때 (먼저 세기만)
 ```
