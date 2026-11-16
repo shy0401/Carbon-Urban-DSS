@@ -10,12 +10,15 @@
 절감률은 설계 목표가 아니라 실측에서 나온 지표이며, 출처와 범위는 docs/REDUCTION_INDICATORS.md에 있다.
 값은 모두 이 파일 상수이며 DATA_STANDARD 5.15와 같아야 한다. 값이 없으면 0으로 채우지 않고 그 단계를 뺀다.
 난방·급탕 전기화(히트펌프)는 초기 비용이 크고 국내 공동주택 실측 근거가 부족해 2026-11-11부터 기본 단계에서 뺐다.
+사다리에 넣지 않은 수단(신축 통합 기준, 패시브 수준 외피, 열회수 환기, 세대 표시장치, 공용부 조명, 승강기 회생제동 등)은
+reduction_measures의 목록으로 '따로 본 값'(measures)을, 시공 단계 내재탄소는 참고 계산(embodied)을 함께 돌려준다(2026-11-16).
 """
 from __future__ import annotations
 
 from typing import Any
 
 from .benchmarks import PRIMARY_ENERGY_FACTOR
+from .reduction_measures import embodied, measure_table
 
 # 지표(실측 기반). 근거 표: docs/REDUCTION_INDICATORS.md
 ENVELOPE_GAS_SAVING = 0.236            # 단열·창호 기준 강화: 가스 −23.6% (개별난방 단지 78쌍, 준공 2017~ 대 ~2008, 95% 구간 −25.8~−20.5%)
@@ -56,7 +59,7 @@ def _carbon(electricity_kwh: float, gas_kwh: float, fe: float, fg: float | None)
 
 def building_plan(reference: dict[str, Any] | None, footprint_m2: float | None, factors: dict[str, Any] | None,
                   pv_yield: dict[str, Any] | None = None, plan_carbon_kg: float | None = None,
-                  green_area_m2: float | None = None) -> dict[str, Any]:
+                  green_area_m2: float | None = None, floor_area_m2: float | None = None, floors: float | None = None) -> dict[str, Any]:
     """계획안 하나의 감축 방안 사다리.
 
     reference: 기준안 연간 {'electricity_kwh', 'gas_kwh'} (같은 연면적을 관측 원단위 그대로 지을 때)
@@ -65,6 +68,8 @@ def building_plan(reference: dict[str, Any] | None, footprint_m2: float | None, 
     pv_yield: {'kwh_per_kw', 'label'} — 지역 일사량 추정 또는 사용자 값. 없으면 태양광은 용량만 적는다
     plan_carbon_kg: 입력한 계획안의 연간 운영탄소(사다리 위 위치를 말하기 위해)
     green_area_m2: 계획안의 녹지 면적(대지면적 × 녹지 비율). 없으면 녹지·조경 흡수 단계를 뺀다
+    floor_area_m2: 계획안의 지상 연면적. 없으면 시공 단계 내재탄소(참고)를 뺀다
+    floors: 계획안의 층수(모듈러 공법처럼 층수 제한이 있는 수단의 값을 낼지 정한다)
     """
     ref = reference or {}
     e0, g0 = ref.get("electricity_kwh"), ref.get("gas_kwh")
@@ -151,6 +156,9 @@ def building_plan(reference: dict[str, Any] | None, footprint_m2: float | None, 
         "plan": {"carbon_kg": round(plan_carbon_kg, 1), "pct": round((c0 - plan_carbon_kg) / c0 * 100, 1) if c0 > 0 else None} if plan_carbon_kg is not None else None,
         "factors": {"electricity": fe, "gas": fg if gas_known else None},
         "assumptions": assumptions,
+        # 수단마다 따로 본 값(서로 더하지 않음)과 시공 단계 내재탄소(참고 계산). 사다리 값은 바꾸지 않는다.
+        "measures": measure_table(e0, g0 if gas_known else None, fe, fg if gas_known else None, pv, green),
+        "embodied": embodied(floor_area_m2, c0, floors),
     }
 
 

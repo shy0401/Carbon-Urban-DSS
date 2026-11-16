@@ -106,11 +106,13 @@ def create_snapshot(db,year,grid_id,scenario_ids,region=None):
         n=len(scenarios)+1;label='계획안'
         from .reduction_plan import building_plan,plan_text
         annual=r.result.get('annual') or {}
-        reduction=building_plan(annual.get('reference'),r.result.get('total_footprint'),factors_now,pv_yield,(annual.get('scenario') or {}).get('carbon_kg'),green_area_m2=r.result.get('green_area_m2'))
+        reduction=building_plan(annual.get('reference'),r.result.get('total_footprint'),factors_now,pv_yield,(annual.get('scenario') or {}).get('carbon_kg'),green_area_m2=r.result.get('green_area_m2'),floor_area_m2=r.result.get('gross_floor_area'),floors=s.inputs.get('floors'))
         scenarios.append({'id':sid,'label':label,'inputs':s.inputs,'result':r.result,'created_at':s.created_at.isoformat(),'reduction_plan':reduction})
         plan_facts+=plan_sentence_facts(n,label,s.inputs,r.result)
         text=plan_text(reduction)
         if text:plan_facts.append({'id':f'reduction_{n}','text':text})
+        # 사다리 밖 수단(따로 본 값)과 시공 단계 내재탄소(참고 계산)는 reduction_plan 안에 담겨 5절의 표로만 나간다.
+        # 근거 문장(facts)에는 더하지 않는다: 요약은 사다리까지만 말하고, 사례 대조(cases.py)의 문장 수·지문도 그대로 둔다.
     context=grid_context(db,actual_grid);context['facts']=context_facts(context)
     place=place_label(context.get('admin') or [],(data.get('region') or {}).get('short_name') or (data.get('region') or {}).get('name'))
     # The report opens with the place and the plans; the grid's own energy sentences follow (status report: those alone).
@@ -180,6 +182,46 @@ def reduction_lines(sc):
         from .reduction_plan import residual_text
         lines.append('-'+residual_text(r))
     lines+=['- '+a for a in p.get('assumptions') or []]
+    lines+=measure_lines(p)+embodied_lines(p)
+    return lines
+
+def _range_t(r):
+    """범위(kg 두 값)를 톤으로, 작은 감축부터. 음수는 늘어남(+)."""
+    f=lambda v:('+' if v<0 else '−')+f"{abs(v)/1000:,.1f}"
+    lo,hi=sorted(r)
+    return f"{f(lo)}~{f(hi)} t"
+
+def _sources(m):
+    return ', '.join(f"[{x['label']}]({x['url']})" if x['url'].startswith('http') else f"{x['label']}({x['url']})" for x in m.get('sources') or [])
+
+def measure_lines(p):
+    """수단별 효과 (markdown): 대책 없음에 그 수단 하나만 적용한 값. 서로 더하지 않는다."""
+    rows=p.get('measures') or []
+    if not rows:return []
+    lines=['','#### 수단별 효과 (따로 본 값, 서로 더하지 않음)','',
+           '대책 없음에 그 수단 하나만 적용했을 때 줄어드는 양입니다. 같은 에너지를 줄이는 수단이 겹치므로 합하지 않고, 합계는 위 사다리로 봅니다. 값이 없는 줄은 계획안에 계산 근거가 없어 지표만 적었습니다.','',
+           '| 수단 | 지표 | 근거 | 이 계획안에 따로 적용하면 | 쓰임 |','|---|---|---|---:|---|']
+    for m in rows:
+        ev=m['evidence_label']+(f" {m['n']}" if m.get('n') else '')
+        if m.get('alone_kg') is None:alone='지표만' if m['use']=='indicator' else f"값 없음 ({m['reason']})"
+        else:alone=f"−{m['alone_kg']/1000:,.1f} t (−{m['alone_pct']:.1f}%)"+(f"<br>범위 {_range_t(m['alone_range_kg'])}" if m.get('alone_range_kg') else '')
+        lines.append(f"| {m['title']} | {m['indicator_text']} | {ev} | {alone} | {m['use_label']} |")
+    lines+=['','수단별 설명 · 비용과 제도 · 주의 · 출처','']+[f"- **{m['title']}**: {m['what']} 비용·제도: {m['cost']} 주의: {m['note']} 출처: {_sources(m)}" for m in rows]
+    return lines
+
+def embodied_lines(p):
+    """시공 단계 내재탄소 (markdown, 참고 계산): 한 번 배출되는 양과 자재·공법 수단."""
+    e=p.get('embodied')
+    if not e:return []
+    from .reduction_measures import embodied_text
+    lines=['','#### 시공 단계 내재탄소 (참고 계산)','','- '+embodied_text(e),
+           f"- 기준: {e['basis']} 출처: [{e['source']['label']}]({e['source']['url']})",'',
+           '| 자재·공법 수단 | 지표 | 근거 | 이 계획안에 적용하면 |','|---|---|---|---:|']
+    for m in e['options']:
+        val=('지표만' if not m.get('base') else f"값 없음 ({m['reason']})") if m.get('reduction_kg') is None else f"−{m['reduction_kg']/1000:,.0f} t (내재탄소의 −{m['reduction_pct']:.1f}%)<br>범위 −{m['reduction_range_kg'][0]/1000:,.0f}~−{m['reduction_range_kg'][1]/1000:,.0f} t"
+        lines.append(f"| {m['title']} | {m['indicator_text']} | {m['evidence_label']} {m['n']} | {val} |")
+    lines+=['']+[f"- **{m['title']}**: {m['what']} 비용: {m['cost']} 주의: {m['note']} 출처: {_sources(m)}" for m in e['options']]
+    lines.append('- 내재탄소 수단은 모두 설계·계산 값이라 실측 지표가 아닙니다. 운영탄소 사다리와 합하지 않습니다.')
     return lines
 
 def plan_sentence_facts(n,label,inputs,result):
@@ -451,6 +493,12 @@ class ReportInput(BaseModel):
     region:str|None=Field(default=None,max_length=10)
     scenario_ids:list[str]=Field(default_factory=list,max_length=1)
     use_local_model:bool=False
+
+@router.get('/measures')
+def reduction_measures():
+    """감축 수단 목록과 근거(운영 단계·시공 단계). 계획안과 무관한 고정 표 (기준 문서 5.15)."""
+    from .reduction_measures import catalog
+    return catalog()
 
 @router.get('/engine')
 def engine_status():

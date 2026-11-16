@@ -14,6 +14,8 @@ import { MissingValue } from '../components/MissingValue';
 import { ZoningSummary } from '../components/ZoningSummary';
 import { PLAN_COLORS } from '../theme/palette';
 import { ConfidenceGrades } from '../components/ConfidenceGrades';
+import { Fold } from '../components/Fold';
+import { EmbodiedSection, MeasureCatalogTable, MeasuresTable, type EmbodiedBlock, type MeasureCatalog, type MeasureRow } from '../components/ReductionMeasures';
 import type { ScenarioResult } from '../types';
 
 /** 탄소 감축 방안 (서버 reduction_plan, 기준 문서 5.15): 같은 계획을 대책 없음에서 수단을 차례로 더해 줄인다. */
@@ -23,6 +25,8 @@ interface ReductionPlan {
   final_carbon_kg?: number; final_pct?: number | null; reduction_pct?: number | null; pv?: { roof_m2: number; kw: number; kwh: number | null; surplus_kwh?: number } | null;
   green?: { area_m2: number; uptake_kg: number; range_kg: number[] } | null; self_sufficiency_pct?: number | null; zeb_grade?: string | null; residual?: { carbon_kg: number; offsite_pv_kw: number | null; electricity_carbon_kg?: number; gas_carbon_kg?: number | null; offset_kg?: number };
   plan?: { carbon_kg: number; pct: number | null } | null; assumptions?: string[];
+  /** 사다리에 넣지 않은 수단까지 하나씩 따로 본 값과, 시공 단계 내재탄소(참고 계산). 2026-11-16 이전 보고서에는 없다. */
+  measures?: MeasureRow[]; embodied?: EmbodiedBlock | null;
 }
 interface SavedScenario { id: string; label?: string; created_at: string; inputs: Record<string, number | string | null>; result: ScenarioResult & Record<string, any>; has_image?: boolean; image_url?: string; reduction_plan?: ReductionPlan }
 interface Fact { id: string; text: string }
@@ -44,6 +48,7 @@ export function ReportsPage() {
   const { year, gridId, region, regionQuery } = useAnalysisScope(); const scope = useApi<{ selected_sector: { grid_id: string } }>(`/dashboard?year=${year}${regionQuery}`); const [params] = useSearchParams();
   const scenarios = useApi<SavedScenario[]>('/scenarios'); const saved = useApi<Array<{ id: string; year: number; created_at: string; grid_id: string; title?: string; scenario_count?: number }>>('/reports');
   const engine = useApi<{ status: string; model: string | null }>('/reports/engine');
+  const catalog = useApi<MeasureCatalog>('/reports/measures');
   const [chosen, setChosen] = useState<string[]>([]); const [useLocal, setUseLocal] = useState(false); const [report, setReport] = useState<Report | null>(null); const [busy, setBusy] = useState(false); const [error, setError] = useState<string | null>(null);
   const requested = params.get('scenario'); const auto = params.get('auto') === '1';
   useEffect(() => { setChosen(requested ? [requested] : []); setReport(null); setError(null); }, [year, gridId, params, requested]);
@@ -61,7 +66,8 @@ export function ReportsPage() {
   const toggle = (id: string, on: boolean) => setChosen(on ? [id] : []);
   return <div className="page reports-page"><div className="no-print"><PageHeader title="검토 보고서" description="시뮬레이션에서 계산한 계획안의 에너지·탄소 결과를 대상지 정보와 함께 정리합니다. 인쇄하거나 문서로 내려받을 수 있습니다." />
     <section className="panel report-builder"><div className="panel-title"><h3>보고서에 넣을 계획안</h3><span className="status-tag">같은 대상지 · {year}년</span></div>
-      <p className="panel-description">계획안을 하나 고르면 그 안의 보고서가 만들어집니다. 다른 안과 비교하지 않고, 같은 계획을 ‘대책 없음’에서 시작해 단열·창호 기준 강화, 에너지 절약 운영, 지붕 태양광, 녹지·조경 흡수를 차례로 더해 줄이는 <b>탄소 감축 방안</b>을 함께 씁니다. 계획안 없이 현재 자료 현황만 쓸 수도 있습니다.</p>
+      <p className="panel-description">계획안을 하나 고르면 그 안의 보고서가 만들어집니다. 다른 안과 비교하지 않고, 같은 계획을 ‘대책 없음’에서 시작해 단열·창호 기준 강화, 에너지 절약 운영, 지붕 태양광, 녹지·조경 흡수를 차례로 더해 줄이는 <b>탄소 감축 방안</b>을 함께 씁니다. 그 밖의 수단(신축 통합 기준, 열회수 환기, 세대 표시장치, 공용부 조명, 승강기 회생제동 등)은 하나씩 따로 본 값으로, 시공 단계 내재탄소는 참고 계산으로 같은 절에 싣습니다. 계획안 없이 현재 자료 현황만 쓸 수도 있습니다.</p>
+      {catalog.data && Array.isArray(catalog.data.measures) ? <Fold title="감축 수단 근거표" figures={`운영 단계 ${catalog.data.measures.length}개 · 시공 단계 ${catalog.data.embodied_measures.length}개`} hint="지표·근거 보기" testId="measure-catalog-fold"><MeasureCatalogTable catalog={catalog.data} /></Fold> : null}
       {scenarios.loading || (!gridId && scope.loading) ? <LoadingState label="대상지와 계획안을 확인하는 중입니다" /> : rows.length ? <div className="scenario-picker">{rows.map((s) => { const order = chosen.indexOf(s.id); const sv = s.result?.savings_pct?.carbon_kg; return <label key={s.id} className={order >= 0 ? `chosen plan-${PLAN[order]}` : undefined}><input type="radio" name="report-plan" checked={order >= 0} onChange={(e) => toggle(s.id, e.target.checked)} /><span><strong>{s.inputs.floors}층 · {s.inputs.building_count}동 · 연면적 {formatMetric(Number(s.result?.gross_floor_area), 'm²')}</strong><small>{new Date(s.created_at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} 계산 · 연간 {tonnes(s.result?.annual?.scenario?.carbon_kg)}{typeof sv === 'number' ? ` · 기준안 대비 ${savingsText(sv)}` : ''}{s.has_image ? ' · 3D 장면 있음' : ''}</small>{s.result?.legal_status && s.result.legal_status !== '법적 상한 미확정' && <small className={String(s.result.legal_status).includes('초과') ? 'legal over' : 'legal'}>{String(s.result.legal_status)}</small>}</span>{order >= 0 && <i className="plan-chip">이 계획안</i>}</label>; })}</div> : <EmptyState title="이 대상지에 계산한 계획안이 없습니다" description="시뮬레이션에서 ‘시나리오 계산’ 뒤 ‘보고서 작성’을 누르면 그 계획안의 보고서가 바로 만들어집니다." />}
       {scenarios.error && <p role="alert" className="inline-error">{scenarios.error}</p>}<div className="report-actions"><label className="ai-option"><input type="checkbox" checked={useLocal} disabled={engine.data?.status !== 'READY' || busy} onChange={(e) => setUseLocal(e.target.checked)} /><Sparkles size={16} aria-hidden="true" />로컬 AI로 요약 문장 고르기<small>{engine.data?.status === 'READY' ? engine.data.model : '로컬 모델 준비 전, 검증된 서식 사용'}</small></label><button className="button primary" disabled={busy} onClick={() => void generate()}><FileText size={16} />{busy ? '보고서 작성 중…' : chosen.length ? '보고서 작성 (감축 방안 포함)' : '현황 보고서 작성'}</button></div><p className="muted">숫자는 모두 계산 엔진에서 가져오며, AI는 검증된 근거 문장을 고르기만 합니다.</p></section>
     {error && <p role="alert" className="inline-error">{error}</p>}
@@ -165,6 +171,8 @@ function ReductionSection({ plan, n, named }: { plan: SavedScenario; n: number; 
       {p.residual && p.residual.carbon_kg > 0 && <li data-testid="reduction-residual">남는 연간 {tonnes(p.residual.carbon_kg)}{residualParts(p.residual)}{p.residual.offsite_pv_kw ? `. 전력분은 구역 밖 재생에너지(태양광 약 ${formatMetric(p.residual.offsite_pv_kw, 'kW')} 상당, PPA·REC) 조달로 채울 수 있습니다${p.residual.gas_carbon_kg ? '. 가스분은 전력 조달로 줄지 않습니다' : ''}` : ''}</li>}
     </ul>
     {p.assumptions?.length ? <details className="method-note" open><summary>근거와 가정</summary><ul>{p.assumptions.map((a) => <li key={a}>{a}</li>)}</ul></details> : null}
+    {p.measures?.length ? <MeasuresTable rows={p.measures} /> : null}
+    {p.embodied ? <EmbodiedSection embodied={p.embodied} /> : null}
   </section>;
 }
 

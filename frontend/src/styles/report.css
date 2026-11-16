@@ -145,3 +145,19 @@
   .reduction-track, .reduction-bar { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
   .plan-card, .plan-card-row strong, .report-table tr.total { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
 }
+
+/* 감축 수단: 따로 본 값 표, 시공 단계 내재탄소(참고), 수단별 설명 (DESIGN 7절) */
+.report-subsection { margin-top: var(--sp-5); }
+.report-subsection h3 { margin: 0 0 var(--sp-2); font-size: var(--fs-body); font-weight: 600; color: var(--ink); }
+.report-table tbody th small { display: block; margin-top: 2px; font-weight: 400; color: var(--ink-3); font-size: var(--fs-caption, 12px); }
+.report-table tr.in-ladder th { color: var(--ink); font-weight: 600; }
+.evidence { display: inline-block; padding: 1px 6px; border-radius: 3px; border: 1px solid var(--line); font-size: var(--fs-caption, 12px); white-space: nowrap; }
+.evidence.measured { border-color: var(--gain-4); color: var(--ink); }
+.evidence.weak { color: var(--ink-3); border-style: dashed; }
+.measure-notes dl { margin: var(--sp-2) 0 0; display: grid; gap: var(--sp-2); }
+.measure-notes dt { font-weight: 600; color: var(--ink); }
+.measure-notes dd { margin: 2px 0 0; line-height: 1.6; color: var(--ink-2); }
+.measure-notes .measure-sources { display: block; color: var(--ink-3); font-size: var(--fs-caption, 12px); overflow-wrap: anywhere; }
+.measure-notes a { color: inherit; text-decoration: underline; }
+@media print { .measure-notes dl > div { break-inside: avoid; } }
+
