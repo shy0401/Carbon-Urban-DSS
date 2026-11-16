@@ -66,6 +66,7 @@ def test_markdown_names_the_place_shows_the_plan_and_its_savings_and_hides_cell_
     assert '전력 36.9 kWh/m²·년' in text and '0.433' in text and '0.1826' in text
     assert '![계획안 A 3D 개념 배치](/api/scenarios/s1/image)' in text and '실제 배치안이 아닙니다' in text
     assert '| 제3종일반주거지역 | 99.8% | 50% | 300% |' in text and '조례 기본 상한 이내 (1차 확인)' in text and '지구단위계획구역' in text
+    assert '| 용도지역 | 대지 비율 | 건폐율 상한 | 용적률 상한 |\n|---|---:|---:|---:|\n| 제3종일반주거지역 |' in text   # 표의 줄 사이에 빈 줄이 없어야 표로 그려진다
     assert '| K-apt | 2025-01 | 2026-09-26 |' in text and '1,252' not in text
     assert '보고서 번호 r1' in text
     # 탄소 감축 방안: 다른 안과 비교하지 않고 같은 계획을 대책 없음에서 줄이는 순서 (기준 문서 5.15)
@@ -76,6 +77,7 @@ def test_markdown_names_the_place_shows_the_plan_and_its_savings_and_hides_cell_
     section = with_plan.split('## 5. 탄소 감축 방안')[1].split('## 6.')[0]
     assert '| 0. 대책 없음 (기준안) |' in section and '| 1. 단열·창호 기준 강화 |' in section and '| 2. 에너지 절약 운영 |' in section and '| 3. 지붕 태양광 |' in section and '난방·급탕 전기화 |' not in section
     assert '옥상 1,680 m² · 168.0 kW' in section and '에너지자립률' in section and '계획안 B' not in with_plan
+    assert '|---|---|---:|---:|---:|\n| 0. 대책 없음 (기준안) |' in section and ' |\n| 1. 단열·창호 기준 강화 |' in section and '|\n\n|' not in with_plan   # 사다리 표도 한 덩어리
     # 2026-11-16: 사다리 밖 수단은 '따로 본 값' 표로, 시공 단계 내재탄소는 참고 계산으로 같은 절에 (연면적 없이 만든 사다리에는 내재탄소 없음)
     assert '#### 수단별 효과 (따로 본 값, 서로 더하지 않음)' in section and '#### 시공 단계 내재탄소' not in section
     assert '| 신축 통합 기준(ZEB 5등급 수준·효율등급 인증) | 총에너지(전력·가스에 같은 비율로 적용) −11.3% (−46~+6.7%) | 실측 14건(국내 11) | −107.0 t (−11.3%)<br>범위 +63.4~−435.5 t | 따로 본 값 |' in section

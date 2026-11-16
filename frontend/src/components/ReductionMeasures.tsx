@@ -68,7 +68,7 @@ export function EmbodiedSection({ embodied: e }: { embodied: EmbodiedBlock }) {
 export function MeasureCatalogTable({ catalog }: { catalog: MeasureCatalog }) {
   const rows = [...catalog.measures, ...catalog.embodied_measures];
   return <div data-testid="measure-catalog">
-    <div className="table-wrap"><table><thead><tr><th>수단</th><th>지표</th><th>근거</th><th>적용 대상</th><th>보고서에서</th></tr></thead><tbody>
+    <div className="table-wrap report-table"><table><thead><tr><th>수단</th><th>지표</th><th>근거</th><th>적용 대상</th><th>보고서에서</th></tr></thead><tbody>
       {rows.map((m) => <tr key={m.key}><th scope="row">{m.title}<small>{m.group}</small></th><td>{m.indicator_text}</td><td><span className={evidenceClass(m)}>{evidenceText(m)}</span></td><td>{m.apply}</td><td>{m.use_label}</td></tr>)}
     </tbody></table></div>
     <p className="muted">내재탄소 기준: 지상 연면적 1 m²에 {number(catalog.embodied_basis.kg_per_m2)} kgCO₂({number(catalog.embodied_basis.range_kg_per_m2[0])}~{number(catalog.embodied_basis.range_kg_per_m2[1])}, 자재 생산 단계). 실측·기관 실적이 아닌 값(설계·계산, 가정)은 흐리게 적었고 기본 방안의 합계에 넣지 않습니다.</p>

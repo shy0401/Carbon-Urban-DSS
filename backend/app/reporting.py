@@ -154,6 +154,16 @@ def _pv_yield(db,region_code,year):
     return {'kwh_per_kw':solar['yield_kwh_per_kw'],'basis':'ESTIMATED','year':solar.get('year'),
             'label':f"{solar.get('year')}년 {solar.get('source')} 수평면 일사량 {solar.get('irradiation_kwh_m2'):,.0f} kWh/m² × 성능비 {solar.get('performance_ratio'):.2f}" if solar.get('irradiation_kwh_m2') and solar.get('performance_ratio') else '지역 일사량 추정'}
 
+def table_blocks(lines):
+    """표의 줄(| 로 시작)이 이어지면 한 덩어리로 묶는다. 보고서는 덩어리 사이에 빈 줄을 넣으므로, 줄마다 따로 두면
+    표가 끊겨 마크다운 보기에서 표로 그려지지 않는다(2026-11-16 고침: 감축 방안·용도지역 표). 빈 문자열은 버린다."""
+    out=[]
+    for line in lines:
+        if not line:continue
+        if line.startswith('|') and out and out[-1].startswith('|'):out[-1]+='\n'+line
+        else:out.append(line)
+    return out
+
 def reduction_lines(sc):
     """탄소 감축 방안 (markdown): 대책 없음에서 수단을 차례로 더한 표, 태양광·녹지 흡수·자립률·남는 양, 근거와 가정."""
     p=sc.get('reduction_plan') or {}
@@ -458,14 +468,14 @@ def report_markdown(s):
         sections.append(('에너지·탄소 산정',energy))
         reduction=[]
         for sc in plans:reduction+=([f"**{sc['label']}**"] if len(plans)>1 else [])+reduction_lines(sc)
-        sections.append(('탄소 감축 방안',reduction))
+        sections.append(('탄소 감축 방안',table_blocks(reduction)))
         zoning=[]
         checks=[json.dumps(sc['result'].get('zoning_check'),sort_keys=True,ensure_ascii=False) for sc in plans]
         if len(plans)>1 and len(set(checks))==1:   # the same site for every plan: one table
             zoning=zoning_lines(dict(plans[0],label='계획안 대지'))
         else:
             for sc in plans:zoning+=zoning_lines(sc)
-        sections.append(('용도지역·조례 상한 확인',zoning))
+        sections.append(('용도지역·조례 상한 확인',table_blocks(zoning)))
     else:
         totals=s.get('totals') or {}
         gas_note='가스 탄소는 가정 계수' if totals.get('gas_carbon_kg') is not None else '가스 탄소는 계수 미확정'
